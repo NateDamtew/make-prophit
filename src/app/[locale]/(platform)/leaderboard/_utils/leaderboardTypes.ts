@@ -1,6 +1,14 @@
-export interface LeaderboardEntry {
+interface LeaderboardWalletAliases {
+  proxyWallet?: string
+  proxy_wallet?: string
+  proxyAddress?: string
+  proxy_address?: string
+  proxyWalletAddress?: string
+  proxy_wallet_address?: string
+}
+
+export interface LeaderboardEntry extends LeaderboardWalletAliases {
   rank?: number | string
-  depositWallet?: string
   userName?: string
   vol?: number
   pnl?: number
@@ -9,10 +17,9 @@ export interface LeaderboardEntry {
   verifiedBadge?: boolean
 }
 
-export interface BiggestWinEntry {
+export interface BiggestWinEntry extends LeaderboardWalletAliases {
   rank?: number | string
   winRank?: number | string
-  depositWallet?: string
   userName?: string
   profileImage?: string
   xUsername?: string
