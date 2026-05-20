@@ -26,6 +26,49 @@ interface EventActivityProps {
   event: Event
 }
 
+interface ActivityMarketLabelLookup {
+  byConditionId: Map<string, string>
+  bySlug: Map<string, string>
+}
+
+function getMarketDisplayLabel(market: Event['markets'][number]) {
+  return market.short_title?.trim() || market.title.trim() || market.slug
+}
+
+function buildActivityMarketLabelLookup(markets: Event['markets']) {
+  const byConditionId = new Map<string, string>()
+  const bySlug = new Map<string, string>()
+
+  for (const market of markets) {
+    const label = getMarketDisplayLabel(market)
+
+    if (market.condition_id) {
+      byConditionId.set(market.condition_id, label)
+    }
+    if (market.slug) {
+      bySlug.set(market.slug, label)
+    }
+  }
+
+  return {
+    byConditionId,
+    bySlug,
+  }
+}
+
+function resolveActivityMarketLabel(activity: ActivityOrder, lookup: ActivityMarketLabelLookup) {
+  const conditionId = activity.market.condition_id?.trim()
+  const slug = activity.market.slug?.trim()
+
+  return (
+    (conditionId ? lookup.byConditionId.get(conditionId) : undefined)
+    || (slug ? lookup.bySlug.get(slug) : undefined)
+    || activity.market.title.trim()
+    || slug
+    || ''
+  )
+}
+
 function resolveActivityRowKey(activity: ActivityOrder) {
   return [
     activity.id,
@@ -37,10 +80,12 @@ function resolveActivityRowKey(activity: ActivityOrder) {
   ].join(':')
 }
 
-function getEventTokenIds(event: Event) {
+const ALL_ACTIVITY_MARKETS_VALUE = 'all'
+
+function getMarketTokenIds(markets: Event['markets']) {
   const tokenIds = new Set<string>()
 
-  for (const market of event.markets) {
+  for (const market of markets) {
     for (const outcome of market.outcomes) {
       if (outcome.token_id) {
         tokenIds.add(String(outcome.token_id))
@@ -222,29 +267,61 @@ function useRealtimeActivityRefresh({
 export default function EventActivity({ event }: EventActivityProps) {
   const t = useExtracted()
   const [minAmountFilter, setMinAmountFilter] = useState('none')
+  const [activityMarketFilter, setActivityMarketFilter] = useState(ALL_ACTIVITY_MARKETS_VALUE)
   const [infiniteScrollError, setInfiniteScrollError] = useState<string | null>(null)
   const queryClient = useQueryClient()
   const loadMoreRef = useRef<HTMLDivElement | null>(null)
   const normalizeOutcomeLabel = useOutcomeLabel()
   const isSportsEvent = Boolean(event.sports_sport_slug?.trim())
+  const isMultiMarket = event.markets.length > 1
 
-  const marketIds = useMemo(
+  const allMarketIds = useMemo(
     () => event.markets.map(market => market.condition_id).filter(Boolean),
+    [event.markets],
+  )
+  const resolvedActivityMarketFilter = isMultiMarket && allMarketIds.includes(activityMarketFilter)
+    ? activityMarketFilter
+    : ALL_ACTIVITY_MARKETS_VALUE
+  const activityMarkets = useMemo(
+    () => {
+      if (resolvedActivityMarketFilter === ALL_ACTIVITY_MARKETS_VALUE) {
+        return event.markets
+      }
+
+      return event.markets.filter(market => market.condition_id === resolvedActivityMarketFilter)
+    },
+    [event.markets, resolvedActivityMarketFilter],
+  )
+  const marketIds = useMemo(
+    () => activityMarkets.map(market => market.condition_id).filter(Boolean),
+    [activityMarkets],
+  )
+  const activityMarketLabels = useMemo(
+    () => buildActivityMarketLabelLookup(event.markets),
     [event.markets],
   )
   const marketKey = useMemo(() => marketIds.join(','), [marketIds])
   const hasMarkets = marketIds.length > 0
   const tokenIds = useMemo(
     () => {
-      return getEventTokenIds(event)
+      return getMarketTokenIds(activityMarkets)
     },
-    [event],
+    [activityMarkets],
   )
 
   const queryKey = useMemo(
-    () => ['event-activity', event.slug, marketKey, minAmountFilter],
-    [event.slug, marketKey, minAmountFilter],
+    () => ['event-activity', event.slug, marketKey, resolvedActivityMarketFilter, minAmountFilter],
+    [event.slug, marketKey, minAmountFilter, resolvedActivityMarketFilter],
   )
+  const minAmountFilterLabel = minAmountFilter === 'none'
+    ? t('Min amount')
+    : formatCurrency(Number.parseInt(minAmountFilter, 10) || 0, { minimumFractionDigits: 0, maximumFractionDigits: 0 })
+  const isMinAmountFiltered = minAmountFilter !== 'none'
+  const selectedActivityMarket = activityMarkets[0]
+  const selectedActivityMarketLabel = resolvedActivityMarketFilter === ALL_ACTIVITY_MARKETS_VALUE
+    ? ''
+    : selectedActivityMarket ? getMarketDisplayLabel(selectedActivityMarket) : ''
+  const isMarketFiltered = selectedActivityMarketLabel.length > 0
 
   const {
     status,
@@ -318,6 +395,34 @@ export default function EventActivity({ event }: EventActivityProps) {
     setMinAmountFilter(nextValue)
   }
 
+  function handleActivityMarketFilterChange(nextValue: string) {
+    setInfiniteScrollError(null)
+    setActivityMarketFilter(nextValue)
+  }
+
+  function resolveEmptyActivityMessage() {
+    if (isMarketFiltered && isMinAmountFiltered) {
+      return t('No activity found for {market} with minimum amount of {amount}.', {
+        amount: minAmountFilterLabel,
+        market: selectedActivityMarketLabel,
+      })
+    }
+
+    if (isMarketFiltered) {
+      return t('No trading activity yet for {market}.', {
+        market: selectedActivityMarketLabel,
+      })
+    }
+
+    if (isMinAmountFiltered) {
+      return t('No activity found with minimum amount of {amount}.', {
+        amount: minAmountFilterLabel,
+      })
+    }
+
+    return t('No trading activity yet for this event.')
+  }
+
   if (!hasMarkets) {
     return (
       <div className="mt-2">
@@ -349,10 +454,28 @@ export default function EventActivity({ event }: EventActivityProps) {
 
   return (
     <div className="mt-2 grid gap-6">
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex flex-row items-center gap-2">
+        {isMultiMarket && (
+          <Select value={resolvedActivityMarketFilter} onValueChange={handleActivityMarketFilterChange}>
+            <SelectTrigger className="w-full sm:w-40 md:w-44 dark:bg-transparent">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL_ACTIVITY_MARKETS_VALUE}>{t('All')}</SelectItem>
+              {event.markets.map(market => (
+                <SelectItem key={market.condition_id} value={market.condition_id}>
+                  {getMarketDisplayLabel(market)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+
         <Select value={minAmountFilter} onValueChange={handleMinAmountFilterChange}>
-          <SelectTrigger className="dark:bg-transparent">
-            <SelectValue placeholder={t('Min Amount:')} />
+          <SelectTrigger className="w-full sm:w-auto dark:bg-transparent">
+            <SelectValue asChild>
+              <span className="line-clamp-1">{minAmountFilterLabel}</span>
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="none">{t('None')}</SelectItem>
@@ -388,15 +511,13 @@ export default function EventActivity({ event }: EventActivityProps) {
       {!loading && activities.length === 0 && (
         <div className="text-center">
           <div className="text-sm text-muted-foreground">
-            {minAmountFilter && minAmountFilter !== 'none'
-              ? t('No activity found with minimum amount of {amount}.', {
-                  amount: formatCurrency(Number.parseInt(minAmountFilter, 10) || 0, { minimumFractionDigits: 0, maximumFractionDigits: 0 }),
-                })
-              : t('No trading activity yet for this event.')}
+            {resolveEmptyActivityMessage()}
           </div>
-          {minAmountFilter && minAmountFilter !== 'none' && (
+          {isMinAmountFiltered && (
             <div className="mt-2 text-xs text-muted-foreground">
-              {t('Try lowering the minimum amount filter to see more activity.')}
+              {isMarketFiltered
+                ? t('Try lowering the minimum amount filter or selecting another market.')
+                : t('Try lowering the minimum amount filter to see more activity.')}
             </div>
           )}
         </div>
@@ -412,6 +533,9 @@ export default function EventActivity({ event }: EventActivityProps) {
               const valueLabel = formatTotalValue(activity.total_value)
               const amountLabel = fromMicro(activity.amount)
               const outcomeColorClass = resolveEventActivityOutcomeColorClass(activity, isSportsEvent)
+              const marketLabel = isMultiMarket
+                ? resolveActivityMarketLabel(activity, activityMarketLabels)
+                : ''
               const rawUsername = activity.user.username
                 || activity.user.address
                 || 'trader'
@@ -461,11 +585,21 @@ export default function EventActivity({ event }: EventActivityProps) {
                         </span>
                         <span className={cn('font-semibold', outcomeColorClass)}>
                           {amountLabel}
-                          {' '}
                           {activity.outcome.text ? ` ${normalizeOutcomeLabel(activity.outcome.text)}` : ''}
                           {' '}
-                          {' '}
                         </span>
+                        {marketLabel && (
+                          <>
+                            <span className="text-foreground">
+                              {t('for')}
+                              {' '}
+                            </span>
+                            <span className="font-semibold text-foreground">
+                              {marketLabel}
+                              {' '}
+                            </span>
+                          </>
+                        )}
                         <span className="text-foreground">
                           {t('at')}
                           {' '}
