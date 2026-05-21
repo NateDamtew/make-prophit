@@ -15,21 +15,6 @@ const config: NextConfig = {
   reactStrictMode: false,
   reactCompiler: true,
   staticPageGenerationTimeout: 180,
-  serverExternalPackages: [
-    '@base-org',
-    '@coinbase',
-    '@metamask',
-    '@phosphor-icons',
-    '@reown/appkit-ui',
-    '@reown/appkit-scaffold-ui',
-    '@reown/appkit-adapter-wagmi',
-    '@sentry',
-    '@wagmi',
-    'cbw-sdk',
-    'porto',
-    'viem',
-    'zod',
-  ],
   experimental: {
     serverActions: {
       bodySizeLimit: '2mb',
