@@ -5,11 +5,12 @@ import type { DataPoint, SeriesConfig } from '@/types/PredictionChartTypes'
 import {
   Bookmark,
   CheckCircle2,
+  ChevronLeft,
   ChevronRight,
-  Flame,
+  Hexagon,
   Newspaper,
+  RefreshCw,
   Share2,
-  TrendingUp,
   XCircle,
 } from 'lucide-react'
 import dynamic from 'next/dynamic'
@@ -19,7 +20,7 @@ import AppLink from '@/components/AppLink'
 import { Card } from '@/components/ui/card'
 import { OUTCOME_INDEX } from '@/lib/constants'
 import { resolveEventOutcomePath, resolveEventPagePath } from '@/lib/events-routing'
-import { formatDate, formatVolume } from '@/lib/formatters'
+import { formatVolume } from '@/lib/formatters'
 import { cn } from '@/lib/utils'
 
 // Dynamically load the PredictionChart to bypass SSR issues (visx/d3 require window)
@@ -132,53 +133,29 @@ export default function HomeHero({ events }: HomeHeroProps) {
   return (
     <div className="mb-6 grid w-full min-w-0 grid-cols-1 gap-6 lg:grid-cols-3">
       {/* Featured Market Slider Card (Left Column) */}
-      <Card
-        className="
-          relative flex w-full min-w-0 flex-col justify-between overflow-hidden border-border bg-card p-5 shadow-md
-          transition-all duration-300
-          hover:shadow-lg
-          md:p-6
-          lg:col-span-2
-          dark:bg-card/50
-        "
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
-      >
-        {activeEvent && (
-          <FeaturedEventSlide
-            event={activeEvent}
-            key={activeEvent.id}
-          />
-        )}
+      <div className="flex w-full min-w-0 flex-col gap-3 lg:col-span-2">
+        <Card
+          className="
+            relative flex w-full min-w-0 flex-col justify-between overflow-hidden border-border bg-card p-5 shadow-md
+            transition-all duration-300
+            hover:shadow-lg
+            md:p-6
+            dark:bg-card/50
+          "
+          onMouseEnter={() => setIsHovered(true)}
+          onMouseLeave={() => setIsHovered(false)}
+        >
+          {activeEvent && (
+            <FeaturedEventSlide
+              event={activeEvent}
+              key={activeEvent.id}
+            />
+          )}
+        </Card>
 
-        {/* Navigation Dots and Pill Tabs */}
-        <div className="mt-5 flex flex-wrap items-center justify-between gap-4 border-t border-border/60 pt-4">
-          {/* Tag Navigation Pills (Polymarket-style) */}
-          <div className="flex flex-wrap gap-2">
-            {featuredEvents.map((event, idx) => {
-              const category = event.tags?.find(t => t.isMainCategory)?.name || 'General'
-              const shortTitle = event.title.length > 25 ? `${event.title.slice(0, 22)}...` : event.title
-
-              return (
-                <button
-                  key={event.id}
-                  onClick={() => setActiveIndex(idx)}
-                  className={cn(
-                    'cursor-pointer rounded-full px-3 py-1 text-xs font-semibold transition-all duration-200',
-                    activeIndex === idx
-                      ? 'scale-[1.03] bg-primary text-primary-foreground shadow-sm shadow-primary/20'
-                      : 'bg-accent/40 text-muted-foreground hover:bg-accent/70 hover:text-foreground',
-                  )}
-                >
-                  {category}
-                  :
-                  {shortTitle}
-                </button>
-              )
-            })}
-          </div>
-
-          {/* Simple Dot Indicators */}
+        {/* Navigation Controls (Outside Card) */}
+        <div className="flex items-center justify-between px-2">
+          {/* Simple Dot Indicators (Left) */}
           <div className="flex items-center gap-1.5">
             {featuredEvents.map((_, idx) => (
               <button
@@ -186,14 +163,44 @@ export default function HomeHero({ events }: HomeHeroProps) {
                 onClick={() => setActiveIndex(idx)}
                 aria-label={`Go to slide ${idx + 1}`}
                 className={cn(
-                  'h-2 cursor-pointer rounded-full transition-all duration-300',
-                  activeIndex === idx ? 'w-5 bg-primary' : 'w-2 bg-muted hover:bg-muted-foreground/50',
+                  'h-1.5 cursor-pointer rounded-full transition-all duration-300',
+                  activeIndex === idx
+                    ? 'w-6 bg-primary/70'
+                    : `w-1.5 bg-muted-foreground/30 hover:bg-muted-foreground/50`,
                 )}
               />
             ))}
           </div>
+
+          {/* Previous/Next Pill Tabs (Right) */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setActiveIndex(prev => (prev - 1 + featuredEvents.length) % featuredEvents.length)}
+              className="
+                flex max-w-[140px] items-center gap-1.5 rounded-full bg-accent/40 px-3 py-2 text-xs font-semibold
+                text-muted-foreground transition-colors
+                hover:bg-accent hover:text-foreground
+                sm:max-w-[200px]
+              "
+            >
+              <ChevronLeft className="size-3.5 shrink-0" />
+              <span className="truncate">{featuredEvents[(activeIndex - 1 + featuredEvents.length) % featuredEvents.length]?.title}</span>
+            </button>
+            <button
+              onClick={() => setActiveIndex(prev => (prev + 1) % featuredEvents.length)}
+              className="
+                flex max-w-[140px] items-center gap-1.5 rounded-full bg-accent/40 px-3 py-2 text-xs font-semibold
+                text-muted-foreground transition-colors
+                hover:bg-accent hover:text-foreground
+                sm:max-w-[200px]
+              "
+            >
+              <span className="truncate">{featuredEvents[(activeIndex + 1) % featuredEvents.length]?.title}</span>
+              <ChevronRight className="size-3.5 shrink-0" />
+            </button>
+          </div>
         </div>
-      </Card>
+      </div>
 
       {/* Sidebar News & Hot Topics (Right Column) */}
       <div className="flex flex-col gap-6 lg:col-span-1">
@@ -261,57 +268,6 @@ export default function HomeHero({ events }: HomeHeroProps) {
           <ButtonLink href="/predictions" label="Explore all markets" />
         </Card>
 
-        {/* Hot Topics Card */}
-        <Card className="flex flex-1 flex-col justify-between border-border bg-card p-5 shadow-md dark:bg-card/50">
-          <div className="space-y-4">
-            <div className="flex items-center gap-2 text-sm font-bold tracking-tight text-foreground/90">
-              <Flame className="size-4 animate-pulse text-orange-500" />
-              <span>Hot topics</span>
-              <ChevronRight className="size-3.5 text-muted-foreground" />
-            </div>
-
-            <div className="divide-y divide-border/60">
-              {[
-                { name: 'Politics', volume: '$15.4M today', slug: 'politics' },
-                { name: 'Crypto', volume: '$9.2M today', slug: 'crypto' },
-                { name: 'AI & Tech', volume: '$4.1M today', slug: 'tech' },
-                { name: 'Sports', volume: '$2.8M today', slug: 'sports' },
-                { name: 'Pop Culture', volume: '$1.5M today', slug: 'culture' },
-              ].map((topic, idx) => (
-                <AppLink
-                  key={topic.name}
-                  href={`/${topic.slug}`}
-                  className="group flex items-center justify-between py-2.5 first:pt-0 last:pb-0"
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="
-                      text-xs font-extrabold text-muted-foreground/60 transition-colors
-                      group-hover:text-primary
-                    "
-                    >
-                      {idx + 1}
-                    </span>
-                    <span className="
-                      text-xs font-bold text-card-foreground transition-colors
-                      group-hover:text-foreground
-                    "
-                    >
-                      {topic.name}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-2xs font-semibold text-muted-foreground">
-                      {topic.volume}
-                    </span>
-                    <ChevronRight className="size-3 text-muted-foreground transition-colors group-hover:text-foreground" />
-                  </div>
-                </AppLink>
-              ))}
-            </div>
-          </div>
-
-          <ButtonLink href="/leaderboard" label="View leaderboard" />
-        </Card>
       </div>
     </div>
   )
@@ -413,7 +369,7 @@ function FeaturedEventSlide({ event }: FeaturedEventSlideProps) {
       {/* Main Grid: Outcomes left, Chart right */}
       <div className="my-3 grid w-full min-w-0 grid-cols-1 items-stretch gap-6 md:grid-cols-12">
         {/* Left Side: Title and outcomes */}
-        <div className="flex flex-col justify-between space-y-4 md:col-span-5">
+        <div className="flex flex-col justify-start space-y-4 md:col-span-5">
           <AppLink href={eventHref} className="group">
             <h2 className="
               text-lg/snug font-bold text-foreground decoration-primary/30 underline-offset-4 transition-colors
@@ -429,7 +385,7 @@ function FeaturedEventSlide({ event }: FeaturedEventSlideProps) {
           <div className="space-y-3">
             {isSingleMarket && primaryMarket && (
               // Binary YES / NO Outcomes
-              <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
                 <OutcomeButton
                   event={event}
                   label="Yes"
@@ -528,21 +484,27 @@ function FeaturedEventSlide({ event }: FeaturedEventSlideProps) {
       </div>
 
       {/* Footer volume and target ends */}
-      <div className="mt-2 flex items-center gap-4 text-xs font-semibold text-muted-foreground">
-        <span className="flex items-center gap-1.5">
-          <TrendingUp className="size-3.5 text-primary" />
-          <span>
-            {formatVolume(totalVolume)}
-            {' '}
-            Vol.
-          </span>
-        </span>
-        <span>•</span>
-        <span>
-          Ends
+      <div className="
+        mt-4 flex items-center justify-between border-t border-border/60 pt-4 text-xs font-semibold
+        text-muted-foreground
+      "
+      >
+        <span className="flex items-center gap-1.5 text-muted-foreground/90">
+          {formatVolume(totalVolume)}
           {' '}
-          {event.end_date ? formatDate(new Date(event.end_date)) : 'N/A'}
+          Vol
         </span>
+        <div className="flex items-center gap-2.5">
+          <span className="flex items-center gap-1">
+            <RefreshCw className="size-3" />
+            <span>Monthly</span>
+          </span>
+          <span className="text-muted-foreground/50">•</span>
+          <span className="flex items-center gap-1">
+            <Hexagon className="size-3" />
+            <span>Prophit</span>
+          </span>
+        </div>
       </div>
     </div>
   )
