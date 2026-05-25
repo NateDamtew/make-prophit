@@ -130,12 +130,12 @@ export default function HomeHero({ events }: HomeHeroProps) {
   }
 
   return (
-    <div className="mb-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
+    <div className="mb-6 grid w-full min-w-0 grid-cols-1 gap-6 lg:grid-cols-3">
       {/* Featured Market Slider Card (Left Column) */}
       <Card
         className="
-          relative flex flex-col justify-between overflow-hidden border-border bg-card p-5 shadow-md transition-all
-          duration-300
+          relative flex w-full min-w-0 flex-col justify-between overflow-hidden border-border bg-card p-5 shadow-md
+          transition-all duration-300
           hover:shadow-lg
           md:p-6
           lg:col-span-2
@@ -495,7 +495,13 @@ function FeaturedEventSlide({ event }: FeaturedEventSlideProps) {
         </div>
 
         {/* Right Side: Visual line chart */}
-        <div className="flex min-h-[200px] flex-col justify-center md:col-span-7 md:min-h-[240px]" ref={chartContainerRef}>
+        <div
+          className="
+            relative flex min-h-[200px] w-full min-w-0 flex-col justify-center overflow-hidden
+            md:col-span-7 md:min-h-[240px]
+          "
+          ref={chartContainerRef}
+        >
           {chartData.length > 0 && chartContainerWidth > 0 && (
             <PredictionChart
               data={chartData}
