@@ -231,7 +231,7 @@ export default function HomeHero({ events }: HomeHeroProps) {
                     >
                       {idx + 1}
                     </span>
-                    <div className="flex-1 space-y-1">
+                    <div className="min-w-0 flex-1 space-y-1">
                       <p className="
                         line-clamp-2 text-xs/normal font-semibold text-card-foreground transition-colors
                         group-hover:text-foreground
@@ -460,7 +460,7 @@ function FeaturedEventSlide({ event }: FeaturedEventSlideProps) {
                         hover:bg-accent/40
                       "
                     >
-                      <div className="flex items-center gap-2 truncate">
+                      <div className="flex min-w-0 flex-1 items-center gap-2">
                         <span
                           className="size-2 shrink-0 rounded-full"
                           style={{ backgroundColor: CHOICE_COLORS[idx % CHOICE_COLORS.length] }}

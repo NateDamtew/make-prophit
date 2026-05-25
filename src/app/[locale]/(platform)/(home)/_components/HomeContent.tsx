@@ -49,7 +49,7 @@ export default async function HomeContent({
   }
 
   return (
-    <main className="container grid gap-4 py-4">
+    <main className="container flex min-w-0 flex-col gap-4 py-4">
       <HomeClient
         initialEvents={initialEvents}
         initialCurrentTimestamp={initialCurrentTimestamp}
