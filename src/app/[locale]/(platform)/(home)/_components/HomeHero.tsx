@@ -411,7 +411,7 @@ function FeaturedEventSlide({ event }: FeaturedEventSlideProps) {
       </div>
 
       {/* Main Grid: Outcomes left, Chart right */}
-      <div className="my-3 grid grid-cols-1 items-stretch gap-6 md:grid-cols-12">
+      <div className="my-3 grid w-full min-w-0 grid-cols-1 items-stretch gap-6 md:grid-cols-12">
         {/* Left Side: Title and outcomes */}
         <div className="flex flex-col justify-between space-y-4 md:col-span-5">
           <AppLink href={eventHref} className="group">
