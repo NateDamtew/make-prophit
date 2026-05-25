@@ -1,3 +1,4 @@
+// Trigger Vercel build
 import type { SupportedLocale } from '@/i18n/locales'
 import type { Event } from '@/types'
 import HomeClient from '@/app/[locale]/(platform)/(home)/_components/HomeClient'
