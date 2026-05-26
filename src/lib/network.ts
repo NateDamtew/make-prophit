@@ -4,7 +4,7 @@ export const AMOY_CHAIN_ID = 80_002
 
 export type DefaultNetworkKey = 'amoy' | 'polygon'
 
-export const DEFAULT_NETWORK_KEY: DefaultNetworkKey = 'amoy'
+export const DEFAULT_NETWORK_KEY: DefaultNetworkKey = 'polygon'
 
 const NETWORK_CONFIG = {
   amoy: {
