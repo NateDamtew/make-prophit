@@ -1,6 +1,6 @@
 import type { DataPoint } from '@/types/PredictionChartTypes'
 import { useEffect, useState } from 'react'
-import { createWebSocketReconnectController } from '@/lib/websocket-reconnect'
+import { closeWebSocketWhenReady, createWebSocketReconnectController } from '@/lib/websocket-reconnect'
 import {
   extractLivePriceUpdates,
   isSnapshotMessage,
@@ -207,11 +207,12 @@ export function useLiveSeriesWebSocket({
       if (!isActive || ws || document.hidden) {
         return
       }
-      ws = new WebSocket(resolvedWsUrl)
-      ws.addEventListener('open', handleOpen)
-      ws.addEventListener('message', handleMessage)
-      ws.addEventListener('error', handleError)
-      ws.addEventListener('close', handleClose)
+      const socket = new WebSocket(resolvedWsUrl)
+      socket.onopen = handleOpen
+      socket.onmessage = handleMessage
+      socket.onerror = handleError
+      socket.onclose = handleClose
+      ws = socket
     }
 
     reconnectController = createWebSocketReconnectController({
@@ -231,15 +232,16 @@ export function useLiveSeriesWebSocket({
       setStatus('offline')
       clearReconnect()
       document.removeEventListener('visibilitychange', handleVisibilityChange)
-      if (ws) {
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(buildSubscriptionPayload('unsubscribe'))
-        }
-        ws.removeEventListener('open', handleOpen)
-        ws.removeEventListener('message', handleMessage)
-        ws.removeEventListener('error', handleError)
-        ws.removeEventListener('close', handleClose)
-        ws.close()
+      const socket = ws
+      if (socket) {
+        socket.onopen = null
+        socket.onmessage = null
+        socket.onerror = null
+        socket.onclose = null
+        closeWebSocketWhenReady(socket, (currentSocket) => {
+          currentSocket.send(buildSubscriptionPayload('unsubscribe'))
+          currentSocket.close()
+        })
       }
     }
   }, [eventType, topic, isLiveView, wsUrl, subscriptionSymbol, setBaselinePrice])

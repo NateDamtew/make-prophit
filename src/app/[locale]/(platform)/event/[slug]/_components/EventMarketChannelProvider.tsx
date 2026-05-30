@@ -8,7 +8,7 @@ import type {
 import type { Market } from '@/types'
 import { useQueryClient } from '@tanstack/react-query'
 import { createContext, use, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { createWebSocketReconnectController } from '@/lib/websocket-reconnect'
+import { closeWebSocketWhenReady, createWebSocketReconnectController } from '@/lib/websocket-reconnect'
 
 type MarketChannelStatus = 'connecting' | 'live' | 'offline'
 type MarketChannelListener = (payload: any) => void
@@ -325,11 +325,12 @@ function useMarketChannelConnection({
       if (!isActive || ws || document.hidden) {
         return
       }
-      ws = new WebSocket(`${wsUrl}/ws/market`)
-      ws.addEventListener('open', handleOpen)
-      ws.addEventListener('message', handleMessage)
-      ws.addEventListener('error', handleError)
-      ws.addEventListener('close', handleClose)
+      const socket = new WebSocket(`${wsUrl}/ws/market`)
+      socket.onopen = handleOpen
+      socket.onmessage = handleMessage
+      socket.onerror = handleError
+      socket.onclose = handleClose
+      ws = socket
     }
 
     reconnectController = createWebSocketReconnectController({
@@ -348,12 +349,13 @@ function useMarketChannelConnection({
       isActive = false
       clearReconnect()
       document.removeEventListener('visibilitychange', handleVisibilityChange)
-      if (ws) {
-        ws.removeEventListener('open', handleOpen)
-        ws.removeEventListener('message', handleMessage)
-        ws.removeEventListener('error', handleError)
-        ws.removeEventListener('close', handleClose)
-        ws.close()
+      const socket = ws
+      if (socket) {
+        socket.onopen = null
+        socket.onmessage = null
+        socket.onerror = null
+        socket.onclose = null
+        closeWebSocketWhenReady(socket)
       }
     }
   }, [hasMarketChannel, queryClient, tokenIds, tokenIdToConditionId, wsUrl])

@@ -4,7 +4,7 @@ import type { Comment, User } from '@/types'
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useReducer, useRef } from 'react'
 import { commentMetricsQueryKey } from '@/app/[locale]/(platform)/event/[slug]/_hooks/useCommentMetrics'
-import { createWebSocketReconnectController } from '@/lib/websocket-reconnect'
+import { closeWebSocketWhenReady, createWebSocketReconnectController } from '@/lib/websocket-reconnect'
 
 interface LiveCommentProfile {
   baseAddress?: string
@@ -324,11 +324,12 @@ export function useLiveCommentsChannel({ eventSlug, user, enabled }: LiveComment
         return
       }
       setStatus('connecting')
-      ws = new WebSocket(wsUrl)
-      ws.addEventListener('open', handleOpen)
-      ws.addEventListener('message', handleMessage)
-      ws.addEventListener('error', handleError)
-      ws.addEventListener('close', handleClose)
+      const socket = new WebSocket(wsUrl)
+      socket.onopen = handleOpen
+      socket.onmessage = handleMessage
+      socket.onerror = handleError
+      socket.onclose = handleClose
+      ws = socket
     }
 
     reconnectController = createWebSocketReconnectController({
@@ -348,15 +349,16 @@ export function useLiveCommentsChannel({ eventSlug, user, enabled }: LiveComment
       setStatus('offline')
       clearReconnect()
       document.removeEventListener('visibilitychange', handleVisibilityChange)
-      if (ws) {
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(buildSubscriptionPayload('unsubscribe'))
-        }
-        ws.removeEventListener('open', handleOpen)
-        ws.removeEventListener('message', handleMessage)
-        ws.removeEventListener('error', handleError)
-        ws.removeEventListener('close', handleClose)
-        ws.close()
+      const socket = ws
+      if (socket) {
+        socket.onopen = null
+        socket.onmessage = null
+        socket.onerror = null
+        socket.onclose = null
+        closeWebSocketWhenReady(socket, (currentSocket) => {
+          currentSocket.send(buildSubscriptionPayload('unsubscribe'))
+          currentSocket.close()
+        })
       }
     }
   }, [queryClient, shouldConnect, eventSlug, wsUrl])
