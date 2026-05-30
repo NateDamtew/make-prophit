@@ -11,6 +11,7 @@ import { users } from '@/lib/db/schema/auth/tables'
 import { getDepositWalletAddress, isDepositWalletDeployed } from '@/lib/deposit-wallet'
 import { captureDepositWalletError, captureDepositWalletEvent } from '@/lib/deposit-wallet-observability'
 import { db } from '@/lib/drizzle'
+import { buildClobHmacSignature } from '@/lib/hmac'
 import {
   L2_AUTH_CONTEXT_COOKIE_NAME,
   L2_AUTH_CONTEXT_COOKIE_NAME_SECURE,
@@ -279,12 +280,31 @@ async function submitWalletCreate({
   })
   const startedAt = Date.now()
 
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json',
+  }
+
+  const platformKey = process.env.KUEST_API_KEY
+  const platformSecret = process.env.KUEST_API_SECRET
+  const platformPassphrase = process.env.KUEST_PASSPHRASE
+
+  if (platformKey && platformSecret && platformPassphrase) {
+    const timestamp = Math.floor(Date.now() / 1000)
+    const signature = buildClobHmacSignature(platformSecret, timestamp, 'POST', path, body)
+    
+    headers.KUEST_API_KEY = platformKey
+    headers.KUEST_PASSPHRASE = platformPassphrase
+    headers.KUEST_TIMESTAMP = timestamp.toString()
+    headers.KUEST_SIGNATURE = signature
+    if (process.env.KUEST_ADDRESS) {
+      headers.KUEST_ADDRESS = process.env.KUEST_ADDRESS
+    }
+  }
+
   const response = await fetch(`${relayerUrl}${path}`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-    },
+    headers,
     body,
     signal: AbortSignal.timeout(15_000),
   })
