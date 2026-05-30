@@ -267,7 +267,7 @@ async function submitWalletCreate({
     throw new Error(DEFAULT_DEPOSIT_WALLET_CREATE_ERROR_MESSAGE)
   }
 
-  const path = '/submit/wallet'
+  let path = '/submit/wallet'
   const body = JSON.stringify({
     type: 'WALLET-CREATE',
     from: userAddress,
@@ -290,6 +290,7 @@ async function submitWalletCreate({
   const platformPassphrase = process.env.KUEST_PASSPHRASE
 
   if (platformKey && platformSecret && platformPassphrase) {
+    path = '/submit'
     const timestamp = Math.floor(Date.now() / 1000)
     const signature = buildClobHmacSignature(platformSecret, timestamp, 'POST', path, body)
     
