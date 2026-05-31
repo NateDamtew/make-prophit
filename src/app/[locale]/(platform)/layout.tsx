@@ -5,6 +5,7 @@ import Header from '@/app/[locale]/(platform)/_components/Header'
 import MobileBottomNav from '@/app/[locale]/(platform)/_components/MobileBottomNav'
 import NavigationTabs from '@/app/[locale]/(platform)/_components/NavigationTabs'
 import PlatformViewerState from '@/app/[locale]/(platform)/_components/PlatformViewerState'
+import TmaAutoLogin from '@/app/[locale]/(platform)/_components/TmaAutoLogin'
 import { FilterProvider } from '@/app/[locale]/(platform)/_providers/FilterProvider'
 import PlatformNavigationProvider from '@/app/[locale]/(platform)/_providers/PlatformNavigationProvider'
 import { TradingOnboardingProvider } from '@/app/[locale]/(platform)/_providers/TradingOnboardingProvider'
@@ -37,6 +38,7 @@ export default async function PlatformLayout({ params, children }: LayoutProps<'
             {children}
             <MobileBottomNav />
             <AffiliateQueryHandler />
+            <TmaAutoLogin />
           </PlatformNavigationProvider>
         </FilterProvider>
       </TradingOnboardingProvider>
