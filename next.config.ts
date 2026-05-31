@@ -59,12 +59,6 @@ const config: NextConfig = {
   },
   async rewrites() {
     return [
-      // TMA subdomain — tma.makeprophit.com/* → /en/(tma)/*
-      {
-        source: '/:path*',
-        has: [{ type: 'host', value: 'tma.makeprophit.com' }],
-        destination: '/en/(tma)/:path*',
-      },
       {
         source: '/docs/:path*.md',
         destination: '/llms.md/:path*',

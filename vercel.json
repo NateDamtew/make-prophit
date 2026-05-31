@@ -1,6 +1,14 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "npm run db:push && next build",
+  "redirects": [
+    {
+      "source": "/",
+      "has": [{ "type": "host", "value": "tma.makeprophit.com" }],
+      "destination": "https://tma.makeprophit.com/en",
+      "permanent": false
+    }
+  ],
   "ignoreCommand": "if [ \"$VERCEL_ENV\" = \"preview\" ] || git log -1 --pretty=%B | grep -q '\\[skip deploy\\]'; then exit 0; else exit 1; fi",
   "git": {
     "deploymentEnabled": {
