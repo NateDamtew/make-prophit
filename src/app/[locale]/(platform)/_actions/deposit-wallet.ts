@@ -267,17 +267,6 @@ async function submitWalletCreate({
     throw new Error(DEFAULT_DEPOSIT_WALLET_CREATE_ERROR_MESSAGE)
   }
 
-  let path = '/submit/wallet'
-  const body = JSON.stringify({
-    type: 'WALLET-CREATE',
-    from: userAddress,
-    to: DEPOSIT_WALLET_FACTORY_ADDRESS,
-    data: '0x',
-    value: '0',
-    signature: '',
-    signatureParams: {},
-    metadata: 'wallet_create',
-  })
   const startedAt = Date.now()
 
   const headers: Record<string, string> = {
@@ -288,19 +277,44 @@ async function submitWalletCreate({
   const platformKey = process.env.KUEST_API_KEY
   const platformSecret = process.env.KUEST_API_SECRET
   const platformPassphrase = process.env.KUEST_PASSPHRASE
+  const platformAddress = process.env.KUEST_ADDRESS
 
-  if (platformKey && platformSecret && platformPassphrase) {
+  let path: string
+  let body: string
+
+  if (platformKey && platformSecret && platformPassphrase && platformAddress) {
     path = '/submit'
+    body = JSON.stringify({
+      type: 'WALLET-CREATE',
+      from: platformAddress,
+      to: DEPOSIT_WALLET_FACTORY_ADDRESS,
+      data: '0x',
+      value: '0',
+      signature: '',
+      signatureParams: {},
+      metadata: 'wallet_create',
+    })
     const timestamp = Math.floor(Date.now() / 1000)
     const signature = buildClobHmacSignature(platformSecret, timestamp, 'POST', path, body)
-    
+
     headers.KUEST_API_KEY = platformKey
     headers.KUEST_PASSPHRASE = platformPassphrase
     headers.KUEST_TIMESTAMP = timestamp.toString()
     headers.KUEST_SIGNATURE = signature
-    if (process.env.KUEST_ADDRESS) {
-      headers.KUEST_ADDRESS = process.env.KUEST_ADDRESS
-    }
+    headers.KUEST_ADDRESS = platformAddress
+  }
+  else {
+    path = '/submit/wallet'
+    body = JSON.stringify({
+      type: 'WALLET-CREATE',
+      from: userAddress,
+      to: DEPOSIT_WALLET_FACTORY_ADDRESS,
+      data: '0x',
+      value: '0',
+      signature: '',
+      signatureParams: {},
+      metadata: 'wallet_create',
+    })
   }
 
   const response = await fetch(`${relayerUrl}${path}`, {
