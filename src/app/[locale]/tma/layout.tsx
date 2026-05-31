@@ -5,6 +5,8 @@ import AppKitProvider from '@/providers/AppKitProvider'
 import TmaProvider from './_components/TmaProvider'
 import { TmaWalletGateProvider } from './_components/TmaWalletGate'
 
+export const dynamic = 'force-dynamic'
+
 export async function generateMetadata(): Promise<Metadata> {
   const runtimeTheme = await loadRuntimeThemeState()
   const site = runtimeTheme.site
