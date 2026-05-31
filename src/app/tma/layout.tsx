@@ -1,5 +1,4 @@
 import type { Metadata } from 'next'
-import { setRequestLocale } from 'next-intl/server'
 import { loadRuntimeThemeState } from '@/lib/theme-settings'
 import AppKitProvider from '@/providers/AppKitProvider'
 import TmaProvider from './_components/TmaProvider'
@@ -14,16 +13,11 @@ export async function generateMetadata(): Promise<Metadata> {
   }
 }
 
-export default async function TmaLayout({
-  params,
+export default function TmaLayout({
   children,
 }: {
-  params: Promise<{ locale: string }>
   children: React.ReactNode
 }) {
-  const { locale } = await params
-  setRequestLocale(locale)
-
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
       <AppKitProvider>

@@ -1,15 +1,13 @@
 import type { Event } from '@/types'
-import { setRequestLocale } from 'next-intl/server'
-import { DEFAULT_LOCALE, SUPPORTED_LOCALES } from '@/i18n/locales'
+import { DEFAULT_LOCALE } from '@/i18n/locales'
 import { listHomeEventsPage } from '@/lib/home-events-page'
 import TmaBottomNav from './_components/TmaBottomNav'
 import TmaHeader from './_components/TmaHeader'
 import TmaMarketCard from './_components/TmaMarketCard'
 import TmaWalletOnboardingClient from './_components/TmaWalletOnboardingClient'
 
-async function loadEvents(locale: string): Promise<Event[]> {
+async function loadEvents(): Promise<Event[]> {
   try {
-    const resolvedLocale = SUPPORTED_LOCALES.includes(locale as any) ? locale as any : DEFAULT_LOCALE
     const currentTimestamp = Math.floor(Date.now() / 1000)
     const result = await listHomeEventsPage({
       tag: 'trending',
@@ -18,7 +16,7 @@ async function loadEvents(locale: string): Promise<Event[]> {
       sortBy: undefined,
       userId: '',
       bookmarked: false,
-      locale: resolvedLocale,
+      locale: DEFAULT_LOCALE,
       currentTimestamp,
       offset: 0,
     })
@@ -29,15 +27,8 @@ async function loadEvents(locale: string): Promise<Event[]> {
   }
 }
 
-export default async function TmaHomePage({
-  params,
-}: {
-  params: Promise<{ locale: string }>
-}) {
-  const { locale } = await params
-  setRequestLocale(locale)
-
-  const events = await loadEvents(locale)
+export default async function TmaHomePage() {
+  const events = await loadEvents()
 
   return (
     <main className="flex flex-col pb-20">
@@ -50,7 +41,7 @@ export default async function TmaHomePage({
           </p>
         )}
         {events.map(event => (
-          <TmaMarketCard key={event.id} event={event} locale={locale} />
+          <TmaMarketCard key={event.id} event={event} />
         ))}
       </div>
       <TmaBottomNav />

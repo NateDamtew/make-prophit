@@ -4,12 +4,7 @@ import type { Event } from '@/types'
 import { ExternalLink } from 'lucide-react'
 import Link from 'next/link'
 
-interface Props {
-  event: Event
-  locale: string
-}
-
-export default function TmaMarketCard({ event, locale }: Props) {
+export default function TmaMarketCard({ event }: { event: Event }) {
   const topMarket = event.markets?.[0]
   const topOutcome = topMarket?.outcomes?.[0]
   const chance = topOutcome?.buy_price != null ? Math.round(topOutcome.buy_price * 100) : null
@@ -23,7 +18,7 @@ export default function TmaMarketCard({ event, locale }: Props) {
 
   return (
     <Link
-      href={`/${locale}/event/${event.slug}` as any}
+      href={`/en/event/${event.slug}` as any}
       className="
         flex flex-col gap-2 rounded-xl border border-border bg-card p-4 transition-transform
         active:scale-[0.98]

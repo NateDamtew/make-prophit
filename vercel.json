@@ -3,16 +3,16 @@
   "buildCommand": "npm run db:push && next build",
   "rewrites": [
     {
-      "source": "/:path((?!en/tma).*)",
+      "source": "/:path((?!tma).*)",
       "has": [{ "type": "host", "value": "tma.makeprophit.com" }],
-      "destination": "/en/tma/:path*"
+      "destination": "/tma/:path*"
     }
   ],
   "redirects": [
     {
       "source": "/",
       "has": [{ "type": "host", "value": "tma.makeprophit.com" }],
-      "destination": "https://tma.makeprophit.com/en/tma",
+      "destination": "https://tma.makeprophit.com/tma",
       "permanent": false
     }
   ],

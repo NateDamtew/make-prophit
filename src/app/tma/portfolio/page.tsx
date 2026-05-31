@@ -1,15 +1,8 @@
-import { setRequestLocale } from 'next-intl/server'
+import Link from 'next/link'
 import TmaBottomNav from '../_components/TmaBottomNav'
 import TmaHeader from '../_components/TmaHeader'
 
-export default async function TmaPortfolioPage({
-  params,
-}: {
-  params: Promise<{ locale: string }>
-}) {
-  const { locale } = await params
-  setRequestLocale(locale)
-
+export default function TmaPortfolioPage() {
   return (
     <main className="flex flex-col pb-20">
       <TmaHeader title="Portfolio" />
@@ -17,12 +10,12 @@ export default async function TmaPortfolioPage({
         <p className="text-sm text-muted-foreground">
           Connect your wallet to view your positions.
         </p>
-        <a
-          href={`/${locale}/portfolio`}
+        <Link
+          href={'/en/portfolio' as any}
           className="rounded-xl bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground"
         >
           Open Full App
-        </a>
+        </Link>
       </div>
       <TmaBottomNav />
     </main>

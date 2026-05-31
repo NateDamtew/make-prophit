@@ -9,7 +9,7 @@ interface WalletGateContextValue {
   requireWallet: () => boolean
 }
 
-const WalletGateCtx = createContext<WalletGateContextValue>({
+const WalletGateContext = createContext<WalletGateContextValue>({
   isConnected: false,
   requireWallet: () => false,
 })
@@ -33,7 +33,7 @@ export function TmaWalletGateProvider({ children }: { children: React.ReactNode 
   }
 
   return (
-    <WalletGateCtx value={{ isConnected, requireWallet }}>
+    <WalletGateContext value={{ isConnected, requireWallet }}>
       {children}
       {showGate && (
         <div className="fixed inset-0 z-50 flex items-end justify-center">
@@ -70,6 +70,6 @@ export function TmaWalletGateProvider({ children }: { children: React.ReactNode 
           </div>
         </div>
       )}
-    </WalletGateCtx>
+    </WalletGateContext>
   )
 }
