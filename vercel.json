@@ -5,7 +5,7 @@
     {
       "source": "/",
       "has": [{ "type": "host", "value": "tma.makeprophit.com" }],
-      "destination": "https://tma.makeprophit.com/en",
+      "destination": "https://tma.makeprophit.com/en/tma",
       "permanent": false
     }
   ],
