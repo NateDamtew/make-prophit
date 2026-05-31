@@ -1,8 +1,8 @@
 import type { Metadata } from 'next'
+import { NextIntlClientProvider } from 'next-intl'
 import { loadRuntimeThemeState } from '@/lib/theme-settings'
-import AppKitProvider from '@/providers/AppKitProvider'
-import TmaProvider from './_components/TmaProvider'
-import TmaWalletGateClient from './_components/TmaWalletGateClient'
+import SiteIdentityProvider from '@/providers/SiteIdentityProvider'
+import TmaAppShell from './_components/TmaAppShell'
 
 export async function generateMetadata(): Promise<Metadata> {
   const runtimeTheme = await loadRuntimeThemeState()
@@ -13,20 +13,22 @@ export async function generateMetadata(): Promise<Metadata> {
   }
 }
 
-export default function TmaLayout({
+export default async function TmaLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
+  const runtimeTheme = await loadRuntimeThemeState()
+
   return (
-    <div className="flex min-h-screen flex-col bg-background text-foreground">
-      <AppKitProvider>
-        <TmaProvider>
-          <TmaWalletGateClient>
+    <NextIntlClientProvider locale="en">
+      <SiteIdentityProvider site={runtimeTheme.site}>
+        <div className="flex min-h-screen flex-col bg-background text-foreground">
+          <TmaAppShell>
             {children}
-          </TmaWalletGateClient>
-        </TmaProvider>
-      </AppKitProvider>
-    </div>
+          </TmaAppShell>
+        </div>
+      </SiteIdentityProvider>
+    </NextIntlClientProvider>
   )
 }
