@@ -11,7 +11,7 @@ interface Props {
 export default function TmaMarketCard({ event, locale }: Props) {
   const topMarket = event.markets?.[0]
   const topOutcome = topMarket?.outcomes?.[0]
-  const chance = topOutcome?.price != null ? Math.round(topOutcome.price * 100) : null
+  const chance = topOutcome?.buy_price != null ? Math.round(topOutcome.buy_price * 100) : null
   const volume = event.volume != null
     ? event.volume >= 1_000_000
       ? `$${(event.volume / 1_000_000).toFixed(1)}M Vol`
@@ -22,7 +22,7 @@ export default function TmaMarketCard({ event, locale }: Props) {
 
   return (
     <Link
-      href={`/${locale}/event/${event.slug}`}
+      href={`/${locale}/event/${event.slug}` as any}
       className="
         flex flex-col gap-2 rounded-xl border border-border bg-card p-4 transition-transform
         active:scale-[0.98]
@@ -42,12 +42,12 @@ export default function TmaMarketCard({ event, locale }: Props) {
         <div className="flex gap-2">
           {topMarket.outcomes?.slice(0, 2).map(outcome => (
             <div
-              key={outcome.id}
+              key={outcome.outcome_index}
               className="flex flex-1 items-center justify-between rounded-lg bg-muted px-3 py-1.5 text-xs"
             >
-              <span>{outcome.title}</span>
+              <span>{outcome.outcome_text}</span>
               <span className="font-semibold">
-                {outcome.price != null ? `${Math.round(outcome.price * 100)}%` : '—'}
+                {outcome.buy_price != null ? `${Math.round(outcome.buy_price * 100)}%` : '—'}
               </span>
             </div>
           ))}

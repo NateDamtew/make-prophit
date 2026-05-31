@@ -21,7 +21,7 @@ export default function TmaBottomNav() {
           return (
             <Link
               key={href}
-              href={href}
+              href={href as any}
               className={`flex flex-1 flex-col items-center gap-1 py-3 text-xs transition-colors ${
                 active ? 'text-primary' : 'text-muted-foreground'
               }`}

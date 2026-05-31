@@ -3,7 +3,7 @@
 import { init, on, retrieveLaunchParams } from '@telegram-apps/sdk-react'
 import { createContext, use, useReducer } from 'react'
 
-interface TmaUser {
+export interface TmaUser {
   id: number
   first_name: string
   last_name?: string
@@ -18,6 +18,9 @@ export function useTmaUser() {
 }
 
 function initTma(): TmaUser | null {
+  if (typeof window === 'undefined') {
+    return null
+  }
   try {
     init()
     on('viewport_changed', () => {})
@@ -33,7 +36,11 @@ function initTma(): TmaUser | null {
       }).catch(() => null)
     }
 
-    return initData?.user ? (initData.user as TmaUser) : null
+    const u = (initData as any)?.user
+    if (u && typeof u.id === 'number') {
+      return u as TmaUser
+    }
+    return null
   }
   catch {
     return null
