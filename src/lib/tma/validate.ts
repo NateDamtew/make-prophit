@@ -1,5 +1,3 @@
-'use server'
-
 import { createHmac } from 'node:crypto'
 
 interface TelegramUser {
