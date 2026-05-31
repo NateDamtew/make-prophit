@@ -16,7 +16,7 @@ export interface TelegramInitData {
   start_param?: string
 }
 
-export async function validateTelegramInitData(initDataRaw: string): TelegramInitData | null {
+export async function validateTelegramInitData(initDataRaw: string): Promise<TelegramInitData | null> {
   const botToken = process.env.TELEGRAM_BOT_TOKEN
   if (!botToken) {
     console.error('TELEGRAM_BOT_TOKEN is not set')

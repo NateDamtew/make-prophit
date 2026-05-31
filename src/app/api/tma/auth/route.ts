@@ -8,7 +8,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing initData' }, { status: 400 })
     }
 
-    const data = validateTelegramInitData(initData)
+    const data = await validateTelegramInitData(initData)
     if (!data) {
       return NextResponse.json({ error: 'Invalid or expired initData' }, { status: 401 })
     }
