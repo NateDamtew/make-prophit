@@ -5,7 +5,7 @@ import { listHomeEventsPage } from '@/lib/home-events-page'
 import TmaBottomNav from './_components/TmaBottomNav'
 import TmaHeader from './_components/TmaHeader'
 import TmaMarketCard from './_components/TmaMarketCard'
-import TmaWalletOnboarding from './_components/TmaWalletOnboarding'
+import TmaWalletOnboardingClient from './_components/TmaWalletOnboardingClient'
 
 async function loadEvents(locale: string): Promise<Event[]> {
   try {
@@ -42,7 +42,7 @@ export default async function TmaHomePage({
   return (
     <main className="flex flex-col pb-20">
       <TmaHeader title="Markets" />
-      <TmaWalletOnboarding />
+      <TmaWalletOnboardingClient />
       <div className="flex flex-col gap-3 p-4">
         {events.length === 0 && (
           <p className="py-12 text-center text-sm text-muted-foreground">

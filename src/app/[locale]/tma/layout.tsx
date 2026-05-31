@@ -3,11 +3,7 @@ import { setRequestLocale } from 'next-intl/server'
 import { loadRuntimeThemeState } from '@/lib/theme-settings'
 import AppKitProvider from '@/providers/AppKitProvider'
 import TmaProvider from './_components/TmaProvider'
-import { TmaWalletGateProvider } from './_components/TmaWalletGate'
-
-export function generateStaticParams() {
-  return []
-}
+import TmaWalletGateClient from './_components/TmaWalletGateClient'
 
 export async function generateMetadata(): Promise<Metadata> {
   const runtimeTheme = await loadRuntimeThemeState()
@@ -32,9 +28,9 @@ export default async function TmaLayout({
     <div className="flex min-h-screen flex-col bg-background text-foreground">
       <AppKitProvider>
         <TmaProvider>
-          <TmaWalletGateProvider>
+          <TmaWalletGateClient>
             {children}
-          </TmaWalletGateProvider>
+          </TmaWalletGateClient>
         </TmaProvider>
       </AppKitProvider>
     </div>

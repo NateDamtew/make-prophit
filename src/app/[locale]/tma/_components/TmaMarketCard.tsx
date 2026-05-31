@@ -1,6 +1,7 @@
 'use client'
 
 import type { Event } from '@/types'
+import { ExternalLink } from 'lucide-react'
 import Link from 'next/link'
 
 interface Props {
@@ -54,9 +55,15 @@ export default function TmaMarketCard({ event, locale }: Props) {
         </div>
       )}
 
-      {volume && (
-        <p className="text-xs text-muted-foreground">{volume}</p>
-      )}
+      <div className="flex items-center justify-between">
+        {volume && (
+          <p className="text-xs text-muted-foreground">{volume}</p>
+        )}
+        <span className="flex items-center gap-1 text-xs text-muted-foreground">
+          Trade
+          <ExternalLink className="size-3" />
+        </span>
+      </div>
     </Link>
   )
 }

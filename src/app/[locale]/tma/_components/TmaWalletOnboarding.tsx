@@ -2,40 +2,37 @@
 
 import { useAppKit, useAppKitAccount } from '@reown/appkit/react'
 import { Wallet, X } from 'lucide-react'
-import { useSyncExternalStore } from 'react'
+import { useState } from 'react'
 import { useTmaUser } from './TmaProvider'
 
 const STORAGE_KEY = 'tma_wallet_onboarding_skipped'
 
-function getSkipped() {
-  if (typeof window === 'undefined') {
-    return true
+function wasSkipped() {
+  try {
+    return localStorage.getItem(STORAGE_KEY) === 'true'
   }
-  return localStorage.getItem(STORAGE_KEY) === 'true'
-}
-
-function subscribeSkipped(cb: () => void) {
-  window.addEventListener('storage', cb)
-  return () => window.removeEventListener('storage', cb)
+  catch {
+    return false
+  }
 }
 
 export default function TmaWalletOnboarding() {
   const user = useTmaUser()
   const { open } = useAppKit()
   const { isConnected } = useAppKitAccount()
-  const skipped = useSyncExternalStore(subscribeSkipped, getSkipped, () => true)
+  const [dismissed, setDismissed] = useState(wasSkipped)
 
-  const show = !!user && !isConnected && !skipped
+  const show = !!user && !isConnected && !dismissed
 
   function handleConnect() {
     localStorage.setItem(STORAGE_KEY, 'true')
+    setDismissed(true)
     open()
   }
 
   function handleSkip() {
     localStorage.setItem(STORAGE_KEY, 'true')
-    // Trigger re-render by dispatching a storage event
-    window.dispatchEvent(new Event('storage'))
+    setDismissed(true)
   }
 
   if (!show) {

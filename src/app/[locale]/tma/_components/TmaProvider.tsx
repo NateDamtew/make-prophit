@@ -1,7 +1,7 @@
 'use client'
 
 import { init, on, retrieveLaunchParams } from '@telegram-apps/sdk-react'
-import { createContext, use, useReducer } from 'react'
+import { createContext, use, useEffect, useReducer, useRef } from 'react'
 
 export interface TmaUser {
   id: number
@@ -11,10 +11,15 @@ export interface TmaUser {
   photo_url?: string
 }
 
-const TmaContext = createContext<TmaUser | null>(null)
+interface TmaContextValue {
+  user: TmaUser | null
+  verified: boolean
+}
+
+const TmaContext = createContext<TmaContextValue>({ user: null, verified: false })
 
 export function useTmaUser() {
-  return use(TmaContext)
+  return use(TmaContext).user
 }
 
 function initTma(): TmaUser | null {
@@ -24,17 +29,7 @@ function initTma(): TmaUser | null {
   try {
     init()
     on('viewport_changed', () => {})
-    const { initDataRaw, initData } = retrieveLaunchParams()
-
-    if (initDataRaw) {
-      const controller = new AbortController()
-      fetch('/api/tma/auth', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ initData: initDataRaw }),
-        signal: controller.signal,
-      }).catch(() => null)
-    }
+    const { initData } = retrieveLaunchParams()
 
     const u = (initData as any)?.user
     if (u && typeof u.id === 'number') {
@@ -49,9 +44,47 @@ function initTma(): TmaUser | null {
 
 export default function TmaProvider({ children }: { children: React.ReactNode }) {
   const [user] = useReducer((_: TmaUser | null) => initTma(), null, initTma)
+  const verifiedRef = useRef(false)
+  const [verified, setVerified] = useReducer(() => true, false)
+
+  useEffect(() => {
+    if (verifiedRef.current || typeof window === 'undefined') {
+      return
+    }
+    verifiedRef.current = true
+
+    try {
+      const { initDataRaw } = retrieveLaunchParams()
+      if (!initDataRaw) {
+        return
+      }
+
+      const controller = new AbortController()
+      fetch('/api/tma/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ initData: initDataRaw }),
+        signal: controller.signal,
+      })
+        .then((res) => {
+          if (res.ok) {
+            setVerified()
+          }
+          else {
+            console.warn('TMA auth verification failed:', res.status)
+          }
+        })
+        .catch(() => null)
+
+      return () => controller.abort()
+    }
+    catch {
+      // Not inside Telegram
+    }
+  }, [])
 
   return (
-    <TmaContext value={user}>
+    <TmaContext value={{ user, verified }}>
       {children}
     </TmaContext>
   )
