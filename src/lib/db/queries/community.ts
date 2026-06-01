@@ -31,7 +31,7 @@ export const CommunityRepository = {
     icon_url?: string
     banner_url?: string
   }) {
-    return await runQuery(async () => {
+    try {
       const maxMembers = getMaxMembersForJurySize(input.jury_size)
 
       const [community] = await db
@@ -51,6 +51,10 @@ export const CommunityRepository = {
         })
         .returning()
 
+      if (!community) {
+        return { data: null, error: 'Failed to create community.' }
+      }
+
       // Creator becomes admin + juror
       await db.insert(community_members).values({
         community_id: community.id,
@@ -59,7 +63,12 @@ export const CommunityRepository = {
       })
 
       return { data: community, error: null }
-    })
+    }
+    catch (err) {
+      console.error('[Community.create] Failed:', err)
+      const message = err instanceof Error ? err.message : 'Unknown error'
+      return { data: null, error: `Failed to create community: ${message}` }
+    }
   },
 
   async getBySlug(slug: string) {
