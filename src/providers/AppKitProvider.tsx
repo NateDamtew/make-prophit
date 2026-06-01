@@ -90,7 +90,7 @@ function initializeAppKitSingleton(
         history: false,
         pay: false,
         headless: false,
-        socials: ['google', 'x', 'telegram', 'discord', 'github'],
+        socials: ['google', 'x', 'discord', 'github'],
       },
       siweConfig: createSIWEConfig({
         signOutOnAccountChange: true,
