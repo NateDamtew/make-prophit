@@ -52,7 +52,7 @@ export default async function CommunityDetailPage({
     { data: reviews },
   ] = await Promise.all([
     CommunityRepository.listMembers(community.id),
-    CommunityRepository.listMarkets(community.id),
+    CommunityRepository.listMarketsWithVoteTallies(community.id),
     CommunityRepository.listReviews(community.id),
   ])
 

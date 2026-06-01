@@ -16,6 +16,7 @@ import {
   Gavel,
 } from 'lucide-react'
 import Link from 'next/link'
+import CommunityMarketCard from './CommunityMarketCard'
 import { submitReviewAction, castJuryVoteAction } from '../_actions/community-actions'
 import { useTabIndicatorPosition } from '@/hooks/useTabIndicatorPosition'
 import { Button } from '@/components/ui/button'
@@ -144,11 +145,14 @@ interface Props {
     id: string
     title: string
     description: string | null
+    resolution_source: string | null
+    resolution_rules: string | null
     status: string
     resolved_outcome: string | null
     resolution_date: Date | null
     event_id: string | null
     created_at: Date
+    votes?: { yes: number, no: number, disputed: number }
   }>
   reviews: Array<{
     id: string
@@ -275,61 +279,102 @@ export default function CommunityTabs({
 
       <div className="p-4 sm:p-6">
         {/* Markets tab */}
-        {activeTab === 'markets' && (
-          <div className="space-y-3">
-            {markets.length === 0
-              ? (
-                  <div className="py-16 text-center">
-                    <TrendingUp className="mx-auto mb-3 size-10 text-muted-foreground/30" />
-                    <p className="font-medium">No markets yet</p>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      {memberRole === 'admin' ? 'Add markets from the admin panel.' : 'Markets will appear here once created.'}
-                    </p>
+        {activeTab === 'markets' && (() => {
+          const activeMarkets = markets.filter(m => m.status === 'active')
+          const pendingMarkets = markets.filter(
+            m => m.status === 'active' && m.resolution_date && new Date(m.resolution_date) <= new Date(),
+          )
+          const resolvedMarkets = markets.filter(m => m.status === 'resolved' || m.status === 'disputed')
+          const liveMarkets = activeMarkets.filter(m => !pendingMarkets.includes(m))
+
+          if (markets.length === 0) {
+            return (
+              <div className="py-20 text-center">
+                <TrendingUp className="mx-auto mb-3 size-10 text-muted-foreground/30" />
+                <p className="font-medium">No markets yet</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {memberRole === 'admin'
+                    ? 'Click "Add Market" above to create your first market.'
+                    : 'The community admin will add markets soon.'}
+                </p>
+              </div>
+            )
+          }
+
+          return (
+            <div className="space-y-8">
+              {/* Live markets */}
+              {liveMarkets.length > 0 && (
+                <section>
+                  <div className="mb-3 flex items-center justify-between">
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Live Markets ({liveMarkets.length})
+                    </h3>
                   </div>
-                )
-              : markets.map(market => (
-                  <div
-                    key={market.id}
-                    className="flex items-start justify-between gap-4 rounded-xl border p-4 transition-colors hover:bg-muted/30"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <p className="font-medium">{market.title}</p>
-                      {market.description && (
-                        <p className="mt-0.5 line-clamp-2 text-sm text-muted-foreground">
-                          {market.description}
-                        </p>
-                      )}
-                      {market.resolution_date && (
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          Resolves: {new Date(market.resolution_date).toLocaleDateString()}
-                        </p>
-                      )}
-                      {market.resolved_outcome && (
-                        <p className="mt-1 text-xs font-medium">
-                          Outcome:
-                          {' '}
-                          <span className={market.resolved_outcome === 'yes' ? 'text-green-600' : 'text-destructive'}>
-                            {market.resolved_outcome.toUpperCase()}
-                          </span>
-                        </p>
-                      )}
-                    </div>
-                    <div className="flex shrink-0 flex-col items-end gap-2">
-                      <MarketStatusBadge status={market.status} />
-                      {market.event_id && (
-                        <Link
-                          href={`/event/${market.event_id}` as any}
-                          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-                        >
-                          Trade
-                          <ExternalLink className="size-3" />
-                        </Link>
-                      )}
-                    </div>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    {liveMarkets.map(m => (
+                      <CommunityMarketCard
+                        key={m.id}
+                        market={m}
+                        yesVotes={m.votes?.yes ?? 0}
+                        noVotes={m.votes?.no ?? 0}
+                        totalJurors={community.jury_size}
+                        isJuror={isJuror}
+                        onVoteClick={() => setVoteMap(prev => ({ ...prev }))}
+                      />
+                    ))}
                   </div>
-                ))}
-          </div>
-        )}
+                </section>
+              )}
+
+              {/* Pending resolution */}
+              {pendingMarkets.length > 0 && (
+                <section>
+                  <div className="mb-3 flex items-center gap-2">
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-amber-600">
+                      Awaiting Resolution ({pendingMarkets.length})
+                    </h3>
+                    <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-600">
+                      Jury vote needed
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    {pendingMarkets.map(m => (
+                      <CommunityMarketCard
+                        key={m.id}
+                        market={m}
+                        yesVotes={m.votes?.yes ?? 0}
+                        noVotes={m.votes?.no ?? 0}
+                        totalJurors={community.jury_size}
+                        isJuror={isJuror}
+                      />
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {/* Resolved */}
+              {resolvedMarkets.length > 0 && (
+                <section>
+                  <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Resolved ({resolvedMarkets.length})
+                  </h3>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    {resolvedMarkets.map(m => (
+                      <CommunityMarketCard
+                        key={m.id}
+                        market={m}
+                        yesVotes={m.votes?.yes ?? 0}
+                        noVotes={m.votes?.no ?? 0}
+                        totalJurors={community.jury_size}
+                      />
+                    ))}
+                  </div>
+                </section>
+              )}
+            </div>
+          )
+        })()}
 
         {/* Members tab */}
         {activeTab === 'members' && (

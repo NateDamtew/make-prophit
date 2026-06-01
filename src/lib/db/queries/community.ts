@@ -580,6 +580,57 @@ export const CommunityRepository = {
     })
   },
 
+  async listMarketsWithVoteTallies(communityId: string) {
+    return await runQuery(async () => {
+      const markets = await db
+        .select()
+        .from(community_markets)
+        .where(and(
+          eq(community_markets.community_id, communityId),
+          // Exclude drafts from public listing
+          sql`${community_markets.status} <> 'draft'`,
+        ))
+        .orderBy(desc(community_markets.created_at))
+
+      if (markets.length === 0) {
+        return { data: [], error: null }
+      }
+
+      const marketIds = markets.map(m => m.id)
+      const tallies = await db
+        .select({
+          market_id: jury_votes.community_market_id,
+          vote: jury_votes.vote,
+          count: sql<number>`COUNT(*)::int`,
+        })
+        .from(jury_votes)
+        .where(sql`${jury_votes.community_market_id} = ANY(${marketIds})`)
+        .groupBy(jury_votes.community_market_id, jury_votes.vote)
+
+      const talliesByMarket = new Map<string, { yes: number, no: number, disputed: number }>()
+      for (const t of tallies) {
+        const entry = talliesByMarket.get(t.market_id) ?? { yes: 0, no: 0, disputed: 0 }
+        if (t.vote === 'yes') {
+          entry.yes = t.count
+        }
+        if (t.vote === 'no') {
+          entry.no = t.count
+        }
+        if (t.vote === 'disputed') {
+          entry.disputed = t.count
+        }
+        talliesByMarket.set(t.market_id, entry)
+      }
+
+      const enriched = markets.map(market => ({
+        ...market,
+        votes: talliesByMarket.get(market.id) ?? { yes: 0, no: 0, disputed: 0 },
+      }))
+
+      return { data: enriched, error: null }
+    })
+  },
+
   async getMarket(marketId: string) {
     return await runQuery(async () => {
       const [market] = await db
