@@ -2,7 +2,7 @@
 
 import type { LucideIcon } from 'lucide-react'
 import type { Route } from 'next'
-import { BadgePercentIcon, CalendarIcon, LanguagesIcon, SettingsIcon, SwatchBookIcon, TagsIcon, TextSelectIcon, UsersIcon } from 'lucide-react'
+import { BadgePercentIcon, CalendarIcon, LanguagesIcon, SettingsIcon, ShieldCheckIcon, SwatchBookIcon, TagsIcon, TextSelectIcon, UsersIcon } from 'lucide-react'
 import { useExtracted } from 'next-intl'
 import AppLink from '@/components/AppLink'
 import { Button } from '@/components/ui/button'
@@ -26,6 +26,7 @@ export default function AdminSidebar() {
     { id: 'market-context', label: t('Market Context'), href: '/admin/market-context' as Route, icon: TextSelectIcon },
     { id: 'affiliate', label: t('Affiliate & Fees'), href: '/admin/affiliate' as Route, icon: BadgePercentIcon },
     { id: 'events', label: t('Events'), href: '/admin/events' as Route, icon: CalendarIcon },
+    { id: 'community-reviews', label: 'Community Reviews', href: '/admin/communities/review' as Route, icon: ShieldCheckIcon },
     { id: 'users', label: t('Users'), href: '/admin/users' as Route, icon: UsersIcon },
   ]
   const pathname = usePathname()
