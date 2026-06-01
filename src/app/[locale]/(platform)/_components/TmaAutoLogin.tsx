@@ -24,9 +24,23 @@ function isInsideTelegram() {
     return false
   }
   const webApp = (window as any).Telegram?.WebApp
-  // initData can be empty string when opened without start params —
-  // check for WebApp object + platform instead
-  return !!(webApp && typeof webApp.platform === 'string' && webApp.platform !== '')
+  if (!webApp) {
+    return false
+  }
+  // Check multiple signals — different Telegram clients set different properties
+  if (webApp.initData) {
+    return true
+  }
+  if (typeof webApp.platform === 'string' && webApp.platform !== '') {
+    return true
+  }
+  if (typeof webApp.version === 'string') {
+    return true
+  }
+  if (typeof webApp.colorScheme === 'string') {
+    return true
+  }
+  return false
 }
 
 function getTelegramInitData(): string {

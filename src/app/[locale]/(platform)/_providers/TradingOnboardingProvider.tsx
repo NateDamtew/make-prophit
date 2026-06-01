@@ -226,16 +226,18 @@ function resolveNextOnboardingModal({
   hasTokenApprovals: boolean
   allowTradingAuthPrompt: boolean
 }): Exclude<OnboardingModal, null> | null {
+  // Skip ALL onboarding for users without a connected EVM wallet
+  // (e.g. Telegram-only users who haven't connected a wallet yet).
+  // Username submission and deposit wallet creation both require a
+  // valid address, so showing those modals would just produce errors.
+  if (!hasValidWalletAddress) {
+    return null
+  }
   if (needsUsername) {
     return 'username'
   }
   if (needsEmail) {
     return 'email'
-  }
-  // Skip trading onboarding for users without a connected EVM wallet
-  // (e.g. Telegram-only users who haven't connected a wallet yet)
-  if (!hasValidWalletAddress) {
-    return null
   }
   if (!hasDeployedDepositWallet) {
     return 'enable'
