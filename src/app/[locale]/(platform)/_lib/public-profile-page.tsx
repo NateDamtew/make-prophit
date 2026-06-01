@@ -151,11 +151,15 @@ async function resolvePublicProfileForSlug(
   normalized: ReturnType<typeof normalizePublicProfileSlug>,
 ) {
   const communityProfile = mapCommunityPublicProfile(await fetchCommunityProfileForSlug(normalized))
-  if (communityProfile || normalized.type === 'invalid') {
-    return communityProfile
-  }
-
+  // Always try to resolve the local user (for id) so features like Communities work
   const { data: localProfile } = await UserRepository.getProfileByUsernameOrDepositWalletAddress(normalized.value)
+
+  if (communityProfile) {
+    return { ...communityProfile, id: localProfile?.id }
+  }
+  if (normalized.type === 'invalid') {
+    return null
+  }
   return localProfile
 }
 

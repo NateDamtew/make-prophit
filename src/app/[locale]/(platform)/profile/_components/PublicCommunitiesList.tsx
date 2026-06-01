@@ -88,11 +88,25 @@ export default function PublicCommunitiesList({ userId }: { userId: string | nul
 
   if (!userId) {
     return (
-      <div className="px-4 py-12 text-center sm:px-6">
-        <Users className="mx-auto mb-3 size-10 text-muted-foreground/30" />
-        <p className="text-sm text-muted-foreground">
-          This user hasn&apos;t set up a profile yet.
-        </p>
+      <div className="space-y-3 px-4 sm:px-6">
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-muted-foreground">No communities</p>
+          <Button size="sm" variant="outline" asChild>
+            <Link href={'/communities' as any}>
+              <Plus className="mr-1 size-3.5" />
+              Explore
+            </Link>
+          </Button>
+        </div>
+        <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed py-12">
+          <Users className="size-10 text-muted-foreground/30" />
+          <p className="text-sm text-muted-foreground">No communities to show yet</p>
+          <Button size="sm" variant="outline" asChild>
+            <Link href={'/communities' as any}>
+              Browse Communities
+            </Link>
+          </Button>
+        </div>
       </div>
     )
   }
