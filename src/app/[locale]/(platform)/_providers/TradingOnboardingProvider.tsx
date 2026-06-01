@@ -178,7 +178,7 @@ function useOnboardingStatus(user: User | null, requiresTradingAuthRefresh: bool
       && !onboardingSettings.emailSkippedAt
       && !onboardingSettings.emailCompletedAt,
     )
-    const hasValidWalletAddress = Boolean(user?.address && /^0x[0-9a-f]{40}$/i.test(user.address) && !/^0x0{40}$/.test(user.address))
+    const hasValidWalletAddress = Boolean(user?.address && /^0x[0-9a-f]{40}$/i.test(user.address))
     const hasDepositWalletAddress = Boolean(user?.deposit_wallet_address)
     const hasDeployedDepositWallet = Boolean(user?.deposit_wallet_address && user?.deposit_wallet_status === 'deployed')
     const isDepositWalletDeploying = Boolean(

@@ -320,14 +320,13 @@ export const auth = betterAuth({
                 throw new APIError('INTERNAL_SERVER_ERROR', { message: 'Failed to create user account.' })
               }
 
-              // Set custom fields that better-auth's adapter doesn't handle
-              await db
-                .update(schema.users)
-                .set({
-                  address: '0x0000000000000000000000000000000000000000',
-                  username: username || null,
-                })
-                .where(eq(schema.users.id, user.id))
+              // Set username — better-auth's adapter doesn't handle custom fields
+              if (username) {
+                await db
+                  .update(schema.users)
+                  .set({ username })
+                  .where(eq(schema.users.id, user.id))
+              }
 
               await ctx.context.internalAdapter.createAccount({
                 userId: user.id,
