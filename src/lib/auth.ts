@@ -314,16 +314,20 @@ export const auth = betterAuth({
                 email: userEmail,
                 image: tgUser.photo_url || '',
                 emailVerified: true,
-                username: username || undefined,
-                // Telegram users don't have an EVM address yet — set a zero placeholder.
-                // Trading onboarding is gated on hasValidWalletAddress so this won't trigger
-                // deposit wallet creation until they connect a real wallet.
-                address: '0x0000000000000000000000000000000000000000',
-              } as any)
+              })
 
               if (!user) {
                 throw new APIError('INTERNAL_SERVER_ERROR', { message: 'Failed to create user account.' })
               }
+
+              // Set custom fields that better-auth's adapter doesn't handle
+              await db
+                .update(schema.users)
+                .set({
+                  address: '0x0000000000000000000000000000000000000000',
+                  username: username || null,
+                })
+                .where(eq(schema.users.id, user.id))
 
               await ctx.context.internalAdapter.createAccount({
                 userId: user.id,
