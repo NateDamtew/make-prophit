@@ -24,7 +24,14 @@ function isInsideTelegram() {
     return false
   }
   const webApp = (window as any).Telegram?.WebApp
-  return !!webApp?.initData
+  // initData can be empty string when opened without start params —
+  // check for WebApp object + platform instead
+  return !!(webApp && typeof webApp.platform === 'string' && webApp.platform !== '')
+}
+
+function getTelegramInitData(): string {
+  const webApp = (window as any).Telegram?.WebApp
+  return webApp?.initData ?? ''
 }
 
 type AuthStatus = 'idle' | 'authenticating' | 'done'
@@ -39,8 +46,10 @@ export default function TmaAutoLogin() {
   const [authStatus, setAuthStatus] = useState<AuthStatus>('idle')
 
   const attemptTelegramAuth = useCallback(async (): Promise<boolean> => {
-    const webApp = (window as any).Telegram?.WebApp
-    if (!webApp?.initData) {
+    const initData = getTelegramInitData()
+    if (!initData) {
+      // Inside Telegram but no initData (opened from bot profile without deep link)
+      // Can't do server-side validation — fall through to show login screen
       return false
     }
     setAuthStatus('authenticating')
@@ -48,7 +57,7 @@ export default function TmaAutoLogin() {
       const res = await fetch('/api/tma/auth', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ initData: webApp.initData }),
+        body: JSON.stringify({ initData }),
       })
       if (res.ok) {
         setAuthStatus('done')
@@ -144,7 +153,9 @@ export default function TmaAutoLogin() {
           <div>
             <h1 className="text-2xl font-bold">Sign in to Prophit</h1>
             <p className="mt-2 text-sm text-muted-foreground">
-              Open the Prophit bot in Telegram to sign in seamlessly with your Telegram account.
+              {isInsideTelegram()
+                ? 'Use the menu button or tap the link below to launch Prophit with full sign-in support.'
+                : 'Open the Prophit bot in Telegram to sign in seamlessly with your Telegram account.'}
             </p>
           </div>
 
@@ -155,7 +166,7 @@ export default function TmaAutoLogin() {
               active:opacity-80
             "
           >
-            Open in Telegram
+            {isInsideTelegram() ? 'Open via Bot Link' : 'Open in Telegram'}
           </button>
 
           <div className="flex w-full items-center gap-3">
