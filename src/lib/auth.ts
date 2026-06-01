@@ -160,6 +160,11 @@ export const auth = betterAuth({
   appName: DEFAULT_THEME_SITE_NAME,
   secret: process.env.BETTER_AUTH_SECRET,
   baseURL: SITE_URL,
+  trustedOrigins: [
+    SITE_URL,
+    `https://tma.${siteUrlObject.hostname}`,
+    ...(process.env.TMA_DOMAIN ? [`https://${process.env.TMA_DOMAIN}`] : []),
+  ],
   advanced: {
     database: {
       generateId: false,
