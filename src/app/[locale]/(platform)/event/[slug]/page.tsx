@@ -86,6 +86,42 @@ async function CachedEventPageContent({
   )
 }
 
+async function gateCommunityEventAccess(slug: string) {
+  const { db } = await import('@/lib/drizzle')
+  const { events } = await import('@/lib/db/schema/events/tables')
+  const { community_members } = await import('@/lib/db/schema/communities/tables')
+  const { UserRepository } = await import('@/lib/db/queries/user')
+  const { eq, and } = await import('drizzle-orm')
+
+  const [row] = await db
+    .select({ community_id: events.community_id })
+    .from(events)
+    .where(eq(events.slug, slug))
+    .limit(1)
+
+  if (!row?.community_id) {
+    return // public event, no gate
+  }
+
+  const user = await UserRepository.getCurrentUser({ minimal: true })
+  if (!user) {
+    notFound()
+  }
+
+  const [member] = await db
+    .select({ user_id: community_members.user_id })
+    .from(community_members)
+    .where(and(
+      eq(community_members.community_id, row.community_id),
+      eq(community_members.user_id, user.id),
+    ))
+    .limit(1)
+
+  if (!member) {
+    notFound()
+  }
+}
+
 export default async function EventPage({ params }: PageProps<'/[locale]/event/[slug]'>) {
   const { locale, slug } = await params
   setRequestLocale(locale)
@@ -93,6 +129,8 @@ export default async function EventPage({ params }: PageProps<'/[locale]/event/[
   if (slug === STATIC_PARAMS_PLACEHOLDER) {
     notFound()
   }
+
+  await gateCommunityEventAccess(slug)
 
   return <CachedEventPageContent locale={resolvedLocale} slug={slug} />
 }

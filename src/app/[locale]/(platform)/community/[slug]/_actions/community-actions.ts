@@ -169,7 +169,16 @@ export async function castJuryVoteAction(
     return { error: result.error, data: null }
   }
 
+  // After casting the vote, check if consensus has been reached and
+  // resolve automatically. This propagates to conditions for on-chain
+  // settlement when the market is event-linked.
+  const community = await CommunityRepository.getById(communityId)
+  if (community.data) {
+    await CommunityRepository.resolveMarket(communityMarketId, community.data.jury_size)
+  }
+
   revalidatePath(`/community/${communitySlug}`)
+  revalidatePath(`/community/${communitySlug}/market/${communityMarketId}`)
   return { error: null, data: result.data }
 }
 

@@ -41,6 +41,7 @@ export const conditions = pgTable(
     resolution_approved: boolean(),
     resolution_liveness_seconds: integer(),
     resolution_deadline_at: timestamp({ withTimezone: true }),
+    community_governed: boolean().notNull().default(false),
     created_at: timestamp({ withTimezone: true }).defaultNow().notNull(),
     updated_at: timestamp({ withTimezone: true }).defaultNow().notNull(),
   },
@@ -107,6 +108,7 @@ export const events = pgTable(
     start_date: timestamp({ withTimezone: true }),
     end_date: timestamp({ withTimezone: true }),
     resolved_at: timestamp({ withTimezone: true }),
+    community_id: char({ length: 26 }),
   },
 )
 

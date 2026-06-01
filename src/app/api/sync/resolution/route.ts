@@ -631,11 +631,18 @@ async function processResolution(
       resolution_approved: conditionsTable.resolution_approved,
       resolution_deadline_at: conditionsTable.resolution_deadline_at,
       resolution_liveness_seconds: conditionsTable.resolution_liveness_seconds,
+      community_governed: conditionsTable.community_governed,
     })
     .from(conditionsTable)
     .where(eq(conditionsTable.id, conditionId))
     .limit(1)
   const existingCondition = existingConditionRows[0]
+
+  // Skip community-governed conditions — their resolution comes from
+  // jury votes, not the UMA subgraph.
+  if (existingCondition?.community_governed) {
+    return { eventId: null, changed: false }
+  }
 
   const conditionChanged = !existingCondition
     || existingCondition.resolved !== isResolved

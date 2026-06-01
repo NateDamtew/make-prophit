@@ -8,6 +8,7 @@ import {
   jury_votes,
 } from '@/lib/db/schema/communities/tables'
 import { users } from '@/lib/db/schema/auth/tables'
+import { conditions, markets } from '@/lib/db/schema/events/tables'
 import { runQuery } from '@/lib/db/utils/run-query'
 import { db } from '@/lib/drizzle'
 
@@ -15,6 +16,69 @@ import { getMaxMembersForJurySize as _getMax, getConsensusThreshold as _getConse
 
 export const getMaxMembersForJurySize = _getMax
 export const getConsensusThreshold = _getConsensus
+
+// UMA-compatible price encoding (matches conditions.resolution_price)
+const RESOLUTION_PRICE_YES = '1000000000000000000' // 1e18
+const RESOLUTION_PRICE_NO = '0'
+const RESOLUTION_PRICE_INVALID = '500000000000000000' // 5e17
+
+/**
+ * When a community market reaches jury consensus, write the outcome
+ * to the linked event's conditions so on-chain settlement pays out.
+ * Only applies if the community market has an event_id (was deployed).
+ */
+async function writeJuryResolutionToConditions(
+  communityMarketId: string,
+  outcome: 'yes' | 'no' | 'cancelled',
+) {
+  try {
+    const [link] = await db
+      .select({ event_id: community_markets.event_id })
+      .from(community_markets)
+      .where(eq(community_markets.id, communityMarketId))
+      .limit(1)
+
+    if (!link?.event_id) {
+      return // not yet deployed on-chain, nothing to write
+    }
+
+    const conditionIds = await db
+      .select({ condition_id: markets.condition_id })
+      .from(markets)
+      .where(eq(markets.event_id, link.event_id))
+
+    if (conditionIds.length === 0) {
+      return
+    }
+
+    const price = outcome === 'yes'
+      ? RESOLUTION_PRICE_YES
+      : outcome === 'no'
+        ? RESOLUTION_PRICE_NO
+        : RESOLUTION_PRICE_INVALID
+
+    for (const { condition_id } of conditionIds) {
+      await db
+        .update(conditions)
+        .set({
+          community_governed: true,
+          resolution_status: 'RESOLVED',
+          resolution_price: price,
+          resolution_approved: true,
+          resolution_flagged: false,
+          resolution_paused: false,
+          resolution_was_disputed: outcome === 'cancelled',
+          resolution_last_update: new Date(),
+          resolved: true,
+          updated_at: new Date(),
+        })
+        .where(eq(conditions.id, condition_id))
+    }
+  }
+  catch (err) {
+    console.error('[writeJuryResolutionToConditions] Failed:', err)
+  }
+}
 
 // ─── Community CRUD ─────────────────────────────────────────────────────────
 
@@ -751,6 +815,11 @@ export const CommunityRepository = {
           updated_at: new Date(),
         })
         .where(eq(community_markets.id, communityMarketId))
+
+      // Propagate to the linked platform event's conditions (if any)
+      // so on-chain settlement can pay out. This bypasses UMA for
+      // community-governed markets.
+      await writeJuryResolutionToConditions(communityMarketId, outcome)
     }
 
     return { outcome, status: resolvedStatus, voteCount: votes.length, threshold }
