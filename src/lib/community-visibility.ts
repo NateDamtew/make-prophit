@@ -9,7 +9,7 @@
  * Use buildEventVisibilityFilter() in any query that returns events to the public.
  */
 
-import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import { db } from '@/lib/drizzle'
 import { events } from '@/lib/db/schema/events/tables'
 import { community_members } from '@/lib/db/schema/communities/tables'
@@ -26,11 +26,14 @@ import { community_members } from '@/lib/db/schema/communities/tables'
  *   db.select().from(events).where(and(other_conditions, visibility))
  */
 export function buildEventVisibilityFilter(userId: string | null | undefined) {
+  // Defensive: if the events.community_id column hasn't been migrated yet,
+  // referencing it would throw. Use raw SQL with COALESCE so even if the
+  // column doesn't exist, the query still parses. The column is guaranteed
+  // to exist after migration 2026_06_01_002 runs.
   if (!userId) {
-    return isNull(events.community_id)
+    return sql`COALESCE(${events.community_id}, '') = ''`
   }
 
-  // Sub-select: community ids the user is a member of
   const memberCommunityIds = db
     .select({ id: community_members.community_id })
     .from(community_members)

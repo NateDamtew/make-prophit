@@ -5,7 +5,7 @@ import type { EventListSortBy, EventListStatusFilter } from '@/lib/event-list-fi
 import type { SportsSlugResolver } from '@/lib/sports-slug-mapping'
 import type { SportsVertical } from '@/lib/sports-vertical'
 import type { ConditionChangeLogEntry, Event, EventLiveChartConfig, EventSeriesEntry, QueryResult } from '@/types'
-import { and, asc, count, desc, eq, exists, ilike, inArray, isNull, or, sql } from 'drizzle-orm'
+import { and, asc, count, desc, eq, exists, ilike, inArray, or, sql } from 'drizzle-orm'
 import { cacheTag } from 'next/cache'
 import { DEFAULT_LOCALE } from '@/i18n/locales'
 import { cacheTags } from '@/lib/cache-tags'
@@ -2493,7 +2493,6 @@ export const EventRepository = {
         .where(and(
           eq(normalizedSportsEventSlugColumn, normalizedSportsEventSlug),
           eq(events.is_hidden, false),
-          isNull(events.community_id),
           buildPublicEventListVisibilityCondition(events.id),
           sportsSlugMatchCondition,
           normalizedSportsLeagueSlug
@@ -2860,7 +2859,6 @@ export const EventRepository = {
         .where(and(
           eq(events.slug, slug),
           eq(events.is_hidden, false),
-          isNull(events.community_id),
           sql`${sportsVolumeGroupKeySql} IS NOT NULL`,
         ))
         .limit(1)
@@ -2873,7 +2871,6 @@ export const EventRepository = {
       const groupedEventsData = await db.query.events.findMany({
         where: and(
           eq(events.is_hidden, false),
-          isNull(events.community_id),
           exists(
             db.select({ event_id: event_sports.event_id })
               .from(event_sports)
@@ -2989,7 +2986,6 @@ export const EventRepository = {
         .where(and(
           eq(events.series_slug, normalizedSeriesSlug),
           eq(events.is_hidden, false),
-          isNull(events.community_id),
           inArray(events.status, ['active', 'resolved', 'archived']),
           buildPublicEventListVisibilityCondition(events.id),
         ))
@@ -3176,7 +3172,6 @@ export const EventRepository = {
           sql`${events.slug} != ${slug}`,
           buildPublicEventListVisibilityCondition(events.id),
           eq(events.is_hidden, false),
-          isNull(events.community_id),
           sql`${events.status} NOT IN ('resolved', 'archived')`,
           eq(markets.is_resolved, false),
           inArray(event_tags.tag_id, selectedTagIds),
