@@ -1,0 +1,252 @@
+'use server'
+
+import { revalidatePath } from 'next/cache'
+import { eq } from 'drizzle-orm'
+import { z } from 'zod'
+import { CommunityRepository } from '@/lib/db/queries/community'
+import { EventCreationRepository } from '@/lib/db/queries/event-creations'
+import { UserRepository } from '@/lib/db/queries/user'
+import { community_markets } from '@/lib/db/schema/communities/tables'
+import { db } from '@/lib/drizzle'
+import { DEFAULT_ERROR_MESSAGE } from '@/lib/constants'
+import { loadEventCreationSignersFromEnv } from '@/lib/event-creation-signers'
+
+const SubmitForReviewSchema = z.object({
+  mainCategorySlug: z.string().trim().min(1, 'Main category is required'),
+  categorySlugs: z.array(z.string().trim()).min(4, 'Pick at least 4 sub-categories'),
+})
+
+/**
+ * Community admin submits their draft market for super admin review.
+ * Requires picking categories (needed for on-chain deployment).
+ */
+export async function submitMarketForReviewAction(
+  marketId: string,
+  communityId: string,
+  communitySlug: string,
+  input: z.input<typeof SubmitForReviewSchema>,
+) {
+  const user = await UserRepository.getCurrentUser({ disableCookieCache: true, minimal: true })
+  if (!user) {
+    return { error: 'Unauthenticated.', data: null }
+  }
+
+  const memberRole = await CommunityRepository.getMemberRole(communityId, user.id)
+  if (memberRole.data !== 'admin') {
+    return { error: 'Only the community owner can submit markets.', data: null }
+  }
+
+  const parsed = SubmitForReviewSchema.safeParse(input)
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? DEFAULT_ERROR_MESSAGE, data: null }
+  }
+
+  const result = await CommunityRepository.submitForReview({
+    marketId,
+    mainCategorySlug: parsed.data.mainCategorySlug,
+    categorySlugs: parsed.data.categorySlugs,
+  })
+  if (result.error) {
+    return { error: result.error, data: null }
+  }
+
+  revalidatePath(`/community/${communitySlug}`)
+  revalidatePath('/admin/communities/review')
+  return { error: null, data: result.data }
+}
+
+/**
+ * Super admin rejects a submitted market with feedback.
+ * Market returns to draft so community admin can revise.
+ */
+export async function rejectMarketAction(
+  marketId: string,
+  communitySlug: string,
+  feedback: string,
+) {
+  const user = await UserRepository.getCurrentUser({ disableCookieCache: true, minimal: true })
+  if (!user?.is_admin) {
+    return { error: 'Only platform admins can review markets.', data: null }
+  }
+
+  if (!feedback.trim()) {
+    return { error: 'Feedback is required for rejection.', data: null }
+  }
+
+  const result = await CommunityRepository.setReviewRejected({
+    marketId,
+    reviewerId: user.id,
+    feedback: feedback.trim(),
+  })
+  if (result.error) {
+    return { error: result.error, data: null }
+  }
+
+  revalidatePath(`/community/${communitySlug}`)
+  revalidatePath('/admin/communities/review')
+  return { error: null, data: result.data }
+}
+
+const ApproveSchema = z.object({
+  title: z.string().trim().min(10).max(200).optional(),
+  description: z.string().trim().max(1000).optional(),
+  resolution_source: z.string().trim().max(500).optional(),
+  resolution_rules: z.string().trim().min(20).max(2000).optional(),
+  resolution_date: z.string().optional(),
+})
+
+/**
+ * Super admin approves a pending market.
+ * Creates an event_creations draft with status='scheduled' for immediate deploy.
+ * Updates community_market.review_status='approved' and stores the draft id.
+ */
+export async function approveMarketAction(
+  marketId: string,
+  communitySlug: string,
+  edits: z.input<typeof ApproveSchema> = {},
+) {
+  const user = await UserRepository.getCurrentUser({ disableCookieCache: true, minimal: true })
+  if (!user?.is_admin) {
+    return { error: 'Only platform admins can approve markets.', data: null }
+  }
+
+  const parsedEdits = ApproveSchema.safeParse(edits)
+  if (!parsedEdits.success) {
+    return { error: parsedEdits.error.issues[0]?.message ?? DEFAULT_ERROR_MESSAGE, data: null }
+  }
+
+  // Load the market
+  const [market] = await db
+    .select()
+    .from(community_markets)
+    .where(eq(community_markets.id, marketId))
+    .limit(1)
+  if (!market) {
+    return { error: 'Market not found.', data: null }
+  }
+  if (market.review_status !== 'pending') {
+    return { error: 'Only pending markets can be approved.', data: null }
+  }
+  if (!market.main_category_slug || !market.category_slugs || market.category_slugs.length < 4) {
+    return { error: 'Market is missing required categories.', data: null }
+  }
+
+  // Pick a signer wallet from configured pool
+  const signers = loadEventCreationSignersFromEnv()
+  if (signers.length === 0) {
+    return { error: 'No deployment wallets configured. Contact infrastructure team.', data: null }
+  }
+  const signer = signers[0]
+
+  // Merge edits over existing values
+  const finalTitle = (parsedEdits.data.title ?? market.title).trim()
+  const finalDescription = parsedEdits.data.description ?? market.description ?? ''
+  const finalSource = parsedEdits.data.resolution_source ?? market.resolution_source ?? ''
+  const finalRules = (parsedEdits.data.resolution_rules ?? market.resolution_rules ?? '').trim()
+  const finalDate = parsedEdits.data.resolution_date
+    ? new Date(parsedEdits.data.resolution_date)
+    : market.resolution_date
+
+  if (!finalDate) {
+    return { error: 'Resolution date is required for deployment.', data: null }
+  }
+
+  // Build slug from title + market id suffix for uniqueness
+  const baseSlug = finalTitle
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .slice(0, 60)
+  const slug = `${baseSlug}-${market.id.slice(-6).toLowerCase()}`
+
+  // Build draft payload matching what the cron worker expects
+  const draftPayload = {
+    form: {
+      title: finalTitle,
+      slug,
+      endDateIso: finalDate.toISOString(),
+      mainCategorySlug: market.main_category_slug,
+      categories: [
+        { label: market.main_category_slug, slug: market.main_category_slug },
+        ...market.category_slugs.map(s => ({ label: s, slug: s })),
+      ],
+      marketMode: 'binary',
+      binaryQuestion: finalTitle,
+      binaryOutcomeYes: 'Yes',
+      binaryOutcomeNo: 'No',
+      resolutionSource: finalSource,
+      resolutionRules: finalRules,
+    },
+    walletAddress: signer.address,
+    // Mark this as community-governed so deploy worker writes events.community_id
+    // and conditions.community_governed=true after deploy
+    communityMarketId: market.id,
+    communityId: market.community_id,
+  }
+
+  // Create the event_creations draft
+  const draftResult = await EventCreationRepository.createDraft({
+    createdByUserId: user.id,
+    creationMode: 'single',
+    title: finalTitle,
+    slug,
+    deployAt: new Date(), // immediate
+    endDate: finalDate,
+    draftPayload,
+    mainCategorySlug: market.main_category_slug,
+    categorySlugs: market.category_slugs,
+  })
+
+  if (draftResult.error || !draftResult.data) {
+    return { error: draftResult.error ?? 'Failed to create deployment draft.', data: null }
+  }
+
+  // Set draft to scheduled (so cron picks it up)
+  await EventCreationRepository.setExecutionState({
+    draftId: draftResult.data.id,
+    status: 'scheduled',
+    lastError: null,
+  })
+
+  // Mark community market as approved + link draft
+  const result = await CommunityRepository.setReviewApproved({
+    marketId,
+    reviewerId: user.id,
+    eventCreationDraftId: draftResult.data.id,
+    edits: {
+      title: finalTitle,
+      description: finalDescription || undefined,
+      resolution_source: finalSource || undefined,
+      resolution_rules: finalRules,
+      resolution_date: finalDate,
+    },
+  })
+
+  if (result.error) {
+    return { error: result.error, data: null }
+  }
+
+  revalidatePath(`/community/${communitySlug}`)
+  revalidatePath('/admin/communities/review')
+  return { error: null, data: result.data }
+}
+
+/**
+ * Super admin retries a failed deployment.
+ */
+export async function retryDeployAction(marketId: string, communitySlug: string) {
+  const user = await UserRepository.getCurrentUser({ disableCookieCache: true, minimal: true })
+  if (!user?.is_admin) {
+    return { error: 'Only platform admins can retry deployments.', data: null }
+  }
+
+  const result = await CommunityRepository.retryDeploy(marketId)
+  if (result.error) {
+    return { error: result.error, data: null }
+  }
+
+  revalidatePath(`/community/${communitySlug}`)
+  revalidatePath('/admin/communities/review')
+  return { error: null, data: result.data }
+}

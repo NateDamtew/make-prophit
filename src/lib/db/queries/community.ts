@@ -604,6 +604,204 @@ export const CommunityRepository = {
     })
   },
 
+  // ─── Review workflow ──────────────────────────────────────────────────────
+
+  /**
+   * Community admin submits a draft market for super admin review.
+   * Requires main_category_slug + at least 4 category_slugs (needed for
+   * platform event deployment).
+   */
+  async submitForReview(input: {
+    marketId: string
+    mainCategorySlug: string
+    categorySlugs: string[]
+  }) {
+    return await runQuery(async () => {
+      if (!input.mainCategorySlug.trim()) {
+        return { data: null, error: 'Main category is required.' }
+      }
+      if (input.categorySlugs.length < 4) {
+        return { data: null, error: 'Please select at least 4 sub-categories.' }
+      }
+      const [market] = await db
+        .select()
+        .from(community_markets)
+        .where(eq(community_markets.id, input.marketId))
+        .limit(1)
+      if (!market) {
+        return { data: null, error: 'Market not found.' }
+      }
+      if (market.status !== 'draft') {
+        return { data: null, error: 'Only draft markets can be submitted for review.' }
+      }
+      const [updated] = await db
+        .update(community_markets)
+        .set({
+          review_status: 'pending',
+          submitted_at: new Date(),
+          main_category_slug: input.mainCategorySlug,
+          category_slugs: input.categorySlugs,
+          review_feedback: null,
+          updated_at: new Date(),
+        })
+        .where(eq(community_markets.id, input.marketId))
+        .returning()
+      return { data: updated ?? null, error: null }
+    })
+  },
+
+  /**
+   * Super admin approves a market for deployment.
+   * Caller is responsible for creating the event_creation draft.
+   */
+  async setReviewApproved(input: {
+    marketId: string
+    reviewerId: string
+    eventCreationDraftId: string
+    edits?: {
+      title?: string
+      description?: string
+      resolution_source?: string
+      resolution_rules?: string
+      resolution_date?: Date
+    }
+  }) {
+    return await runQuery(async () => {
+      const [updated] = await db
+        .update(community_markets)
+        .set({
+          ...(input.edits ?? {}),
+          review_status: 'approved',
+          reviewed_by: input.reviewerId,
+          reviewed_at: new Date(),
+          event_creation_draft_id: input.eventCreationDraftId,
+          updated_at: new Date(),
+        })
+        .where(eq(community_markets.id, input.marketId))
+        .returning()
+      return { data: updated ?? null, error: null }
+    })
+  },
+
+  /**
+   * Super admin rejects with feedback. Market goes back to draft so the
+   * community admin can revise.
+   */
+  async setReviewRejected(input: {
+    marketId: string
+    reviewerId: string
+    feedback: string
+  }) {
+    return await runQuery(async () => {
+      if (!input.feedback.trim()) {
+        return { data: null, error: 'Feedback is required for rejection.' }
+      }
+      const [updated] = await db
+        .update(community_markets)
+        .set({
+          review_status: 'rejected',
+          review_feedback: input.feedback.trim(),
+          reviewed_by: input.reviewerId,
+          reviewed_at: new Date(),
+          updated_at: new Date(),
+        })
+        .where(eq(community_markets.id, input.marketId))
+        .returning()
+      return { data: updated ?? null, error: null }
+    })
+  },
+
+  /**
+   * Update deploy lifecycle status (called by deploy worker).
+   */
+  async setDeployStatus(input: {
+    marketId: string
+    status: 'deploying' | 'deploy_failed' | 'deploy_retry' | 'deploy_blocked' | 'deployed'
+    error?: string | null
+    eventId?: string
+    incrementAttempts?: boolean
+  }) {
+    return await runQuery(async () => {
+      const setValues: Record<string, any> = {
+        review_status: input.status === 'deployed' ? null : input.status,
+        last_deploy_error: input.error ?? (input.status === 'deployed' ? null : undefined),
+        updated_at: new Date(),
+      }
+      if (input.eventId) {
+        setValues.event_id = input.eventId
+      }
+      if (input.incrementAttempts) {
+        setValues.deploy_attempts = sql`${community_markets.deploy_attempts} + 1`
+      }
+      const [updated] = await db
+        .update(community_markets)
+        .set(setValues)
+        .where(eq(community_markets.id, input.marketId))
+        .returning()
+      return { data: updated ?? null, error: null }
+    })
+  },
+
+  /**
+   * Super admin retries a failed deployment manually.
+   */
+  async retryDeploy(marketId: string) {
+    return await runQuery(async () => {
+      const [updated] = await db
+        .update(community_markets)
+        .set({
+          review_status: 'approved', // re-queue for deploy
+          last_deploy_error: null,
+          updated_at: new Date(),
+        })
+        .where(eq(community_markets.id, marketId))
+        .returning()
+      return { data: updated ?? null, error: null }
+    })
+  },
+
+  async listPendingReviews(options: { limit?: number, offset?: number } = {}) {
+    return await runQuery(async () => {
+      const limit = options.limit ?? 50
+      const offset = options.offset ?? 0
+      const data = await db
+        .select({
+          market: community_markets,
+          community_slug: communities.slug,
+          community_name: communities.name,
+          community_icon: communities.icon_url,
+          creator_username: users.username,
+        })
+        .from(community_markets)
+        .innerJoin(communities, eq(community_markets.community_id, communities.id))
+        .leftJoin(users, eq(community_markets.created_by, users.id))
+        .where(eq(community_markets.review_status, 'pending'))
+        .orderBy(desc(community_markets.submitted_at))
+        .limit(limit)
+        .offset(offset)
+      return { data, error: null }
+    })
+  },
+
+  async listDeployFailures() {
+    return await runQuery(async () => {
+      const data = await db
+        .select({
+          market: community_markets,
+          community_slug: communities.slug,
+          community_name: communities.name,
+        })
+        .from(community_markets)
+        .innerJoin(communities, eq(community_markets.community_id, communities.id))
+        .where(or(
+          eq(community_markets.review_status, 'deploy_failed'),
+          eq(community_markets.review_status, 'deploy_blocked'),
+        ))
+        .orderBy(desc(community_markets.updated_at))
+      return { data, error: null }
+    })
+  },
+
   async listFeaturedMarkets(limit = 6) {
     return await runQuery(async () => {
       const data = await db
