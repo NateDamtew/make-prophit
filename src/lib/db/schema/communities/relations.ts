@@ -30,11 +30,6 @@ export const communityMembersRelations = relations(community_members, ({ one }) 
     fields: [community_members.user_id],
     references: [users.id],
   }),
-  invitedByUser: one(users, {
-    fields: [community_members.invited_by],
-    references: [users.id],
-    relationName: 'invited_members',
-  }),
 }))
 
 export const communityMarketsRelations = relations(community_markets, ({ many, one }) => ({
