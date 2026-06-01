@@ -310,7 +310,11 @@ export const auth = betterAuth({
                 image: tgUser.photo_url || '',
                 emailVerified: true,
                 username: username || undefined,
-              })
+                // Telegram users don't have an EVM address yet — set a zero placeholder.
+                // Trading onboarding is gated on hasValidWalletAddress so this won't trigger
+                // deposit wallet creation until they connect a real wallet.
+                address: '0x0000000000000000000000000000000000000000',
+              } as any)
 
               if (!user) {
                 throw new APIError('INTERNAL_SERVER_ERROR', { message: 'Failed to create user account.' })
