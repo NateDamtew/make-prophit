@@ -1,8 +1,9 @@
 'use client'
 
+import Link from 'next/link'
 import { useState, useTransition } from 'react'
 import { toast } from 'sonner'
-import { Users, Star, TrendingUp, Lock, Globe, Share2, Copy, Check } from 'lucide-react'
+import { Users, Star, TrendingUp, Lock, Globe, Share2, Copy, Check, Plus } from 'lucide-react'
 import { joinCommunityAction, leaveCommunityAction, generateInviteAction } from '../_actions/community-actions'
 import { Button } from '@/components/ui/button'
 import {
@@ -151,12 +152,20 @@ export default function CommunityHeader({ community, memberRole, currentUserId }
         {/* Actions */}
         <div className="flex shrink-0 items-center gap-2 pb-1">
           {isAdmin && (
-            <Button variant="outline" size="sm" onClick={handleGenerateInvite}>
-              <Share2 className="mr-1.5 size-3.5" />
-              Invite
-            </Button>
+            <>
+              <Button variant="outline" size="sm" onClick={handleGenerateInvite}>
+                <Share2 className="mr-1.5 size-3.5" />
+                Invite
+              </Button>
+              <Button size="sm" asChild>
+                <Link href={`/community/${community.slug}/markets/new` as any}>
+                  <Plus className="mr-1.5 size-3.5" />
+                  Add Market
+                </Link>
+              </Button>
+            </>
           )}
-          {!isMember && community.type === 'public' && (
+          {!isAdmin && !isMember && community.type === 'public' && (
             <Button size="sm" onClick={handleJoin} disabled={isPending}>
               {isPending ? 'Joining...' : 'Join'}
             </Button>

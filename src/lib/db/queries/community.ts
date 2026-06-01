@@ -422,8 +422,10 @@ export const CommunityRepository = {
     resolution_rules?: string
     resolution_date?: Date
     created_by: string
+    status?: 'draft' | 'active'
   }) {
     return await runQuery(async () => {
+      const status = input.status ?? 'active'
       const [market] = await db
         .insert(community_markets)
         .values({
@@ -435,10 +437,12 @@ export const CommunityRepository = {
           resolution_rules: input.resolution_rules ?? null,
           resolution_date: input.resolution_date ?? null,
           created_by: input.created_by,
+          status,
         })
         .returning()
 
-      if (market) {
+      // Only increment market_count for active markets, not drafts
+      if (market && status === 'active') {
         await db
           .update(communities)
           .set({ market_count: sql`${communities.market_count} + 1` })
@@ -446,6 +450,92 @@ export const CommunityRepository = {
       }
 
       return { data: market ?? null, error: null }
+    })
+  },
+
+  async updateMarket(marketId: string, input: {
+    title?: string
+    description?: string
+    resolution_source?: string
+    resolution_rules?: string
+    resolution_date?: Date
+  }) {
+    return await runQuery(async () => {
+      const [updated] = await db
+        .update(community_markets)
+        .set({ ...input, updated_at: new Date() })
+        .where(eq(community_markets.id, marketId))
+        .returning()
+      return { data: updated ?? null, error: null }
+    })
+  },
+
+  async publishMarket(marketId: string) {
+    return await runQuery(async () => {
+      const [market] = await db
+        .select()
+        .from(community_markets)
+        .where(eq(community_markets.id, marketId))
+        .limit(1)
+
+      if (!market) {
+        return { data: null, error: 'Market not found.' }
+      }
+      if (market.status !== 'draft') {
+        return { data: null, error: 'Only draft markets can be published.' }
+      }
+
+      const [updated] = await db
+        .update(community_markets)
+        .set({ status: 'active', updated_at: new Date() })
+        .where(eq(community_markets.id, marketId))
+        .returning()
+
+      await db
+        .update(communities)
+        .set({ market_count: sql`${communities.market_count} + 1` })
+        .where(eq(communities.id, market.community_id))
+
+      return { data: updated ?? null, error: null }
+    })
+  },
+
+  async deleteMarket(marketId: string) {
+    return await runQuery(async () => {
+      const [market] = await db
+        .select()
+        .from(community_markets)
+        .where(eq(community_markets.id, marketId))
+        .limit(1)
+
+      if (!market) {
+        return { data: null, error: 'Market not found.' }
+      }
+
+      await db.delete(community_markets).where(eq(community_markets.id, marketId))
+
+      if (market.status === 'active') {
+        await db
+          .update(communities)
+          .set({ market_count: sql`GREATEST(${communities.market_count} - 1, 0)` })
+          .where(eq(communities.id, market.community_id))
+      }
+
+      return { data: market, error: null }
+    })
+  },
+
+  async listDrafts(communityId: string) {
+    return await runQuery(async () => {
+      const data = await db
+        .select()
+        .from(community_markets)
+        .where(and(
+          eq(community_markets.community_id, communityId),
+          eq(community_markets.status, 'draft'),
+        ))
+        .orderBy(desc(community_markets.created_at))
+      return { data, error: null }
     })
   },
 
