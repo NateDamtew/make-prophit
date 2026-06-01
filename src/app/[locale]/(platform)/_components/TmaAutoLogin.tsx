@@ -72,6 +72,11 @@ export default function TmaAutoLogin() {
       return
     }
 
+    // Only run on tma.* OR inside Telegram WebView
+    if (!isTmaHost() && !isInsideTelegram()) {
+      return
+    }
+
     triggered.current = true
 
     // Already logged in — show wallet onboarding if not skipped
@@ -83,7 +88,7 @@ export default function TmaAutoLogin() {
       return
     }
 
-    // Inside Telegram — auto-auth silently
+    // Inside Telegram WebView — auto-auth silently
     if (isInsideTelegram()) {
       attemptTelegramAuth().then((success) => {
         if (!success) {
@@ -93,7 +98,7 @@ export default function TmaAutoLogin() {
       return
     }
 
-    // In a browser — show Telegram login screen
+    // On tma.* in a browser — show Telegram login screen
     setScreen('telegram-login')
   }, [hasHydrated, isPending, session, attemptTelegramAuth])
 
