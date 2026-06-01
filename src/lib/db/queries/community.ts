@@ -592,12 +592,20 @@ export const CommunityRepository = {
 
   async listDrafts(communityId: string) {
     return await runQuery(async () => {
+      // Include drafts AND markets in any review/deploy lifecycle state
+      // so the community admin sees rejection feedback, pending reviews,
+      // and deploy failures all in one place.
       const data = await db
         .select()
         .from(community_markets)
         .where(and(
           eq(community_markets.community_id, communityId),
-          eq(community_markets.status, 'draft'),
+          or(
+            eq(community_markets.status, 'draft'),
+            // include any non-draft markets that haven't been deployed yet
+            sql`${community_markets.review_status} IS NOT NULL
+              AND ${community_markets.event_id} IS NULL`,
+          ),
         ))
         .orderBy(desc(community_markets.created_at))
       return { data, error: null }

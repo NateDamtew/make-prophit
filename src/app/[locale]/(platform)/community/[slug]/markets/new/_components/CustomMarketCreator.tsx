@@ -10,10 +10,9 @@ import {
   Check,
   Loader2,
   Save,
-  Send,
   Wand2,
 } from 'lucide-react'
-import { analyzeMarketAction, createMarketDraftAction, publishMarketAction } from '../../../_actions/market-actions'
+import { analyzeMarketAction, createMarketDraftAction } from '../../../_actions/market-actions'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
@@ -51,7 +50,6 @@ export default function CustomMarketCreator({ communityId, communitySlug }: Prop
   const [resolutionRules, setResolutionRules] = useState('')
   const [resolutionDate, setResolutionDate] = useState('')
   const [isSaving, startSaving] = useTransition()
-  const [isPublishing, startPublishing] = useTransition()
 
   function handleAnalyze() {
     if (question.trim().length < 5) {
@@ -96,35 +94,7 @@ export default function CustomMarketCreator({ communityId, communitySlug }: Prop
         return
       }
       toast.success('Saved as draft', {
-        description: 'You can publish it later from the Drafts tab.',
-      })
-      router.refresh()
-      router.push(`/community/${communitySlug}` as any)
-    })
-  }
-
-  async function handlePublishNow() {
-    startPublishing(async () => {
-      // Save as draft first
-      const draft = await createMarketDraftAction(communityId, communitySlug, {
-        title,
-        description: description || undefined,
-        resolution_source: resolutionSource || undefined,
-        resolution_rules: resolutionRules,
-        resolution_date: resolutionDate || undefined,
-      })
-      if (draft.error || !draft.data) {
-        toast.error(draft.error ?? 'Failed to create market.')
-        return
-      }
-      // Then publish
-      const publish = await publishMarketAction(draft.data.id, communityId, communitySlug)
-      if (publish.error) {
-        toast.error(publish.error)
-        return
-      }
-      toast.success('Market published!', {
-        description: 'Members can now trade on it.',
+        description: 'Submit it for review from the Drafts tab when ready.',
       })
       router.refresh()
       router.push(`/community/${communitySlug}` as any)
@@ -298,7 +268,8 @@ export default function CustomMarketCreator({ communityId, communitySlug }: Prop
       <div>
         <h2 className="font-semibold">Review & Save</h2>
         <p className="mt-0.5 text-sm text-muted-foreground">
-          Make any final edits before saving as a draft or publishing immediately.
+          Save as a draft, then submit for platform admin review.
+          Once approved, your market deploys on-chain and members can trade.
         </p>
       </div>
 
@@ -362,26 +333,16 @@ export default function CustomMarketCreator({ communityId, communitySlug }: Prop
         <Button
           variant="outline"
           onClick={() => setStage(suggestion ? 'review' : 'question')}
-          disabled={isSaving || isPublishing}
+          disabled={isSaving}
         >
           Back
         </Button>
         <div className="flex gap-2">
-          <Button
-            variant="outline"
-            onClick={handleSaveDraft}
-            disabled={isSaving || isPublishing}
-          >
+          <Button onClick={handleSaveDraft} disabled={isSaving}>
             {isSaving
               ? <Loader2 className="mr-2 size-4 animate-spin" />
               : <Save className="mr-2 size-4" />}
             Save as Draft
-          </Button>
-          <Button onClick={handlePublishNow} disabled={isSaving || isPublishing}>
-            {isPublishing
-              ? <Loader2 className="mr-2 size-4 animate-spin" />
-              : <Send className="mr-2 size-4" />}
-            Publish Now
           </Button>
         </div>
       </div>
