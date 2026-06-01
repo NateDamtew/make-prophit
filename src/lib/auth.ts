@@ -281,16 +281,49 @@ export const auth = betterAuth({
               throw new APIError('BAD_REQUEST', { message: 'Missing user ID in initData.' })
             }
 
-            const account = await ctx.context.internalAdapter.findAccountByProviderId(
-              String(tgUser.id),
-              'telegram',
-            )
-
+            // Find existing user by telegram account link
             let user: any = null
-            if (account) {
-              user = await ctx.context.internalAdapter.findUserById(account.userId)
+            try {
+              const account = await ctx.context.internalAdapter.findAccountByProviderId(
+                String(tgUser.id),
+                'telegram',
+              )
+              if (account) {
+                user = await ctx.context.internalAdapter.findUserById(account.userId)
+              }
+            }
+            catch (findErr) {
+              console.error('[TMA Auth] Error finding existing account:', findErr)
             }
 
+            // Also check by email in case user exists but account link is missing
+            if (!user) {
+              const userEmail = `telegram_${tgUser.id}@${SIWE_EMAIL_DOMAIN}`
+              try {
+                const existing = await ctx.context.internalAdapter.findUserByEmail(userEmail)
+                if (existing?.user) {
+                  user = existing.user
+                  // Ensure account link exists
+                  try {
+                    await ctx.context.internalAdapter.createAccount({
+                      userId: user.id,
+                      providerId: 'telegram',
+                      accountId: String(tgUser.id),
+                      createdAt: new Date(),
+                      updatedAt: new Date(),
+                    })
+                  }
+                  catch {
+                    // Account link may already exist — ignore
+                  }
+                }
+              }
+              catch (emailErr) {
+                console.error('[TMA Auth] Error finding user by email:', emailErr)
+              }
+            }
+
+            // Create new user if not found
             if (!user) {
               const userEmail = `telegram_${tgUser.id}@${SIWE_EMAIL_DOMAIN}`
               const name = tgUser.username
@@ -299,22 +332,35 @@ export const auth = betterAuth({
 
               let username = tgUser.username || ''
               if (username) {
-                const existing = await db
-                  .select()
-                  .from(schema.users)
-                  .where(eq(sql`LOWER(${schema.users.username})`, username.toLowerCase()))
-                  .limit(1)
-                if (existing.length > 0) {
+                try {
+                  const existing = await db
+                    .select()
+                    .from(schema.users)
+                    .where(eq(sql`LOWER(${schema.users.username})`, username.toLowerCase()))
+                    .limit(1)
+                  if (existing.length > 0) {
+                    username = ''
+                  }
+                }
+                catch {
                   username = ''
                 }
               }
 
-              user = await ctx.context.internalAdapter.createUser({
-                name,
-                email: userEmail,
-                image: tgUser.photo_url || '',
-                emailVerified: true,
-              })
+              try {
+                user = await ctx.context.internalAdapter.createUser({
+                  name,
+                  email: userEmail,
+                  image: tgUser.photo_url || '',
+                  emailVerified: true,
+                })
+              }
+              catch (createErr) {
+                console.error('[TMA Auth] Failed to create user:', createErr)
+                throw new APIError('INTERNAL_SERVER_ERROR', {
+                  message: `Failed to create user: ${createErr instanceof Error ? createErr.message : 'Unknown error'}`,
+                })
+              }
 
               if (!user) {
                 throw new APIError('INTERNAL_SERVER_ERROR', { message: 'Failed to create user account.' })
@@ -328,13 +374,18 @@ export const auth = betterAuth({
                   .where(eq(schema.users.id, user.id))
               }
 
-              await ctx.context.internalAdapter.createAccount({
-                userId: user.id,
-                providerId: 'telegram',
-                accountId: String(tgUser.id),
-                createdAt: new Date(),
-                updatedAt: new Date(),
-              })
+              try {
+                await ctx.context.internalAdapter.createAccount({
+                  userId: user.id,
+                  providerId: 'telegram',
+                  accountId: String(tgUser.id),
+                  createdAt: new Date(),
+                  updatedAt: new Date(),
+                })
+              }
+              catch (accountErr) {
+                console.error('[TMA Auth] Failed to create account link:', accountErr)
+              }
             }
 
             const session = await ctx.context.internalAdapter.createSession(user.id)
