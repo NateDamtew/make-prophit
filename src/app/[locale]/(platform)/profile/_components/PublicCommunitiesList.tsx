@@ -2,7 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query'
 import Link from 'next/link'
-import { Plus, Users, Crown, Gavel, Star, TrendingUp } from 'lucide-react'
+import { Plus, Users, Crown, Gavel, Star, TrendingUp, Compass } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
@@ -47,7 +47,7 @@ function CommunityRow({ community }: { community: CommunityListItem }) {
             {community.name}
           </p>
           <span className={cn(
-            'shrink-0 flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-medium',
+            'shrink-0 flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-medium capitalize',
             community.role === 'admin' && 'bg-primary/10 text-primary',
             community.role === 'juror' && 'bg-amber-500/10 text-amber-600',
             community.role === 'member' && 'bg-muted text-muted-foreground',
@@ -79,6 +79,47 @@ function CommunityRow({ community }: { community: CommunityListItem }) {
   )
 }
 
+function StatsBar({ communities }: { communities: CommunityListItem[] }) {
+  const totalMembers = communities.reduce((acc, c) => acc + c.member_count, 0)
+  const totalMarkets = communities.reduce((acc, c) => acc + c.market_count, 0)
+
+  return (
+    <div className="grid grid-cols-3 gap-4 rounded-2xl border bg-muted/30 p-4">
+      <div className="text-center">
+        <p className="text-2xl font-bold">{communities.length}</p>
+        <p className="text-xs text-muted-foreground">Communities</p>
+      </div>
+      <div className="text-center">
+        <p className="text-2xl font-bold">{totalMembers}</p>
+        <p className="text-xs text-muted-foreground">Total Members</p>
+      </div>
+      <div className="text-center">
+        <p className="text-2xl font-bold">{totalMarkets}</p>
+        <p className="text-xs text-muted-foreground">Active Markets</p>
+      </div>
+    </div>
+  )
+}
+
+function ActionButtons() {
+  return (
+    <div className="flex gap-2">
+      <Button asChild className="flex-1">
+        <Link href={'/communities/new' as any}>
+          <Plus className="mr-1.5 size-4" />
+          Create Community
+        </Link>
+      </Button>
+      <Button asChild variant="outline" className="flex-1">
+        <Link href={'/communities' as any}>
+          <Compass className="mr-1.5 size-4" />
+          Explore
+        </Link>
+      </Button>
+    </div>
+  )
+}
+
 export default function PublicCommunitiesList({ userId }: { userId: string | null }) {
   const { data: communities, isPending } = useQuery({
     queryKey: ['profile-communities', userId],
@@ -88,24 +129,12 @@ export default function PublicCommunitiesList({ userId }: { userId: string | nul
 
   if (!userId) {
     return (
-      <div className="space-y-3 px-4 sm:px-6">
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">No communities</p>
-          <Button size="sm" variant="outline" asChild>
-            <Link href={'/communities' as any}>
-              <Plus className="mr-1 size-3.5" />
-              Explore
-            </Link>
-          </Button>
-        </div>
+      <div className="space-y-4 px-4 sm:px-6">
+        <StatsBar communities={[]} />
+        <ActionButtons />
         <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed py-12">
           <Users className="size-10 text-muted-foreground/30" />
-          <p className="text-sm text-muted-foreground">No communities to show yet</p>
-          <Button size="sm" variant="outline" asChild>
-            <Link href={'/communities' as any}>
-              Browse Communities
-            </Link>
-          </Button>
+          <p className="text-sm text-muted-foreground">No communities yet</p>
         </div>
       </div>
     )
@@ -113,51 +142,46 @@ export default function PublicCommunitiesList({ userId }: { userId: string | nul
 
   if (isPending) {
     return (
-      <div className="space-y-3 px-4 sm:px-6">
-        {[1, 2, 3].map(i => (
-          <div key={i} className="flex items-center gap-3 rounded-xl border p-3">
-            <div className="size-11 animate-pulse rounded-xl bg-muted" />
-            <div className="flex-1 space-y-2">
-              <div className="h-4 w-2/3 animate-pulse rounded bg-muted" />
-              <div className="h-3 w-1/3 animate-pulse rounded bg-muted" />
+      <div className="space-y-4 px-4 sm:px-6">
+        <div className="h-20 animate-pulse rounded-2xl bg-muted/30" />
+        <div className="space-y-2">
+          {[1, 2, 3].map(i => (
+            <div key={i} className="flex items-center gap-3 rounded-xl border p-3">
+              <div className="size-11 animate-pulse rounded-xl bg-muted" />
+              <div className="flex-1 space-y-2">
+                <div className="h-4 w-2/3 animate-pulse rounded bg-muted" />
+                <div className="h-3 w-1/3 animate-pulse rounded bg-muted" />
+              </div>
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
     )
   }
 
-  return (
-    <div className="space-y-3 px-4 sm:px-6">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
-          {communities?.length === 0
-            ? 'Not a member of any communities yet'
-            : `${communities?.length ?? 0} ${communities?.length === 1 ? 'community' : 'communities'}`}
-        </p>
-        <Button size="sm" variant="outline" asChild>
-          <Link href={'/communities' as any}>
-            <Plus className="mr-1 size-3.5" />
-            Explore
-          </Link>
-        </Button>
-      </div>
+  const list = communities ?? []
 
-      {communities && communities.length > 0
+  return (
+    <div className="space-y-4 px-4 sm:px-6">
+      <StatsBar communities={list} />
+      <ActionButtons />
+
+      {list.length === 0
         ? (
-            <div className="space-y-2">
-              {communities.map(c => <CommunityRow key={c.id} community={c} />)}
+            <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed py-12">
+              <Users className="size-10 text-muted-foreground/30" />
+              <p className="text-sm text-muted-foreground">Not a member of any communities yet</p>
+              <p className="text-xs text-muted-foreground">
+                Create your own or browse public ones.
+              </p>
             </div>
           )
         : (
-            <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed py-12">
-              <Users className="size-10 text-muted-foreground/30" />
-              <p className="text-sm text-muted-foreground">No communities yet</p>
-              <Button size="sm" variant="outline" asChild>
-                <Link href={'/communities' as any}>
-                  Browse Communities
-                </Link>
-              </Button>
+            <div className="space-y-2">
+              <p className="text-sm font-medium">
+                {list.length === 1 ? 'Your community' : 'Your communities'}
+              </p>
+              {list.map(c => <CommunityRow key={c.id} community={c} />)}
             </div>
           )}
     </div>

@@ -95,12 +95,26 @@ export const CommunityRepository = {
     })
   },
 
-  async listPublic(options: { limit?: number, offset?: number, search?: string } = {}) {
+  async listPublic(options: {
+    limit?: number
+    offset?: number
+    search?: string
+    sort?: 'popular' | 'newest' | 'top-rated' | 'most-active'
+  } = {}) {
     return await runQuery(async () => {
       const limit = options.limit ?? 20
       const offset = options.offset ?? 0
+      const sort = options.sort ?? 'popular'
 
-      let query = db
+      const orderBy = sort === 'newest'
+        ? desc(communities.created_at)
+        : sort === 'top-rated'
+          ? desc(communities.average_rating)
+          : sort === 'most-active'
+            ? desc(communities.market_count)
+            : desc(communities.member_count)
+
+      const data = await db
         .select({
           id: communities.id,
           slug: communities.slug,
@@ -132,11 +146,10 @@ export const CommunityRepository = {
               : undefined,
           ),
         )
-        .orderBy(desc(communities.member_count))
+        .orderBy(orderBy)
         .limit(limit)
         .offset(offset)
 
-      const data = await query
       return { data, error: null }
     })
   },
@@ -523,6 +536,34 @@ export const CommunityRepository = {
           eq(community_markets.status, 'draft'),
         ))
         .orderBy(desc(community_markets.created_at))
+      return { data, error: null }
+    })
+  },
+
+  async listFeaturedMarkets(limit = 6) {
+    return await runQuery(async () => {
+      const data = await db
+        .select({
+          id: community_markets.id,
+          title: community_markets.title,
+          description: community_markets.description,
+          resolution_date: community_markets.resolution_date,
+          status: community_markets.status,
+          created_at: community_markets.created_at,
+          community_id: communities.id,
+          community_slug: communities.slug,
+          community_name: communities.name,
+          community_icon: communities.icon_url,
+        })
+        .from(community_markets)
+        .innerJoin(communities, eq(community_markets.community_id, communities.id))
+        .where(and(
+          eq(community_markets.status, 'active'),
+          eq(communities.status, 'active'),
+          eq(communities.type, 'public'),
+        ))
+        .orderBy(desc(community_markets.created_at))
+        .limit(limit)
       return { data, error: null }
     })
   },
