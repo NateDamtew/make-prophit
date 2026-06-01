@@ -91,11 +91,7 @@ export default function TmaAutoLogin() {
     if (!hasHydrated || isPending || triggered.current) {
       return
     }
-    if (!isTmaHost()) {
-      return
-    }
-
-    // Only run on tma.* OR inside Telegram WebView
+    // Only run on tma.* hostname OR inside Telegram WebView
     if (!isTmaHost() && !isInsideTelegram()) {
       return
     }
@@ -111,22 +107,29 @@ export default function TmaAutoLogin() {
       return
     }
 
-    // Inside Telegram WebView — auto-auth silently
+    // Inside Telegram WebView — auto-auth silently if initData available
     if (isInsideTelegram()) {
-      attemptTelegramAuth().then((success) => {
-        if (!success) {
-          setScreen('telegram-login')
-        }
-      })
+      const initData = getTelegramInitData()
+      if (initData) {
+        attemptTelegramAuth().then((success) => {
+          if (!success) {
+            // Auth failed even with initData — let them browse normally
+          }
+        })
+      }
+      // No initData (e.g. Desktop Telegram bot profile) — let them browse
+      // and use the normal Log In button in the header
       return
     }
 
-    // On tma.* in a browser — show Telegram login screen
-    setScreen('telegram-login')
+    // On tma.* in a regular browser (not Telegram) — show Telegram login screen
+    if (isTmaHost()) {
+      setScreen('telegram-login')
+    }
   }, [hasHydrated, isPending, session, attemptTelegramAuth])
 
   function handleOpenTelegram() {
-    window.open(`https://t.me/${BOT_USERNAME}`, '_blank')
+    window.open(`https://t.me/${BOT_USERNAME}/Prophit`, '_blank')
   }
 
   function handleConnectWallet() {
