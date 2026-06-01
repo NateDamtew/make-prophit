@@ -244,7 +244,7 @@ export async function PublicProfilePageContent({ slug }: { slug: string }) {
           snapshot={snapshot}
           fallbackChartEndDate={fallbackChartEndDate}
         />
-        <PublicProfileTabs userAddress={normalized.value} />
+        <PublicProfileTabs userAddress={normalized.value} userId={null} />
       </>
     )
   }
@@ -265,7 +265,7 @@ export async function PublicProfilePageContent({ slug }: { slug: string }) {
         snapshot={snapshot}
         fallbackChartEndDate={fallbackChartEndDate}
       />
-      <PublicProfileTabs userAddress={userAddress} />
+      <PublicProfileTabs userAddress={userAddress} userId={(profile as { id?: string }).id ?? null} />
     </>
   )
 }
