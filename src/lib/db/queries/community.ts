@@ -643,6 +643,22 @@ export const CommunityRepository = {
     })
   },
 
+  async getMarketWithCommunity(marketId: string) {
+    return await runQuery(async () => {
+      const [row] = await db
+        .select({
+          market: community_markets,
+          community: communities,
+        })
+        .from(community_markets)
+        .innerJoin(communities, eq(community_markets.community_id, communities.id))
+        .where(eq(community_markets.id, marketId))
+        .limit(1)
+
+      return { data: row ?? null, error: null }
+    })
+  },
+
   // ─── Jury Votes ─────────────────────────────────────────────────────────
 
   async castVote(input: {
