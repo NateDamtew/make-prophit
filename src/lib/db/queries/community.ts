@@ -11,31 +11,10 @@ import { users } from '@/lib/db/schema/auth/tables'
 import { runQuery } from '@/lib/db/utils/run-query'
 import { db } from '@/lib/drizzle'
 
-// ─── Jury capacity mapping ──────────────────────────────────────────────────
+import { getMaxMembersForJurySize as _getMax, getConsensusThreshold as _getConsensus } from '@/lib/community-config'
 
-const JURY_CAPACITY: Record<number, number> = {
-  1: 5,
-  2: 20,
-  3: 30,
-  4: 40,
-  5: 50,
-  6: 100,
-  7: 200,
-  8: 500,
-  9: 750,
-  10: 1000,
-}
-
-export function getMaxMembersForJurySize(jurySize: number): number {
-  return JURY_CAPACITY[jurySize] ?? 5
-}
-
-export function getConsensusThreshold(jurySize: number): number {
-  if (jurySize <= 2) {
-    return jurySize // unanimous
-  }
-  return Math.ceil(jurySize * 0.75) // >75%
-}
+export const getMaxMembersForJurySize = _getMax
+export const getConsensusThreshold = _getConsensus
 
 // ─── Community CRUD ─────────────────────────────────────────────────────────
 
