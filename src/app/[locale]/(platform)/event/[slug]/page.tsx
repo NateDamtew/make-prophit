@@ -1,15 +1,10 @@
 import type { Metadata } from 'next'
 import type { SupportedLocale } from '@/i18n/locales'
-import { and, eq } from 'drizzle-orm'
 import { setRequestLocale } from 'next-intl/server'
 import { notFound } from 'next/navigation'
 import EventContent from '@/app/[locale]/(platform)/event/[slug]/_components/EventContent'
 import EventStructuredData from '@/components/seo/EventStructuredData'
 import { redirect } from '@/i18n/navigation'
-import { UserRepository } from '@/lib/db/queries/user'
-import { community_members } from '@/lib/db/schema/communities/tables'
-import { events } from '@/lib/db/schema/events/tables'
-import { db } from '@/lib/drizzle'
 import { buildTranslatedEventFaqItems } from '@/lib/event-faq-server'
 import { buildEventPageMetadata } from '@/lib/event-open-graph'
 import { getEventRouteBySlug, loadEventPagePublicContentData } from '@/lib/event-page-data'
@@ -91,46 +86,6 @@ async function CachedEventPageContent({
   )
 }
 
-async function gateCommunityEventAccess(slug: string) {
-  let communityId: string | null = null
-  try {
-    const [row] = await db
-      .select({ community_id: events.community_id })
-      .from(events)
-      .where(eq(events.slug, slug))
-      .limit(1)
-    communityId = row?.community_id ?? null
-  }
-  catch (err) {
-    // If the column doesn't exist yet (migration pending) or any other DB
-    // issue, fail open — let the page render. Logging for visibility.
-    console.warn('[gateCommunityEventAccess] Skipping gate due to error:', err)
-    return
-  }
-
-  if (!communityId) {
-    return // public event, no gate
-  }
-
-  const user = await UserRepository.getCurrentUser({ minimal: true })
-  if (!user) {
-    notFound()
-  }
-
-  const [member] = await db
-    .select({ user_id: community_members.user_id })
-    .from(community_members)
-    .where(and(
-      eq(community_members.community_id, communityId),
-      eq(community_members.user_id, user.id),
-    ))
-    .limit(1)
-
-  if (!member) {
-    notFound()
-  }
-}
-
 export default async function EventPage({ params }: PageProps<'/[locale]/event/[slug]'>) {
   const { locale, slug } = await params
   setRequestLocale(locale)
@@ -138,8 +93,6 @@ export default async function EventPage({ params }: PageProps<'/[locale]/event/[
   if (slug === STATIC_PARAMS_PLACEHOLDER) {
     notFound()
   }
-
-  await gateCommunityEventAccess(slug)
 
   return <CachedEventPageContent locale={resolvedLocale} slug={slug} />
 }
