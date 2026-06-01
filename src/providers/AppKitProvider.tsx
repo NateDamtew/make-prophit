@@ -90,6 +90,7 @@ function initializeAppKitSingleton(
         history: false,
         pay: false,
         headless: false,
+        socials: ['google', 'x', 'telegram', 'discord', 'github'],
       },
       siweConfig: createSIWEConfig({
         signOutOnAccountChange: true,
@@ -100,7 +101,15 @@ function initializeAppKitSingleton(
           statement: 'Please sign with your account',
         }),
         createMessage: ({ address, ...args }: SIWECreateMessageArgs) => formatMessage(args, address),
-        getNonce: async () => generateRandomString(32),
+        getNonce: async () => {
+          try {
+            const { data } = await authClient.siwe.nonce()
+            return data?.nonce || generateRandomString(32)
+          }
+          catch {
+            return generateRandomString(32)
+          }
+        },
         getSession: async () => {
           try {
             const session = await authClient.getSession()
@@ -121,10 +130,6 @@ function initializeAppKitSingleton(
         verifyMessage: async ({ message, signature }: SIWEVerifyMessageArgs) => {
           try {
             const address = getAddressFromMessage(message)
-            await authClient.siwe.nonce({
-              walletAddress: address,
-              chainId: defaultNetwork.id,
-            })
             const { data } = await authClient.siwe.verify({
               message,
               signature,
