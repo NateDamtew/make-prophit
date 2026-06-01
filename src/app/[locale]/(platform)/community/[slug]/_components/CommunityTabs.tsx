@@ -313,14 +313,13 @@ export default function CommunityTabs({
                   </div>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     {liveMarkets.map(m => (
-                      <CommunityMarketCard
+                      <CommunityMarketCard communitySlug={community.slug}
                         key={m.id}
                         market={m}
                         yesVotes={m.votes?.yes ?? 0}
                         noVotes={m.votes?.no ?? 0}
                         totalJurors={community.jury_size}
                         isJuror={isJuror}
-                        onVoteClick={() => setVoteMap(prev => ({ ...prev }))}
                       />
                     ))}
                   </div>
@@ -340,7 +339,7 @@ export default function CommunityTabs({
                   </div>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     {pendingMarkets.map(m => (
-                      <CommunityMarketCard
+                      <CommunityMarketCard communitySlug={community.slug}
                         key={m.id}
                         market={m}
                         yesVotes={m.votes?.yes ?? 0}
@@ -361,7 +360,7 @@ export default function CommunityTabs({
                   </h3>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     {resolvedMarkets.map(m => (
-                      <CommunityMarketCard
+                      <CommunityMarketCard communitySlug={community.slug}
                         key={m.id}
                         market={m}
                         yesVotes={m.votes?.yes ?? 0}

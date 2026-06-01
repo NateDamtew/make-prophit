@@ -1,7 +1,10 @@
 'use client'
 
 import Link from 'next/link'
-import { Calendar, CheckCircle, AlertCircle, ExternalLink, Gavel, FileText, BarChart3 } from 'lucide-react'
+import { CheckIcon, Repeat, XIcon } from 'lucide-react'
+import AppLink from '@/components/AppLink'
+import EventIconImage from '@/components/EventIconImage'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 
@@ -20,179 +23,182 @@ export interface CommunityMarketCardData {
 
 interface Props {
   market: CommunityMarketCardData
+  communitySlug: string
   yesVotes?: number
   noVotes?: number
   totalJurors?: number
   isJuror?: boolean
-  onVoteClick?: () => void
 }
 
-function StatusBadge({ status, outcome }: { status: string, outcome: string | null }) {
-  if (status === 'resolved' && outcome === 'yes') {
-    return (
-      <span className="flex items-center gap-1 rounded-full bg-green-500/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-green-600">
-        <CheckCircle className="size-3" />
-        Resolved YES
-      </span>
-    )
+function formatVolume(value: number): string {
+  if (value >= 1_000_000) {
+    return `$${(value / 1_000_000).toFixed(1)}M`
   }
-  if (status === 'resolved' && outcome === 'no') {
-    return (
-      <span className="flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-destructive">
-        <CheckCircle className="size-3" />
-        Resolved NO
-      </span>
-    )
+  if (value >= 1_000) {
+    return `$${(value / 1_000).toFixed(0)}K`
   }
-  if (status === 'disputed') {
-    return (
-      <span className="flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-600">
-        <AlertCircle className="size-3" />
-        Disputed
-      </span>
-    )
-  }
-  if (status === 'draft') {
-    return (
-      <span className="flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-        <FileText className="size-3" />
-        Draft
-      </span>
-    )
-  }
-  return (
-    <span className="flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-primary">
-      <span className="size-1.5 animate-pulse rounded-full bg-primary" />
-      Live
-    </span>
-  )
+  return `$${value}`
 }
 
 export default function CommunityMarketCard({
   market,
+  communitySlug,
   yesVotes = 0,
   noVotes = 0,
   totalJurors = 0,
   isJuror = false,
-  onVoteClick,
 }: Props) {
   const totalVotes = yesVotes + noVotes
   const yesChance = totalVotes > 0 ? (yesVotes / totalVotes) * 100 : 50
-  const noChance = 100 - yesChance
   const roundedYes = Math.round(yesChance)
 
   const isResolved = market.status === 'resolved'
-  const isActive = market.status === 'active'
+  const isYesResolved = isResolved && market.resolved_outcome === 'yes'
+  const isNoResolved = isResolved && market.resolved_outcome === 'no'
+
+  // For markets pulled from platform, link to actual event page
+  // For custom community markets, link to community market detail (jury vote/view)
+  const href = market.event_id
+    ? `/event/${market.event_id}` as const
+    : `/community/${communitySlug}/market/${market.id}` as const
 
   return (
-    <Card className="group flex h-full flex-col overflow-hidden rounded-xl shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md dark:hover:bg-secondary">
-      <CardContent className="flex h-full flex-col gap-3 px-4 pt-4 pb-3">
-        {/* Header: title + chance */}
-        <div className="flex items-start gap-3">
-          <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-            <BarChart3 className="size-4 text-primary" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="line-clamp-2 text-sm font-semibold leading-snug">{market.title}</p>
-            {market.resolution_source && (
-              <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
-                Source: {market.resolution_source}
-              </p>
-            )}
-          </div>
-          {isActive && (
-            <div className="flex shrink-0 flex-col items-end">
-              <span className="text-lg font-bold leading-none">
-                {roundedYes}%
-              </span>
-              <span className="mt-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+    <Card
+      className={cn(`
+        group flex h-45 flex-col overflow-hidden rounded-xl shadow-md shadow-black/4 transition-all
+        hover:-translate-y-0.5 hover:shadow-black/8
+        dark:hover:bg-secondary
+      `)}
+    >
+      <CardContent className="flex h-full flex-col px-3 pt-3 pb-3 md:pb-1">
+        {/* HEADER: icon + title + chance ring */}
+        <div className="mb-3 flex items-start justify-between">
+          <AppLink
+            intentPrefetch
+            href={href as any}
+            className="flex flex-1 items-center gap-2 pr-2"
+          >
+            <div className="flex size-10 shrink-0 items-center justify-center self-start rounded-sm">
+              <EventIconImage
+                src={''}
+                alt={market.title}
+                sizes="40px"
+                containerClassName="size-full rounded-sm"
+              />
+            </div>
+            <h3 className="line-clamp-3 w-full text-sm/5 font-semibold underline-offset-2 transition-colors duration-200 hover:text-foreground hover:underline">
+              {market.title}
+            </h3>
+          </AppLink>
+
+          {!isResolved && (
+            <div className="relative -mt-3 flex flex-col items-center">
+              <div className="relative">
+                <svg width="72" height="52" viewBox="0 0 72 52" className="rotate-0 transform">
+                  <path
+                    d="M 6 46 A 30 30 0 0 1 66 46"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="5"
+                    strokeLinecap="round"
+                    className="text-slate-200 dark:text-slate-600"
+                  />
+                  <path
+                    d="M 6 46 A 30 30 0 0 1 66 46"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="5"
+                    strokeLinecap="round"
+                    className={cn(
+                      'transition-all duration-300',
+                      roundedYes < 40
+                        ? 'text-no'
+                        : roundedYes === 50
+                          ? 'text-slate-400'
+                          : 'text-yes',
+                    )}
+                    strokeDasharray={`${(roundedYes / 100) * 94.25} 94.25`}
+                    strokeDashoffset="0"
+                  />
+                </svg>
+                <div className="absolute inset-0 flex items-center justify-center pt-4">
+                  <span className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                    {roundedYes}%
+                  </span>
+                </div>
+              </div>
+              <div className="-mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">
                 chance
-              </span>
+              </div>
             </div>
           )}
         </div>
 
-        {/* Yes/No actions */}
-        <div className="mt-auto flex gap-2">
-          {market.event_id
-            ? (
-                <Link
-                  href={`/event/${market.event_id}` as any}
-                  className="group/btn flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-green-500/30 bg-green-500/10 px-3 py-2 text-xs font-semibold text-green-600 transition-all hover:bg-green-500/20"
-                >
-                  Buy Yes
-                  <span className="font-bold">{roundedYes}¢</span>
-                  <ExternalLink className="size-3" />
-                </Link>
-              )
-            : (
-                <button
-                  type="button"
-                  onClick={isJuror ? onVoteClick : undefined}
-                  disabled={!isJuror || isResolved}
-                  className={cn(
-                    'flex flex-1 items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold transition-all',
-                    isResolved && market.resolved_outcome === 'yes'
-                      ? 'border-green-500 bg-green-500/20 text-green-600'
-                      : 'border-green-500/30 bg-green-500/10 text-green-600',
-                    !isResolved && isJuror && 'hover:bg-green-500/20 cursor-pointer',
-                    !isJuror && !isResolved && 'cursor-not-allowed opacity-60',
-                  )}
-                >
-                  Yes
-                  <span className="font-bold">{roundedYes}¢</span>
-                </button>
-              )}
-
-          {market.event_id
-            ? (
-                <Link
-                  href={`/event/${market.event_id}` as any}
-                  className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs font-semibold text-destructive transition-all hover:bg-destructive/20"
-                >
-                  Buy No
-                  <span className="font-bold">{Math.round(noChance)}¢</span>
-                  <ExternalLink className="size-3" />
-                </Link>
-              )
-            : (
-                <button
-                  type="button"
-                  onClick={isJuror ? onVoteClick : undefined}
-                  disabled={!isJuror || isResolved}
-                  className={cn(
-                    'flex flex-1 items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold transition-all',
-                    isResolved && market.resolved_outcome === 'no'
-                      ? 'border-destructive bg-destructive/20 text-destructive'
-                      : 'border-destructive/30 bg-destructive/10 text-destructive',
-                    !isResolved && isJuror && 'hover:bg-destructive/20 cursor-pointer',
-                    !isJuror && !isResolved && 'cursor-not-allowed opacity-60',
-                  )}
-                >
-                  No
-                  <span className="font-bold">{Math.round(noChance)}¢</span>
-                </button>
-              )}
+        {/* ACTIONS: Yes/No buttons */}
+        <div className="flex flex-1 flex-col">
+          <div className="mt-auto">
+            {isResolved
+              ? (
+                  <div className="mt-auto mb-0">
+                    <div className="flex h-12 w-full cursor-default items-center justify-center gap-2 rounded-md border px-3 text-sm font-semibold text-foreground transition-colors dark:border-none dark:bg-secondary dark:group-hover:bg-card">
+                      <span className={cn(
+                        'flex size-4 items-center justify-center rounded-full',
+                        isYesResolved ? 'bg-yes' : 'bg-no',
+                      )}
+                      >
+                        {isYesResolved
+                          ? <CheckIcon className="size-3 text-background" strokeWidth={2.5} />
+                          : <XIcon className="size-3 text-background" strokeWidth={2.5} />}
+                      </span>
+                      <span className="min-w-8 text-left">
+                        {isYesResolved ? 'Yes' : 'No'}
+                      </span>
+                    </div>
+                  </div>
+                )
+              : (
+                  <div className="mt-auto mb-2 grid grid-cols-2 gap-2">
+                    <Button asChild variant="yes" size="outcome">
+                      <AppLink intentPrefetch href={href as any}>
+                        <span className="truncate">Yes</span>
+                      </AppLink>
+                    </Button>
+                    <Button asChild variant="no" size="outcome">
+                      <AppLink intentPrefetch href={href as any}>
+                        <span className="truncate">No</span>
+                      </AppLink>
+                    </Button>
+                  </div>
+                )}
+          </div>
         </div>
 
-        {/* Footer */}
-        <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+        {/* FOOTER: volume / status + bookmark/date */}
+        <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
           <div className="flex items-center gap-2">
-            <StatusBadge status={market.status} outcome={market.resolved_outcome} />
-            {totalVotes > 0 && (
-              <span className="flex items-center gap-1">
-                <Gavel className="size-3" />
-                {totalVotes}/{totalJurors} voted
+            {!isResolved && totalVotes > 0 && (
+              <span className="flex items-center gap-1.5">
+                <span className="relative flex size-2">
+                  <span className="absolute inline-flex size-2 animate-ping rounded-full bg-amber-500 opacity-75" />
+                  <span className="relative inline-flex size-2 rounded-full bg-amber-500" />
+                </span>
+                <span className="leading-none font-medium text-amber-600 uppercase">
+                  {totalVotes}/{totalJurors} voted
+                </span>
               </span>
             )}
+            {!isResolved && totalVotes === 0 && (
+              <span>{formatVolume(0)} Vol.</span>
+            )}
+            {isResolved && market.resolution_date && (
+              <span>Ended {new Date(market.resolution_date).toLocaleDateString()}</span>
+            )}
           </div>
-          {market.resolution_date && (
-            <span className="flex items-center gap-1">
-              <Calendar className="size-3" />
+          {!isResolved && market.resolution_date && (
+            <span className="text-muted-foreground">
               {new Date(market.resolution_date).toLocaleDateString(undefined, {
                 month: 'short',
                 day: 'numeric',
-                year: 'numeric',
               })}
             </span>
           )}
