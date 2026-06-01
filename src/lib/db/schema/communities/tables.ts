@@ -100,6 +100,19 @@ export const community_markets = pgTable(
     created_by: text()
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
+    // ─── Review workflow ─────────────────────────────────────────────────────
+    // null | 'pending' | 'approved' | 'rejected'
+    // | 'deploying' | 'deploy_failed' | 'deploy_retry' | 'deploy_blocked'
+    review_status: text(),
+    review_feedback: text(),
+    reviewed_by: text().references(() => users.id, { onDelete: 'set null' }),
+    reviewed_at: timestamp({ withTimezone: true }),
+    submitted_at: timestamp({ withTimezone: true }),
+    main_category_slug: text(),
+    category_slugs: text().array().default(sql`'{}'::text[]`),
+    deploy_attempts: integer().notNull().default(0),
+    last_deploy_error: text(),
+    event_creation_draft_id: char({ length: 26 }),
     created_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
     updated_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
