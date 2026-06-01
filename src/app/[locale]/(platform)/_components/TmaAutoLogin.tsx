@@ -58,6 +58,7 @@ export default function TmaAutoLogin() {
   const triggered = useRef(false)
   const [screen, setScreen] = useState<Screen>('none')
   const [authStatus, setAuthStatus] = useState<AuthStatus>('idle')
+  const [authError, setAuthError] = useState<string | null>(null)
 
   const attemptTelegramAuth = useCallback(async (): Promise<boolean> => {
     const initData = getTelegramInitData()
@@ -72,17 +73,23 @@ export default function TmaAutoLogin() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ initData }),
+        signal: AbortSignal.timeout(15_000),
       })
       if (res.ok) {
         setAuthStatus('done')
         window.location.reload()
         return true
       }
+      const errorData = await res.json().catch(() => null)
+      console.error('TMA auth failed:', res.status, errorData)
       setAuthStatus('idle')
+      setAuthError(errorData?.message ?? `Authentication failed (${res.status})`)
       return false
     }
-    catch {
+    catch (err) {
+      console.error('TMA auth error:', err)
       setAuthStatus('idle')
+      setAuthError('Connection timed out. Please try again.')
       return false
     }
   }, [])
@@ -143,13 +150,38 @@ export default function TmaAutoLogin() {
     setScreen('none')
   }
 
-  // Silent auth spinner
-  if (authStatus === 'authenticating') {
+  // Silent auth spinner or error
+  if (authStatus === 'authenticating' || authError) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
-        <div className="flex flex-col items-center gap-3 rounded-2xl bg-background p-8">
-          <div className="size-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-          <p className="text-sm text-muted-foreground">Signing in with Telegram...</p>
+        <div className="flex w-72 flex-col items-center gap-3 rounded-2xl bg-background p-8">
+          {authStatus === 'authenticating' && !authError && (
+            <>
+              <div className="size-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+              <p className="text-sm text-muted-foreground">Signing in with Telegram...</p>
+            </>
+          )}
+          {authError && (
+            <>
+              <p className="text-center text-sm text-destructive">{authError}</p>
+              <button
+                onClick={() => {
+                  setAuthError(null)
+                  triggered.current = false
+                  attemptTelegramAuth()
+                }}
+                className="mt-2 w-full rounded-xl bg-primary py-2.5 text-sm font-semibold text-primary-foreground"
+              >
+                Try Again
+              </button>
+              <button
+                onClick={() => setAuthError(null)}
+                className="w-full rounded-xl py-2 text-sm text-muted-foreground"
+              >
+                Dismiss
+              </button>
+            </>
+          )}
         </div>
       </div>
     )
