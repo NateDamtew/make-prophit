@@ -118,7 +118,7 @@ export default function TmaAutoLogin() {
   function handleConnectWallet() {
     localStorage.setItem(WALLET_SKIPPED_KEY, 'true')
     setScreen('none')
-    open()
+    open({ view: 'AllWallets' })
   }
 
   function handleSkipWallet() {
