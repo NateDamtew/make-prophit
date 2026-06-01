@@ -1,4 +1,5 @@
 import type { SupportedLocale } from '@/i18n/locales'
+import { Suspense } from 'react'
 import { notFound, redirect } from 'next/navigation'
 import { setRequestLocale } from 'next-intl/server'
 import Link from 'next/link'
@@ -12,18 +13,18 @@ export async function generateStaticParams() {
   return [{ slug: STATIC_PARAMS_PLACEHOLDER }]
 }
 
-export default async function NewCommunityMarketPage({
-  params,
-}: {
-  params: Promise<{ locale: string, slug: string }>
-}) {
-  const { locale, slug } = await params
-  setRequestLocale(locale as SupportedLocale)
+function NewMarketSkeleton() {
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-3 gap-2">
+        {[1, 2, 3].map(i => <div key={i} className="h-24 animate-pulse rounded-xl bg-muted/30" />)}
+      </div>
+      <div className="h-64 animate-pulse rounded-2xl bg-muted/30" />
+    </div>
+  )
+}
 
-  if (slug === STATIC_PARAMS_PLACEHOLDER) {
-    notFound()
-  }
-
+async function NewMarketContent({ slug }: { slug: string }) {
   const user = await UserRepository.getCurrentUser({ minimal: true })
   if (!user) {
     redirect(`/community/${slug}` as any)
@@ -42,7 +43,7 @@ export default async function NewCommunityMarketPage({
   const { data: drafts } = await CommunityRepository.listDrafts(community.id)
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
+    <>
       <Link
         href={`/community/${slug}` as any}
         className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
@@ -63,6 +64,27 @@ export default async function NewCommunityMarketPage({
         communitySlug={slug}
         drafts={drafts ?? []}
       />
+    </>
+  )
+}
+
+export default async function NewCommunityMarketPage({
+  params,
+}: {
+  params: Promise<{ locale: string, slug: string }>
+}) {
+  const { locale, slug } = await params
+  setRequestLocale(locale as SupportedLocale)
+
+  if (slug === STATIC_PARAMS_PLACEHOLDER) {
+    notFound()
+  }
+
+  return (
+    <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
+      <Suspense fallback={<NewMarketSkeleton />}>
+        <NewMarketContent slug={slug} />
+      </Suspense>
     </div>
   )
 }

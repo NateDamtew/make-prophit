@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import type { SupportedLocale } from '@/i18n/locales'
+import { Suspense } from 'react'
 import { notFound } from 'next/navigation'
 import { setRequestLocale } from 'next-intl/server'
 import { CommunityRepository } from '@/lib/db/queries/community'
@@ -24,18 +25,23 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   }
 }
 
-export default async function CommunityDetailPage({
-  params,
-}: {
-  params: Promise<{ locale: string, slug: string }>
-}) {
-  const { locale, slug } = await params
-  setRequestLocale(locale as SupportedLocale)
+function CommunityLoadingSkeleton() {
+  return (
+    <div className="space-y-4">
+      <div className="h-36 animate-pulse rounded-2xl bg-muted/50 sm:h-48" />
+      <div className="flex items-end gap-4 px-1">
+        <div className="size-16 animate-pulse rounded-2xl bg-muted" />
+        <div className="space-y-2 pb-1">
+          <div className="h-5 w-40 animate-pulse rounded bg-muted" />
+          <div className="h-3 w-64 animate-pulse rounded bg-muted" />
+        </div>
+      </div>
+      <div className="h-96 animate-pulse rounded-2xl border bg-muted/30" />
+    </div>
+  )
+}
 
-  if (slug === STATIC_PARAMS_PLACEHOLDER) {
-    notFound()
-  }
-
+async function CommunityContent({ slug }: { slug: string }) {
   const { data: community } = await CommunityRepository.getBySlug(slug)
   if (!community) {
     notFound()
@@ -57,7 +63,7 @@ export default async function CommunityDetailPage({
   ])
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6">
+    <>
       <CommunityHeader
         community={community}
         memberRole={memberRole}
@@ -73,6 +79,27 @@ export default async function CommunityDetailPage({
           currentUserId={user?.id ?? null}
         />
       </div>
+    </>
+  )
+}
+
+export default async function CommunityDetailPage({
+  params,
+}: {
+  params: Promise<{ locale: string, slug: string }>
+}) {
+  const { locale, slug } = await params
+  setRequestLocale(locale as SupportedLocale)
+
+  if (slug === STATIC_PARAMS_PLACEHOLDER) {
+    notFound()
+  }
+
+  return (
+    <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6">
+      <Suspense fallback={<CommunityLoadingSkeleton />}>
+        <CommunityContent slug={slug} />
+      </Suspense>
     </div>
   )
 }
