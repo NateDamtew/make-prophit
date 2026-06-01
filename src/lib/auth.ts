@@ -1,12 +1,15 @@
+import { createHmac } from 'node:crypto'
 import { drizzleAdapter } from '@better-auth/drizzle-adapter'
 import { createHMAC } from '@better-auth/utils/hmac'
 import { getChainIdFromMessage } from '@reown/appkit-siwe'
 import { betterAuth } from 'better-auth'
-import { createAuthMiddleware } from 'better-auth/api'
-import { deleteSessionCookie } from 'better-auth/cookies'
+import { APIError, createAuthEndpoint, createAuthMiddleware } from 'better-auth/api'
+import { deleteSessionCookie, setSessionCookie } from 'better-auth/cookies'
 import { generateRandomString } from 'better-auth/crypto'
 import { nextCookies } from 'better-auth/next-js'
 import { customSession, siwe, twoFactor } from 'better-auth/plugins'
+import { eq, sql } from 'drizzle-orm'
+import { z } from 'zod'
 import { createPublicClient, http } from 'viem'
 import { isAdminWallet } from '@/lib/admin'
 import { AffiliateRepository } from '@/lib/db/queries/affiliate'
@@ -207,6 +210,142 @@ export const auth = betterAuth({
     },
   },
   plugins: [
+    {
+      id: 'telegram-tma',
+      endpoints: {
+        verifyTmaTelegram: createAuthEndpoint(
+          '/telegram/verify-tma',
+          {
+            method: 'POST',
+            body: z.object({
+              initData: z.string(),
+            }),
+            requireRequest: true,
+          },
+          async (ctx) => {
+            const botToken = process.env.TELEGRAM_BOT_TOKEN
+            if (!botToken) {
+              throw new APIError('INTERNAL_SERVER_ERROR', {
+                message: 'Telegram Bot Token is not configured on the server.',
+              })
+            }
+
+            const { initData } = ctx.body as { initData: string }
+
+            const params = new URLSearchParams(initData)
+            const hash = params.get('hash')
+            if (!hash) {
+              throw new APIError('BAD_REQUEST', { message: 'Missing hash in initData.' })
+            }
+
+            params.delete('hash')
+            const keys = Array.from(params.keys()).sort()
+            const checkString = keys.map(key => `${key}=${params.get(key)}`).join('\n')
+
+            const secretKey = createHmac('sha256', 'WebAppData').update(botToken).digest()
+            const computedHash = createHmac('sha256', secretKey).update(checkString).digest('hex')
+            const computedHashFallback = createHmac('sha256', botToken).update(checkString).digest('hex')
+
+            if (computedHash !== hash && computedHashFallback !== hash) {
+              throw new APIError('UNAUTHORIZED', { message: 'Invalid Telegram authentication signature.' })
+            }
+
+            const authDateStr = params.get('auth_date')
+            if (authDateStr) {
+              const authDate = Number.parseInt(authDateStr, 10)
+              const now = Math.floor(Date.now() / 1000)
+              if (now - authDate > 86400) {
+                throw new APIError('UNAUTHORIZED', { message: 'Telegram authentication request expired.' })
+              }
+            }
+
+            const userStr = params.get('user')
+            if (!userStr) {
+              throw new APIError('BAD_REQUEST', { message: 'Missing user object in initData.' })
+            }
+
+            let tgUser: any
+            try {
+              tgUser = JSON.parse(userStr)
+            }
+            catch {
+              throw new APIError('BAD_REQUEST', { message: 'Invalid user object in initData.' })
+            }
+
+            if (!tgUser.id) {
+              throw new APIError('BAD_REQUEST', { message: 'Missing user ID in initData.' })
+            }
+
+            const account = await ctx.context.internalAdapter.findAccountByProviderId(
+              String(tgUser.id),
+              'telegram',
+            )
+
+            let user: any = null
+            if (account) {
+              user = await ctx.context.internalAdapter.findUserById(account.userId)
+            }
+
+            if (!user) {
+              const userEmail = `telegram_${tgUser.id}@${SIWE_EMAIL_DOMAIN}`
+              const name = tgUser.username
+                || [tgUser.first_name, tgUser.last_name].filter(Boolean).join(' ')
+                || `Telegram User ${tgUser.id}`
+
+              let username = tgUser.username || ''
+              if (username) {
+                const existing = await db
+                  .select()
+                  .from(schema.users)
+                  .where(eq(sql`LOWER(${schema.users.username})`, username.toLowerCase()))
+                  .limit(1)
+                if (existing.length > 0) {
+                  username = ''
+                }
+              }
+
+              user = await ctx.context.internalAdapter.createUser({
+                name,
+                email: userEmail,
+                image: tgUser.photo_url || '',
+                emailVerified: true,
+                username: username || undefined,
+              })
+
+              if (!user) {
+                throw new APIError('INTERNAL_SERVER_ERROR', { message: 'Failed to create user account.' })
+              }
+
+              await ctx.context.internalAdapter.createAccount({
+                userId: user.id,
+                providerId: 'telegram',
+                accountId: String(tgUser.id),
+                createdAt: new Date(),
+                updatedAt: new Date(),
+              })
+            }
+
+            const session = await ctx.context.internalAdapter.createSession(user.id)
+            if (!session) {
+              throw new APIError('INTERNAL_SERVER_ERROR', { message: 'Failed to create session.' })
+            }
+
+            await setSessionCookie(ctx as any, { session, user })
+
+            return ctx.json({
+              token: session.token,
+              success: true,
+              user: {
+                id: user.id,
+                name: user.name,
+                email: user.email,
+                image: user.image,
+              },
+            })
+          },
+        ),
+      },
+    },
     customSession(async ({ user, session }) => {
       const userId = String((user as any).id ?? '')
       const email = isWalletPlaceholderEmail(user.email, [SIWE_EMAIL_DOMAIN]) ? '' : user.email

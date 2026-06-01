@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next'
 import { hasLocale, NextIntlClientProvider } from 'next-intl'
 import { setRequestLocale } from 'next-intl/server'
 import { notFound } from 'next/navigation'
+import Script from 'next/script'
 import CustomJavascriptCode from '@/components/CustomJavascriptCode'
 import GlobalAnnouncementBanner from '@/components/GlobalAnnouncementBanner'
 import PwaInstallStateSync from '@/components/PwaInstallStateSync'
@@ -114,6 +115,7 @@ export default async function LocaleLayout({ params, children }: LayoutProps<'/[
       suppressHydrationWarning
     >
       <body className="flex min-h-screen flex-col font-sans">
+        <Script src="https://telegram.org/js/telegram-web-app.js" strategy="beforeInteractive" />
         <SiteStructuredData locale={locale} site={runtimeTheme.site} />
         <PwaServiceWorker />
         {runtimeTheme.theme.cssText && <style id="theme-vars" dangerouslySetInnerHTML={{ __html: runtimeTheme.theme.cssText }} />}

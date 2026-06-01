@@ -54,7 +54,7 @@ export default function TmaAutoLogin() {
     }
     setAuthStatus('authenticating')
     try {
-      const res = await fetch('/api/tma/auth', {
+      const res = await fetch('/api/auth/telegram/verify-tma', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ initData }),
