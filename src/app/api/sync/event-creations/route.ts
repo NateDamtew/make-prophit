@@ -4,6 +4,11 @@ import { createPublicClient, createWalletClient, getAddress, http, keccak256, st
 import { privateKeyToAccount } from 'viem/accounts'
 import { polygon, polygonAmoy } from 'viem/chains'
 import { isCronAuthorized } from '@/lib/auth-cron'
+import {
+  onCommunityDraftDeployed,
+  onCommunityDraftDeploying,
+  onCommunityDraftFailed,
+} from '@/lib/community-deploy-hooks'
 import { EventCreationRepository } from '@/lib/db/queries/event-creations'
 import { jobs } from '@/lib/db/schema'
 import { db } from '@/lib/drizzle'
@@ -532,6 +537,9 @@ async function processClaimedJob(job: JobRow, defaultChainId: number) {
     lastRunAt: new Date(),
   })
 
+  // Hook: community-governed market entering deploy phase
+  await onCommunityDraftDeploying(draft.draftPayload)
+
   let pending = draft.pendingRequestId
     && draft.pendingPayloadHash?.toLowerCase() === payloadHash.toLowerCase()
     && draft.pendingChainId === chain.id
@@ -666,6 +674,14 @@ async function processClaimedJob(job: JobRow, defaultChainId: number) {
     pendingConfirmedTxs: [],
   })
 
+  // Hook: community-governed market deployed — link back to community_markets
+  // and flag conditions so UMA sync skips them.
+  await onCommunityDraftDeployed({
+    draftId: draft.id,
+    draftSlug: draft.slug,
+    draftPayload: draft.draftPayload,
+  })
+
   await completeJob(job)
 }
 
@@ -692,9 +708,10 @@ async function runSync() {
     }
     catch (error) {
       failed += 1
+      const errorMessage = truncateEventCreationError(error)
       errors.push({
         jobId: claimed.id,
-        message: truncateEventCreationError(error),
+        message: errorMessage,
       })
 
       const retry = await scheduleRetry(claimed, error)
@@ -703,8 +720,25 @@ async function runSync() {
         await EventCreationRepository.setExecutionState({
           draftId,
           status: retry.exhausted ? 'failed' : 'scheduled',
-          lastError: truncateEventCreationError(error),
+          lastError: errorMessage,
         })
+
+        // Hook: notify community markets of failure (auto-retry once,
+        // then escalate to super admin)
+        try {
+          const failedDraft = await EventCreationRepository.getDraftById({ draftId })
+          if (failedDraft.data) {
+            await onCommunityDraftFailed({
+              draftPayload: failedDraft.data.draftPayload,
+              error: errorMessage,
+              attemptsBefore: claimed.attempts ?? 0,
+              exhausted: retry.exhausted,
+            })
+          }
+        }
+        catch (hookErr) {
+          console.error('[community failure hook] Failed:', hookErr)
+        }
       }
     }
   }
