@@ -68,7 +68,7 @@ export async function analyzeMarketQuestion(input: {
     throw new Error('Gemini API key is not configured.')
   }
 
-  const model = process.env.GEMINI_MODEL ?? 'gemini-2.0-flash'
+  const model = process.env.GEMINI_MODEL ?? 'gemini-2.5-flash'
 
   const userPrompt = `Market Question: ${input.question}\n${input.context ? `\nAdditional Context: ${input.context}` : ''}`
 
