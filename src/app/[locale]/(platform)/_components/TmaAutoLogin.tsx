@@ -27,17 +27,21 @@ function isInsideTelegram() {
   if (!webApp) {
     return false
   }
-  // Check multiple signals — different Telegram clients set different properties
+  // A real Telegram launch always provides initData.
   if (webApp.initData) {
     return true
   }
-  if (typeof webApp.platform === 'string' && webApp.platform !== '') {
-    return true
-  }
-  if (typeof webApp.version === 'string') {
-    return true
-  }
-  if (typeof webApp.colorScheme === 'string') {
+  // When telegram-web-app.js is loaded in a NORMAL browser (not launched from
+  // Telegram) it still creates a stub WebApp with version/colorScheme set and
+  // platform === 'unknown'. Real Telegram clients report a concrete platform
+  // (android, ios, tdesktop, macos, weba, webk, …). So only treat a known,
+  // non-'unknown' platform as "inside Telegram" — version/colorScheme alone
+  // are NOT reliable signals and cause false positives on the public site.
+  if (
+    typeof webApp.platform === 'string'
+    && webApp.platform !== ''
+    && webApp.platform !== 'unknown'
+  ) {
     return true
   }
   return false
@@ -105,10 +109,13 @@ export default function TmaAutoLogin() {
 
     triggered.current = true
 
-    // Already logged in — show wallet onboarding if not skipped
+    // Already logged in — show wallet onboarding only for users WITHOUT a
+    // connected wallet (i.e. Telegram/social sign-ups). Wallet users already
+    // have an address, so they should never see "Connect Your Wallet".
     if (session?.user) {
+      const hasWallet = Boolean((session.user as { address?: string | null }).address)
       const skipped = localStorage.getItem(WALLET_SKIPPED_KEY) === 'true'
-      if (!skipped) {
+      if (!hasWallet && !skipped) {
         setScreen('wallet-onboarding')
       }
       return
