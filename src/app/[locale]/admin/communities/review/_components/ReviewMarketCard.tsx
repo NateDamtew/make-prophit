@@ -1,10 +1,10 @@
 'use client'
 
+import { Calendar, Check, Edit3, ExternalLink, Loader2, User, X } from 'lucide-react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState, useTransition } from 'react'
-import Link from 'next/link'
 import { toast } from 'sonner'
-import { Check, X, Edit3, ExternalLink, User, Calendar, FileText, Loader2 } from 'lucide-react'
 import { approveMarketAction, rejectMarketAction } from '@/app/[locale]/(platform)/community/[slug]/_actions/review-actions'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -72,7 +72,20 @@ export default function ReviewMarketCard({ market }: { market: Market }) {
         toast.error(result.error)
         return
       }
-      toast.success('Market approved & queued for deployment')
+      const draftId = result.data?.eventCreationDraftId
+      if (draftId) {
+        toast.success('Approved. Continuing to Pre-sign + Sign & Create...')
+        // Redirect super admin to the admin event form to step through
+        // Pre-sign (validation) + Sign & Create (on-chain deploy)
+        const params = new URLSearchParams({
+          draftId,
+          mode: 'single',
+          edit: '1',
+        })
+        window.location.href = `/admin/events/calendar/new?${params.toString()}`
+        return
+      }
+      toast.success('Market approved')
       router.refresh()
     })
   }
@@ -123,7 +136,7 @@ export default function ReviewMarketCard({ market }: { market: Market }) {
                 />
               )
             : (
-                <h3 className="mt-2 font-semibold leading-snug">{title}</h3>
+                <h3 className="mt-2 leading-snug font-semibold">{title}</h3>
               )}
         </div>
       </div>
@@ -133,12 +146,15 @@ export default function ReviewMarketCard({ market }: { market: Market }) {
         {market.creator_username && (
           <span className="flex items-center gap-1">
             <User className="size-3" />
-            @{market.creator_username}
+            @
+            {market.creator_username}
           </span>
         )}
         {market.submitted_at && (
           <span>
-            Submitted {new Date(market.submitted_at).toLocaleString()}
+            Submitted
+            {' '}
+            {new Date(market.submitted_at).toLocaleString()}
           </span>
         )}
         {market.main_category_slug && (
@@ -147,7 +163,12 @@ export default function ReviewMarketCard({ market }: { market: Market }) {
           </span>
         )}
         {market.category_slugs && market.category_slugs.length > 0 && (
-          <span>+ {market.category_slugs.length} sub-categories</span>
+          <span>
+            +
+            {market.category_slugs.length}
+            {' '}
+            sub-categories
+          </span>
         )}
       </div>
 
@@ -162,7 +183,10 @@ export default function ReviewMarketCard({ market }: { market: Market }) {
                     value={description}
                     onChange={e => setDescription(e.target.value)}
                     rows={2}
-                    className="mt-1 w-full resize-none rounded-lg border bg-background px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-primary"
+                    className="
+                      mt-1 w-full resize-none rounded-lg border bg-background px-3 py-2 text-sm outline-none
+                      focus:ring-1 focus:ring-primary
+                    "
                   />
                 </div>
                 <div>
@@ -175,7 +199,10 @@ export default function ReviewMarketCard({ market }: { market: Market }) {
                     value={rules}
                     onChange={e => setRules(e.target.value)}
                     rows={4}
-                    className="mt-1 w-full resize-none rounded-lg border bg-background px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-primary"
+                    className="
+                      mt-1 w-full resize-none rounded-lg border bg-background px-3 py-2 text-sm outline-none
+                      focus:ring-1 focus:ring-primary
+                    "
                   />
                 </div>
                 <div>
@@ -209,7 +236,9 @@ export default function ReviewMarketCard({ market }: { market: Market }) {
                 {market.resolution_date && (
                   <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                     <Calendar className="size-3" />
-                    Resolves {new Date(market.resolution_date).toLocaleDateString()}
+                    Resolves
+                    {' '}
+                    {new Date(market.resolution_date).toLocaleDateString()}
                   </div>
                 )}
               </>
@@ -227,7 +256,10 @@ export default function ReviewMarketCard({ market }: { market: Market }) {
             onChange={e => setFeedback(e.target.value)}
             placeholder="e.g. The resolution source isn't specific enough — please cite which official body's data will be used."
             rows={3}
-            className="mt-1 w-full resize-none rounded-lg border bg-background px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-destructive/50"
+            className="
+              mt-1 w-full resize-none rounded-lg border bg-background px-3 py-2 text-sm outline-none
+              focus:ring-1 focus:ring-destructive/50
+            "
           />
           <p className="mt-1 text-xs text-muted-foreground">
             The community admin will see this feedback and can revise.
@@ -236,9 +268,19 @@ export default function ReviewMarketCard({ market }: { market: Market }) {
       )}
 
       {/* Actions */}
-      <div className="mt-4 flex flex-wrap items-center justify-end gap-2 border-t pt-3">
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t pt-3">
+        <p className="text-xs text-muted-foreground">
+          Approving opens the platform admin form to complete
+          {' '}
+          <strong>Pre-sign</strong>
+          {' '}
+          +
+          {' '}
+          <strong>Sign &amp; Create</strong>
+          .
+        </p>
         {mode === 'view' && (
-          <>
+          <div className="flex flex-wrap items-center gap-2">
             <Button
               variant="ghost"
               size="sm"
@@ -262,9 +304,9 @@ export default function ReviewMarketCard({ market }: { market: Market }) {
               {isPending
                 ? <Loader2 className="mr-1.5 size-3.5 animate-spin" />
                 : <Check className="mr-1.5 size-3.5" />}
-              Approve & Deploy
+              Approve & Continue
             </Button>
-          </>
+          </div>
         )}
         {mode === 'edit' && (
           <>
@@ -275,7 +317,7 @@ export default function ReviewMarketCard({ market }: { market: Market }) {
               {isPending
                 ? <Loader2 className="mr-1.5 size-3.5 animate-spin" />
                 : <Check className="mr-1.5 size-3.5" />}
-              Save & Approve
+              Save & Continue
             </Button>
           </>
         )}

@@ -1,19 +1,19 @@
 'use server'
 
-import { revalidatePath } from 'next/cache'
 import { eq } from 'drizzle-orm'
+import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
-import { CommunityRepository } from '@/lib/db/queries/community'
-import { EventCreationRepository } from '@/lib/db/queries/event-creations'
-import { UserRepository } from '@/lib/db/queries/user'
-import { community_markets } from '@/lib/db/schema/communities/tables'
-import { db } from '@/lib/drizzle'
-import { DEFAULT_ERROR_MESSAGE } from '@/lib/constants'
 import {
   notifyMarketApproved,
   notifyMarketRejected,
   notifyMarketSubmitted,
 } from '@/lib/community-notifications'
+import { DEFAULT_ERROR_MESSAGE } from '@/lib/constants'
+import { CommunityRepository } from '@/lib/db/queries/community'
+import { EventCreationRepository } from '@/lib/db/queries/event-creations'
+import { UserRepository } from '@/lib/db/queries/user'
+import { community_markets } from '@/lib/db/schema/communities/tables'
+import { db } from '@/lib/drizzle'
 import { loadEventCreationSignersFromEnv } from '@/lib/event-creation-signers'
 
 const SubmitForReviewSchema = z.object({
@@ -121,7 +121,9 @@ const ApproveSchema = z.object({
 
 /**
  * Super admin approves a pending market.
- * Creates an event_creations draft with status='scheduled' for immediate deploy.
+ * Creates an event_creations draft with status='draft' (no auto-deploy).
+ * The super admin is then redirected to the admin event form to complete
+ * Pre-sign + Sign & Create interactively.
  * Updates community_market.review_status='approved' and stores the draft id.
  */
 export async function approveMarketAction(
@@ -209,13 +211,15 @@ export async function approveMarketAction(
     communityId: market.community_id,
   }
 
-  // Create the event_creations draft
+  // Create the event_creations draft (status='draft' — NOT scheduled).
+  // The super admin will navigate to the admin event form and step
+  // through Pre-sign + Sign & Create themselves on Polygon.
   const draftResult = await EventCreationRepository.createDraft({
     createdByUserId: user.id,
     creationMode: 'single',
     title: finalTitle,
     slug,
-    deployAt: new Date(), // immediate
+    deployAt: null, // no auto-deploy
     endDate: finalDate,
     draftPayload,
     mainCategorySlug: market.main_category_slug,
@@ -225,13 +229,8 @@ export async function approveMarketAction(
   if (draftResult.error || !draftResult.data) {
     return { error: draftResult.error ?? 'Failed to create deployment draft.', data: null }
   }
-
-  // Set draft to scheduled (so cron picks it up)
-  await EventCreationRepository.setExecutionState({
-    draftId: draftResult.data.id,
-    status: 'scheduled',
-    lastError: null,
-  })
+  // (intentionally no setExecutionState({status:'scheduled'}) here —
+  // the super admin completes the deploy interactively via the admin form)
 
   // Mark community market as approved + link draft
   const result = await CommunityRepository.setReviewApproved({
@@ -260,7 +259,16 @@ export async function approveMarketAction(
 
   revalidatePath(`/community/${communitySlug}`)
   revalidatePath('/admin/communities/review')
-  return { error: null, data: result.data }
+  // Return the draftId so the UI can redirect the super admin to
+  // /admin/events/calendar/new?draftId=XXX&mode=single&edit=1 where
+  // they'll step through Pre-sign + Sign & Create.
+  return {
+    error: null,
+    data: {
+      market: result.data,
+      eventCreationDraftId: draftResult.data.id,
+    },
+  }
 }
 
 /**

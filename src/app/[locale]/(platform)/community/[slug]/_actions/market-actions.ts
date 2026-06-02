@@ -1,11 +1,11 @@
 'use server'
 
-import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
-import { CommunityRepository } from '@/lib/db/queries/community'
-import { UserRepository } from '@/lib/db/queries/user'
+import { z } from 'zod'
 import { analyzeMarketQuestion } from '@/lib/ai/gemini'
 import { DEFAULT_ERROR_MESSAGE } from '@/lib/constants'
+import { CommunityRepository } from '@/lib/db/queries/community'
+import { UserRepository } from '@/lib/db/queries/user'
 
 const MarketOptionSchema = z.object({
   id: z.string(),
@@ -133,41 +133,6 @@ export async function publishMarketAction(
 
   revalidatePath(`/community/${communitySlug}`)
   revalidatePath(`/community/${communitySlug}/markets`)
-  return { error: null, data: result.data }
-}
-
-export async function updateMarketDraftAction(
-  marketId: string,
-  communityId: string,
-  communitySlug: string,
-  input: z.input<typeof MarketDraftSchema>,
-) {
-  const user = await UserRepository.getCurrentUser({ disableCookieCache: true, minimal: true })
-  if (!user) {
-    return { error: 'Unauthenticated.', data: null }
-  }
-
-  if (!(await requireAdmin(communityId, user.id))) {
-    return { error: 'Only the community owner can edit markets.', data: null }
-  }
-
-  const parsed = MarketDraftSchema.safeParse(input)
-  if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? DEFAULT_ERROR_MESSAGE, data: null }
-  }
-
-  const result = await CommunityRepository.updateMarket(marketId, {
-    title: parsed.data.title,
-    description: parsed.data.description,
-    resolution_source: parsed.data.resolution_source,
-    resolution_rules: parsed.data.resolution_rules,
-    resolution_date: parsed.data.resolution_date ? new Date(parsed.data.resolution_date) : undefined,
-  })
-  if (result.error) {
-    return { error: result.error, data: null }
-  }
-
-  revalidatePath(`/community/${communitySlug}`)
   return { error: null, data: result.data }
 }
 

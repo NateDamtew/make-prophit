@@ -6,6 +6,10 @@ const config: KnipConfig = {
     'public/**/*',
     'src/components/ui/**',
     '.husky/**',
+    // Drizzle schema files are consumed via `import * as schema from './db/schema'`.
+    // Knip cannot trace through wildcard re-exports so all named relation/table exports
+    // appear "unused". Ignore the whole schema directory to suppress false positives.
+    'src/lib/db/schema/**',
   ],
   ignoreDependencies: [
     'lint-staged',

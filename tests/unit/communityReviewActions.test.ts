@@ -265,7 +265,6 @@ describe('approveMarketAction', () => {
     mocks.loadSigners.mockReturnValue([{ address: '0xabc', privateKey: '0x123' }])
     mocks.createDraft.mockResolvedValue({ data: { id: 'DRAFT1' }, error: null })
     mocks.setReviewApproved.mockResolvedValue({ data: { id: 'M1' }, error: null })
-    mocks.setExecutionState.mockResolvedValue({ data: true, error: null })
 
     const { approveMarketAction } = await import('@/app/[locale]/(platform)/community/[slug]/_actions/review-actions')
     const result = await approveMarketAction('M1', 'slug')
@@ -276,12 +275,12 @@ describe('approveMarketAction', () => {
     expect(draftCall.draftPayload.communityMarketId).toBe('M1')
     expect(draftCall.draftPayload.communityId).toBe('C1')
     expect(draftCall.draftPayload.form.mainCategorySlug).toBe('politics')
+    // No auto-scheduling — super admin continues to admin form
+    expect(draftCall.deployAt).toBeNull()
+    expect(mocks.setExecutionState).not.toHaveBeenCalled()
 
-    expect(mocks.setExecutionState).toHaveBeenCalledWith({
-      draftId: 'DRAFT1',
-      status: 'scheduled',
-      lastError: null,
-    })
+    // Returns draft ID so the UI can redirect to the admin event form
+    expect(result.data?.eventCreationDraftId).toBe('DRAFT1')
 
     expect(mocks.notifyApproved).toHaveBeenCalledWith({
       communityAdminId: 'communityAdmin1',

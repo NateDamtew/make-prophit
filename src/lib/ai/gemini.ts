@@ -5,11 +5,6 @@
 
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models'
 
-export interface GeminiMessage {
-  role: 'user' | 'model'
-  parts: { text: string }[]
-}
-
 export interface MarketSuggestion {
   refined_title: string
   resolution_source: string
@@ -134,7 +129,7 @@ export async function analyzeMarketQuestion(input: {
       warnings: parsed.warnings ?? [],
     }
   }
-  catch (err) {
+  catch {
     console.error('Failed to parse Gemini response:', text)
     throw new Error('Could not parse AI response. Please try again or refine your question.')
   }

@@ -1,14 +1,13 @@
 'use client'
 
-import Link from 'next/link'
-import { CheckIcon, Repeat, XIcon } from 'lucide-react'
+import { CheckIcon, XIcon } from 'lucide-react'
 import AppLink from '@/components/AppLink'
 import EventIconImage from '@/components/EventIconImage'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 
-export interface CommunityMarketCardData {
+interface CommunityMarketCardData {
   id: string
   title: string
   description: string | null
@@ -46,7 +45,7 @@ export default function CommunityMarketCard({
   yesVotes = 0,
   noVotes = 0,
   totalJurors = 0,
-  isJuror = false,
+  isJuror: _isJuror = false,
 }: Props) {
   const totalVotes = yesVotes + noVotes
   const yesChance = totalVotes > 0 ? (yesVotes / totalVotes) * 100 : 50
@@ -54,7 +53,7 @@ export default function CommunityMarketCard({
 
   const isResolved = market.status === 'resolved'
   const isYesResolved = isResolved && market.resolved_outcome === 'yes'
-  const isNoResolved = isResolved && market.resolved_outcome === 'no'
+  const _isNoResolved = isResolved && market.resolved_outcome === 'no'
 
   // For markets pulled from platform, link to actual event page
   // For custom community markets, link to community market detail (jury vote/view)
@@ -70,7 +69,7 @@ export default function CommunityMarketCard({
         dark:hover:bg-secondary
       `)}
     >
-      <CardContent className="flex h-full flex-col px-3 pt-3 pb-3 md:pb-1">
+      <CardContent className="flex h-full flex-col p-3 md:pb-1">
         {/* HEADER: icon + title + chance ring */}
         <div className="mb-3 flex items-start justify-between">
           <AppLink
@@ -80,13 +79,17 @@ export default function CommunityMarketCard({
           >
             <div className="flex size-10 shrink-0 items-center justify-center self-start rounded-sm">
               <EventIconImage
-                src={''}
+                src=""
                 alt={market.title}
                 sizes="40px"
                 containerClassName="size-full rounded-sm"
               />
             </div>
-            <h3 className="line-clamp-3 w-full text-sm/5 font-semibold underline-offset-2 transition-colors duration-200 hover:text-foreground hover:underline">
+            <h3 className="
+              line-clamp-3 w-full text-sm/5 font-semibold underline-offset-2 transition-colors duration-200
+              hover:text-foreground hover:underline
+            "
+            >
               {market.title}
             </h3>
           </AppLink>
@@ -123,7 +126,8 @@ export default function CommunityMarketCard({
                 </svg>
                 <div className="absolute inset-0 flex items-center justify-center pt-4">
                   <span className="text-sm font-bold text-slate-900 dark:text-slate-100">
-                    {roundedYes}%
+                    {roundedYes}
+                    %
                   </span>
                 </div>
               </div>
@@ -140,7 +144,13 @@ export default function CommunityMarketCard({
             {isResolved
               ? (
                   <div className="mt-auto mb-0">
-                    <div className="flex h-12 w-full cursor-default items-center justify-center gap-2 rounded-md border px-3 text-sm font-semibold text-foreground transition-colors dark:border-none dark:bg-secondary dark:group-hover:bg-card">
+                    <div className="
+                      flex h-12 w-full cursor-default items-center justify-center gap-2 rounded-md border px-3 text-sm
+                      font-semibold text-foreground transition-colors
+                      dark:border-none dark:bg-secondary
+                      dark:group-hover:bg-card
+                    "
+                    >
                       <span className={cn(
                         'flex size-4 items-center justify-center rounded-full',
                         isYesResolved ? 'bg-yes' : 'bg-no',
@@ -183,15 +193,26 @@ export default function CommunityMarketCard({
                   <span className="relative inline-flex size-2 rounded-full bg-amber-500" />
                 </span>
                 <span className="leading-none font-medium text-amber-600 uppercase">
-                  {totalVotes}/{totalJurors} voted
+                  {totalVotes}
+                  /
+                  {totalJurors}
+                  {' '}
+                  voted
                 </span>
               </span>
             )}
             {!isResolved && totalVotes === 0 && (
-              <span>{formatVolume(0)} Vol.</span>
+              <span>
+                {formatVolume(0)}
+                {' '}
+                Vol.
+              </span>
             )}
             {isResolved && market.resolution_date && (
-              <span>Ended {new Date(market.resolution_date).toLocaleDateString()}</span>
+              <span>
+                Ended
+                {new Date(market.resolution_date).toLocaleDateString()}
+              </span>
             )}
           </div>
           {!isResolved && market.resolution_date && (

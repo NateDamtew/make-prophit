@@ -1,4 +1,5 @@
 import { and, desc, eq, ilike, or, sql } from 'drizzle-orm'
+import { users } from '@/lib/db/schema/auth/tables'
 import {
   communities,
   community_invites,
@@ -7,15 +8,9 @@ import {
   community_reviews,
   jury_votes,
 } from '@/lib/db/schema/communities/tables'
-import { users } from '@/lib/db/schema/auth/tables'
 import { conditions, markets } from '@/lib/db/schema/events/tables'
 import { runQuery } from '@/lib/db/utils/run-query'
 import { db } from '@/lib/drizzle'
-
-import { getMaxMembersForJurySize as _getMax, getConsensusThreshold as _getConsensus } from '@/lib/community-config'
-
-export const getMaxMembersForJurySize = _getMax
-export const getConsensusThreshold = _getConsensus
 
 // UMA-compatible price encoding (matches conditions.resolution_price)
 const RESOLUTION_PRICE_YES = '1000000000000000000' // 1e18
