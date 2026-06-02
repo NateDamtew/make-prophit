@@ -94,12 +94,17 @@ function initializeAppKitSingleton(
       },
       siweConfig: createSIWEConfig({
         signOutOnAccountChange: true,
-        getMessageParams: async () => ({
-          domain: new URL(process.env.SITE_URL!).host,
-          uri: typeof window !== 'undefined' ? window.location.origin : '',
-          chains: [defaultNetwork.id],
-          statement: 'Please sign with your account',
-        }),
+        getMessageParams: async () => {
+          // Use the wallet's current chain so AppKit never forces a network switch
+          // just to authenticate. Chain restriction applies to trading, not sign-in.
+          const currentChainId = wagmiConfig.state?.chainId ?? defaultNetwork.id
+          return {
+            domain: new URL(process.env.SITE_URL!).host,
+            uri: typeof window !== 'undefined' ? window.location.origin : '',
+            chains: [currentChainId],
+            statement: 'Please sign with your account',
+          }
+        },
         createMessage: ({ address, ...args }: SIWECreateMessageArgs) => formatMessage(args, address),
         getNonce: async () => {
           try {
@@ -120,7 +125,7 @@ function initializeAppKitSingleton(
             return {
               // @ts-expect-error address not defined in session type
               address: session.data?.user.address,
-              chainId: defaultNetwork.id,
+              chainId: wagmiConfig.state?.chainId ?? defaultNetwork.id,
             } satisfies SIWESession
           }
           catch {
@@ -130,11 +135,14 @@ function initializeAppKitSingleton(
         verifyMessage: async ({ message, signature }: SIWEVerifyMessageArgs) => {
           try {
             const address = getAddressFromMessage(message)
+            // Extract chain from the signed message so it always matches
+            const { getChainIdFromMessage } = await import('@reown/appkit-siwe')
+            const chainId = Number(getChainIdFromMessage(message) ?? defaultNetwork.id)
             const { data } = await authClient.siwe.verify({
               message,
               signature,
               walletAddress: address,
-              chainId: defaultNetwork.id,
+              chainId,
             })
             return Boolean(data?.success)
           }
