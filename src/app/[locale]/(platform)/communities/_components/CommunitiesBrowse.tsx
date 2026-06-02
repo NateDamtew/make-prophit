@@ -14,6 +14,8 @@ import {
   Lock,
   Globe,
 } from 'lucide-react'
+import { Card, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 
@@ -58,39 +60,109 @@ const FILTERS: { id: Sort, label: string, icon: React.ElementType }[] = [
 ]
 
 function FeaturedMarketCard({ market }: { market: FeaturedMarket }) {
+  // Until trading is wired, default to 50/50 — same as a new platform market
+  const roundedYes = 50
+  const noChance = 100 - roundedYes
+  const href = `/community/${market.community_slug}` as const
+
   return (
-    <Link
-      href={`/community/${market.community_slug}` as any}
-      className="group flex w-72 shrink-0 flex-col gap-3 rounded-2xl border bg-card p-4 transition-all hover:border-primary/30 hover:shadow-md hover:shadow-primary/5"
-    >
-      <div className="flex items-center gap-2">
-        {market.community_icon
-          ? <img src={market.community_icon} alt="" className="size-6 rounded-md object-cover" />
-          : (
-              <div className="flex size-6 items-center justify-center rounded-md bg-primary/10 text-xs">
-                🏛️
+    <Link href={href as any} className="block w-80 shrink-0">
+      <Card
+        className={cn(`
+          group flex h-45 flex-col overflow-hidden rounded-xl shadow-md shadow-black/4 transition-all
+          hover:-translate-y-0.5 hover:shadow-black/8
+          dark:hover:bg-secondary
+        `)}
+      >
+        <CardContent className="flex h-full flex-col px-3 pt-3 pb-3 md:pb-1">
+          {/* HEADER: community icon + title + chance ring */}
+          <div className="mb-3 flex items-start justify-between">
+            <div className="flex flex-1 items-center gap-2 pr-2">
+              <div className="flex size-10 shrink-0 items-center justify-center self-start rounded-sm bg-primary/10 text-base">
+                {market.community_icon
+                  ? <img src={market.community_icon} alt="" className="size-full rounded-sm object-cover" />
+                  : '🏛️'}
               </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                  {market.community_name}
+                </p>
+                <h3 className="line-clamp-2 w-full text-sm/5 font-semibold underline-offset-2 transition-colors duration-200 group-hover:text-foreground group-hover:underline">
+                  {market.title}
+                </h3>
+              </div>
+            </div>
+
+            {/* Chance ring */}
+            <div className="relative -mt-3 flex flex-col items-center">
+              <div className="relative">
+                <svg width="72" height="52" viewBox="0 0 72 52" className="rotate-0 transform">
+                  <path
+                    d="M 6 46 A 30 30 0 0 1 66 46"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="5"
+                    strokeLinecap="round"
+                    className="text-slate-200 dark:text-slate-600"
+                  />
+                  <path
+                    d="M 6 46 A 30 30 0 0 1 66 46"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="5"
+                    strokeLinecap="round"
+                    className="text-slate-400 transition-all duration-300"
+                    strokeDasharray={`${(roundedYes / 100) * 94.25} 94.25`}
+                    strokeDashoffset="0"
+                  />
+                </svg>
+                <div className="absolute inset-0 flex items-center justify-center pt-4">
+                  <span className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                    {roundedYes}%
+                  </span>
+                </div>
+              </div>
+              <div className="-mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">
+                chance
+              </div>
+            </div>
+          </div>
+
+          {/* ACTIONS: Yes/No buttons */}
+          <div className="flex flex-1 flex-col">
+            <div className="mt-auto mb-2 grid grid-cols-2 gap-2">
+              <Button variant="yes" size="outcome" asChild>
+                <span className="truncate">Yes {roundedYes}¢</span>
+              </Button>
+              <Button variant="no" size="outcome" asChild>
+                <span className="truncate">No {noChance}¢</span>
+              </Button>
+            </div>
+          </div>
+
+          {/* FOOTER */}
+          <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1.5">
+              <span className="relative flex size-2">
+                <span className="absolute inline-flex size-2 animate-ping rounded-full bg-amber-500 opacity-75" />
+                <span className="relative inline-flex size-2 rounded-full bg-amber-500" />
+              </span>
+              <span className="font-medium uppercase leading-none text-amber-600">
+                Live
+              </span>
+            </span>
+            {market.resolution_date && (
+              <span className="flex items-center gap-1">
+                <Clock className="size-3" />
+                {new Date(market.resolution_date).toLocaleDateString(undefined, {
+                  month: 'short',
+                  day: 'numeric',
+                })}
+              </span>
             )}
-        <span className="truncate text-xs font-medium text-muted-foreground">
-          {market.community_name}
-        </span>
-      </div>
-
-      <p className="line-clamp-3 flex-1 text-sm font-medium leading-snug transition-colors group-hover:text-primary">
-        {market.title}
-      </p>
-
-      <div className="flex items-center justify-between text-xs text-muted-foreground">
-        <span className="flex items-center gap-1">
-          <Clock className="size-3" />
-          {market.resolution_date
-            ? new Date(market.resolution_date).toLocaleDateString()
-            : 'No deadline'}
-        </span>
-        <span className="rounded-full bg-primary/10 px-2 py-0.5 font-medium text-primary">
-          Live
-        </span>
-      </div>
+          </div>
+        </CardContent>
+      </Card>
     </Link>
   )
 }
@@ -101,70 +173,81 @@ function CommunityCard({ community }: { community: Community }) {
   return (
     <Link
       href={`/community/${community.slug}` as any}
-      className="group flex flex-col gap-4 rounded-2xl border bg-card p-5 transition-all hover:border-primary/30 hover:shadow-md hover:shadow-primary/5"
+      className="group block overflow-hidden rounded-2xl border bg-card transition-all hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md hover:shadow-primary/5"
     >
-      <div className="flex items-start gap-3">
-        {community.icon_url
-          ? (
-              <img
-                src={community.icon_url}
-                alt={community.name}
-                className="size-12 rounded-xl object-cover"
-              />
-            )
-          : (
-              <div className="flex size-12 items-center justify-center rounded-xl bg-primary/10 text-xl">
-                🏛️
-              </div>
-            )}
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <h3 className="truncate font-semibold transition-colors group-hover:text-primary">
-              {community.name}
-            </h3>
+      {/* Banner accent */}
+      <div className="relative h-16 overflow-hidden bg-gradient-to-br from-primary/20 via-primary/10 to-background">
+        {community.banner_url
+          ? <img src={community.banner_url} alt="" className="size-full object-cover" />
+          : null}
+        {/* Type pill in top-right */}
+        <div className="absolute right-3 top-3">
+          <span className="flex items-center gap-1 rounded-full bg-background/80 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-foreground backdrop-blur-sm">
             {community.type === 'private'
-              ? <Lock className="size-3 shrink-0 text-muted-foreground" />
-              : <Globe className="size-3 shrink-0 text-muted-foreground" />}
+              ? <Lock className="size-2.5" />
+              : <Globe className="size-2.5" />}
+            {community.type}
+          </span>
+        </div>
+      </div>
+
+      <div className="-mt-6 px-5 pb-5">
+        {/* Icon overlapping banner */}
+        <div className="mb-3 flex items-end gap-3">
+          <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl border-4 border-background bg-card text-xl shadow-sm">
+            {community.icon_url
+              ? <img src={community.icon_url} alt={community.name} className="size-full rounded-xl object-cover" />
+              : '🏛️'}
           </div>
-          {community.description && (
-            <p className="mt-0.5 line-clamp-2 text-sm text-muted-foreground">
-              {community.description}
-            </p>
+        </div>
+
+        <h3 className="truncate text-base font-semibold transition-colors group-hover:text-primary">
+          {community.name}
+        </h3>
+        {community.description && (
+          <p className="mt-0.5 line-clamp-2 text-sm text-muted-foreground">
+            {community.description}
+          </p>
+        )}
+
+        {/* Stats */}
+        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+          <span className="flex items-center gap-1">
+            <Users className="size-3" />
+            <strong className="text-foreground">{community.member_count}</strong>
+            <span>{community.member_count === 1 ? 'member' : 'members'}</span>
+          </span>
+          <span className="flex items-center gap-1">
+            <TrendingUp className="size-3" />
+            <strong className="text-foreground">{community.market_count}</strong>
+            <span>{community.market_count === 1 ? 'market' : 'markets'}</span>
+          </span>
+          {community.review_count > 0 && (
+            <span className="flex items-center gap-1">
+              <Star className="size-3 fill-amber-400 text-amber-400" />
+              <strong className="text-foreground">{rating.toFixed(1)}</strong>
+              <span>
+                (
+                {community.review_count}
+                )
+              </span>
+            </span>
           )}
         </div>
-      </div>
 
-      <div className="flex items-center gap-4 text-sm text-muted-foreground">
-        <span className="flex items-center gap-1">
-          <Users className="size-3.5" />
-          {community.member_count}
-        </span>
-        <span className="flex items-center gap-1">
-          <TrendingUp className="size-3.5" />
-          {community.market_count}
-        </span>
-        {community.review_count > 0 && (
-          <span className="flex items-center gap-1">
-            <Star className="size-3.5 fill-amber-400 text-amber-400" />
-            {rating.toFixed(1)}
-            <span className="text-xs">
-              (
-              {community.review_count}
-              )
+        {community.creator_username && (
+          <div className="mt-3 flex items-center gap-1.5 border-t pt-3 text-xs text-muted-foreground">
+            <span>by</span>
+            <span className="font-medium text-foreground">
+              @
+              {community.creator_username}
             </span>
-          </span>
+            <span className="ml-auto rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium">
+              Jury size: {community.jury_size}
+            </span>
+          </div>
         )}
       </div>
-
-      {community.creator_username && (
-        <div className="flex items-center gap-1.5 border-t pt-3 text-xs text-muted-foreground">
-          <span>By</span>
-          <span className="font-medium text-foreground">
-            @
-            {community.creator_username}
-          </span>
-        </div>
-      )}
     </Link>
   )
 }
