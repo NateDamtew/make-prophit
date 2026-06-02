@@ -107,8 +107,8 @@ export async function createMarketDraftAction(
     return { error: result.error, data: null }
   }
 
-  revalidatePath(`/community/${communitySlug}`)
-  revalidatePath(`/community/${communitySlug}/markets`)
+  revalidatePath(`/community/${communitySlug}`, 'layout')
+  revalidatePath(`/community/${communitySlug}/markets`, 'layout')
   return { error: null, data: result.data }
 }
 
@@ -131,8 +131,8 @@ export async function publishMarketAction(
     return { error: result.error, data: null }
   }
 
-  revalidatePath(`/community/${communitySlug}`)
-  revalidatePath(`/community/${communitySlug}/markets`)
+  revalidatePath(`/community/${communitySlug}`, 'layout')
+  revalidatePath(`/community/${communitySlug}/markets`, 'layout')
   return { error: null, data: result.data }
 }
 
@@ -155,7 +155,7 @@ export async function deleteMarketAction(
     return { error: result.error, data: null }
   }
 
-  revalidatePath(`/community/${communitySlug}`)
+  revalidatePath(`/community/${communitySlug}`, 'layout')
   return { error: null, data: result.data }
 }
 
@@ -196,6 +196,6 @@ export async function pullPlatformEventAction(
     return { error: result.error, data: null }
   }
 
-  revalidatePath(`/community/${communitySlug}`)
+  revalidatePath(`/community/${communitySlug}`, 'layout')
   return { error: null, data: result.data }
 }

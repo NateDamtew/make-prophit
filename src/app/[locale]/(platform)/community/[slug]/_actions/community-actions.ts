@@ -1,10 +1,10 @@
 'use server'
 
-import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
+import { z } from 'zod'
+import { DEFAULT_ERROR_MESSAGE } from '@/lib/constants'
 import { CommunityRepository } from '@/lib/db/queries/community'
 import { UserRepository } from '@/lib/db/queries/user'
-import { DEFAULT_ERROR_MESSAGE } from '@/lib/constants'
 
 const CreateCommunitySchema = z.object({
   name: z.string().trim().min(3, 'Name must be at least 3 characters').max(50),
@@ -58,7 +58,7 @@ export async function createCommunityAction(input: z.input<typeof CreateCommunit
     return { error: result.error, data: null }
   }
 
-  revalidatePath(`/community/${parsed.data.slug}`)
+  revalidatePath(`/community/${parsed.data.slug}`, 'layout')
   return { error: null, data: result.data }
 }
 
@@ -70,7 +70,7 @@ export async function joinCommunityAction(communityId: string, inviteCode?: stri
 
   let invitedBy: string | undefined
   if (inviteCode) {
-    const inviteResult = await CommunityRepository.useInvite(inviteCode)
+    const inviteResult = await CommunityRepository.redeemInvite(inviteCode)
     if (inviteResult.error) {
       return { error: inviteResult.error, data: null }
     }
@@ -82,7 +82,7 @@ export async function joinCommunityAction(communityId: string, inviteCode?: stri
     return { error: result.error, data: null }
   }
 
-  revalidatePath(`/community/[slug]`)
+  revalidatePath(`/community/[slug]`, 'layout')
   return { error: null, data: result.data }
 }
 
@@ -97,7 +97,7 @@ export async function leaveCommunityAction(communityId: string, communitySlug: s
     return { error: result.error, data: null }
   }
 
-  revalidatePath(`/community/${communitySlug}`)
+  revalidatePath(`/community/${communitySlug}`, 'layout')
   return { error: null, data: result.data }
 }
 
@@ -132,7 +132,7 @@ export async function submitReviewAction(
     return { error: result.error, data: null }
   }
 
-  revalidatePath(`/community/${communitySlug}`)
+  revalidatePath(`/community/${communitySlug}`, 'layout')
   return { error: null, data: result.data }
 }
 
@@ -177,8 +177,8 @@ export async function castJuryVoteAction(
     await CommunityRepository.resolveMarket(communityMarketId, community.data.jury_size)
   }
 
-  revalidatePath(`/community/${communitySlug}`)
-  revalidatePath(`/community/${communitySlug}/market/${communityMarketId}`)
+  revalidatePath(`/community/${communitySlug}`, 'layout')
+  revalidatePath(`/community/${communitySlug}/market/${communityMarketId}`, 'layout')
   return { error: null, data: result.data }
 }
 
@@ -204,7 +204,7 @@ export async function setMemberRoleAction(
     return { error: result.error, data: null }
   }
 
-  revalidatePath(`/community/${communitySlug}`)
+  revalidatePath(`/community/${communitySlug}`, 'layout')
   return { error: null, data: result.data }
 }
 

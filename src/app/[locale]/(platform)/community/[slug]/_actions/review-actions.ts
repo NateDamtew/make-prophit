@@ -64,8 +64,8 @@ export async function submitMarketForReviewAction(
     })
   }
 
-  revalidatePath(`/community/${communitySlug}`)
-  revalidatePath('/admin/communities/review')
+  revalidatePath(`/community/${communitySlug}`, 'layout')
+  revalidatePath('/admin/communities/review', 'layout')
   return { error: null, data: result.data }
 }
 
@@ -106,8 +106,8 @@ export async function rejectMarketAction(
     })
   }
 
-  revalidatePath(`/community/${communitySlug}`)
-  revalidatePath('/admin/communities/review')
+  revalidatePath(`/community/${communitySlug}`, 'layout')
+  revalidatePath('/admin/communities/review', 'layout')
   return { error: null, data: result.data }
 }
 
@@ -257,8 +257,8 @@ export async function approveMarketAction(
     marketTitle: finalTitle,
   })
 
-  revalidatePath(`/community/${communitySlug}`)
-  revalidatePath('/admin/communities/review')
+  revalidatePath(`/community/${communitySlug}`, 'layout')
+  revalidatePath('/admin/communities/review', 'layout')
   // Return the draftId so the UI can redirect the super admin to
   // /admin/events/calendar/new?draftId=XXX&mode=single&edit=1 where
   // they'll step through Pre-sign + Sign & Create.
@@ -285,7 +285,7 @@ export async function retryDeployAction(marketId: string, communitySlug: string)
     return { error: result.error, data: null }
   }
 
-  revalidatePath(`/community/${communitySlug}`)
-  revalidatePath('/admin/communities/review')
+  revalidatePath(`/community/${communitySlug}`, 'layout')
+  revalidatePath('/admin/communities/review', 'layout')
   return { error: null, data: result.data }
 }

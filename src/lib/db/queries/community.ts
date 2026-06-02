@@ -1101,7 +1101,7 @@ export const CommunityRepository = {
     })
   },
 
-  async useInvite(code: string) {
+  async redeemInvite(code: string) {
     return await runQuery(async () => {
       const [invite] = await db
         .select()
