@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { Sparkles, Link2, FileEdit } from 'lucide-react'
 import CustomMarketCreator from './CustomMarketCreator'
 import PlatformMarketPicker from './PlatformMarketPicker'
@@ -15,8 +16,40 @@ interface Props {
   drafts: any[]
 }
 
+function isValidMode(value: string | null): value is Mode {
+  return value === 'custom' || value === 'platform' || value === 'drafts'
+}
+
 export default function CreateMarketPanel({ communityId, communitySlug, drafts }: Props) {
-  const [mode, setMode] = useState<Mode>('custom')
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const initialMode: Mode = isValidMode(searchParams.get('tab'))
+    ? (searchParams.get('tab') as Mode)
+    : 'custom'
+  const [mode, setMode] = useState<Mode>(initialMode)
+
+  // Keep mode in sync with URL when the query param changes
+  useEffect(() => {
+    const param = searchParams.get('tab')
+    if (isValidMode(param) && param !== mode) {
+      setMode(param)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
+
+  function switchMode(next: Mode) {
+    setMode(next)
+    // Persist to URL so refresh/back works
+    const params = new URLSearchParams(searchParams.toString())
+    if (next === 'custom') {
+      params.delete('tab')
+    }
+    else {
+      params.set('tab', next)
+    }
+    const queryString = params.toString()
+    router.replace(`?${queryString}` as any, { scroll: false })
+  }
 
   return (
     <>
@@ -24,7 +57,7 @@ export default function CreateMarketPanel({ communityId, communitySlug, drafts }
       <div className="mb-6 grid grid-cols-3 gap-2">
         <button
           type="button"
-          onClick={() => setMode('custom')}
+          onClick={() => switchMode('custom')}
           className={cn(
             'group flex flex-col items-center gap-2 rounded-xl border p-4 text-center transition-all',
             mode === 'custom'
@@ -47,7 +80,7 @@ export default function CreateMarketPanel({ communityId, communitySlug, drafts }
 
         <button
           type="button"
-          onClick={() => setMode('platform')}
+          onClick={() => switchMode('platform')}
           className={cn(
             'group flex flex-col items-center gap-2 rounded-xl border p-4 text-center transition-all',
             mode === 'platform'
@@ -70,7 +103,7 @@ export default function CreateMarketPanel({ communityId, communitySlug, drafts }
 
         <button
           type="button"
-          onClick={() => setMode('drafts')}
+          onClick={() => switchMode('drafts')}
           className={cn(
             'group flex flex-col items-center gap-2 rounded-xl border p-4 text-center transition-all',
             mode === 'drafts'

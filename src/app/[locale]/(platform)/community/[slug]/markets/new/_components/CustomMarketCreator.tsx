@@ -93,11 +93,13 @@ export default function CustomMarketCreator({ communityId, communitySlug }: Prop
         toast.error(result.error)
         return
       }
-      toast.success('Saved as draft', {
-        description: 'Submit it for review from the Drafts tab when ready.',
+      toast.success('Draft saved!', {
+        description: 'Find it in the Drafts tab to submit for review.',
       })
+      // Stay on the markets/new page and switch to drafts tab via query param.
+      // CreateMarketPanel reads ?tab=drafts to set the active mode.
+      router.replace(`/community/${communitySlug}/markets/new?tab=drafts` as any)
       router.refresh()
-      router.push(`/community/${communitySlug}` as any)
     })
   }
 
