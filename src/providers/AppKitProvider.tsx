@@ -28,6 +28,24 @@ let appKitInstance: AppKit | null = null
 const appKitStateListeners = new Set<() => void>()
 const APPKIT_INIT_RETRY_DELAY_MS = 3000
 
+/**
+ * Reads the currently-connected wallet address and chainId straight from the
+ * wagmi config state. better-auth's SIWE plugin stores the nonce keyed by
+ * `siwe:${checksum(address)}:${chainId}` and looks it up by the exact same key
+ * on /siwe/verify, so the nonce request MUST supply the wallet address and the
+ * SAME chainId that verify will use — otherwise verify throws
+ * "Invalid or expired nonce". This helper is the single source of truth for
+ * both so the keys always match.
+ */
+function getConnectedAccount(): { address: `0x${string}` | undefined, chainId: number } {
+  const state = wagmiConfig.state
+  const current = state?.current
+  const connection = current ? state.connections.get(current) : undefined
+  const address = connection?.accounts?.[0]
+  const chainId = connection?.chainId ?? state?.chainId ?? defaultNetwork.id
+  return { address, chainId }
+}
+
 function clearAppKitState() {
   if (!IS_BROWSER) {
     return
@@ -97,18 +115,26 @@ function initializeAppKitSingleton(
         getMessageParams: async () => {
           // Use the wallet's current chain so AppKit never forces a network switch
           // just to authenticate. Chain restriction applies to trading, not sign-in.
-          const currentChainId = wagmiConfig.state?.chainId ?? defaultNetwork.id
+          const { chainId } = getConnectedAccount()
           return {
             domain: new URL(process.env.SITE_URL!).host,
             uri: typeof window !== 'undefined' ? window.location.origin : '',
-            chains: [currentChainId],
+            chains: [chainId],
             statement: 'Please sign with your account',
           }
         },
         createMessage: ({ address, ...args }: SIWECreateMessageArgs) => formatMessage(args, address),
         getNonce: async () => {
           try {
-            const { data } = await authClient.siwe.nonce()
+            // Must pass walletAddress + chainId: the server stores the nonce
+            // keyed by siwe:${address}:${chainId}. Without these the request is
+            // rejected, the nonce is never stored, and verify fails with
+            // "Invalid or expired nonce".
+            const { address, chainId } = getConnectedAccount()
+            if (!address) {
+              return generateRandomString(32)
+            }
+            const { data } = await authClient.siwe.nonce({ walletAddress: address, chainId })
             return data?.nonce || generateRandomString(32)
           }
           catch {
@@ -125,7 +151,7 @@ function initializeAppKitSingleton(
             return {
               // @ts-expect-error address not defined in session type
               address: session.data?.user.address,
-              chainId: wagmiConfig.state?.chainId ?? defaultNetwork.id,
+              chainId: getConnectedAccount().chainId,
             } satisfies SIWESession
           }
           catch {
@@ -135,9 +161,9 @@ function initializeAppKitSingleton(
         verifyMessage: async ({ message, signature }: SIWEVerifyMessageArgs) => {
           try {
             const address = getAddressFromMessage(message)
-            // Extract chain from the signed message so it always matches
-            const { getChainIdFromMessage } = await import('@reown/appkit-siwe')
-            const chainId = Number(getChainIdFromMessage(message) ?? defaultNetwork.id)
+            // Use the SAME connected chainId that getNonce used, so the nonce
+            // lookup key siwe:${address}:${chainId} matches what was stored.
+            const { chainId } = getConnectedAccount()
             const { data } = await authClient.siwe.verify({
               message,
               signature,
