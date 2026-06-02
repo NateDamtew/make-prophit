@@ -96,7 +96,7 @@ export default async function CommunityDetailPage({
   }
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6">
+    <div className="mx-auto max-w-6xl px-2 py-6 sm:px-4 lg:px-6">
       <Suspense fallback={<CommunityLoadingSkeleton />}>
         <CommunityContent slug={slug} />
       </Suspense>

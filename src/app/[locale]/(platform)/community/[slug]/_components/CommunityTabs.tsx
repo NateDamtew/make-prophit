@@ -290,14 +290,29 @@ export default function CommunityTabs({
 
           if (markets.length === 0) {
             return (
-              <div className="py-20 text-center">
-                <TrendingUp className="mx-auto mb-3 size-10 text-muted-foreground/30" />
-                <p className="font-medium">No markets yet</p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  {memberRole === 'admin'
-                    ? 'Click "Add Market" above to create your first market.'
-                    : 'The community admin will add markets soon.'}
-                </p>
+              <div className="flex flex-col items-center justify-center gap-4 py-16 text-center">
+                <div className="relative">
+                  <div className="absolute inset-0 animate-pulse rounded-full bg-primary/10 blur-xl" />
+                  <div className="relative flex size-20 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5">
+                    <TrendingUp className="size-9 text-primary/80" />
+                  </div>
+                </div>
+                <div className="max-w-sm">
+                  <p className="text-lg font-semibold">No markets yet</p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {memberRole === 'admin'
+                      ? 'Be the first to create a market in this community. Members will be able to trade and your jury will resolve the outcome.'
+                      : 'The community admin is curating markets. Check back soon.'}
+                  </p>
+                </div>
+                {memberRole === 'admin' && (
+                  <Button asChild size="sm">
+                    <Link href={`/community/${community.slug}/markets/new` as any}>
+                      <TrendingUp className="mr-1.5 size-3.5" />
+                      Create First Market
+                    </Link>
+                  </Button>
+                )}
               </div>
             )
           }
