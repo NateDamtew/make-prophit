@@ -1,4 +1,5 @@
 import { and, desc, eq, ilike, or, sql } from 'drizzle-orm'
+import { getConsensusThreshold, getMaxMembersForJurySize } from '@/lib/community-config'
 import { users } from '@/lib/db/schema/auth/tables'
 import {
   communities,
