@@ -70,3 +70,15 @@ export function isAdminWallet(addressOrEmail?: string | null): boolean {
 
   return getAdminWallets().includes(normalized) || getAdminUsernames().includes(normalized)
 }
+
+/**
+ * Returns the lists used to identify admins. Useful for queries that
+ * need to fetch admin user rows (e.g. for notifications).
+ */
+export function getAdminIdentifierLists() {
+  return {
+    wallets: getAdminWallets(),
+    emails: getAdminEmails(),
+    usernames: getAdminUsernames(),
+  }
+}

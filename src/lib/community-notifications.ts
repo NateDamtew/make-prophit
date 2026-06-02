@@ -7,8 +7,8 @@
  *   - jury vote handler (resolution events)
  */
 
-import { eq } from 'drizzle-orm'
-import { UserRepository } from '@/lib/db/queries/user'
+import { inArray, or, sql } from 'drizzle-orm'
+import { getAdminIdentifierLists } from '@/lib/admin'
 import { notifications } from '@/lib/db/schema/notifications/tables'
 import { users } from '@/lib/db/schema/auth/tables'
 import { db } from '@/lib/drizzle'
@@ -48,15 +48,34 @@ async function createNotification(input: CreateNotificationInput) {
 
 async function getAllPlatformAdmins(): Promise<string[]> {
   try {
-    // Platform admins are identified at runtime by isAdminWallet checks.
-    // For broad notification, we send to all users who currently have any
-    // username matching the admin wallet list — but simplest is to use the
-    // is_admin flag check via UserRepository.
-    // Since there's no easy "list admins" query, return empty for now.
-    // TODO: implement listAdmins query once needed.
-    return []
+    const { wallets, emails, usernames } = getAdminIdentifierLists()
+    if (wallets.length === 0 && emails.length === 0 && usernames.length === 0) {
+      return []
+    }
+
+    const conditions: any[] = []
+    if (emails.length > 0) {
+      conditions.push(inArray(sql`LOWER(${users.email})`, emails))
+    }
+    if (wallets.length > 0) {
+      conditions.push(inArray(sql`LOWER(${users.address})`, wallets))
+    }
+    if (usernames.length > 0) {
+      conditions.push(inArray(sql`LOWER(${users.username})`, usernames))
+    }
+    if (conditions.length === 0) {
+      return []
+    }
+
+    const rows = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(or(...conditions))
+
+    return rows.map(r => r.id)
   }
-  catch {
+  catch (err) {
+    console.error('[getAllPlatformAdmins] Failed:', err)
     return []
   }
 }
