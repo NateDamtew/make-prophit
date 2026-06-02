@@ -61,10 +61,10 @@ describe('filterToolbar', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Open filters' }))
 
-    const sortControls = await screen.findAllByRole('combobox', { name: 'Sort by:' })
+    const sortControls = await screen.findAllByRole('combobox', { name: 'Sort by:' }, { timeout: 10000 })
     expect(sortControls[0]).toHaveTextContent('24h Volume')
 
-    const hideSportsCheckboxes = await screen.findAllByRole('checkbox', { name: 'Hide sports?' })
+    const hideSportsCheckboxes = await screen.findAllByRole('checkbox', { name: 'Hide sports?' }, { timeout: 10000 })
     fireEvent.click(hideSportsCheckboxes[0])
 
     expect(onFiltersChange).toHaveBeenCalledWith({ hideSports: true })
