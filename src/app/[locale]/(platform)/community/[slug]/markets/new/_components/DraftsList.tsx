@@ -16,6 +16,7 @@ import {
   Rocket,
 } from 'lucide-react'
 import { deleteMarketAction } from '../../../_actions/market-actions'
+import { submitMarketForReviewAction } from '../../../_actions/review-actions'
 import SubmitForReviewDialog from './SubmitForReviewDialog'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -33,6 +34,8 @@ interface Draft {
   reviewed_at: Date | null
   last_deploy_error: string | null
   event_id: string | null
+  main_category_slug: string | null
+  category_slugs: string[] | null
 }
 
 interface Props {
@@ -117,6 +120,32 @@ export default function DraftsList({ communityId, communitySlug, drafts }: Props
         return
       }
       toast.success('Draft deleted')
+      router.refresh()
+    })
+  }
+
+  function handleQuickSubmit(draft: Draft) {
+    // If categories are already set in the draft, submit directly.
+    if (!draft.main_category_slug || !draft.category_slugs || draft.category_slugs.length < 4) {
+      // Fall back to category-picker dialog
+      setSubmitDialog({ id: draft.id, title: draft.title })
+      return
+    }
+    if (!confirm(`Submit "${draft.title}" for platform admin review?`)) {
+      return
+    }
+    startTransition(async () => {
+      const result = await submitMarketForReviewAction(draft.id, communityId, communitySlug, {
+        mainCategorySlug: draft.main_category_slug ?? undefined,
+        categorySlugs: draft.category_slugs ?? undefined,
+      })
+      if (result.error) {
+        toast.error(result.error)
+        return
+      }
+      toast.success('Submitted for review', {
+        description: 'A platform admin will review your market shortly.',
+      })
       router.refresh()
     })
   }
@@ -247,7 +276,7 @@ export default function DraftsList({ communityId, communitySlug, drafts }: Props
                 {canSubmit && (
                   <Button
                     size="sm"
-                    onClick={() => setSubmitDialog({ id: draft.id, title: draft.title })}
+                    onClick={() => handleQuickSubmit(draft)}
                     disabled={isPending}
                   >
                     <Send className="mr-1.5 size-3.5" />

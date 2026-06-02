@@ -7,12 +7,29 @@ import { UserRepository } from '@/lib/db/queries/user'
 import { analyzeMarketQuestion } from '@/lib/ai/gemini'
 import { DEFAULT_ERROR_MESSAGE } from '@/lib/constants'
 
+const MarketOptionSchema = z.object({
+  id: z.string(),
+  question: z.string().trim().min(1),
+  title: z.string().trim().min(1),
+  shortName: z.string().trim(),
+  slug: z.string().trim(),
+})
+
 const MarketDraftSchema = z.object({
   title: z.string().trim().min(10, 'Title must be at least 10 characters').max(200),
+  slug: z.string().trim().min(3).max(60).regex(/^[a-z0-9-]+$/).optional(),
+  image_url: z.string().trim().max(500).optional(),
   description: z.string().trim().max(1000).optional(),
   resolution_source: z.string().trim().max(500).optional(),
   resolution_rules: z.string().trim().min(20, 'Resolution rules must be at least 20 characters').max(2000),
   resolution_date: z.string().optional(),
+  market_mode: z.enum(['binary', 'multi_unique', 'multi_multiple']).optional(),
+  binary_question: z.string().trim().max(300).optional(),
+  binary_outcome_yes: z.string().trim().max(50).optional(),
+  binary_outcome_no: z.string().trim().max(50).optional(),
+  options: z.array(MarketOptionSchema).optional(),
+  main_category_slug: z.string().trim().optional(),
+  category_slugs: z.array(z.string().trim()).optional(),
 })
 
 async function requireAdmin(communityId: string, userId: string) {
@@ -69,10 +86,19 @@ export async function createMarketDraftAction(
   const result = await CommunityRepository.addMarket({
     community_id: communityId,
     title: parsed.data.title,
+    slug: parsed.data.slug,
+    image_url: parsed.data.image_url,
     description: parsed.data.description,
     resolution_source: parsed.data.resolution_source,
     resolution_rules: parsed.data.resolution_rules,
     resolution_date: parsed.data.resolution_date ? new Date(parsed.data.resolution_date) : undefined,
+    market_mode: parsed.data.market_mode,
+    binary_question: parsed.data.binary_question,
+    binary_outcome_yes: parsed.data.binary_outcome_yes,
+    binary_outcome_no: parsed.data.binary_outcome_no,
+    options: parsed.data.options,
+    main_category_slug: parsed.data.main_category_slug,
+    category_slugs: parsed.data.category_slugs,
     created_by: user.id,
     status: 'draft',
   })

@@ -17,8 +17,8 @@ import {
 import { loadEventCreationSignersFromEnv } from '@/lib/event-creation-signers'
 
 const SubmitForReviewSchema = z.object({
-  mainCategorySlug: z.string().trim().min(1, 'Main category is required'),
-  categorySlugs: z.array(z.string().trim()).min(4, 'Pick at least 4 sub-categories'),
+  mainCategorySlug: z.string().trim().optional(),
+  categorySlugs: z.array(z.string().trim()).optional(),
 })
 
 /**

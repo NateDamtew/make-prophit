@@ -81,9 +81,15 @@ describe('submitMarketForReviewAction', () => {
     expect(result.error).toMatch(/community owner/i)
   })
 
-  it('rejects when fewer than 4 sub-categories selected', async () => {
+  it('surfaces missing sub-categories error from repository', async () => {
+    // Categories are now validated in CommunityRepository.submitForReview
+    // (since they're set during the 5-step wizard, not the submit dialog)
     mocks.getCurrentUser.mockResolvedValue({ id: 'u1' })
     mocks.getMemberRole.mockResolvedValue({ data: 'admin', error: null })
+    mocks.submitForReview.mockResolvedValue({
+      data: null,
+      error: 'At least 4 sub-categories required.',
+    })
     const { submitMarketForReviewAction } = await import('@/app/[locale]/(platform)/community/[slug]/_actions/review-actions')
     const result = await submitMarketForReviewAction('M1', 'C1', 'slug', {
       mainCategorySlug: 'politics',
@@ -92,9 +98,13 @@ describe('submitMarketForReviewAction', () => {
     expect(result.error).toMatch(/4 sub-categories/i)
   })
 
-  it('rejects empty main category', async () => {
+  it('surfaces missing main category error from repository', async () => {
     mocks.getCurrentUser.mockResolvedValue({ id: 'u1' })
     mocks.getMemberRole.mockResolvedValue({ data: 'admin', error: null })
+    mocks.submitForReview.mockResolvedValue({
+      data: null,
+      error: 'Main category is required. Add one before submitting.',
+    })
     const { submitMarketForReviewAction } = await import('@/app/[locale]/(platform)/community/[slug]/_actions/review-actions')
     const result = await submitMarketForReviewAction('M1', 'C1', 'slug', {
       mainCategorySlug: '',

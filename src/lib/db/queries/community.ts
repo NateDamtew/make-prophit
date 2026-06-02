@@ -482,10 +482,19 @@ export const CommunityRepository = {
     community_id: string
     event_id?: string
     title: string
+    slug?: string
+    image_url?: string
     description?: string
     resolution_source?: string
     resolution_rules?: string
     resolution_date?: Date
+    market_mode?: 'binary' | 'multi_unique' | 'multi_multiple'
+    binary_question?: string
+    binary_outcome_yes?: string
+    binary_outcome_no?: string
+    options?: Array<{ id: string, question: string, title: string, shortName: string, slug: string }>
+    main_category_slug?: string
+    category_slugs?: string[]
     created_by: string
     status?: 'draft' | 'active'
   }) {
@@ -497,10 +506,19 @@ export const CommunityRepository = {
           community_id: input.community_id,
           event_id: input.event_id ?? null,
           title: input.title,
+          slug: input.slug ?? null,
+          image_url: input.image_url ?? null,
           description: input.description ?? null,
           resolution_source: input.resolution_source ?? null,
           resolution_rules: input.resolution_rules ?? null,
           resolution_date: input.resolution_date ?? null,
+          market_mode: input.market_mode ?? 'binary',
+          binary_question: input.binary_question ?? null,
+          binary_outcome_yes: input.binary_outcome_yes ?? 'Yes',
+          binary_outcome_no: input.binary_outcome_no ?? 'No',
+          options: input.options ?? [],
+          main_category_slug: input.main_category_slug ?? null,
+          category_slugs: input.category_slugs ?? [],
           created_by: input.created_by,
           status,
         })
@@ -621,16 +639,10 @@ export const CommunityRepository = {
    */
   async submitForReview(input: {
     marketId: string
-    mainCategorySlug: string
-    categorySlugs: string[]
+    mainCategorySlug?: string
+    categorySlugs?: string[]
   }) {
     return await runQuery(async () => {
-      if (!input.mainCategorySlug.trim()) {
-        return { data: null, error: 'Main category is required.' }
-      }
-      if (input.categorySlugs.length < 4) {
-        return { data: null, error: 'Please select at least 4 sub-categories.' }
-      }
       const [market] = await db
         .select()
         .from(community_markets)
@@ -642,13 +654,25 @@ export const CommunityRepository = {
       if (market.status !== 'draft') {
         return { data: null, error: 'Only draft markets can be submitted for review.' }
       }
+
+      // Categories may have been set during draft creation (5-step wizard) or
+      // passed in by an older flow. Either way, validate they exist now.
+      const finalMainCategory = input.mainCategorySlug?.trim() || market.main_category_slug || ''
+      const finalCategorySlugs = input.categorySlugs ?? market.category_slugs ?? []
+      if (!finalMainCategory) {
+        return { data: null, error: 'Main category is required. Add one before submitting.' }
+      }
+      if (finalCategorySlugs.length < 4) {
+        return { data: null, error: 'At least 4 sub-categories required.' }
+      }
+
       const [updated] = await db
         .update(community_markets)
         .set({
           review_status: 'pending',
           submitted_at: new Date(),
-          main_category_slug: input.mainCategorySlug,
-          category_slugs: input.categorySlugs,
+          main_category_slug: finalMainCategory,
+          category_slugs: finalCategorySlugs,
           review_feedback: null,
           updated_at: new Date(),
         })

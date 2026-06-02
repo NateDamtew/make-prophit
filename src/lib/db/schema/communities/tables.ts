@@ -4,6 +4,7 @@ import {
   char,
   check,
   integer,
+  jsonb,
   numeric,
   pgTable,
   smallint,
@@ -90,10 +91,18 @@ export const community_markets = pgTable(
       .references(() => events.id, { onDelete: 'set null' }),
     // Custom market fields (for AI-assisted creation when not pulling from platform)
     title: text().notNull(),
+    slug: text(),
+    image_url: text(),
     description: text(),
     resolution_source: text(),
     resolution_rules: text(),
     resolution_date: timestamp({ withTimezone: true }),
+    // Market structure mirrors the admin event creation form
+    market_mode: text().notNull().default('binary'),
+    binary_question: text(),
+    binary_outcome_yes: text().notNull().default('Yes'),
+    binary_outcome_no: text().notNull().default('No'),
+    options: jsonb().$type<Array<{ id: string, question: string, title: string, shortName: string, slug: string }>>().default([]),
     status: text().notNull().default('active'), // 'active' | 'resolved' | 'disputed' | 'cancelled'
     resolved_outcome: text(), // 'yes' | 'no' | 'cancelled'
     resolved_at: timestamp({ withTimezone: true }),
