@@ -9,6 +9,11 @@ import { UserRepository } from '@/lib/db/queries/user'
 import { community_markets } from '@/lib/db/schema/communities/tables'
 import { db } from '@/lib/drizzle'
 import { DEFAULT_ERROR_MESSAGE } from '@/lib/constants'
+import {
+  notifyMarketApproved,
+  notifyMarketRejected,
+  notifyMarketSubmitted,
+} from '@/lib/community-notifications'
 import { loadEventCreationSignersFromEnv } from '@/lib/event-creation-signers'
 
 const SubmitForReviewSchema = z.object({
@@ -50,6 +55,15 @@ export async function submitMarketForReviewAction(
     return { error: result.error, data: null }
   }
 
+  // In-app confirmation to the community admin
+  if (result.data) {
+    await notifyMarketSubmitted({
+      communityAdminId: user.id,
+      communitySlug,
+      marketTitle: result.data.title,
+    })
+  }
+
   revalidatePath(`/community/${communitySlug}`)
   revalidatePath('/admin/communities/review')
   return { error: null, data: result.data }
@@ -80,6 +94,16 @@ export async function rejectMarketAction(
   })
   if (result.error) {
     return { error: result.error, data: null }
+  }
+
+  // Notify the community admin who submitted the market
+  if (result.data) {
+    await notifyMarketRejected({
+      communityAdminId: result.data.created_by,
+      communitySlug,
+      marketTitle: result.data.title,
+      feedback: feedback.trim(),
+    })
   }
 
   revalidatePath(`/community/${communitySlug}`)
@@ -226,6 +250,13 @@ export async function approveMarketAction(
   if (result.error) {
     return { error: result.error, data: null }
   }
+
+  // Notify the community admin
+  await notifyMarketApproved({
+    communityAdminId: market.created_by,
+    communitySlug,
+    marketTitle: finalTitle,
+  })
 
   revalidatePath(`/community/${communitySlug}`)
   revalidatePath('/admin/communities/review')

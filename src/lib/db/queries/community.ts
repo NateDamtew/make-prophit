@@ -1026,6 +1026,32 @@ export const CommunityRepository = {
       // so on-chain settlement can pay out. This bypasses UMA for
       // community-governed markets.
       await writeJuryResolutionToConditions(communityMarketId, outcome)
+
+      // Notify the community admin of the resolution
+      try {
+        const [row] = await db
+          .select({
+            created_by: community_markets.created_by,
+            title: community_markets.title,
+            community_slug: communities.slug,
+          })
+          .from(community_markets)
+          .innerJoin(communities, eq(community_markets.community_id, communities.id))
+          .where(eq(community_markets.id, communityMarketId))
+          .limit(1)
+        if (row) {
+          const { notifyMarketResolved } = await import('@/lib/community-notifications')
+          await notifyMarketResolved({
+            communityAdminId: row.created_by,
+            communitySlug: row.community_slug,
+            marketTitle: row.title,
+            outcome,
+          })
+        }
+      }
+      catch (err) {
+        console.error('[resolveMarket notification] Failed:', err)
+      }
     }
 
     return { outcome, status: resolvedStatus, voteCount: votes.length, threshold }

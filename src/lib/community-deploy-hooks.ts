@@ -17,9 +17,14 @@
 
 import { and, eq } from 'drizzle-orm'
 import { CommunityRepository } from '@/lib/db/queries/community'
-import { community_markets } from '@/lib/db/schema/communities/tables'
+import { communities, community_markets } from '@/lib/db/schema/communities/tables'
 import { conditions, events, markets } from '@/lib/db/schema/events/tables'
 import { db } from '@/lib/drizzle'
+import {
+  notifyMarketDeployFailed,
+  notifyMarketDeployed,
+  notifySuperAdminsOfDeployFailure,
+} from '@/lib/community-notifications'
 
 interface DraftPayloadHints {
   communityMarketId?: string
@@ -102,6 +107,27 @@ export async function onCommunityDraftDeployed(input: {
     console.log(
       `[onCommunityDraftDeployed] Linked community_market ${hints.communityMarketId} → event ${event.id}`,
     )
+
+    // Notify the community admin who created this market
+    const [marketRow] = await db
+      .select({
+        created_by: community_markets.created_by,
+        title: community_markets.title,
+        community_slug: communities.slug,
+      })
+      .from(community_markets)
+      .innerJoin(communities, eq(community_markets.community_id, communities.id))
+      .where(eq(community_markets.id, hints.communityMarketId))
+      .limit(1)
+
+    if (marketRow) {
+      await notifyMarketDeployed({
+        communityAdminId: marketRow.created_by,
+        communitySlug: marketRow.community_slug,
+        marketTitle: marketRow.title,
+        eventSlug: input.draftSlug,
+      })
+    }
   }
   catch (err) {
     console.error('[onCommunityDraftDeployed] Failed to link:', err)
@@ -140,7 +166,35 @@ export async function onCommunityDraftFailed(input: {
     console.warn(
       `[onCommunityDraftFailed] Final deploy failure for community_market ${hints.communityMarketId}: ${input.error}`,
     )
-    // TODO: send notification to super admins via notifications table
+
+    // Look up the market + community for notification context
+    const [marketRow] = await db
+      .select({
+        created_by: community_markets.created_by,
+        title: community_markets.title,
+        community_slug: communities.slug,
+        community_name: communities.name,
+      })
+      .from(community_markets)
+      .innerJoin(communities, eq(community_markets.community_id, communities.id))
+      .where(eq(community_markets.id, hints.communityMarketId))
+      .limit(1)
+
+    if (marketRow) {
+      // Notify community admin
+      await notifyMarketDeployFailed({
+        communityAdminId: marketRow.created_by,
+        communitySlug: marketRow.community_slug,
+        marketTitle: marketRow.title,
+      })
+
+      // Notify super admins
+      await notifySuperAdminsOfDeployFailure({
+        marketTitle: marketRow.title,
+        communityName: marketRow.community_name,
+        error: input.error,
+      })
+    }
   }
 }
 
