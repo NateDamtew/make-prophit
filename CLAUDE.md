@@ -47,6 +47,10 @@ Telegram Mini App auth uses a custom plugin at `/api/auth/telegram/verify-tma` t
 
 When adding trusted domains (e.g., subdomains), add them to `trustedOrigins` in `src/lib/auth.ts`.
 
+**SIWE sign-in rules — do not break these:**
+- `verifyMessage` in `src/lib/auth.ts` uses **pure ECDSA** (`viemVerifyMessage`) as the primary path. Do NOT replace this with WalletConnect RPC as the primary — WalletConnect RPC requires domain allowlisting in WalletConnect Cloud and breaks in production. The RPC is only kept as a fallback for smart contract wallets (EIP-1271).
+- `getMessageParams` in `src/providers/AppKitProvider.tsx` uses `wagmiConfig.state?.chainId` (the wallet's actual connected chain). Do NOT hardcode `defaultNetwork.id` here — forcing a chain switch before sign-in breaks Metamask, Binance Wallet, and any wallet not already on Polygon. Chain restriction is for trading, not authentication.
+
 ### Database
 
 Drizzle ORM with PostgreSQL (Supabase). Schema at `src/lib/db/schema/`:
