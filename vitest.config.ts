@@ -12,11 +12,8 @@ export default defineConfig({
     // Limit concurrency to prevent worker-pool exhaustion in constrained
     // environments (pre-push hook, CI). Without a cap, 150+ fork workers
     // all compete for memory and exceed startup timeouts.
-    poolOptions: {
-      forks: {
-        maxForks: 8,
-      },
-    },
+    // (poolOptions was removed in Vitest 4 — these are now top-level)
+    maxWorkers: 8,
     alias: {
       '@': path.resolve(__dirname, './src'),
       'server-only': path.resolve(__dirname, './tests/empty-module.ts'),
