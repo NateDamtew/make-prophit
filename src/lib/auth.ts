@@ -9,8 +9,8 @@ import { generateRandomString } from 'better-auth/crypto'
 import { nextCookies } from 'better-auth/next-js'
 import { customSession, siwe, twoFactor } from 'better-auth/plugins'
 import { eq, sql } from 'drizzle-orm'
+import { createPublicClient, http, verifyMessage as viemVerifyMessage } from 'viem'
 import { z } from 'zod'
-import { createPublicClient, http } from 'viem'
 import { isAdminWallet } from '@/lib/admin'
 import { AffiliateRepository } from '@/lib/db/queries/affiliate'
 import { db } from '@/lib/drizzle'
@@ -452,21 +452,30 @@ export const auth = betterAuth({
       anonymous: true,
       getNonce: async () => generateRandomString(32),
       verifyMessage: async ({ message, signature, address }) => {
-        const chainId = getChainIdFromMessage(message)
-
-        const publicClient = createPublicClient(
-          {
+        // First try pure ECDSA recovery — works for all EOA wallets (Metamask,
+        // Binance Wallet, Coinbase, etc.) without any RPC call. This avoids
+        // the WalletConnect RPC domain-allowlist requirement.
+        try {
+          return await viemVerifyMessage({
+            message,
+            address: address as `0x${string}`,
+            signature: signature as `0x${string}`,
+          })
+        }
+        catch {
+          // Fallback: RPC-based EIP-1271 check for smart contract wallets
+          const chainId = getChainIdFromMessage(message)
+          const publicClient = createPublicClient({
             transport: http(
               `https://rpc.walletconnect.org/v1/?chainId=${chainId}&projectId=${reownProjectId}`,
             ),
-          },
-        )
-
-        return await publicClient.verifyMessage({
-          message,
-          address: address as `0x${string}`,
-          signature: signature as `0x${string}`,
-        })
+          })
+          return await publicClient.verifyMessage({
+            message,
+            address: address as `0x${string}`,
+            signature: signature as `0x${string}`,
+          })
+        }
       },
     }),
     siweTwoFactorRedirect(),
