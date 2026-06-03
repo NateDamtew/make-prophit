@@ -1,0 +1,260 @@
+'use client'
+
+import type { SwipeSide } from './SwipeCard'
+import type { QuickViewCard } from './useQuickViewDeck'
+import { Loader2Icon, RotateCcwIcon, WalletIcon, XIcon, ZapIcon } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { toast } from 'sonner'
+import { Button } from '@/components/ui/button'
+import { useAppKit } from '@/hooks/useAppKit'
+import { useBalance } from '@/hooks/useBalance'
+import { useHasHydrated } from '@/hooks/useHasHydrated'
+import { authClient } from '@/lib/auth-client'
+import { cn } from '@/lib/utils'
+import { useUser } from '@/stores/useUser'
+import QuickViewWalkthrough from './QuickViewWalkthrough'
+import SwipeCard from './SwipeCard'
+import { useQuickViewDeck } from './useQuickViewDeck'
+
+const { useSession } = authClient
+
+const STAKE_CHIPS = [1, 5, 10] as const
+const DEFAULT_STAKE = 1
+
+interface StagedTrade {
+  card: QuickViewCard
+  side: SwipeSide
+}
+
+export default function QuickView({ open, onClose }: { open: boolean, onClose: () => void }) {
+  const hasHydrated = useHasHydrated()
+  const { open: openWallet } = useAppKit()
+  const { data: session } = useSession()
+  const user = useUser()
+  const { balance } = useBalance()
+
+  const isAuthenticated = hasHydrated && (Boolean(session?.user) || Boolean(user))
+  const hasBalance = (balance?.raw ?? 0) > 0
+
+  const { cards, isLoading, isError, refetch } = useQuickViewDeck(open)
+
+  const [index, setIndex] = useState(0)
+  const [staged, setStaged] = useState<StagedTrade | null>(null)
+  const [stake, setStake] = useState<number>(DEFAULT_STAKE)
+  const [isPlacing, setIsPlacing] = useState(false)
+
+  // Reset the deck position whenever the view is (re)opened.
+  useEffect(() => {
+    if (open) {
+      setIndex(0)
+      setStaged(null)
+      setStake(DEFAULT_STAKE)
+    }
+  }, [open])
+
+  const handleCommit = useCallback((card: QuickViewCard, side: SwipeSide) => {
+    setStaged({ card, side })
+  }, [])
+
+  const advance = useCallback(() => {
+    setStaged(null)
+    setIndex(current => current + 1)
+  }, [])
+
+  const handleConfirm = useCallback(async () => {
+    if (!staged) {
+      return
+    }
+
+    if (!isAuthenticated) {
+      void openWallet()
+      return
+    }
+
+    if (!hasBalance) {
+      toast.info('Add funds to start trading.', {
+        description: 'Deposit to your wallet, then swipe to trade.',
+      })
+      return
+    }
+
+    // Staged (preview) execution — live CLOB order routing comes next iteration.
+    setIsPlacing(true)
+    await new Promise(resolve => setTimeout(resolve, 450))
+    setIsPlacing(false)
+
+    const sideLabel = staged.side === 'yes' ? staged.card.yesLabel : staged.card.noLabel
+    toast.success(`Preview: ${sideLabel} · $${stake}`, {
+      description: 'Trading is in preview — no live order was placed yet.',
+    })
+    advance()
+  }, [staged, isAuthenticated, hasBalance, openWallet, stake, advance])
+
+  const visibleCards = useMemo(() => cards.slice(index, index + 3), [cards, index])
+  const isDeckFinished = !isLoading && cards.length > 0 && index >= cards.length
+
+  if (!open) {
+    return null
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col bg-background/95 backdrop-blur-sm">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 pt-[calc(env(safe-area-inset-top)+0.75rem)] pb-3">
+        <div className="flex items-center gap-2">
+          <ZapIcon className="size-5 text-primary" />
+          <span className="text-base font-bold">Quick View</span>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close Quick View"
+          className="
+            flex size-9 items-center justify-center rounded-full text-muted-foreground transition-colors
+            hover:bg-muted hover:text-foreground
+          "
+        >
+          <XIcon className="size-5" />
+        </button>
+      </div>
+
+      {/* Deck */}
+      <div className="relative mx-auto flex w-full max-w-md flex-1 flex-col px-4 pb-4">
+        <div className="relative min-h-0 flex-1">
+          {isLoading && (
+            <div className="flex h-full flex-col items-center justify-center gap-3 text-muted-foreground">
+              <Loader2Icon className="size-7 animate-spin" />
+              <span className="text-sm">Loading markets…</span>
+            </div>
+          )}
+
+          {isError && !isLoading && (
+            <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
+              <p className="text-sm text-muted-foreground">Couldn’t load markets.</p>
+              <Button size="sm" variant="outline" onClick={() => refetch()}>
+                Try again
+              </Button>
+            </div>
+          )}
+
+          {!isLoading && !isError && cards.length === 0 && (
+            <div className="flex h-full items-center justify-center text-center text-sm text-muted-foreground">
+              No binary markets available right now.
+            </div>
+          )}
+
+          {isDeckFinished && (
+            <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
+              <div className="flex size-16 items-center justify-center rounded-2xl bg-primary/10">
+                <ZapIcon className="size-8 text-primary" />
+              </div>
+              <div>
+                <p className="text-lg font-semibold">You’re all caught up</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  You’ve swiped through every trending market.
+                </p>
+              </div>
+              <Button
+                onClick={() => {
+                  setIndex(0)
+                  setStaged(null)
+                  void refetch()
+                }}
+              >
+                <RotateCcwIcon className="mr-1.5 size-4" />
+                Start over
+              </Button>
+            </div>
+          )}
+
+          {/* Card stack — render back-to-front so the active card is on top. */}
+          {!isDeckFinished && visibleCards.map((card, stackIndex) => (
+            <SwipeCard
+              key={card.conditionId}
+              card={card}
+              active={stackIndex === 0 && !staged}
+              stackIndex={stackIndex}
+              onCommit={side => handleCommit(card, side)}
+            />
+          ))}
+        </div>
+
+        {/* Confirm bar — appears after a swipe stages a side. */}
+        {staged && (
+          <div className="mt-4 rounded-2xl border bg-card p-4 shadow-lg">
+            <div className="mb-3 flex items-center justify-between">
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-muted-foreground">You picked</span>
+                <span
+                  className={cn(
+                    'rounded-full px-2.5 py-0.5 text-xs font-bold',
+                    staged.side === 'yes' ? 'bg-yes/15 text-yes' : 'bg-no/15 text-no',
+                  )}
+                >
+                  {staged.side === 'yes' ? staged.card.yesLabel : staged.card.noLabel}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setStaged(null)}
+                className="text-xs font-medium text-muted-foreground hover:text-foreground"
+              >
+                Cancel
+              </button>
+            </div>
+
+            {/* Stake chips */}
+            <div className="mb-3 flex gap-2">
+              {STAKE_CHIPS.map(chip => (
+                <button
+                  key={chip}
+                  type="button"
+                  onClick={() => setStake(chip)}
+                  className={cn(
+                    'flex-1 rounded-xl border py-2 text-sm font-semibold transition-colors',
+                    stake === chip
+                      ? 'border-primary bg-primary/10 text-foreground'
+                      : 'border-border text-muted-foreground hover:bg-muted',
+                  )}
+                >
+                  $
+                  {chip}
+                </button>
+              ))}
+            </div>
+
+            {isAuthenticated
+              ? (
+                  <Button className="h-12 w-full text-base" onClick={handleConfirm} disabled={isPlacing}>
+                    {isPlacing
+                      ? <Loader2Icon className="mr-2 size-4 animate-spin" />
+                      : null}
+                    {hasBalance ? `Confirm · $${stake}` : 'Add funds to trade'}
+                  </Button>
+                )
+              : (
+                  <Button className="h-12 w-full text-base" onClick={() => void openWallet()}>
+                    <WalletIcon className="mr-2 size-4" />
+                    Connect wallet to trade
+                  </Button>
+                )}
+          </div>
+        )}
+
+        {/* Hint when idle */}
+        {!staged && !isDeckFinished && cards.length > 0 && (
+          <p className="mt-4 text-center text-xs text-muted-foreground">
+            Swipe right for
+            {' '}
+            <span className="font-semibold text-yes">Yes/Up</span>
+            , left for
+            {' '}
+            <span className="font-semibold text-no">No/Down</span>
+          </p>
+        )}
+      </div>
+
+      <QuickViewWalkthrough />
+    </div>
+  )
+}

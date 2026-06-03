@@ -1,9 +1,11 @@
 'use client'
 
+import { ZapIcon } from 'lucide-react'
 import { useExtracted } from 'next-intl'
 import dynamic from 'next/dynamic'
 import HeaderDropdownUserMenuGuest from '@/app/[locale]/(platform)/_components/HeaderDropdownUserMenuGuest'
 import HeaderNotifications from '@/app/[locale]/(platform)/_components/HeaderNotifications'
+import { useQuickView } from '@/app/[locale]/(platform)/_providers/QuickViewProvider'
 import { useOptionalTradingOnboarding } from '@/app/[locale]/(platform)/_providers/TradingOnboardingContext'
 import HeaderDropdownUserMenuAuth from '@/components/HeaderDropdownUserMenuAuth'
 import HeaderPortfolio from '@/components/HeaderPortfolio'
@@ -28,6 +30,7 @@ export default function HeaderMenu() {
 function HeaderMenuClient() {
   const t = useExtracted()
   const { open } = useAppKit()
+  const { openQuickView } = useQuickView()
   const { data: session, isPending: isSessionPending } = useSession()
   const hasHydrated = useHasHydrated()
   const isMobile = useIsMobile()
@@ -40,6 +43,20 @@ function HeaderMenuClient() {
 
   return (
     <>
+      {/* Quick View launcher — available to everyone (guests are gated to
+          connect a wallet when they try to confirm a trade). */}
+      <Button
+        size="headerCompact"
+        variant="ghost"
+        className="gap-1.5 px-2 text-foreground hover:bg-accent/70"
+        data-testid="header-quick-view-button"
+        aria-label={t('Quick View')}
+        onClick={openQuickView}
+      >
+        <ZapIcon className="size-4 text-primary" />
+        <span className="hidden sm:inline">{t('Quick View')}</span>
+      </Button>
+
       {isAuthenticated && (
         <>
           {!isMobile && <HeaderPortfolio />}

@@ -8,6 +8,7 @@ import PlatformViewerState from '@/app/[locale]/(platform)/_components/PlatformV
 import TmaAutoLogin from '@/app/[locale]/(platform)/_components/TmaAutoLogin'
 import { FilterProvider } from '@/app/[locale]/(platform)/_providers/FilterProvider'
 import PlatformNavigationProvider from '@/app/[locale]/(platform)/_providers/PlatformNavigationProvider'
+import { QuickViewProvider } from '@/app/[locale]/(platform)/_providers/QuickViewProvider'
 import { TradingOnboardingProvider } from '@/app/[locale]/(platform)/_providers/TradingOnboardingProvider'
 import { loadPlatformMainTags } from '@/lib/platform-main-tags'
 import { buildChildParentMap, buildPlatformNavigationTags } from '@/lib/platform-navigation'
@@ -33,12 +34,14 @@ export default async function PlatformLayout({ params, children }: LayoutProps<'
         <PlatformViewerState />
         <FilterProvider>
           <PlatformNavigationProvider tags={tags} childParentMap={childParentMap}>
-            <Header />
-            <NavigationTabs />
-            {children}
-            <MobileBottomNav />
-            <AffiliateQueryHandler />
-            <TmaAutoLogin />
+            <QuickViewProvider>
+              <Header />
+              <NavigationTabs />
+              {children}
+              <MobileBottomNav />
+              <AffiliateQueryHandler />
+              <TmaAutoLogin />
+            </QuickViewProvider>
           </PlatformNavigationProvider>
         </FilterProvider>
       </TradingOnboardingProvider>
