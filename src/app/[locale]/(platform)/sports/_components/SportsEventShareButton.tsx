@@ -5,6 +5,7 @@ import { CheckIcon, ShareIcon } from 'lucide-react'
 import { useSportsEventShareButton } from '@/app/[locale]/(platform)/sports/_components/sports-event-center-hooks'
 import { headerIconButtonClass } from '@/app/[locale]/(platform)/sports/_components/sports-event-center-types'
 import { Button } from '@/components/ui/button'
+import { shareOrCopy } from '@/lib/native-share'
 import { cn } from '@/lib/utils'
 import { useUser } from '@/stores/useUser'
 
@@ -14,17 +15,21 @@ function SportsEventShareButton({ event }: { event: SportsGamesCard['event'] }) 
   const { shareSuccess, setShareSuccess, maybeHandleDebugCopy } = useSportsEventShareButton(event)
 
   async function handleShare() {
-    try {
-      const url = new URL(window.location.href)
-      if (affiliateCode) {
-        url.searchParams.set('r', affiliateCode)
-      }
-      await navigator.clipboard.writeText(url.toString())
+    const url = new URL(window.location.href)
+    if (affiliateCode) {
+      url.searchParams.set('r', affiliateCode)
+    }
+
+    const result = await shareOrCopy({
+      url: url.toString(),
+      title: event.title,
+    })
+
+    // Only show the inline "copied" checkmark on the clipboard fallback;
+    // the native share sheet provides its own feedback.
+    if (result === 'copied') {
       setShareSuccess(true)
       window.setTimeout(setShareSuccess, 2000, false)
-    }
-    catch {
-      // noop
     }
   }
 
