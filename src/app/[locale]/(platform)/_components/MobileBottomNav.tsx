@@ -27,19 +27,14 @@ import PwaInstallIosInstructions from '@/components/PwaInstallIosInstructions'
 import ThemeSelector from '@/components/ThemeSelector'
 import { Button } from '@/components/ui/button'
 import { Drawer, DrawerClose, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer'
-import { Skeleton } from '@/components/ui/skeleton'
 import { useAppKit } from '@/hooks/useAppKit'
-import { useBalance } from '@/hooks/useBalance'
 import { useHasHydrated } from '@/hooks/useHasHydrated'
-import { usePortfolioValue } from '@/hooks/usePortfolioValue'
 import { usePwaInstall } from '@/hooks/usePwaInstall'
 import { LOCALE_LABELS, LOOP_LABELS, normalizeEnabledLocales, SUPPORTED_LOCALES } from '@/i18n/locales'
 import { usePathname, useRouter } from '@/i18n/navigation'
 import { authClient } from '@/lib/auth-client'
-import { formatCompactCurrency } from '@/lib/formatters'
 import { stripLocalePrefix, withLocalePrefix } from '@/lib/locale-path'
 import { cn } from '@/lib/utils'
-import { usePortfolioValueVisibility } from '@/stores/usePortfolioValueVisibility'
 import { useUser } from '@/stores/useUser'
 
 const HeaderSearch = lazy(() => import('@/app/[locale]/(platform)/_components/HeaderSearch'))
@@ -354,15 +349,18 @@ function MobileBottomNavContent({ pathname }: MobileBottomNavContentProps) {
         </Drawer>
       )}
 
-      <nav className="fixed inset-x-0 bottom-0 z-40 lg:hidden" aria-label="Primary navigation">
-        <div
-          className={cn(`
-            border-t border-border/70 bg-background/95 pb-[calc(env(safe-area-inset-bottom)+0.25rem)]
-            shadow-[0_-20px_48px_-36px_rgba(15,23,42,0.55)] backdrop-blur-sm
-            supports-backdrop-filter:bg-background/90
-          `)}
-        >
-          <div className="grid h-16.5 grid-cols-4">
+      <nav
+        className="fixed inset-x-0 z-40 lg:hidden"
+        style={{ bottom: 'calc(env(safe-area-inset-bottom) + 0.5rem)' }}
+        aria-label="Primary navigation"
+      >
+        <div className="mx-3 flex justify-center">
+          <div
+            className={cn(`
+              flex w-full max-w-md items-center justify-between gap-1 rounded-full bg-primary p-1.5
+              shadow-[0_12px_32px_-8px_rgba(0,0,0,0.35)]
+            `)}
+          >
             <MobileNavLink href="/" label={t('Home')} active={pathname === '/'} icon={HouseIcon} />
             <MobileNavButton label={t('Search')} active={isSearchOpen} onClick={handleSearchAction} icon={SearchIcon} />
             <MobileNavLink href="/new" label={t('New')} active={pathname === '/new'} icon={SparkleIcon} />
@@ -385,6 +383,48 @@ function MobileBottomNavContent({ pathname }: MobileBottomNavContentProps) {
   )
 }
 
+/**
+ * Shared chip-style nav item.
+ * Inactive: icon-only on the yellow bar.
+ * Active: rounded pill with a soft black-tint background, label slides in next to the icon.
+ * All icons + labels are full-black so they read crisply on yellow.
+ */
+function navChipClassName(active: boolean) {
+  return cn(
+    `
+      flex h-11 items-center justify-center rounded-full px-3 text-black transition-[background-color,flex-grow]
+      duration-200 ease-out
+      focus-visible:ring-2 focus-visible:ring-black/40 focus-visible:outline-none
+      active:scale-[0.97]
+    `,
+    active ? 'flex-1 bg-black/15' : 'flex-none hover:bg-black/5',
+  )
+}
+
+function NavChipContents({
+  Icon,
+  label,
+  active,
+}: {
+  Icon: typeof HouseIcon
+  label: ReactNode
+  active: boolean
+}) {
+  return (
+    <>
+      <Icon className="size-5 shrink-0" strokeWidth={2.25} aria-hidden="true" />
+      <span
+        className={cn(
+          'overflow-hidden text-sm leading-none font-semibold whitespace-nowrap transition-all duration-200 ease-out',
+          active ? 'ml-2 max-w-32 opacity-100' : 'ml-0 max-w-0 opacity-0',
+        )}
+      >
+        {label}
+      </span>
+    </>
+  )
+}
+
 interface MobileNavLinkProps {
   active: boolean
   href: ComponentProps<typeof AppLink>['href']
@@ -398,53 +438,25 @@ function MobileNavLink({ active, href, icon: Icon, label }: MobileNavLinkProps) 
       intentPrefetch
       href={href}
       aria-current={active ? 'page' : undefined}
-      className={cn(
-        `
-          flex size-full flex-col items-center justify-center gap-1 px-2 text-[11px] leading-none font-semibold
-          transition-colors
-        `,
-        active ? 'text-foreground' : 'text-muted-foreground',
-      )}
+      aria-label={typeof label === 'string' ? label : undefined}
+      className={navChipClassName(active)}
     >
-      <Icon className="size-[17px]" />
-      <span className="max-w-full truncate">{label}</span>
+      <NavChipContents Icon={Icon} label={label} active={active} />
     </AppLink>
   )
 }
 
 function MobilePortfolioNavLink({ active }: { active: boolean }) {
   const t = useExtracted()
-  const { balance, isLoadingBalance } = useBalance()
-  const { isLoading, value: positionsValue } = usePortfolioValue()
-  const areValuesHidden = usePortfolioValueVisibility(state => state.isHidden)
-  const isLoadingValue = isLoadingBalance || isLoading
-  const totalPortfolioValue = (positionsValue ?? 0) + (balance?.raw ?? 0)
-  const portfolioValueLabel = Number.isFinite(totalPortfolioValue)
-    ? formatCompactCurrency(totalPortfolioValue)
-    : '$0.00'
-
   return (
     <AppLink
       intentPrefetch
       href="/portfolio"
       aria-current={active ? 'page' : undefined}
       aria-label={t('Portfolio')}
-      className={cn(
-        `
-          flex size-full flex-col items-center justify-center gap-1 px-2 text-[11px] leading-none font-semibold
-          transition-colors
-        `,
-        active ? 'text-foreground' : 'text-muted-foreground',
-      )}
+      className={navChipClassName(active)}
     >
-      <ChartLineIcon className="size-[17px]" />
-      {isLoadingValue
-        ? <Skeleton className="h-3 w-12 rounded-full" />
-        : (
-            <span className="max-w-full truncate">
-              {areValuesHidden ? '****' : portfolioValueLabel}
-            </span>
-          )}
+      <NavChipContents Icon={ChartLineIcon} label={t('Portfolio')} active={active} />
     </AppLink>
   )
 }
@@ -461,18 +473,11 @@ function MobileNavButton({ active, icon: Icon, label, onClick }: MobileNavButton
     <button
       type="button"
       onClick={onClick}
-      className={cn(
-        `
-          flex size-full flex-col items-center justify-center gap-1 px-2 text-[11px] leading-none font-semibold
-          transition-colors
-          focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:outline-none
-        `,
-        active ? 'text-foreground' : 'text-muted-foreground',
-      )}
       aria-label={label}
+      aria-pressed={active}
+      className={navChipClassName(active)}
     >
-      <Icon className="size-[17px]" />
-      <span>{label}</span>
+      <NavChipContents Icon={Icon} label={label} active={active} />
     </button>
   )
 }
