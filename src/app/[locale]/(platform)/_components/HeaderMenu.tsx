@@ -62,21 +62,15 @@ function HeaderMenuClient() {
 
       {shouldShowGuestActions && (
         <>
+          {/* Wallet (SIWE) auth has no separate sign-up vs log-in — connecting a
+              wallet creates the account if new, or logs in if it exists. So a
+              single "Get Started" button is all that's needed. */}
           <Button
             size="headerCompact"
-            variant="link"
-            className="no-underline hover:bg-accent/70 hover:no-underline"
-            data-testid="header-login-button"
+            data-testid="header-get-started-button"
             onClick={() => open()}
           >
-            {t('Log In')}
-          </Button>
-          <Button
-            size="headerCompact"
-            data-testid="header-signup-button"
-            onClick={() => open()}
-          >
-            {t('Sign Up')}
+            {t('Get Started')}
           </Button>
           {!isMobile && <HeaderDropdownUserMenuGuest />}
         </>

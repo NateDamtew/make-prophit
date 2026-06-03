@@ -332,18 +332,11 @@ function MobileBottomNavContent({ pathname }: MobileBottomNavContentProps) {
                 </DrawerClose>
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
-                <DrawerClose asChild>
-                  <Button type="button" variant="outline" className="h-10" onClick={handleAuthAction}>
-                    {t('Log In')}
-                  </Button>
-                </DrawerClose>
-                <DrawerClose asChild>
-                  <Button type="button" className="h-10" onClick={handleAuthAction}>
-                    {t('Sign Up')}
-                  </Button>
-                </DrawerClose>
-              </div>
+              <DrawerClose asChild>
+                <Button type="button" className="h-11 w-full" onClick={handleAuthAction}>
+                  {t('Get Started')}
+                </Button>
+              </DrawerClose>
             </div>
           </DrawerContent>
         </Drawer>
