@@ -38,8 +38,12 @@ export interface QuickViewCard {
   rules: string
   /** Where the market resolves from, shown in the details sheet. */
   resolutionSource: string
-  /** CLOB token id for the YES side — used to fetch price history for the sparkline. */
+  /** CLOB token id for the YES side — used for price history + placing a YES trade. */
   yesTokenId: string
+  /** CLOB token id for the NO side — used for placing a NO trade. */
+  noTokenId: string
+  /** Whether the market uses the neg-risk exchange (picks the right EIP-712 domain). */
+  negRisk: boolean
   /** ISO timestamp of when the market was created, for the sparkline time range. */
   createdAtIso: string
   /** Optional resolved-at timestamp — caps the sparkline range for resolved markets. */
@@ -105,6 +109,8 @@ function pickBinaryMarket(event: Event): QuickViewCard | null {
     rules: candidate.market_rules?.trim() || event.rules?.trim() || '',
     resolutionSource: candidate.resolution_source?.trim() || '',
     yesTokenId: yes.token_id ?? '',
+    noTokenId: no.token_id ?? '',
+    negRisk: candidate.neg_risk === true,
     createdAtIso: candidate.created_at ?? event.created_at,
     resolvedAtIso: event.resolved_at ?? null,
     isTrending: event.is_trending === true,

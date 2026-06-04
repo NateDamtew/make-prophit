@@ -12,12 +12,14 @@ import { useBalance } from '@/hooks/useBalance'
 import { useHasHydrated } from '@/hooks/useHasHydrated'
 import { useSiteIdentity } from '@/hooks/useSiteIdentity'
 import { authClient } from '@/lib/auth-client'
+import { OUTCOME_INDEX } from '@/lib/constants'
 import { shareOrCopy } from '@/lib/native-share'
 import { cn } from '@/lib/utils'
 import { useUser } from '@/stores/useUser'
 import CardDetailsSheet from './CardDetailsSheet'
 import QuickViewWalkthrough from './QuickViewWalkthrough'
 import SwipeCard from './SwipeCard'
+import { usePlaceQuickTrade } from './usePlaceQuickTrade'
 import { useQuickViewDeck } from './useQuickViewDeck'
 
 const { useSession } = authClient
@@ -64,6 +66,7 @@ export default function QuickView({ open, onClose }: { open: boolean, onClose: (
   const isAuthenticated = hasHydrated && (Boolean(session?.user) || Boolean(user))
   const hasBalance = (balance?.raw ?? 0) > 0
 
+  const placeQuickTrade = usePlaceQuickTrade()
   const { cards, isLoading, isError, refetch } = useQuickViewDeck(open)
 
   const [index, setIndex] = useState(0)
@@ -111,7 +114,7 @@ export default function QuickView({ open, onClose }: { open: boolean, onClose: (
   }, [])
 
   const handleConfirm = useCallback(async () => {
-    if (!staged) {
+    if (!staged || isPlacing) {
       return
     }
 
@@ -127,17 +130,37 @@ export default function QuickView({ open, onClose }: { open: boolean, onClose: (
       return
     }
 
-    // Staged (preview) execution — live CLOB order routing comes next iteration.
+    const { card, side } = staged
+    const isYes = side === 'yes'
+    const sideLabel = isYes ? card.yesLabel : card.noLabel
+
+    // Place a real MARKET BUY through the same pipeline as the event order panel.
     setIsPlacing(true)
-    await new Promise(resolve => setTimeout(resolve, 450))
+    const result = await placeQuickTrade({
+      tokenId: isYes ? card.yesTokenId : card.noTokenId,
+      conditionId: card.conditionId,
+      eventSlug: card.eventSlug,
+      outcomeIndex: isYes ? OUTCOME_INDEX.YES : OUTCOME_INDEX.NO,
+      priceCents: isYes ? card.yesPriceCents : card.noPriceCents,
+      amountUsd: stake,
+      negRisk: card.negRisk,
+    })
     setIsPlacing(false)
 
-    const sideLabel = staged.side === 'yes' ? staged.card.yesLabel : staged.card.noLabel
-    toast.success(`Preview: ${sideLabel} · $${stake}`, {
-      description: 'Trading is in preview — no live order was placed yet.',
-    })
-    advance()
-  }, [staged, isAuthenticated, hasBalance, openWallet, stake, advance])
+    if (result.status === 'success') {
+      toast.success(`Bought ${sideLabel} · ${formatMoney(stake)}`, {
+        description: card.title,
+      })
+      advance()
+      return
+    }
+
+    if (result.status === 'error') {
+      toast.error('Trade failed', { description: result.message })
+    }
+    // 'not-ready' (onboarding opened) and 'cancelled' (signature dismissed)
+    // leave the trade staged so the user can retry after resolving it.
+  }, [staged, isPlacing, isAuthenticated, hasBalance, openWallet, placeQuickTrade, stake, advance])
 
   const visibleCards = useMemo(() => cards.slice(index, index + 3), [cards, index])
   const isDeckFinished = !isLoading && cards.length > 0 && index >= cards.length
