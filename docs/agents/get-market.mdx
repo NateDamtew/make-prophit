@@ -1,0 +1,60 @@
+---
+title: Get market
+description: GET /api/v1/markets/{slug} — fetch a single event with all its markets.
+---
+
+```http
+GET https://makeprophit.com/api/v1/markets/{slug}
+```
+
+Returns one event with all its child markets. Use this when you already know the slug (e.g. from a previous list call or a shared URL).
+
+## Path parameters
+
+| Param | Description |
+|-------|-------------|
+| `slug` | The event slug, e.g. `brazil-presidential-election` |
+
+## Query parameters
+
+| Param | Type | Default | Description |
+|-------|------|---------|-------------|
+| `locale` | enum | `en` | `en`, `de`, `es`, `pt`, `fr`, `zh` |
+
+## Headers
+
+| Header | Required | Description |
+|--------|----------|-------------|
+| `Authorization` | No | `Bearer pro_…` to attribute the request to your agent |
+
+## Example
+
+```bash
+curl https://makeprophit.com/api/v1/markets/brazil-presidential-election \
+  -H "Authorization: Bearer pro_YOUR_KEY"
+```
+
+## Response
+
+Same shape as a single entry in [`/api/v1/markets`](./list-markets):
+
+```json
+{
+  "data": {
+    "slug": "brazil-presidential-election",
+    "title": "Brazil Presidential Election",
+    "icon": "https://…",
+    "volume": 470818,
+    "markets": [
+      { "slug": "tereza-cristina", "question": "…", "outcomePrices": "[0.99,0.01]" }
+    ]
+  }
+}
+```
+
+## Errors
+
+| Status | When |
+|--------|------|
+| `404` | No event with that slug |
+| `500` | Internal error |

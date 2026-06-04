@@ -1,0 +1,101 @@
+---
+title: MCP server
+description: Connect Claude Desktop, Cursor, and any MCP client to Prophit as a tool. Coming soon.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout'
+
+<Callout type="info" title="Coming soon">
+The MCP (Model Context Protocol) server ships with Prophit's mainnet launch. The docs below describe what it'll look like.
+</Callout>
+
+The MCP server exposes Prophit as a tool any MCP-compatible client can call. Drop it into Claude Desktop, Cursor, or any agent runtime, and the model can search markets, read prices, and (at mainnet) place trades — all through a small, audited tool surface.
+
+## What it exposes
+
+| Tool | Description |
+|------|-------------|
+| `search_markets` | Find markets by topic or keywords. Returns the same shape as `/api/v1/markets`. |
+| `get_market` | Fetch full details for a single market |
+| `get_price_history` | Time-series prices for charting / analysis |
+| `list_categories` | Discover top-level category slugs |
+| `place_trade` | Submit a market order on behalf of the agent *(mainnet)* |
+| `get_balance` | Read the agent owner's deposit-wallet balance *(mainnet)* |
+| `get_positions` | List the agent's open positions *(mainnet)* |
+
+## Connection config
+
+```jsonc
+// ~/.cursor/mcp.json  or  Claude Desktop config
+{
+  "mcpServers": {
+    "prophit": {
+      "command": "npx",
+      "args": ["-y", "@makeprophit/mcp"],
+      "env": {
+        "PROPHIT_API_KEY": "pro_YOUR_KEY_HERE"
+      }
+    }
+  }
+}
+```
+
+## Tool: search_markets
+
+```jsonc
+// input
+{ "query": "Brazil election", "limit": 5 }
+
+// output (data field from /api/v1/markets)
+[
+  { "slug": "brazil-presidential-election", "title": "Brazil Presidential Election", "volume": 470818, "markets": [...] }
+]
+```
+
+## Tool: place_trade *(mainnet)*
+
+```jsonc
+// input
+{
+  "market_slug": "brazil-presidential-election",
+  "side": "YES",
+  "amount_usd": 5
+}
+
+// output
+{
+  "status": "filled",
+  "order_id": "ord_…",
+  "shares": 5.05,
+  "avg_price_cents": 99
+}
+```
+
+Trades go through the agent's API key with the same spending limits the owner set. Errors:
+
+- `LIMIT_EXCEEDED` — daily or total cap would be exceeded
+- `INSUFFICIENT_BALANCE` — wallet doesn't have enough
+- `MARKET_INACTIVE` — market closed/resolved
+- `SCOPE_DENIED` — agent lacks the `trade` scope
+
+## Authentication
+
+The MCP server uses the same agent API key as the REST API. The key is passed via the `PROPHIT_API_KEY` env var in your MCP config — same place you'd put any other secret.
+
+## Local development
+
+Pulling agent data into a local notebook or research script:
+
+```bash
+# Start the MCP server in stdio mode
+PROPHIT_API_KEY=pro_… npx -y @makeprophit/mcp
+
+# Or in SSE mode for HTTP-based clients
+PROPHIT_API_KEY=pro_… npx -y @makeprophit/mcp --port 3000
+```
+
+## Roadmap
+
+- **Phase 1** (mainnet launch): `search_markets`, `get_market`, `get_price_history`, `list_categories` — read-only
+- **Phase 2** (mainnet trading): `place_trade`, `get_balance`, `get_positions`
+- **Phase 3**: streaming updates, market-creation tools for power users

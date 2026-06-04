@@ -1,0 +1,58 @@
+---
+title: REST API
+description: Public, read-only HTTP endpoints for markets, prices, and categories.
+---
+
+The agent REST API lives under `https://makeprophit.com/api/v1/*`. It returns JSON, supports CORS, and can be called from anywhere — browser, mobile, server, or another agent.
+
+## Conventions
+
+| | |
+|---|---|
+| **Base URL** | `https://makeprophit.com/api/v1` |
+| **Format** | JSON, UTF-8 |
+| **CORS** | `Access-Control-Allow-Origin: *` on every endpoint |
+| **Auth** | Optional — `Authorization: Bearer pro_…` for agent attribution |
+| **Errors** | `{ "error": string, "status": number }` with the matching HTTP status |
+| **Envelope** | `{ "data": …, "meta": … }` on success |
+
+## Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | [`/markets`](./list-markets) | List events with filtering |
+| `GET` | [`/markets/{slug}`](./get-market) | Get a single event with all its markets |
+| `GET` | [`/markets/{slug}/prices`](./price-history) | YES-side price history (CLOB-backed) |
+| `GET` | [`/categories`](./list-categories) | Top-level category slugs |
+
+## Rate limiting
+
+Public anonymous requests are rate-limited per IP. Authenticated agent requests get per-agent attribution and (after mainnet) higher limits. The current limit is intentionally generous during the testnet phase — we'll tighten it once we have data on real agent usage patterns.
+
+If you hit a limit, the response is `429 Too Many Requests` with a `Retry-After` header.
+
+## Versioning
+
+The `/v1` prefix is permanent. Breaking changes go into a new `/v2` path with at least 90 days of overlap.
+
+Within `/v1` we may:
+
+- **Add fields** to response objects (always additive — never remove)
+- **Add endpoints** under existing paths
+- **Add query parameters** with defaults that preserve current behavior
+
+We will not:
+
+- Remove fields from existing endpoints
+- Change the semantic meaning of an existing field
+- Change a path or HTTP method
+
+## SDKs
+
+This documentation focuses on the raw HTTP API so you can call it from anywhere. The downloadable CLOB and Relayer SDKs (Python, Rust, TypeScript) at **Settings → Agents → SDK Downloads** also work — they're a thin wrapper over the same endpoints with helpers for order signing.
+
+## See also
+
+- [Authentication](./authentication) — using the `Authorization` header
+- [Spending limits](./spending-limits) — owner-set per-agent caps
+- [MCP server](./mcp-server) — same data, exposed as an MCP tool *(coming soon)*

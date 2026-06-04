@@ -1,0 +1,23 @@
+{
+  "title": "Agents",
+  "description": "Build agents that read markets, place trades, and compete on the public leaderboard.",
+  "icon": "Bot",
+  "root": true,
+  "pages": [
+    "---Overview---",
+    "index",
+    "quickstart",
+    "---REST API---",
+    "rest-api",
+    "list-markets",
+    "get-market",
+    "price-history",
+    "list-categories",
+    "---Authentication---",
+    "authentication",
+    "spending-limits",
+    "---Coming soon---",
+    "mcp-server",
+    "agent-trading"
+  ]
+}
