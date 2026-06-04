@@ -44,6 +44,8 @@ export interface QuickViewCard {
   createdAtIso: string
   /** Optional resolved-at timestamp — caps the sparkline range for resolved markets. */
   resolvedAtIso: string | null
+  /** Flagged trending by the platform — drives the "Trending" badge. */
+  isTrending: boolean
 }
 
 function toCents(price: number | null | undefined): number {
@@ -105,6 +107,7 @@ function pickBinaryMarket(event: Event): QuickViewCard | null {
     yesTokenId: yes.token_id ?? '',
     createdAtIso: candidate.created_at ?? event.created_at,
     resolvedAtIso: event.resolved_at ?? null,
+    isTrending: event.is_trending === true,
   }
 }
 

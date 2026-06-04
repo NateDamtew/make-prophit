@@ -24,6 +24,29 @@ const { useSession } = authClient
 
 const STAKE_CHIPS = [1, 5, 10] as const
 const DEFAULT_STAKE = 1
+const MAX_CUSTOM_STAKE = 10_000
+
+/**
+ * Total payout if the side wins: each share pays $1, so shares = stake/price
+ * and payout = stake / (cents/100). At 50¢ price, $1 stakes pays $2.
+ * Returns 0 if price is invalid so the UI hides the "Win" line.
+ */
+function calculatePotentialReturn(stake: number, priceCents: number): number {
+  if (!Number.isFinite(stake) || stake <= 0 || priceCents <= 0 || priceCents > 100) {
+    return 0
+  }
+  return stake / (priceCents / 100)
+}
+
+function formatMoney(value: number): string {
+  if (value >= 1000) {
+    return `$${Math.round(value).toLocaleString('en-US')}`
+  }
+  if (value >= 10) {
+    return `$${value.toFixed(0)}`
+  }
+  return `$${value.toFixed(2)}`
+}
 
 interface StagedTrade {
   card: QuickViewCard
@@ -46,6 +69,8 @@ export default function QuickView({ open, onClose }: { open: boolean, onClose: (
   const [index, setIndex] = useState(0)
   const [staged, setStaged] = useState<StagedTrade | null>(null)
   const [stake, setStake] = useState<number>(DEFAULT_STAKE)
+  const [isCustomMode, setIsCustomMode] = useState(false)
+  const [customInput, setCustomInput] = useState<string>('')
   const [isPlacing, setIsPlacing] = useState(false)
   const [detailsCard, setDetailsCard] = useState<QuickViewCard | null>(null)
 
@@ -57,6 +82,8 @@ export default function QuickView({ open, onClose }: { open: boolean, onClose: (
       setIndex(0)
       setStaged(null)
       setStake(DEFAULT_STAKE)
+      setIsCustomMode(false)
+      setCustomInput('')
     }
   }, [open])
 
@@ -66,12 +93,16 @@ export default function QuickView({ open, onClose }: { open: boolean, onClose: (
 
   const advance = useCallback(() => {
     setStaged(null)
+    setIsCustomMode(false)
+    setCustomInput('')
     setIndex(current => current + 1)
   }, [])
 
   const handleSkip = useCallback(() => {
     // Double-tap or drag-up-to-skip: drop the card without trading.
     setStaged(null)
+    setIsCustomMode(false)
+    setCustomInput('')
     setIndex(current => current + 1)
   }, [])
 
@@ -110,6 +141,14 @@ export default function QuickView({ open, onClose }: { open: boolean, onClose: (
 
   const visibleCards = useMemo(() => cards.slice(index, index + 3), [cards, index])
   const isDeckFinished = !isLoading && cards.length > 0 && index >= cards.length
+
+  // Potential return for the currently-staged trade (if any) — hoisted out of
+  // JSX so we don't need an IIFE during render.
+  const stagedPriceCents = staged
+    ? (staged.side === 'yes' ? staged.card.yesPriceCents : staged.card.noPriceCents)
+    : 0
+  const stagedPotentialReturn = staged ? calculatePotentialReturn(stake, stagedPriceCents) : 0
+  const stagedProfit = stagedPotentialReturn - stake
 
   /**
    * Share the currently-visible market (or the platform itself when the deck
@@ -238,18 +277,31 @@ export default function QuickView({ open, onClose }: { open: boolean, onClose: (
             </div>
           )}
 
-          {/* Card stack — render back-to-front so the active card is on top. */}
-          {!isDeckFinished && visibleCards.map((card, stackIndex) => (
-            <SwipeCard
-              key={card.conditionId}
-              card={card}
-              active={stackIndex === 0 && !staged && !detailsCard}
-              stackIndex={stackIndex}
-              onCommit={side => handleCommit(card, side)}
-              onSkip={handleSkip}
-              onOpenDetails={() => handleOpenDetails(card)}
-            />
-          ))}
+          {/* Card stack — render back-to-front so the active card is on top.
+              When a side is staged, the back cards are suppressed so the user
+              isn't disoriented by the next market peeking out while they're
+              still confirming the current one. */}
+          {!isDeckFinished && visibleCards.map((card, stackIndex) => {
+            const isTopCard = stackIndex === 0
+            const isStagedCard = staged?.card.conditionId === card.conditionId
+            // Hide all non-top cards while staged so the deck behind doesn't
+            // peek out and confuse the user.
+            if (staged && !isStagedCard) {
+              return null
+            }
+            return (
+              <SwipeCard
+                key={card.conditionId}
+                card={card}
+                active={isTopCard && !staged && !detailsCard}
+                stackIndex={stackIndex}
+                stagedSide={isStagedCard ? staged.side : null}
+                onCommit={side => handleCommit(card, side)}
+                onSkip={handleSkip}
+                onOpenDetails={() => handleOpenDetails(card)}
+              />
+            )
+          })}
         </div>
 
         {/* Confirm bar — appears after a swipe stages a side. */}
@@ -269,23 +321,30 @@ export default function QuickView({ open, onClose }: { open: boolean, onClose: (
               </div>
               <button
                 type="button"
-                onClick={() => setStaged(null)}
+                onClick={() => {
+                  setStaged(null)
+                  setIsCustomMode(false)
+                  setCustomInput('')
+                }}
                 className="text-xs font-medium text-muted-foreground hover:text-foreground"
               >
                 Cancel
               </button>
             </div>
 
-            {/* Stake chips */}
+            {/* Stake chips: preset amounts + Custom toggle */}
             <div className="mb-3 flex gap-2">
               {STAKE_CHIPS.map(chip => (
                 <button
                   key={chip}
                   type="button"
-                  onClick={() => setStake(chip)}
+                  onClick={() => {
+                    setStake(chip)
+                    setIsCustomMode(false)
+                  }}
                   className={cn(
                     'flex-1 rounded-xl border py-2 text-sm font-semibold transition-colors',
-                    stake === chip
+                    !isCustomMode && stake === chip
                       ? 'border-primary bg-primary/10 text-foreground'
                       : 'border-border text-muted-foreground hover:bg-muted',
                   )}
@@ -294,15 +353,88 @@ export default function QuickView({ open, onClose }: { open: boolean, onClose: (
                   {chip}
                 </button>
               ))}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsCustomMode(true)
+                  setCustomInput(String(stake))
+                }}
+                className={cn(
+                  'flex-1 rounded-xl border py-2 text-sm font-semibold transition-colors',
+                  isCustomMode
+                    ? 'border-primary bg-primary/10 text-foreground'
+                    : 'border-border text-muted-foreground hover:bg-muted',
+                )}
+              >
+                Custom
+              </button>
             </div>
+
+            {/* Inline input shown only in Custom mode */}
+            {isCustomMode && (
+              <div className="mb-3">
+                <div className="
+                  flex items-center rounded-xl border border-primary bg-primary/5 px-3
+                  focus-within:ring-2 focus-within:ring-primary/40
+                "
+                >
+                  <span className="text-base font-semibold text-muted-foreground">$</span>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    min="0"
+                    step="0.01"
+                    max={MAX_CUSTOM_STAKE}
+                    value={customInput}
+                    placeholder="0.00"
+                    autoFocus
+                    onChange={(event) => {
+                      const raw = event.target.value
+                      setCustomInput(raw)
+                      const parsed = Number.parseFloat(raw)
+                      if (Number.isFinite(parsed) && parsed > 0) {
+                        setStake(Math.min(parsed, MAX_CUSTOM_STAKE))
+                      }
+                    }}
+                    className="h-10 w-full bg-transparent pl-1 text-base font-semibold tabular-nums outline-none"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Potential return — small reassuring line above Confirm.
+                  Heads up: at extreme prices (e.g. 1¢) this number can look
+                  huge — that's mathematical, but liquidity at that price is
+                  usually thin. We label it "if correct" to avoid implying
+                  it's guaranteed. */}
+            {stagedPotentialReturn > 0 && stake > 0 && (
+              <div className="mb-2 flex items-center justify-between rounded-xl bg-muted/40 px-3 py-2 text-xs">
+                <span className="text-muted-foreground">Win if correct</span>
+                <span className="font-bold text-foreground tabular-nums">
+                  {formatMoney(stagedPotentialReturn)}
+                  {stagedProfit > 0 && (
+                    <span className="ml-1.5 font-semibold text-yes">
+                      +
+                      {formatMoney(stagedProfit)}
+                    </span>
+                  )}
+                </span>
+              </div>
+            )}
 
             {isAuthenticated
               ? (
-                  <Button className="h-12 w-full text-base" onClick={handleConfirm} disabled={isPlacing}>
+                  <Button
+                    className="h-12 w-full text-base"
+                    onClick={handleConfirm}
+                    disabled={isPlacing || stake <= 0}
+                  >
                     {isPlacing
                       ? <Loader2Icon className="mr-2 size-4 animate-spin" />
                       : null}
-                    {hasBalance ? `Confirm · $${stake}` : 'Add funds to trade'}
+                    {hasBalance
+                      ? `Confirm · ${formatMoney(stake)}`
+                      : 'Add funds to trade'}
                   </Button>
                 )
               : (

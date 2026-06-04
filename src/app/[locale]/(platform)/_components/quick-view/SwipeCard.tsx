@@ -1,7 +1,7 @@
 'use client'
 
 import type { QuickViewCard } from './useQuickViewDeck'
-import { CalendarIcon, ChevronUpIcon, TrendingUpIcon } from 'lucide-react'
+import { CalendarIcon, ChevronUpIcon, FlameIcon, SparklesIcon, TrendingUpIcon } from 'lucide-react'
 import { useCallback, useRef, useState } from 'react'
 import EventIconImage from '@/components/EventIconImage'
 import { cn } from '@/lib/utils'
@@ -15,6 +15,8 @@ const SKIP_DRAG_DISTANCE = 90
 const MAX_ROTATION_DEG = 14
 const DOUBLE_TAP_MS = 280
 const DOUBLE_TAP_RADIUS = 20
+/** Lifetime volume in USD above which a market gets a "Hot" badge. */
+const HOT_VOLUME_THRESHOLD = 1000
 
 interface SwipeCardProps {
   card: QuickViewCard
@@ -27,6 +29,12 @@ interface SwipeCardProps {
   onSkip: () => void
   /** Open the details bottom-sheet for this card. */
   onOpenDetails: () => void
+  /**
+       When set, the card is frozen showing this side's persistent stamp — the
+      user has picked a side and is on the confirm step. Prevents disorientation
+      (you always see the card you're confirming, not the next one in the deck).
+   */
+  stagedSide?: SwipeSide | null
 }
 
 type Axis = 'idle' | 'horizontal' | 'vertical'
@@ -74,6 +82,7 @@ export default function SwipeCard({
   onCommit,
   onSkip,
   onOpenDetails,
+  stagedSide = null,
 }: SwipeCardProps) {
   const [dragX, setDragX] = useState(0)
   const [dragY, setDragY] = useState(0)
@@ -85,9 +94,13 @@ export default function SwipeCard({
   const pointerIdRef = useRef<number | null>(null)
   const lastTapRef = useRef<{ time: number, x: number, y: number } | null>(null)
 
+  // Trade commits no longer fly the card out — it snaps back so the user can
+  // still see exactly which market they're confirming. The persistent stamp
+  // (driven by stagedSide from the parent) makes the choice visually obvious.
   const commitSide = useCallback((side: SwipeSide) => {
-    setFlyOut(side)
-    window.setTimeout(onCommit, 180, side)
+    setDragX(0)
+    setDragY(0)
+    onCommit(side)
   }, [onCommit])
 
   const commitSkip = useCallback(() => {
@@ -96,7 +109,9 @@ export default function SwipeCard({
   }, [onSkip])
 
   const handlePointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    if (!active || flyOut) {
+    // Block all interactions while a side is staged — user must Confirm/Cancel
+    // before they can swipe again, so they can't accidentally re-stage.
+    if (!active || flyOut || stagedSide) {
       return
     }
     pointerIdRef.current = event.pointerId
@@ -105,7 +120,7 @@ export default function SwipeCard({
     startYRef.current = event.clientY
     axisRef.current = 'idle'
     setIsDragging(true)
-  }, [active, flyOut])
+  }, [active, flyOut, stagedSide])
 
   const handlePointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     if (!isDragging || pointerIdRef.current !== event.pointerId) {
@@ -203,8 +218,13 @@ export default function SwipeCard({
   }
 
   const rotation = Math.max(-MAX_ROTATION_DEG, Math.min(MAX_ROTATION_DEG, effectiveX / 10))
-  const intent: SwipeSide | null = effectiveX > 40 ? 'yes' : effectiveX < -40 ? 'no' : null
-  const horizontalStrength = Math.min(1, Math.abs(effectiveX) / SWIPE_COMMIT_DISTANCE)
+  const dragIntent: SwipeSide | null = effectiveX > 40 ? 'yes' : effectiveX < -40 ? 'no' : null
+  // When staged, the stamp is pinned to that side at full opacity — that's the
+  // visual cue "you've picked, confirm or cancel". Otherwise it tracks the drag.
+  const displayedIntent: SwipeSide | null = stagedSide ?? dragIntent
+  const horizontalStrength = stagedSide
+    ? 1
+    : Math.min(1, Math.abs(effectiveX) / SWIPE_COMMIT_DISTANCE)
   const verticalHint = effectiveY < -20 ? Math.min(1, Math.abs(effectiveY) / SKIP_DRAG_DISTANCE) : 0
 
   // Cards behind the active one are scaled down and nudged up to form a stack.
@@ -248,7 +268,7 @@ export default function SwipeCard({
             pointer-events-none absolute top-6 left-6 z-10 -rotate-12 rounded-xl border-4 border-yes px-4 py-1 text-2xl
             font-extrabold tracking-wide text-yes
           "
-          style={{ opacity: intent === 'yes' ? horizontalStrength : 0 }}
+          style={{ opacity: displayedIntent === 'yes' ? horizontalStrength : 0 }}
         >
           {card.yesLabel.toUpperCase()}
         </div>
@@ -257,7 +277,7 @@ export default function SwipeCard({
             pointer-events-none absolute top-6 right-6 z-10 rotate-12 rounded-xl border-4 border-no px-4 py-1 text-2xl
             font-extrabold tracking-wide text-no
           "
-          style={{ opacity: intent === 'no' ? horizontalStrength : 0 }}
+          style={{ opacity: displayedIntent === 'no' ? horizontalStrength : 0 }}
         >
           {card.noLabel.toUpperCase()}
         </div>
@@ -277,18 +297,45 @@ export default function SwipeCard({
           </span>
         </div>
 
-        {/* Top meta row: category + end date */}
+        {/* Top meta row: category (+ Hot/Trending badge) on the left, end date on the right. */}
         <div className="flex items-center justify-between gap-2 px-4 pt-4">
-          {card.category
-            ? (
-                <span className="
-                  rounded-full bg-primary/10 px-2.5 py-0.5 text-2xs font-bold tracking-wide text-primary uppercase
-                "
-                >
-                  {card.category}
-                </span>
-              )
-            : <span />}
+          <div className="flex min-w-0 items-center gap-1.5">
+            {card.category && (
+              <span className="
+                rounded-full bg-primary/10 px-2.5 py-0.5 text-2xs font-bold tracking-wide text-primary uppercase
+              "
+              >
+                {card.category}
+              </span>
+            )}
+            {/* Social-proof badge — Hot wins over Trending when both apply.
+                Hot is the volume-based "this market is alive right now" signal;
+                Trending is the platform-curated cue. Both are derived from data
+                already on the card, so no extra fetches. */}
+            {card.volume >= HOT_VOLUME_THRESHOLD
+              ? (
+                  <span className="
+                    inline-flex items-center gap-1 rounded-full bg-orange-500/10 px-2 py-0.5 text-2xs font-bold
+                    tracking-wide text-orange-500 uppercase
+                  "
+                  >
+                    <FlameIcon className="size-3" />
+                    Hot
+                  </span>
+                )
+              : card.isTrending
+                ? (
+                    <span className="
+                      inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-2xs font-bold
+                      tracking-wide text-amber-500 uppercase
+                    "
+                    >
+                      <SparklesIcon className="size-3" />
+                      Trending
+                    </span>
+                  )
+                : null}
+          </div>
           {endLabel && (
             <span className="flex items-center gap-1 text-[11px] font-semibold text-muted-foreground">
               <CalendarIcon className="size-3" />
@@ -367,7 +414,7 @@ export default function SwipeCard({
         <div className="grid grid-cols-2 gap-3 p-4 pt-2">
           <button
             type="button"
-            disabled={!active}
+            disabled={!active || Boolean(stagedSide)}
             onClick={() => commitSide('no')}
             className="
               flex h-14 items-center justify-center gap-2 rounded-2xl bg-no/10 text-base font-bold text-no
@@ -383,7 +430,7 @@ export default function SwipeCard({
           </button>
           <button
             type="button"
-            disabled={!active}
+            disabled={!active || Boolean(stagedSide)}
             onClick={() => commitSide('yes')}
             className="
               flex h-14 items-center justify-center gap-2 rounded-2xl bg-yes/10 text-base font-bold text-yes
