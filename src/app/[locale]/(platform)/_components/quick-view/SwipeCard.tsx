@@ -5,6 +5,8 @@ import { CalendarIcon, ChevronUpIcon, TrendingUpIcon } from 'lucide-react'
 import { useCallback, useRef, useState } from 'react'
 import EventIconImage from '@/components/EventIconImage'
 import { cn } from '@/lib/utils'
+import CardSparkline from './CardSparkline'
+import { useCardPriceHistory } from './useCardPriceHistory'
 
 export type SwipeSide = 'yes' | 'no'
 
@@ -211,6 +213,16 @@ export default function SwipeCard({
 
   const endLabel = formatEndShort(card.endDateIso)
 
+  // Only the active card fetches its price history — keeps the deck cheap
+  // when the user is swiping fast. React Query caches the result for 5 min,
+  // so re-visiting a card is instant.
+  const { history, isLoading: isHistoryLoading } = useCardPriceHistory({
+    tokenId: card.yesTokenId,
+    createdAtIso: card.createdAtIso,
+    resolvedAtIso: card.resolvedAtIso,
+    enabled: active,
+  })
+
   return (
     <div
       className={cn(
@@ -311,6 +323,15 @@ export default function SwipeCard({
             </span>
             <span className="text-xs font-medium text-muted-foreground">chance</span>
           </div>
+
+          {/* Price-history sparkline — only the active card fetches/renders */}
+          {active && card.yesTokenId && (
+            <CardSparkline
+              points={history.points}
+              deltaPercent={history.deltaPercent}
+              isLoading={isHistoryLoading}
+            />
+          )}
 
           {card.volume > 0 && (
             <span className="
