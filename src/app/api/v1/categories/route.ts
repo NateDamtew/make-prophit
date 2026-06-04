@@ -3,8 +3,6 @@ import { DEFAULT_LOCALE, SUPPORTED_LOCALES } from '@/i18n/locales'
 import { agentApiError, resolveAgent, withAgentApiCors } from '@/lib/agent-api'
 import { loadPlatformMainTags } from '@/lib/platform-main-tags'
 
-export const dynamic = 'force-dynamic'
-
 export async function OPTIONS() {
   return withAgentApiCors(new NextResponse(null, { status: 204 }))
 }

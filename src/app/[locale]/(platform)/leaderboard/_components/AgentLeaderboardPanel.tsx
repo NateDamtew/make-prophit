@@ -1,10 +1,21 @@
-import type { PublicAgentRecord } from '@/lib/db/queries/agents'
-import { ArrowUpRightIcon, BotIcon } from 'lucide-react'
+'use client'
+
+import { ArrowUpRightIcon, BotIcon, Loader2Icon } from 'lucide-react'
 import Image from 'next/image'
+import { useEffect, useState } from 'react'
 import { Link } from '@/i18n/navigation'
 
-interface AgentLeaderboardPanelProps {
-  agents: PublicAgentRecord[]
+interface LeaderboardAgent {
+  slug: string
+  name: string
+  description: string | null
+  avatar_url: string | null
+  owner_username: string | null
+  owner_image: string | null
+  total_volume_usd: string
+  total_pnl_usd: string
+  total_trades: number
+  win_count: number
 }
 
 function formatUsd(value: string) {
@@ -20,14 +31,56 @@ function formatUsd(value: string) {
 }
 
 /**
- * Agent leaderboard panel — rendered when ?view=agents is active on the
- * leaderboard page. Server-rendered so empty state and hydration are simple.
- *
- * Once mainnet trading is live and stats start populating, this becomes a
- * real leaderboard. Until then it shows the empty/coming-soon state.
+ * Agent leaderboard panel for the leaderboard page's Agents tab. Fetches
+ * client-side from /api/v1/agents so the leaderboard page itself stays
+ * statically cached ('use cache') — reading searchParams server-side would
+ * break that cache under cacheComponents.
  */
-export default function AgentLeaderboardPanel({ agents }: AgentLeaderboardPanelProps) {
-  if (agents.length === 0) {
+export default function AgentLeaderboardPanel() {
+  const [agents, setAgents] = useState<LeaderboardAgent[] | null>(null)
+  const [isError, setIsError] = useState(false)
+
+  useEffect(() => {
+    const controller = new AbortController()
+    fetch('/api/v1/agents?sort=pnl&limit=50', { signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error('Failed to load agents')
+        }
+        const payload = await response.json() as { data?: LeaderboardAgent[] }
+        setAgents(payload.data ?? [])
+      })
+      .catch((error) => {
+        if (!controller.signal.aborted) {
+          setIsError(true)
+          console.error('Failed to load agent leaderboard', error)
+        }
+      })
+    return () => controller.abort()
+  }, [])
+
+  if (agents === null && !isError) {
+    return (
+      <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
+        <Loader2Icon className="size-5 animate-spin" />
+        Loading agents…
+      </div>
+    )
+  }
+
+  if (isError) {
+    return (
+      <div className="
+        grid place-items-center gap-2 rounded-xl border border-dashed bg-card/40 px-6 py-12 text-center text-sm
+        text-muted-foreground
+      "
+      >
+        Couldn’t load the agent leaderboard. Please try again.
+      </div>
+    )
+  }
+
+  if (!agents || agents.length === 0) {
     return (
       <div className="grid place-items-center gap-3 rounded-xl border border-dashed bg-card/40 px-6 py-16 text-center">
         <div className="flex size-14 items-center justify-center rounded-2xl bg-primary/10">
@@ -57,7 +110,7 @@ export default function AgentLeaderboardPanel({ agents }: AgentLeaderboardPanelP
   return (
     <ul className="grid gap-2">
       {agents.map((agent, index) => (
-        <li key={agent.id}>
+        <li key={agent.slug}>
           <Link
             href={`/agent/${agent.slug}` as never}
             className="flex items-center gap-3 rounded-xl border bg-card p-3 transition-colors hover:bg-accent"

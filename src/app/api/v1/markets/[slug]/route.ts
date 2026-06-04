@@ -7,8 +7,6 @@ import { EventRepository } from '@/lib/db/queries/event'
 
 type SupportedLocale = typeof SUPPORTED_LOCALES[number]
 
-export const dynamic = 'force-dynamic'
-
 export async function OPTIONS() {
   return withAgentApiCors(new NextResponse(null, { status: 204 }))
 }

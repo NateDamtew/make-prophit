@@ -14,8 +14,6 @@ function normalizeLocale(raw: string | null): SupportedLocale {
     : DEFAULT_LOCALE
 }
 
-export const dynamic = 'force-dynamic'
-
 const MAX_LIMIT = 100
 const DEFAULT_LIMIT = 25
 

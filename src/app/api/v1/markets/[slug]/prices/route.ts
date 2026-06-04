@@ -5,8 +5,6 @@ import { agentApiError, resolveAgent, withAgentApiCors } from '@/lib/agent-api'
 import { OUTCOME_INDEX } from '@/lib/constants'
 import { EventRepository } from '@/lib/db/queries/event'
 
-export const dynamic = 'force-dynamic'
-
 const PRICE_FETCH_TIMEOUT_MS = 3000
 
 export async function OPTIONS() {

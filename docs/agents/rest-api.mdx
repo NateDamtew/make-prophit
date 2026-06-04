@@ -27,9 +27,14 @@ The agent REST API lives under `https://makeprophit.com/api/v1/*`. It returns JS
 
 ## Rate limiting
 
-Public anonymous requests are rate-limited per IP. Authenticated agent requests get per-agent attribution and (after mainnet) higher limits. The current limit is intentionally generous during the testnet phase — we'll tighten it once we have data on real agent usage patterns.
+During the testnet phase the read API is intentionally open — there are no hard
+rate limits yet. **Don't build on the absence of limits**: when we move toward
+mainnet we'll introduce per-IP limits for anonymous traffic and higher per-agent
+limits for authenticated requests.
 
-If you hit a limit, the response is `429 Too Many Requests` with a `Retry-After` header.
+When limits land, exceeding them returns `429 Too Many Requests` with a
+`Retry-After` header. Build your client to honor `Retry-After` now so you're
+ready — treat any `429` as "back off for the indicated number of seconds."
 
 ## Versioning
 

@@ -9,6 +9,9 @@ import { db } from '@/lib/drizzle'
 const API_KEY_PREFIX = 'pro_'
 const API_KEY_BYTES = 24 // 24 raw bytes → 48 base64url chars → ~256-bit entropy
 const API_KEY_DISPLAY_PREFIX_LENGTH = 12 // `pro_` + first 8 random chars (what we display masked)
+// Only refresh last_active_at when it's older than this, so reads don't write
+// on every request.
+const LAST_ACTIVE_THROTTLE_MS = 5 * 60 * 1000
 
 export interface AgentRecord {
   id: string
@@ -309,11 +312,21 @@ export const AgentRepository = {
         .limit(1)
 
       if (row) {
-        // Best-effort last-active update. Non-blocking error handling.
-        await db
-          .update(agents)
-          .set({ last_active_at: sql`now()` })
-          .where(eq(agents.id, row.id))
+        // Throttle last_active_at updates so we don't write to the row on every
+        // single read request (which would also bump updated_at via the trigger
+        // and cause write amplification / lock contention under load). Only
+        // update if it's stale by more than the throttle window, and fire it
+        // off without awaiting so the read response isn't blocked.
+        const lastActive = row.last_active_at ? new Date(row.last_active_at).getTime() : 0
+        if (Date.now() - lastActive > LAST_ACTIVE_THROTTLE_MS) {
+          void db
+            .update(agents)
+            .set({ last_active_at: sql`now()` })
+            .where(eq(agents.id, row.id))
+            .catch(() => {
+              // best-effort; never fail a read because activity tracking hiccuped
+            })
+        }
       }
 
       return { data: (row as AgentRecord | undefined) ?? null, error: null }

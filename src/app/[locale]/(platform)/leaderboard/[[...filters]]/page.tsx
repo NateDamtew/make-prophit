@@ -3,9 +3,7 @@
 import type { Metadata } from 'next'
 import type { SupportedLocale } from '@/i18n/locales'
 import { getExtracted, setRequestLocale } from 'next-intl/server'
-import AgentLeaderboardPanel from '@/app/[locale]/(platform)/leaderboard/_components/AgentLeaderboardPanel'
-import LeaderboardClient from '@/app/[locale]/(platform)/leaderboard/_components/LeaderboardClient'
-import LeaderboardViewToggle from '@/app/[locale]/(platform)/leaderboard/_components/LeaderboardViewToggle'
+import LeaderboardViews from '@/app/[locale]/(platform)/leaderboard/_components/LeaderboardViews'
 import {
   buildLeaderboardPath,
   CATEGORY_OPTIONS,
@@ -14,7 +12,6 @@ import {
   PERIOD_OPTIONS,
 } from '@/app/[locale]/(platform)/leaderboard/_utils/leaderboardFilters'
 import { DEFAULT_LOCALE } from '@/i18n/locales'
-import { AgentRepository } from '@/lib/db/queries/agents'
 import resolveSiteUrl from '@/lib/site-url'
 import { loadRuntimeThemeState } from '@/lib/theme-settings'
 
@@ -120,31 +117,18 @@ export async function generateStaticParams() {
   return params
 }
 
-export default async function LeaderboardPage({
-  params,
-  searchParams,
-}: PageProps<'/[locale]/leaderboard/[[...filters]]'>) {
+export default async function LeaderboardPage({ params }: PageProps<'/[locale]/leaderboard/[[...filters]]'>) {
   const { locale, filters } = await params
   setRequestLocale(locale)
 
   const initialFilters = parseLeaderboardFilters(filters)
 
-  // ?view=agents toggles the Agents leaderboard panel. We render both tabs'
-  // shell server-side and switch on the view; the existing Traders client
-  // stays untouched.
-  const resolvedSearchParams = (await searchParams) ?? {}
-  const view = resolvedSearchParams.view === 'agents' ? 'agents' : 'traders'
-
-  const { data: agents } = view === 'agents'
-    ? await AgentRepository.leaderboard({ limit: 50, sort: 'pnl' })
-    : { data: [] as Awaited<ReturnType<typeof AgentRepository.leaderboard>>['data'] }
-
+  // The Traders/Agents view switch happens client-side (LeaderboardViews reads
+  // ?view). Keeping searchParams out of this 'use cache' page preserves its
+  // static caching under cacheComponents.
   return (
     <main className="container w-full py-6 md:py-8">
-      <LeaderboardViewToggle view={view} />
-      {view === 'agents'
-        ? <AgentLeaderboardPanel agents={agents ?? []} />
-        : <LeaderboardClient initialFilters={initialFilters} />}
+      <LeaderboardViews initialFilters={initialFilters} />
     </main>
   )
 }
