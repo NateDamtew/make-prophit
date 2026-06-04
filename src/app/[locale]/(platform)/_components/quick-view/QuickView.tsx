@@ -2,14 +2,17 @@
 
 import type { SwipeSide } from './SwipeCard'
 import type { QuickViewCard } from './useQuickViewDeck'
-import { Loader2Icon, RotateCcwIcon, WalletIcon, XIcon, ZapIcon } from 'lucide-react'
+import { Loader2Icon, RotateCcwIcon, ShareIcon, WalletIcon, XIcon, ZapIcon } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
+import SiteLogoIcon from '@/components/SiteLogoIcon'
 import { Button } from '@/components/ui/button'
 import { useAppKit } from '@/hooks/useAppKit'
 import { useBalance } from '@/hooks/useBalance'
 import { useHasHydrated } from '@/hooks/useHasHydrated'
+import { useSiteIdentity } from '@/hooks/useSiteIdentity'
 import { authClient } from '@/lib/auth-client'
+import { shareOrCopy } from '@/lib/native-share'
 import { cn } from '@/lib/utils'
 import { useUser } from '@/stores/useUser'
 import CardDetailsSheet from './CardDetailsSheet'
@@ -33,6 +36,7 @@ export default function QuickView({ open, onClose }: { open: boolean, onClose: (
   const { data: session } = useSession()
   const user = useUser()
   const { balance } = useBalance()
+  const site = useSiteIdentity()
 
   const isAuthenticated = hasHydrated && (Boolean(session?.user) || Boolean(user))
   const hasBalance = (balance?.raw ?? 0) > 0
@@ -107,6 +111,31 @@ export default function QuickView({ open, onClose }: { open: boolean, onClose: (
   const visibleCards = useMemo(() => cards.slice(index, index + 3), [cards, index])
   const isDeckFinished = !isLoading && cards.length > 0 && index >= cards.length
 
+  /**
+   * Share the currently-visible market (or the platform itself when the deck
+   * is empty/finished). Native OS share sheet on mobile, clipboard on desktop —
+   * same util as the event-page share. The user's affiliate code is preserved
+   * so referral attribution works.
+   */
+  const handleShare = useCallback(async () => {
+    if (typeof window === 'undefined') {
+      return
+    }
+    const topCard = visibleCards[0] ?? null
+    const path = topCard ? `/event/${topCard.eventSlug}` : '/'
+    const url = new URL(path, window.location.origin)
+    if (affiliateCode) {
+      url.searchParams.set('r', affiliateCode)
+    }
+    const result = await shareOrCopy({
+      url: url.toString(),
+      title: topCard?.title ?? `${site.name} · Quick Market`,
+    })
+    if (result === 'copied') {
+      toast.success('Link copied')
+    }
+  }, [visibleCards, affiliateCode, site.name])
+
   if (!open) {
     return null
   }
@@ -114,22 +143,50 @@ export default function QuickView({ open, onClose }: { open: boolean, onClose: (
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-background/95 backdrop-blur-sm">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 pt-[calc(env(safe-area-inset-top)+0.75rem)] pb-3">
-        <div className="flex items-center gap-2">
-          <ZapIcon className="size-5 text-primary" />
-          <span className="text-base font-bold">Quick View</span>
+      <div className="flex items-center justify-between gap-2 px-4 pt-[calc(env(safe-area-inset-top)+0.75rem)] pb-3">
+        {/* Left: branded title — [Logo] {SiteName} | Quick Market */}
+        <div className="flex min-w-0 items-center gap-2 text-foreground">
+          <SiteLogoIcon
+            logoSvg={site.logoSvg}
+            logoImageUrl={site.logoImageUrl}
+            alt={`${site.name} logo`}
+            className="size-6 shrink-0 text-current [&_svg]:size-6 [&_svg_*]:fill-current [&_svg_*]:stroke-current"
+            imageClassName="size-6 object-contain"
+            size={24}
+          />
+          <span className="truncate text-base font-bold">{site.name}</span>
+          <span aria-hidden="true" className="text-muted-foreground/60">|</span>
+          <span className="flex items-center gap-1 truncate text-sm font-semibold text-muted-foreground">
+            <ZapIcon className="size-3.5 text-primary" />
+            Quick Market
+          </span>
         </div>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close Quick View"
-          className="
-            flex size-9 items-center justify-center rounded-full text-muted-foreground transition-colors
-            hover:bg-muted hover:text-foreground
-          "
-        >
-          <XIcon className="size-5" />
-        </button>
+
+        {/* Right: share + close */}
+        <div className="flex shrink-0 items-center gap-1">
+          <button
+            type="button"
+            onClick={handleShare}
+            aria-label="Share"
+            className="
+              flex size-9 items-center justify-center rounded-full text-muted-foreground transition-colors
+              hover:bg-muted hover:text-foreground
+            "
+          >
+            <ShareIcon className="size-5" />
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close Quick View"
+            className="
+              flex size-9 items-center justify-center rounded-full text-muted-foreground transition-colors
+              hover:bg-muted hover:text-foreground
+            "
+          >
+            <XIcon className="size-5" />
+          </button>
+        </div>
       </div>
 
       {/* Deck */}
