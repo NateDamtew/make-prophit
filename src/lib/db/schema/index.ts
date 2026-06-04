@@ -2,6 +2,7 @@
 
 // tables
 export * from './affiliates/tables'
+export * from './agents/tables'
 export * from './auth/tables'
 export * from './bookmarks/tables'
 export * from './communities/tables'
