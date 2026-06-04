@@ -1,10 +1,17 @@
 'use client'
 
-import { ArrowLeftIcon, ArrowRightIcon, CheckCircle2Icon } from 'lucide-react'
+import {
+  ArrowLeftIcon,
+  ArrowRightIcon,
+  ArrowUpIcon,
+  CheckCircle2Icon,
+  HandIcon,
+} from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 
-const WALKTHROUGH_SEEN_KEY = 'quickview_walkthrough_seen'
+// Bump the version when steps change so returning users see the updated guide once.
+const WALKTHROUGH_SEEN_KEY = 'quickview_walkthrough_seen_v2'
 
 const STEPS = [
   {
@@ -20,6 +27,20 @@ const STEPS = [
     bg: 'bg-no/10',
     title: 'Swipe left for No / Down',
     body: 'Think it’s No — or the price goes down? Swipe the card left.',
+  },
+  {
+    icon: ArrowUpIcon,
+    accent: 'text-primary',
+    bg: 'bg-primary/10',
+    title: 'Swipe up for details',
+    body: 'Drag the card upward to see the question, resolution rules, and a link to the full market.',
+  },
+  {
+    icon: HandIcon,
+    accent: 'text-muted-foreground',
+    bg: 'bg-muted',
+    title: 'Double-tap to skip',
+    body: 'Not interested in a market? Double-tap the card to skip it and move to the next one.',
   },
   {
     icon: CheckCircle2Icon,

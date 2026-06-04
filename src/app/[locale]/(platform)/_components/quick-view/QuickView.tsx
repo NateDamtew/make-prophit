@@ -12,6 +12,7 @@ import { useHasHydrated } from '@/hooks/useHasHydrated'
 import { authClient } from '@/lib/auth-client'
 import { cn } from '@/lib/utils'
 import { useUser } from '@/stores/useUser'
+import CardDetailsSheet from './CardDetailsSheet'
 import QuickViewWalkthrough from './QuickViewWalkthrough'
 import SwipeCard from './SwipeCard'
 import { useQuickViewDeck } from './useQuickViewDeck'
@@ -42,6 +43,9 @@ export default function QuickView({ open, onClose }: { open: boolean, onClose: (
   const [staged, setStaged] = useState<StagedTrade | null>(null)
   const [stake, setStake] = useState<number>(DEFAULT_STAKE)
   const [isPlacing, setIsPlacing] = useState(false)
+  const [detailsCard, setDetailsCard] = useState<QuickViewCard | null>(null)
+
+  const affiliateCode = user?.affiliate_code?.trim() ?? ''
 
   // Reset the deck position whenever the view is (re)opened.
   useEffect(() => {
@@ -59,6 +63,16 @@ export default function QuickView({ open, onClose }: { open: boolean, onClose: (
   const advance = useCallback(() => {
     setStaged(null)
     setIndex(current => current + 1)
+  }, [])
+
+  const handleSkip = useCallback(() => {
+    // Double-tap or drag-up-to-skip: drop the card without trading.
+    setStaged(null)
+    setIndex(current => current + 1)
+  }, [])
+
+  const handleOpenDetails = useCallback((card: QuickViewCard) => {
+    setDetailsCard(card)
   }, [])
 
   const handleConfirm = useCallback(async () => {
@@ -172,9 +186,11 @@ export default function QuickView({ open, onClose }: { open: boolean, onClose: (
             <SwipeCard
               key={card.conditionId}
               card={card}
-              active={stackIndex === 0 && !staged}
+              active={stackIndex === 0 && !staged && !detailsCard}
               stackIndex={stackIndex}
               onCommit={side => handleCommit(card, side)}
+              onSkip={handleSkip}
+              onOpenDetails={() => handleOpenDetails(card)}
             />
           ))}
         </div>
@@ -255,6 +271,13 @@ export default function QuickView({ open, onClose }: { open: boolean, onClose: (
       </div>
 
       <QuickViewWalkthrough />
+
+      <CardDetailsSheet
+        card={detailsCard}
+        open={Boolean(detailsCard)}
+        onClose={() => setDetailsCard(null)}
+        affiliateCode={affiliateCode}
+      />
     </div>
   )
 }

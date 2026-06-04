@@ -28,6 +28,16 @@ export interface QuickViewCard {
   yesLabel: string
   noLabel: string
   volume: number
+  /** Main category / tag name, for a chip on the card. */
+  category: string
+  /** Resolution date ISO, for a "ends" badge + the details sheet. */
+  endDateIso: string | null
+  /** Short market question/descriptor shown under the title. */
+  question: string
+  /** Full resolution rules, shown in the details sheet. */
+  rules: string
+  /** Where the market resolves from, shown in the details sheet. */
+  resolutionSource: string
 }
 
 function toCents(price: number | null | undefined): number {
@@ -60,6 +70,12 @@ function pickBinaryMarket(event: Event): QuickViewCard | null {
     ? no.buy_price
     : (Number.isFinite(candidate.price) ? 1 - candidate.price : 0.5)
 
+  // Prefer a non-trending tag for the category chip; fall back to main_tag.
+  const primaryTag = event.tags?.find(tag => tag.isMainCategory && tag.slug !== 'trending')
+    ?? event.tags?.find(tag => tag.slug !== 'trending')
+    ?? null
+  const category = primaryTag?.name?.trim() || event.main_tag?.trim() || ''
+
   return {
     eventId: event.id,
     eventSlug: event.slug,
@@ -75,6 +91,11 @@ function pickBinaryMarket(event: Event): QuickViewCard | null {
     yesLabel: yes.outcome_text?.trim() || 'Yes',
     noLabel: no.outcome_text?.trim() || 'No',
     volume: event.volume ?? 0,
+    category,
+    endDateIso: candidate.end_time ?? event.end_date ?? null,
+    question: candidate.question?.trim() || '',
+    rules: candidate.market_rules?.trim() || event.rules?.trim() || '',
+    resolutionSource: candidate.resolution_source?.trim() || '',
   }
 }
 
