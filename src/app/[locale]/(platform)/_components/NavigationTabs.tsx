@@ -224,7 +224,7 @@ export default function NavigationTabs() {
                 }}
               />
 
-              {index === 0 && <div className="mx-3 h-5 w-px shrink-0 bg-border" />}
+              {index === 1 && <div className="mx-3 h-5 w-px shrink-0 bg-border" />}
             </div>
           ))}
 
