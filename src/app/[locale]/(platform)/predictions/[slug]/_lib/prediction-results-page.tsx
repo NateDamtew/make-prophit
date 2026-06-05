@@ -29,6 +29,7 @@ async function getPredictionPageContext(locale: SupportedLocale, slug: string) {
     mainTags: mainTags ?? [],
     newLabel: t('New'),
     trendingLabel: t('Trending'),
+    communitiesLabel: t('Communities'),
   })
 
   return resolvePredictionSearchContext(tags, slug)
