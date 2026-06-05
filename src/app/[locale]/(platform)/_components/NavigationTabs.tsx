@@ -13,6 +13,10 @@ import { buildDynamicHomeCategorySlugSet, isPlatformReservedRootSlug } from '@/l
 import { cn } from '@/lib/utils'
 
 function getMainTagHref(slug: string, dynamicHomeCategorySlugSet: ReadonlySet<string>): Route {
+  if (slug === 'communities') {
+    return '/communities' as Route
+  }
+
   if (slug === 'trending') {
     return '/' as Route
   }
@@ -220,7 +224,7 @@ export default function NavigationTabs() {
                 }}
               />
 
-              {index === 1 && <div className="mx-3 h-5 w-px shrink-0 bg-border" />}
+              {index === 0 && <div className="mx-3 h-5 w-px shrink-0 bg-border" />}
             </div>
           ))}
 

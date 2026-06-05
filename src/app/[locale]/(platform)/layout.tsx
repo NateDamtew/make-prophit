@@ -25,6 +25,7 @@ export default async function PlatformLayout({ params, children }: LayoutProps<'
     globalChilds,
     trendingLabel: t('Trending'),
     newLabel: t('New'),
+    communitiesLabel: t('Communities'),
   })
   const childParentMap = buildChildParentMap(mainTags ?? [])
 

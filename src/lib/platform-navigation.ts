@@ -98,6 +98,7 @@ interface BuildPlatformNavigationTagsParams {
   mainTags: PlatformNavigationTag[]
   newLabel: string
   trendingLabel: string
+  communitiesLabel: string
 }
 
 export function buildChildParentMap(tags: Array<Pick<PlatformNavigationTag, 'slug' | 'childs'>>) {
@@ -111,6 +112,7 @@ export function buildPlatformNavigationTags({
   globalChilds = [],
   trendingLabel,
   newLabel,
+  communitiesLabel,
 }: BuildPlatformNavigationTagsParams): PlatformNavigationTag[] {
   const sharedChilds = globalChilds.map(child => ({ ...child }))
   const baseTags = mainTags.map(tag => ({
@@ -119,9 +121,10 @@ export function buildPlatformNavigationTags({
   }))
 
   return [
+    { slug: 'communities', name: communitiesLabel, childs: [] },
+    ...baseTags,
     { slug: 'trending', name: trendingLabel, childs: sharedChilds },
     { slug: 'new', name: newLabel, childs: sharedChilds.map(child => ({ ...child })) },
-    ...baseTags,
   ]
 }
 
