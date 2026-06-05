@@ -52,7 +52,7 @@ const STEPS = [
 ] as const
 
 /**
- * First-time coach overlay for Quick View. Shows once (persisted in
+ * First-time coach overlay for Flash Trade. Shows once (persisted in
  * localStorage), explaining the swipe gestures before the user starts.
  */
 export default function QuickViewWalkthrough() {

@@ -9,7 +9,7 @@ import { fetchEventsApi } from '@/lib/events-api'
 
 /**
  * A single binary market normalized into a swipe card.
- * Quick View only handles two-outcome (Yes/No, Up/Down) markets — the logic is
+ * Flash Trade only handles two-outcome (Yes/No, Up/Down) markets — the logic is
  * the same as a normal binary trade, just presented as a swipe.
  */
 export interface QuickViewCard {
@@ -118,7 +118,7 @@ function pickBinaryMarket(event: Event): QuickViewCard | null {
 }
 
 /**
- * Fetches a deck of trending binary markets for Quick View.
+ * Fetches a deck of trending binary markets for Flash Trade.
  * Reuses the same events API the home grid uses, then normalizes to swipe cards.
  */
 export function useQuickViewDeck(enabled: boolean) {

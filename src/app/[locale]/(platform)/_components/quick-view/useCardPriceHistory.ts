@@ -120,7 +120,7 @@ async function fetchPriceHistory({
 }
 
 /**
- * Fetch (and cache) price history for the YES side of a Quick View card.
+ * Fetch (and cache) price history for the YES side of a Flash Trade card.
  * Only enabled for the currently-active card so we don't hammer the CLOB while
  * the user is swiping. Cached for 5 minutes via React Query so revisiting a
  * recently-seen card is instant.

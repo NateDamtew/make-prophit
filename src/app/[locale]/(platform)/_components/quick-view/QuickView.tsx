@@ -191,7 +191,7 @@ export default function QuickView({ open, onClose }: { open: boolean, onClose: (
     }
     const result = await shareOrCopy({
       url: url.toString(),
-      title: topCard?.title ?? `${site.name} · Quick Market`,
+      title: topCard?.title ?? `${site.name} · Flash Trade`,
     })
     if (result === 'copied') {
       toast.success('Link copied')
@@ -206,7 +206,7 @@ export default function QuickView({ open, onClose }: { open: boolean, onClose: (
     <div className="fixed inset-0 z-50 flex flex-col bg-background/95 backdrop-blur-sm">
       {/* Header */}
       <div className="flex items-center justify-between gap-2 px-4 pt-[calc(env(safe-area-inset-top)+0.75rem)] pb-3">
-        {/* Left: branded title — [Logo] {SiteName} | Quick Market */}
+        {/* Left: branded title — [Logo] {SiteName} | Flash Trade */}
         <div className="flex min-w-0 items-center gap-2 text-foreground">
           <SiteLogoIcon
             logoSvg={site.logoSvg}
@@ -220,7 +220,7 @@ export default function QuickView({ open, onClose }: { open: boolean, onClose: (
           <span aria-hidden="true" className="text-muted-foreground/60">|</span>
           <span className="flex items-center gap-1 truncate text-sm font-semibold text-muted-foreground">
             <ZapIcon className="size-3.5 text-primary" />
-            Quick Market
+            Flash Trade
           </span>
         </div>
 
@@ -240,7 +240,7 @@ export default function QuickView({ open, onClose }: { open: boolean, onClose: (
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close Quick View"
+            aria-label="Close Flash Trade"
             className="
               flex size-9 items-center justify-center rounded-full text-muted-foreground transition-colors
               hover:bg-muted hover:text-foreground

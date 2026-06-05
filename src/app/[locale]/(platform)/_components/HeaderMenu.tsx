@@ -43,18 +43,18 @@ function HeaderMenuClient() {
 
   return (
     <>
-      {/* Quick View launcher — available to everyone (guests are gated to
+      {/* Flash Trade launcher — available to everyone (guests are gated to
           connect a wallet when they try to confirm a trade). */}
       <Button
         size="headerCompact"
         variant="ghost"
         className="gap-1.5 px-2 text-foreground hover:bg-accent/70"
         data-testid="header-quick-view-button"
-        aria-label={t('Quick View')}
+        aria-label={t('Flash Trade')}
         onClick={openQuickView}
       >
         <ZapIcon className="size-4 text-primary" />
-        <span className="hidden sm:inline">{t('Quick View')}</span>
+        <span className="hidden sm:inline">{t('Flash Trade')}</span>
       </Button>
 
       {isAuthenticated && (

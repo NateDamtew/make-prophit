@@ -50,7 +50,7 @@ export type QuickTradeResult
  * the server, so partial fills are fine and the user never spends more than
  * their stake.
  *
- * This is the real-money path for Quick View — no preview/mock.
+ * This is the real-money path for Flash Trade — no preview/mock.
  */
 export function usePlaceQuickTrade() {
   const user = useUser()
@@ -78,7 +78,7 @@ export function usePlaceQuickTrade() {
     }
 
     if (!input.tokenId) {
-      return { status: 'error', message: 'This market can’t be traded from Quick View.' }
+      return { status: 'error', message: 'This market can’t be traded from Flash Trade.' }
     }
 
     // buildOrderPayload only reads outcome.token_id; the rest are filled for type
