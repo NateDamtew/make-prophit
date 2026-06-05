@@ -30,7 +30,19 @@ export default function HeaderLogo({ labelSuffix }: HeaderLogoProps) {
         imageClassName="size-[1em] object-contain"
         size={32}
       />
-      <span>{label}</span>
+      <span className="relative">
+        {label}
+        <span
+          className={cn(`
+            absolute -top-2.5 right-0
+            inline-flex items-center rounded-full
+            bg-primary/15 px-1.5 py-0.5
+            text-[0.35em] font-semibold uppercase leading-none tracking-wider text-primary
+          `)}
+        >
+          Beta
+        </span>
+      </span>
     </AppLink>
   )
 }
