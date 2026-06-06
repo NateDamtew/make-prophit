@@ -42,7 +42,7 @@ export default function LandingPage() {
       
       <div className="mx-auto max-w-2xl text-center">
         <h1 className="text-4xl font-bold tracking-tight text-white sm:text-6xl mb-6">
-          The Future of Prediction Markets
+          A Prediction Market for the Next Billions
         </h1>
         <p className="mt-6 text-lg leading-8 text-gray-300">
           Be the first to experience Prophit. Join the waitlist to secure your early access spot and start trading on the most advanced decentralized platform.
