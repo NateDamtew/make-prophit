@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { motion } from 'framer-motion'
+import { motion, Variants } from 'framer-motion'
 
 export default function LandingPage() {
   const [email, setEmail] = useState('')
@@ -34,7 +34,7 @@ export default function LandingPage() {
     }
   }
 
-  const containerVariants = {
+  const containerVariants: Variants = {
     hidden: { opacity: 0 },
     visible: { 
       opacity: 1,
@@ -45,9 +45,9 @@ export default function LandingPage() {
     }
   }
 
-  const itemVariants = {
+  const itemVariants: Variants = {
     hidden: { opacity: 0, y: 30 },
-    visible: { opacity: 1, y: 0, transition: { duration: 0.8, ease: [0.16, 1, 0.3, 1] } }
+    visible: { opacity: 1, y: 0, transition: { duration: 0.8, ease: 'easeOut' } }
   }
 
   return (
@@ -87,7 +87,7 @@ export default function LandingPage() {
           initial={{ opacity: 0, y: 50 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, margin: "-100px" }}
-          transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
+          transition={{ duration: 0.8, ease: 'easeOut' }}
           className="mt-24 pt-24 border-t border-white/10 grid grid-cols-1 lg:grid-cols-2 gap-16"
         >
           <div>
