@@ -118,6 +118,27 @@ async function isCommunityEventBlocked(slug: string, userId: string | undefined)
 
 export default async function proxy(request: NextRequest) {
   const url = new URL(request.url)
+  const host = request.headers.get('host') || ''
+  
+  // ─── Landing Page Routing ────────────────────────────────────────────────
+  // Isolate the base domain, clean port if present
+  const hostname = host.split(':')[0]
+  const isPlatformDomain = hostname === 'beta.makeprophit.com' || hostname === 'tma.makeprophit.com'
+  const isLandingDomain = !isPlatformDomain && (
+    hostname === 'makeprophit.com' ||
+    hostname === 'www.makeprophit.com' ||
+    hostname === 'localhost'
+  )
+
+  if (isLandingDomain) {
+    if (url.pathname === '/' || url.pathname === '/en' || url.pathname === '/zh' || url.pathname === '/ru') {
+      const landingLocale = url.pathname === '/' ? 'en' : url.pathname.replace('/', '')
+      const rewrittenUrl = new URL(`/${landingLocale}/landing`, request.url)
+      return NextResponse.rewrite(rewrittenUrl)
+    }
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
   const pathnameLocale = getLocaleFromPathname(url.pathname)
   const pathname = stripLocale(url.pathname, pathnameLocale)
   const locale = resolveRequestLocale(pathnameLocale)

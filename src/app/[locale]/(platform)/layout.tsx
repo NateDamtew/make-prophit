@@ -13,6 +13,7 @@ import { TradingOnboardingProvider } from '@/app/[locale]/(platform)/_providers/
 import { loadPlatformMainTags } from '@/lib/platform-main-tags'
 import { buildChildParentMap, buildPlatformNavigationTags } from '@/lib/platform-navigation'
 import AppKitProvider from '@/providers/AppKitProvider'
+import Footer from '@/app/[locale]/(platform)/_components/Footer'
 
 export default async function PlatformLayout({ params, children }: LayoutProps<'/[locale]'>) {
   const { locale } = await params
@@ -39,6 +40,7 @@ export default async function PlatformLayout({ params, children }: LayoutProps<'
               <Header />
               <NavigationTabs />
               {children}
+              <Footer />
               <MobileBottomNav />
               <AffiliateQueryHandler />
               <TmaAutoLogin />
