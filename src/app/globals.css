@@ -143,6 +143,9 @@
 }
 
 @theme inline {
+  --color-residence-bg: #1d2121;
+  --color-residence-green: #b9ed00;
+  --color-residence-orange: #ff6716;
   --color-yes: var(--yes);
   --color-yes-foreground: var(--yes-foreground);
   --color-no: var(--no);
