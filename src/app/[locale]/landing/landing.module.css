@@ -69,10 +69,10 @@
 .bgCream { background: var(--cream); color: var(--ink); }
 .bgBlack { background: var(--black); color: var(--cream); }
 
-.how { background: var(--ink); padding: 60px 36px; }
+.how { background: var(--black); padding: 60px 36px; }
 .howLabel { font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--y); letter-spacing: .04em; margin-bottom: 36px; }
 .howGrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px; background: rgba(244,241,236,.08); }
-.howStep { background: var(--ink); padding: 32px 24px; }
+.howStep { background: var(--black); padding: 32px 24px; }
 .howNum { font-family: 'Archivo Black', sans-serif; font-size: 64px; line-height: .9; letter-spacing: -.04em; color: var(--y); margin-bottom: 24px; font-weight: 900; }
 .howTitle { font-family: 'Archivo', sans-serif; font-weight: 700; font-size: 20px; letter-spacing: -.02em; color: var(--cream); margin-bottom: 10px; }
 .howDesc { font-family: 'Archivo', sans-serif; font-size: 14px; line-height: 1.5; color: rgba(244,241,236,.65); font-weight: 400; }
@@ -204,5 +204,8 @@
   .marqueeItem { font-size: 28px; }
   .qItem { flex-direction: column; align-items: flex-start; gap: 8px; }
   .howGrid { grid-template-columns: 1fr; }
-  .heroBigmark, .footerBigmark { font-size: 21vw; }
+  .heroWaitlist { margin-bottom: 12px; }
+  .heroBigmark, .footerBigmark { font-size: 23.5vw; line-height: 0.8; letter-spacing: -0.06em; margin-left: -2px; }
+  .emailRow { flex-direction: column; gap: 12px; }
+  .emailRow input { border-right: 1.5px solid rgba(244,241,236,.25); }
 }
