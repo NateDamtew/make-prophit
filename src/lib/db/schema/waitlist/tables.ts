@@ -15,6 +15,8 @@ export const waitlists = pgTable(
     email: text('email')
       .notNull()
       .unique(),
+    role: text('role'),
+    country: text('country'),
     created_at: timestamp({ withTimezone: true })
       .notNull()
       .defaultNow(),

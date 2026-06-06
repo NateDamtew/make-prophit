@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Prophit — A Prediction Market for the Next Billions</title>
+<meta name="description" content="Prophit is a community-owned prediction market built for Africa. Trade outcomes you actually care about — local football, elections, crypto — and earn from being right."/>
+<meta property="og:title" content="Prophit — A Prediction Market for the Next Billions"/>
+<meta property="og:description" content="Community-owned prediction markets. Trade. Win. Own it."/>
+<meta property="og:type" content="website"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Archivo+Black&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --y:#F2FF00;
+  --ink:#0C0213;
+  --black:#000000;
+  --cream:#F4F1EC;
+  --gray:#E5E2DD;
+  --orange:#FF5A1F;
+  --blue:#5B6BFF;
+  --green:#39FF6A;
+  --red:#FF4B4B;
+}
+html{scroll-behavior:smooth;}
+body{font-family:'Archivo',sans-serif;background:var(--black);color:var(--cream);min-height:100vh;overflow-x:hidden;line-height:1.1;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;}
+
+.tk{background:var(--black);border-bottom:1px solid rgba(255,255,255,.08);padding:10px 0;overflow:hidden;white-space:nowrap;}
+.tk-inner{display:inline-flex;gap:48px;animation:tick 34s linear infinite;}
+.tk-item{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:500;color:var(--cream);letter-spacing:.06em;text-transform:uppercase;display:flex;align-items:center;gap:8px;}
+.up{color:var(--green);}
+.dn{color:var(--red);}
+.sep{color:rgba(255,255,255,.2);}
+@keyframes tick{0%{transform:translateX(0);}100%{transform:translateX(-50%);}}
+
+.hero{background:var(--y);min-height:96vh;padding:24px 36px 0;display:flex;flex-direction:column;justify-content:space-between;position:relative;}
+.hero-top{display:flex;justify-content:space-between;align-items:flex-start;}
+.hero-tagline{font-family:'Archivo',sans-serif;font-weight:700;font-size:clamp(22px,2.2vw,30px);letter-spacing:-.02em;color:var(--ink);max-width:520px;line-height:1.15;}
+.hero-mark{width:42px;height:42px;border:2.5px solid var(--ink);border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Archivo Black',sans-serif;font-size:22px;color:var(--ink);position:relative;flex-shrink:0;}
+.hero-mark::after{content:'';position:absolute;top:-3px;right:-3px;width:8px;height:8px;background:var(--ink);border-radius:50%;}
+.hero-bigmark{font-family:'Archivo Black',sans-serif;font-size:clamp(140px,28vw,420px);line-height:.82;letter-spacing:-.07em;color:var(--ink);margin-top:auto;padding-bottom:8px;font-weight:900;}
+.hero-bigmark em{font-style:normal;}
+
+.intro{background:var(--cream);padding:60px 36px 56px;}
+.intro-label{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink);letter-spacing:.04em;margin-bottom:20px;}
+.intro-body{font-family:'Archivo',sans-serif;font-weight:600;font-size:clamp(28px,3.5vw,52px);line-height:1.1;letter-spacing:-.025em;color:var(--ink);max-width:1100px;}
+.intro-body em{font-style:normal;color:var(--orange);}
+
+.marquee{background:var(--black);padding:22px 0;overflow:hidden;}
+.marquee-inner{display:inline-flex;white-space:nowrap;animation:tick 26s linear infinite;gap:40px;}
+.marquee-item{font-family:'Archivo Black',sans-serif;font-size:44px;letter-spacing:-.03em;color:var(--cream);display:flex;align-items:center;gap:32px;font-weight:900;}
+.marquee-item em{font-style:normal;color:var(--y);}
+.marquee-star{color:var(--y);font-size:32px;}
+
+.duo{display:grid;grid-template-columns:1fr 1fr;}
+.cell{padding:48px 36px;display:flex;flex-direction:column;justify-content:space-between;position:relative;min-height:480px;}
+.cell-num{font-family:'Archivo Black',sans-serif;font-size:clamp(140px,18vw,260px);line-height:.85;letter-spacing:-.06em;font-weight:900;}
+.cell-num em{font-style:normal;font-size:.4em;vertical-align:super;letter-spacing:-.02em;}
+.cell-label{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:500;letter-spacing:-.01em;}
+.cell-headline{font-family:'Archivo',sans-serif;font-weight:700;font-size:clamp(28px,3vw,42px);line-height:1.05;letter-spacing:-.025em;margin-bottom:20px;}
+.cell-body{font-family:'Archivo',sans-serif;font-weight:500;font-size:clamp(16px,1.4vw,20px);line-height:1.4;letter-spacing:-.01em;max-width:440px;}
+.bg-orange{background:var(--orange);color:var(--ink);}
+.bg-gray{background:var(--gray);color:var(--ink);}
+.bg-y{background:var(--y);color:var(--ink);}
+.bg-blue{background:var(--blue);color:var(--ink);}
+.bg-cream{background:var(--cream);color:var(--ink);}
+.bg-black{background:var(--black);color:var(--cream);}
+
+.how{background:var(--ink);padding:60px 36px;}
+.how-label{font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--y);letter-spacing:.04em;margin-bottom:36px;}
+.how-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:2px;background:rgba(244,241,236,.08);}
+.how-step{background:var(--ink);padding:32px 24px;}
+.how-num{font-family:'Archivo Black',sans-serif;font-size:64px;line-height:.9;letter-spacing:-.04em;color:var(--y);margin-bottom:24px;font-weight:900;}
+.how-title{font-family:'Archivo',sans-serif;font-weight:700;font-size:20px;letter-spacing:-.02em;color:var(--cream);margin-bottom:10px;}
+.how-desc{font-family:'Archivo',sans-serif;font-size:14px;line-height:1.5;color:rgba(244,241,236,.65);font-weight:400;}
+
+.founder{background:var(--cream);padding:80px 36px;}
+.founder-grid{display:grid;grid-template-columns:1fr 2fr;gap:60px;align-items:start;max-width:1200px;}
+.founder-label{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink);letter-spacing:.04em;margin-bottom:14px;}
+.founder-meta{font-family:'JetBrains Mono',monospace;font-size:12px;color:rgba(12,2,19,.55);letter-spacing:.02em;line-height:1.7;}
+.founder-meta strong{color:var(--ink);font-weight:500;}
+.founder-body{font-family:'Archivo',sans-serif;font-weight:500;font-size:clamp(20px,2.2vw,28px);line-height:1.35;letter-spacing:-.015em;color:var(--ink);}
+.founder-body p{margin-bottom:22px;}
+.founder-body p:last-of-type{margin-bottom:32px;}
+.founder-body em{font-style:normal;color:var(--orange);font-weight:600;}
+.founder-sig{font-family:'Archivo Black',sans-serif;font-size:36px;letter-spacing:-.03em;color:var(--ink);line-height:1;font-weight:900;}
+.founder-sig-sub{font-family:'JetBrains Mono',monospace;font-size:12px;color:rgba(12,2,19,.6);letter-spacing:.02em;margin-top:8px;}
+
+.roadmap{background:var(--black);padding:72px 36px 80px;border-top:1px solid rgba(255,255,255,.08);}
+.roadmap-head{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:48px;flex-wrap:wrap;gap:20px;}
+.roadmap-label{font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--y);letter-spacing:.04em;}
+.roadmap-title{font-family:'Archivo Black',sans-serif;font-size:clamp(40px,6vw,80px);line-height:.9;letter-spacing:-.045em;color:var(--cream);font-weight:900;}
+.roadmap-title em{font-style:normal;color:var(--y);}
+.roadmap-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:2px;background:rgba(244,241,236,.08);}
+.rm-col{background:var(--black);padding:32px 24px;min-height:340px;}
+.rm-stage{display:flex;align-items:center;gap:10px;font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.04em;margin-bottom:24px;}
+.rm-stage.live{color:var(--green);}
+.rm-stage.next{color:var(--y);}
+.rm-stage.later{color:rgba(244,241,236,.4);}
+.rm-stage .blip{width:8px;height:8px;border-radius:50%;}
+.rm-stage.live .blip{background:var(--green);animation:pulse 1.6s ease-in-out infinite;}
+.rm-stage.next .blip{background:var(--y);}
+.rm-stage.later .blip{background:rgba(244,241,236,.4);}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:.3;}}
+.rm-list{display:flex;flex-direction:column;gap:14px;}
+.rm-item{font-family:'Archivo',sans-serif;font-size:16px;line-height:1.4;color:var(--cream);font-weight:500;display:flex;gap:10px;align-items:flex-start;}
+.rm-item .check{font-family:'Archivo Black',sans-serif;color:var(--green);flex-shrink:0;line-height:1.2;}
+.rm-item.future .check{color:rgba(244,241,236,.3);}
+.rm-item.future{color:rgba(244,241,236,.7);}
+
+.faq{background:var(--gray);padding:80px 36px;}
+.faq-head{margin-bottom:36px;}
+.faq-label{font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--ink);letter-spacing:.04em;margin-bottom:14px;}
+.faq-title{font-family:'Archivo Black',sans-serif;font-size:clamp(40px,6vw,80px);line-height:.9;letter-spacing:-.045em;color:var(--ink);font-weight:900;}
+.faq-title em{font-style:normal;color:var(--orange);}
+.faq-list{border-top:1.5px solid rgba(12,2,19,.18);}
+.faq-item{border-bottom:1.5px solid rgba(12,2,19,.18);padding:24px 0;cursor:pointer;transition:padding .2s ease;}
+.faq-item.open{padding:28px 0;}
+.faq-q{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;}
+.faq-qt{font-family:'Archivo',sans-serif;font-weight:700;font-size:clamp(20px,2.2vw,28px);line-height:1.2;letter-spacing:-.02em;color:var(--ink);flex:1;}
+.faq-toggle{font-family:'Archivo Black',sans-serif;font-size:28px;color:var(--ink);line-height:1;flex-shrink:0;transition:transform .25s ease;font-weight:900;}
+.faq-item.open .faq-toggle{transform:rotate(45deg);}
+.faq-a{font-family:'Archivo',sans-serif;font-size:16px;line-height:1.55;color:rgba(12,2,19,.72);font-weight:400;max-width:880px;max-height:0;overflow:hidden;transition:max-height .3s ease,margin-top .25s ease;}
+.faq-item.open .faq-a{max-height:400px;margin-top:18px;}
+
+.qwall{background:var(--ink);padding:48px 36px 56px;}
+.qwall-label{font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--y);letter-spacing:.04em;margin-bottom:28px;}
+.qwall-list{display:flex;flex-direction:column;}
+.q-item{font-family:'Archivo',sans-serif;font-weight:700;font-size:clamp(22px,2.6vw,40px);line-height:1.15;letter-spacing:-.025em;color:var(--cream);padding:14px 0;border-bottom:1px solid rgba(244,241,236,.12);display:flex;align-items:center;justify-content:space-between;gap:24px;cursor:pointer;transition:color .15s;}
+.q-item:last-child{border-bottom:none;}
+.q-item:hover{color:var(--y);}
+.q-meta{font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--y);letter-spacing:-.01em;flex-shrink:0;}
+.q-meta .dim{color:rgba(244,241,236,.4);margin-left:14px;}
+
+.wall{background:var(--gray);padding:48px 36px 56px;}
+.wall-label{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:500;color:var(--ink);letter-spacing:.04em;margin-bottom:24px;}
+.wall-list{display:flex;flex-direction:column;}
+.wall-item{font-family:'Archivo Black',sans-serif;font-size:clamp(44px,7vw,92px);line-height:.95;letter-spacing:-.045em;color:var(--ink);padding:10px 0;display:flex;align-items:center;gap:24px;cursor:pointer;transition:transform .15s ease;font-weight:900;}
+.wall-item:hover{transform:translateX(10px);}
+.wall-item .flag{font-size:.55em;line-height:1;}
+.wall-item .tally{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:500;letter-spacing:-.01em;margin-left:auto;color:rgba(12,2,19,.55);}
+
+.signup{background:var(--black);padding:90px 36px 100px;border-top:1px solid rgba(255,255,255,.08);}
+.signup-grid{display:grid;grid-template-columns:1fr 1fr;gap:80px;align-items:start;}
+.signup-eyebrow{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--y);letter-spacing:.04em;margin-bottom:24px;}
+.signup-head{font-family:'Archivo Black',sans-serif;font-size:clamp(64px,9vw,140px);line-height:.85;letter-spacing:-.055em;color:var(--cream);margin-bottom:0;font-weight:900;}
+.signup-head em{font-style:normal;color:var(--y);}
+.signup-formblock{padding-top:24px;}
+.signup-sub{font-family:'Archivo',sans-serif;font-size:17px;color:var(--cream);line-height:1.45;font-weight:400;opacity:.78;margin-bottom:32px;}
+
+.step{display:none;}
+.step.active{display:block;}
+.email-row{display:flex;gap:0;}
+.email-row input{flex:1;background:transparent;border:1.5px solid rgba(244,241,236,.25);border-right:none;color:var(--cream);font-family:'JetBrains Mono',monospace;font-size:14px;padding:16px 18px;outline:none;transition:border-color .2s;min-width:0;}
+.email-row input::placeholder{color:rgba(244,241,236,.45);}
+.email-row input:focus{border-color:var(--y);}
+.btn-y{background:var(--y);color:var(--ink);border:none;font-family:'Archivo',sans-serif;font-weight:800;font-size:13px;letter-spacing:-.01em;padding:16px 28px;cursor:pointer;white-space:nowrap;transition:opacity .15s;}
+.btn-y:hover{opacity:.85;}
+.s2-q{font-family:'JetBrains Mono',monospace;font-size:11px;color:rgba(244,241,236,.55);letter-spacing:.04em;margin:22px 0 12px;}
+.pills{display:flex;flex-wrap:wrap;gap:8px;}
+.pill{background:transparent;border:1.5px solid rgba(244,241,236,.2);color:var(--cream);font-family:'JetBrains Mono',monospace;font-size:12px;padding:9px 16px;cursor:pointer;transition:all .15s;}
+.pill:hover{border-color:var(--y);color:var(--y);}
+.pill.on{background:var(--y);border-color:var(--y);color:var(--ink);}
+.select-w{position:relative;margin-top:8px;}
+.select-w select{width:100%;background:transparent;border:1.5px solid rgba(244,241,236,.25);color:var(--cream);font-family:'JetBrains Mono',monospace;font-size:13px;padding:13px 18px;outline:none;appearance:none;cursor:pointer;}
+.select-w select option{background:#000;color:var(--cream);}
+.sel-arr{position:absolute;right:16px;top:50%;transform:translateY(-50%);color:var(--y);font-size:13px;pointer-events:none;}
+.btn-row{display:flex;gap:10px;margin-top:24px;}
+.btn-back{background:transparent;border:1.5px solid rgba(244,241,236,.2);color:var(--cream);font-family:'JetBrains Mono',monospace;font-size:12px;padding:13px 20px;cursor:pointer;}
+.btn-sub{flex:1;background:var(--y);color:var(--ink);border:none;font-family:'Archivo',sans-serif;font-weight:800;font-size:13px;padding:13px 0;cursor:pointer;letter-spacing:-.01em;}
+.success-box{background:transparent;border:1.5px solid var(--y);padding:24px 28px;}
+.success-h{font-family:'Archivo Black',sans-serif;font-size:22px;color:var(--y);margin-bottom:8px;letter-spacing:-.02em;}
+.success-b{font-family:'Archivo',sans-serif;font-size:14px;color:var(--cream);line-height:1.5;opacity:.75;}
+.fnote{margin-top:14px;font-family:'JetBrains Mono',monospace;font-size:11px;color:rgba(244,241,236,.4);}
+
+.footer-mark{background:var(--y);padding:32px 36px 18px;}
+.footer-bigmark{font-family:'Archivo Black',sans-serif;font-size:clamp(140px,28vw,420px);line-height:.82;letter-spacing:-.07em;color:var(--ink);font-weight:900;}
+.footer-bigmark em{font-style:normal;}
+.footer-bottom{background:var(--y);padding:0 36px 32px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:40px;}
+.fb-h{font-family:'Archivo Black',sans-serif;font-size:24px;letter-spacing:-.02em;margin-bottom:14px;color:var(--ink);font-weight:900;}
+.fb-col p{font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.6;color:var(--ink);}
+.fb-col p a{color:var(--ink);text-decoration:underline;}
+.fb-list{font-family:'Archivo',sans-serif;font-weight:700;font-size:18px;letter-spacing:-.02em;line-height:1.4;}
+.fb-list a{color:var(--ink);text-decoration:none;display:block;padding:2px 0;}
+.fb-list a:hover{text-decoration:underline;}
+.fb-copy{background:var(--y);padding:18px 36px 24px;border-top:1px solid rgba(12,2,19,.18);display:flex;justify-content:space-between;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink);}
+
+@media(max-width:900px){
+  .roadmap-grid{grid-template-columns:1fr;}
+  .how-grid{grid-template-columns:1fr 1fr;}
+  .founder-grid{grid-template-columns:1fr;gap:32px;}
+}
+@media(max-width:760px){
+  .hero{padding:20px 22px 0;min-height:88vh;}
+  .duo{grid-template-columns:1fr;}
+  .cell{padding:36px 22px;min-height:320px;}
+  .signup-grid{grid-template-columns:1fr;gap:48px;}
+  .footer-bottom{grid-template-columns:1fr;gap:32px;padding:0 22px 28px;}
+  .footer-mark,.qwall,.wall,.intro,.fb-copy,.how,.founder,.roadmap,.faq{padding-left:22px;padding-right:22px;}
+  .signup{padding:64px 22px 80px;}
+  .marquee-item{font-size:28px;}
+  .q-item{flex-direction:column;align-items:flex-start;gap:8px;}
+  .how-grid{grid-template-columns:1fr;}
+}
+</style>
+</head>
+<body>
+
+<div class="tk">
+  <div class="tk-inner">
+    <span class="tk-item">Tinubu 2nd term <span class="up">YES 64&cent;</span></span>
+    <span class="sep">/</span>
+    <span class="tk-item">Osimhen AFCON top scorer <span class="up">38&cent;</span></span>
+    <span class="sep">/</span>
+    <span class="tk-item">Mamelodi UCL <span class="dn">NO 71&cent;</span></span>
+    <span class="sep">/</span>
+    <span class="tk-item">BTC $150K by Aug <span class="up">YES 52&cent;</span></span>
+    <span class="sep">/</span>
+    <span class="tk-item">Ruto re-election <span class="up">YES 58&cent;</span></span>
+    <span class="sep">/</span>
+    <span class="tk-item">Springboks RWC retain <span class="dn">NO 61&cent;</span></span>
+    <span class="sep">/</span>
+    <span class="tk-item">Naira below 1800 <span class="dn">NO 44&cent;</span></span>
+    <span class="sep">/</span>
+    <span class="tk-item">Tinubu 2nd term <span class="up">YES 64&cent;</span></span>
+    <span class="sep">/</span>
+    <span class="tk-item">Osimhen AFCON top scorer <span class="up">38&cent;</span></span>
+    <span class="sep">/</span>
+    <span class="tk-item">BTC $150K by Aug <span class="up">YES 52&cent;</span></span>
+    <span class="sep">/</span>
+    <span class="tk-item">Ruto re-election <span class="up">YES 58&cent;</span></span>
+    <span class="sep">/</span>
+    <span class="tk-item">Springboks RWC retain <span class="dn">NO 61&cent;</span></span>
+  </div>
+</div>
+
+<section class="hero">
+  <div class="hero-top">
+    <div class="hero-tagline">A Prediction Market for the Next Billions.</div>
+    <div class="hero-mark">P</div>
+  </div>
+  <div class="hero-bigmark">Pro<em>ph</em>it</div>
+</section>
+
+<section class="intro">
+  <div class="intro-label">What we're building &rarr;</div>
+  <div class="intro-body">Prophit is a <em>community-owned</em> prediction market built for Africa. Trade outcomes you actually care about &mdash; local football, elections, crypto &mdash; and earn from being right.</div>
+</section>
+
+<div class="marquee">
+  <div class="marquee-inner">
+    <span class="marquee-item">PREDICT <span class="marquee-star">&#x2726;</span></span>
+    <span class="marquee-item"><em>WIN</em> <span class="marquee-star">&#x2726;</span></span>
+    <span class="marquee-item">OWN IT <span class="marquee-star">&#x2726;</span></span>
+    <span class="marquee-item">PREDICT <span class="marquee-star">&#x2726;</span></span>
+    <span class="marquee-item"><em>WIN</em> <span class="marquee-star">&#x2726;</span></span>
+    <span class="marquee-item">OWN IT <span class="marquee-star">&#x2726;</span></span>
+    <span class="marquee-item">PREDICT <span class="marquee-star">&#x2726;</span></span>
+    <span class="marquee-item"><em>WIN</em> <span class="marquee-star">&#x2726;</span></span>
+    <span class="marquee-item">OWN IT <span class="marquee-star">&#x2726;</span></span>
+  </div>
+</div>
+
+<section class="duo">
+  <div class="cell bg-orange">
+    <div class="cell-label">01 / Markets, not bets.</div>
+    <div>
+      <div class="cell-headline">Every market is a question with two sides.</div>
+      <div class="cell-body">Buy YES or NO. Prices move with the crowd. Get in early, get out smart. Winning shares pay out at $1.00.</div>
+    </div>
+  </div>
+  <div class="cell bg-gray">
+    <div class="cell-label">YES + NO = $1.00</div>
+    <div class="cell-num">1<em>.00</em></div>
+  </div>
+</section>
+
+<section class="duo">
+  <div class="cell bg-cream">
+    <div class="cell-label">50% to creators</div>
+    <div class="cell-num">50<em>%</em></div>
+  </div>
+  <div class="cell bg-y">
+    <div class="cell-label">02 / Build a market. Earn from it.</div>
+    <div>
+      <div class="cell-headline">Create a market. Keep half the fees.</div>
+      <div class="cell-body">Start a community around your team, your city, your niche. Every trade earns you a cut. The better your markets, the more you make.</div>
+    </div>
+  </div>
+</section>
+
+<section class="duo">
+  <div class="cell bg-blue">
+    <div class="cell-label">03 / Settled by your community.</div>
+    <div>
+      <div class="cell-headline">No central oracle. No black box.</div>
+      <div class="cell-body">Markets are resolved by elected community juries &mdash; the people who actually know who won. Public reasoning, transparent settlement.</div>
+    </div>
+  </div>
+  <div class="cell bg-black">
+    <div class="cell-label" style="color:var(--y);">Community jury</div>
+    <div class="cell-num" style="color:var(--y);">1<em>&ndash;10</em></div>
+  </div>
+</section>
+
+<section class="duo">
+  <div class="cell bg-gray">
+    <div class="cell-label">At launch</div>
+    <div class="cell-num">0<em>%</em></div>
+  </div>
+  <div class="cell bg-orange">
+    <div class="cell-label">04 / Zero platform fees at launch.</div>
+    <div>
+      <div class="cell-headline">Trade early. Trade free.</div>
+      <div class="cell-body">During our launch window, every trade is fee-free. Build your track record before the platform opens to everyone.</div>
+    </div>
+  </div>
+</section>
+
+<section class="how">
+  <div class="how-label">&#x2605; How it works &rarr;</div>
+  <div class="how-grid">
+    <div class="how-step">
+      <div class="how-num">01</div>
+      <div class="how-title">Pick a market.</div>
+      <div class="how-desc">Browse questions across sports, politics, crypto, and your local community. Or create a new market yourself.</div>
+    </div>
+    <div class="how-step">
+      <div class="how-num">02</div>
+      <div class="how-title">Buy YES or NO.</div>
+      <div class="how-desc">Shares cost between 1&cent; and 99&cent;. The price tells you what the crowd thinks. Be early if you disagree.</div>
+    </div>
+    <div class="how-step">
+      <div class="how-num">03</div>
+      <div class="how-title">Wait for resolution.</div>
+      <div class="how-desc">The community jury settles the outcome publicly. No central oracle. No surprises.</div>
+    </div>
+    <div class="how-step">
+      <div class="how-num">04</div>
+      <div class="how-title">Collect your winnings.</div>
+      <div class="how-desc">Winning shares pay out at $1.00. Your accuracy builds a track record. The best predictors earn reputation and rewards.</div>
+    </div>
+  </div>
+</section>
+
+<section class="founder">
+  <div class="founder-grid">
+    <div>
+      <div class="founder-label">&#x2605; A note from the founder</div>
+      <div class="founder-meta">
+        <strong>Nathan</strong><br/>
+        Founder, Prophit<br/>
+        Addis Ababa, Ethiopia
+      </div>
+    </div>
+    <div class="founder-body">
+      <p>I built Prophit because the markets I wanted to trade didn't exist.</p>
+      <p>The 2024 election made prediction markets a household name &mdash; but only if you live in the right country. There's no platform that'll let you trade <em>Osimhen for AFCON top scorer</em>, or whether load-shedding ends in Joburg by December, or who wins the next election in Nairobi.</p>
+      <p>Not because no one cares. Half a continent argues about these things every day. The reason is harder: no global oracle can settle a hyper-local event. So no global platform will list them.</p>
+      <p>Prophit's answer is to let communities settle their own markets. The people who actually know who won. Built in Addis, made for the next billions.</p>
+      <div class="founder-sig">&mdash; Nathan</div>
+      <div class="founder-sig-sub">nathan@makeprophit.com &middot; @makeprophit</div>
+    </div>
+  </div>
+</section>
+
+<section class="roadmap">
+  <div class="roadmap-head">
+    <div>
+      <div class="roadmap-label">&#x2605; Where we are &rarr;</div>
+      <div class="roadmap-title">The <em>road</em> ahead.</div>
+    </div>
+  </div>
+  <div class="roadmap-grid">
+    <div class="rm-col">
+      <div class="rm-stage live"><span class="blip"></span>Live now</div>
+      <div class="rm-list">
+        <div class="rm-item"><span class="check">&#10003;</span>Mobile-first trading on testnet</div>
+        <div class="rm-item"><span class="check">&#10003;</span>Swipe-to-trade Quick View</div>
+        <div class="rm-item"><span class="check">&#10003;</span>User-created communities</div>
+        <div class="rm-item"><span class="check">&#10003;</span>Community jury resolution</div>
+        <div class="rm-item"><span class="check">&#10003;</span>Creator-built markets</div>
+        <div class="rm-item"><span class="check">&#10003;</span>Native sharing &amp; embeds</div>
+        <div class="rm-item"><span class="check">&#10003;</span>Agent-native API</div>
+      </div>
+    </div>
+    <div class="rm-col">
+      <div class="rm-stage next"><span class="blip"></span>Up next</div>
+      <div class="rm-list">
+        <div class="rm-item future"><span class="check">&rarr;</span>Mainnet launch</div>
+        <div class="rm-item future"><span class="check">&rarr;</span>First 10 community design partners</div>
+        <div class="rm-item future"><span class="check">&rarr;</span>Mobile money on/off ramps</div>
+        <div class="rm-item future"><span class="check">&rarr;</span>Creator dashboards &amp; payouts</div>
+        <div class="rm-item future"><span class="check">&rarr;</span>Read-only MCP server</div>
+        <div class="rm-item future"><span class="check">&rarr;</span>Reputation graph v1</div>
+      </div>
+    </div>
+    <div class="rm-col">
+      <div class="rm-stage later"><span class="blip"></span>Later</div>
+      <div class="rm-list">
+        <div class="rm-item future"><span class="check">&rarr;</span>AI-proposed market resolution</div>
+        <div class="rm-item future"><span class="check">&rarr;</span>Hybrid oracle (agent + jury)</div>
+        <div class="rm-item future"><span class="check">&rarr;</span>Cross-community shared liquidity</div>
+        <div class="rm-item future"><span class="check">&rarr;</span>Resolution layer as licensable infrastructure</div>
+        <div class="rm-item future"><span class="check">&rarr;</span>Expansion beyond Africa</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="faq">
+  <div class="faq-head">
+    <div class="faq-label">&#x2605; Questions, answered</div>
+    <div class="faq-title">Frequently <em>asked.</em></div>
+  </div>
+  <div class="faq-list">
+    <div class="faq-item" onclick="toggleFaq(this)">
+      <div class="faq-q">
+        <div class="faq-qt">When does Prophit launch?</div>
+        <div class="faq-toggle">+</div>
+      </div>
+      <div class="faq-a">Testnet is live now &mdash; join the Telegram to get access. Mainnet launches in the coming months for everyone on the waitlist first. We'll email you before it goes live, so make sure you've signed up above.</div>
+    </div>
+    <div class="faq-item" onclick="toggleFaq(this)">
+      <div class="faq-q">
+        <div class="faq-qt">Do I need crypto to use Prophit?</div>
+        <div class="faq-toggle">+</div>
+      </div>
+      <div class="faq-a">No. We're building for the next billion users, and most of them have never touched a wallet. Onboarding works with email and mobile money where available &mdash; we handle the rest under the hood. You can also use crypto if you prefer.</div>
+    </div>
+    <div class="faq-item" onclick="toggleFaq(this)">
+      <div class="faq-q">
+        <div class="faq-qt">Is this gambling? Is it legal where I live?</div>
+        <div class="faq-toggle">+</div>
+      </div>
+      <div class="faq-a">Prediction markets and sports betting are regulated differently in every country. We operate as a Delaware C-corp, geoblock where required, and apply KYC thresholds in line with each jurisdiction. The short answer: check your local laws, and we won't let you in if it's not allowed.</div>
+    </div>
+    <div class="faq-item" onclick="toggleFaq(this)">
+      <div class="faq-q">
+        <div class="faq-qt">What's the trading fee?</div>
+        <div class="faq-toggle">+</div>
+      </div>
+      <div class="faq-a">Zero platform fees during our launch window. After that, a small trading fee on volume &mdash; and creators of each market keep 50% of fees their markets generate. We make money when our communities make money.</div>
+    </div>
+    <div class="faq-item" onclick="toggleFaq(this)">
+      <div class="faq-q">
+        <div class="faq-qt">How do community juries resolve markets?</div>
+        <div class="faq-toggle">+</div>
+      </div>
+      <div class="faq-a">Each community elects a jury of 1&ndash;10 members. When a market's deadline hits, the jury reviews evidence publicly and votes on the outcome. Supermajority consensus is required to settle. All reasoning is on the record &mdash; no black-box decisions.</div>
+    </div>
+    <div class="faq-item" onclick="toggleFaq(this)">
+      <div class="faq-q">
+        <div class="faq-qt">Can I create my own market?</div>
+        <div class="faq-toggle">+</div>
+      </div>
+      <div class="faq-a">Yes. Anyone can start a community and create markets in it. You set the question, the deadline, and the resolution criteria. Markets pass through a quick moderation queue before going live. You earn 50% of every trading fee your market generates.</div>
+    </div>
+    <div class="faq-item" onclick="toggleFaq(this)">
+      <div class="faq-q">
+        <div class="faq-qt">Why is this different from Polymarket or Kalshi?</div>
+        <div class="faq-toggle">+</div>
+      </div>
+      <div class="faq-a">Polymarket and Kalshi are great for global, well-documented events &mdash; US elections, world cup finals. They can't serve hyper-local markets because no central oracle can settle them. Prophit's community-jury model is built specifically for the long tail of events that matter where you live.</div>
+    </div>
+    <div class="faq-item" onclick="toggleFaq(this)">
+      <div class="faq-q">
+        <div class="faq-qt">How do I get on testnet?</div>
+        <div class="faq-toggle">+</div>
+      </div>
+      <div class="faq-a">Join the Telegram community &mdash; that's where the testnet runs. You'll find active markets, other traders, and direct access to the team. Link's in the footer.</div>
+    </div>
+  </div>
+</section>
+
+<section class="qwall">
+  <div class="qwall-label">&#x2605; What people are trading on testnet &rarr;</div>
+  <div class="qwall-list">
+    <div class="q-item">
+      <span>Will Osimhen be AFCON top scorer?</span>
+      <span class="q-meta">YES 78&cent;<span class="dim">4,210 traders</span></span>
+    </div>
+    <div class="q-item">
+      <span>Will Ruto win re-election in 2027?</span>
+      <span class="q-meta">YES 58&cent;<span class="dim">1,880 traders</span></span>
+    </div>
+    <div class="q-item">
+      <span>BTC hits $150K before August 2026?</span>
+      <span class="q-meta">YES 52&cent;<span class="dim">6,540 traders</span></span>
+    </div>
+    <div class="q-item">
+      <span>Springboks retain the Rugby World Cup?</span>
+      <span class="q-meta">NO 61&cent;<span class="dim">3,100 traders</span></span>
+    </div>
+    <div class="q-item">
+      <span>Will load-shedding end in SA by December?</span>
+      <span class="q-meta">NO 67&cent;<span class="dim">2,440 traders</span></span>
+    </div>
+    <div class="q-item">
+      <span>Will Naira drop below 1800/USD this year?</span>
+      <span class="q-meta">NO 56&cent;<span class="dim">3,820 traders</span></span>
+    </div>
+  </div>
+</section>
+
+<section class="wall">
+  <div class="wall-label">&#x2605; Communities launching at mainnet &rarr;</div>
+  <div class="wall-list">
+    <div class="wall-item"><span class="flag">&#x1F1F3;&#x1F1EC;</span>Naija Markets<span class="tally">2,100 waiting</span></div>
+    <div class="wall-item"><span class="flag">&#x1F1F0;&#x1F1EA;</span>Kenyan Pulse<span class="tally">870 waiting</span></div>
+    <div class="wall-item"><span class="flag">&#x1F1FF;&#x1F1E6;</span>SA Predict<span class="tally">1,340 waiting</span></div>
+    <div class="wall-item"><span class="flag">&#x1F1EA;&#x1F1F9;</span>Habesha Markets<span class="tally">620 waiting</span></div>
+    <div class="wall-item"><span class="flag">&#x1F1EC;&#x1F1ED;</span>Ghana Calls<span class="tally">490 waiting</span></div>
+    <div class="wall-item"><span class="flag">&#x1F30D;</span>Pan-Africa Crypto<span class="tally">3,200 waiting</span></div>
+  </div>
+</section>
+
+<section class="signup">
+  <div class="signup-grid">
+    <div>
+      <div class="signup-eyebrow">&#x2605; Early Access</div>
+      <div class="signup-head">Get in<br/><em>early.</em></div>
+    </div>
+    <div class="signup-formblock">
+      <p class="signup-sub">Join 1,247 traders, creators, and community builders on the waitlist. We'll hit you before mainnet opens. No spam, ever.</p>
+
+      <div id="step1" class="step active">
+        <div class="email-row">
+          <input type="email" id="e1" placeholder="your@email.com"/>
+          <button class="btn-y" onclick="toS2()">Join &rarr;</button>
+        </div>
+      </div>
+
+      <div id="step2" class="step">
+        <div class="s2-q">I'm here to &mdash;</div>
+        <div class="pills">
+          <button class="pill" onclick="tp(this)" data-v="trade">Trade markets</button>
+          <button class="pill" onclick="tp(this)" data-v="create">Create markets</button>
+          <button class="pill" onclick="tp(this)" data-v="community">Run a community</button>
+          <button class="pill" onclick="tp(this)" data-v="build">Build on the API</button>
+        </div>
+        <div class="s2-q">I'm based in &mdash;</div>
+        <div class="select-w">
+          <select id="country">
+            <option value="" disabled selected>Select your country</option>
+            <option>Nigeria</option><option>Kenya</option><option>South Africa</option>
+            <option>Ethiopia</option><option>Ghana</option><option>Tanzania</option>
+            <option>Uganda</option><option>Egypt</option><option>Morocco</option>
+            <option value="other-af">Other African country</option>
+            <option value="other">Outside Africa</option>
+          </select>
+          <span class="sel-arr">&#9662;</span>
+        </div>
+        <div class="btn-row">
+          <button class="btn-back" onclick="toS1()">&larr; Back</button>
+          <button class="btn-sub" onclick="sub()">Secure My Spot &rarr;</button>
+        </div>
+      </div>
+
+      <div id="succ" class="success-box" style="display:none;">
+        <div class="success-h">You're on the list.</div>
+        <div class="success-b">We'll hit you before mainnet goes live. Jump into Telegram in the meantime &mdash; testnet's already running.</div>
+      </div>
+      <p class="fnote" id="fnote">No spam. One message when we launch. Free to join.</p>
+    </div>
+  </div>
+</section>
+
+<div class="footer-mark">
+  <div class="footer-bigmark">Pro<em>ph</em>it</div>
+</div>
+
+<div class="footer-bottom">
+  <div class="fb-col">
+    <div class="fb-h">Let's talk.</div>
+    <p>For traders and creators, hit us up at <a href="mailto:hello@makeprophit.com">hello@makeprophit.com</a>.</p>
+    <p style="margin-top:10px;">For partnerships and press, reach <a href="mailto:nathan@makeprophit.com">nathan@makeprophit.com</a>.</p>
+  </div>
+  <div class="fb-col">
+    <div class="fb-h">Communities</div>
+    <div class="fb-list">
+      <a href="#">Naija Markets</a>
+      <a href="#">Kenyan Pulse</a>
+      <a href="#">SA Predict</a>
+      <a href="#">Habesha Markets</a>
+      <a href="#">Pan-Africa Crypto</a>
+    </div>
+  </div>
+  <div class="fb-col">
+    <div class="fb-h">Read our mind</div>
+    <div class="fb-list">
+      <a href="https://twitter.com/makeprophit">Twitter &#8599;</a>
+      <a href="https://t.me/prophit">Telegram &#8599;</a>
+      <a href="https://makeprophit.com">makeprophit.com &#8599;</a>
+    </div>
+  </div>
+</div>
+
+<div class="fb-copy">
+  <span>&copy; Prophit 2026</span>
+  <span>Built in Addis. Made for the next billions.</span>
+</div>
+
+<script>
+let role = null;
+
+function tp(el) {
+  document.querySelectorAll('.pill').forEach(p => p.classList.remove('on'));
+  el.classList.add('on');
+  role = el.dataset.v;
+}
+
+function toS2() {
+  const e = document.getElementById('e1').value.trim();
+  if (!e || !e.includes('@')) {
+    document.getElementById('e1').style.borderColor = '#FF4B4B';
+    return;
+  }
+  document.getElementById('step1').classList.remove('active');
+  document.getElementById('step2').classList.add('active');
+}
+
+function toS1() {
+  document.getElementById('step2').classList.remove('active');
+  document.getElementById('step1').classList.add('active');
+}
+
+function sub() {
+  const email = document.getElementById('e1').value.trim();
+  const country = document.getElementById('country').value;
+
+  // TODO: Wire this up to your backend (Loops.so, Mailchimp, Supabase, etc.)
+  console.log('Waitlist signup:', { email, role, country });
+
+  document.getElementById('step2').classList.remove('active');
+  document.getElementById('succ').style.display = 'block';
+  document.getElementById('fnote').style.display = 'none';
+}
+
+function toggleFaq(el) {
+  el.classList.toggle('open');
+}
+</script>
+</body>
+</html>
