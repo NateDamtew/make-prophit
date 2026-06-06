@@ -12,6 +12,7 @@ export const waitlists = pgTable(
     id: char({ length: 26 })
       .primaryKey()
       .default(sql`generate_ulid()`),
+    name: text('name'),
     email: text('email')
       .notNull()
       .unique(),

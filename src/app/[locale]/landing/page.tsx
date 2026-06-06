@@ -1,18 +1,39 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import styles from './landing.module.css'
 
 export default function LandingPage() {
+  const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [role, setRole] = useState('')
   const [country, setCountry] = useState('')
   const [step, setStep] = useState(1)
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
   const [openFaq, setOpenFaq] = useState<number | null>(null)
+  const [waitlistCount, setWaitlistCount] = useState(0)
+
+  useEffect(() => {
+    let start = 0;
+    const end = 1247;
+    const duration = 2000;
+    const increment = end / (duration / 16);
+    
+    const timer = setInterval(() => {
+      start += increment;
+      if (start >= end) {
+        setWaitlistCount(end);
+        clearInterval(timer);
+      } else {
+        setWaitlistCount(Math.floor(start));
+      }
+    }, 16);
+    
+    return () => clearInterval(timer);
+  }, [])
 
   const handleNextStep = () => {
-    if (!email || !email.includes('@')) {
+    if (!name.trim() || !email || !email.includes('@')) {
       return
     }
     setStep(2)
@@ -25,7 +46,7 @@ export default function LandingPage() {
       const res = await fetch('/api/waitlist', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, role, country }),
+        body: JSON.stringify({ name, email, role, country }),
       })
 
       const data = await res.json()
@@ -47,7 +68,7 @@ export default function LandingPage() {
           {Array(8).fill(null).map((_, i) => (
             <span key={i} className={styles.tkItem}>
               Help shape the future of Prophit.{' '}
-              <a href="https://t.me/prophit" target="_blank" rel="noopener noreferrer" className={styles.up} style={{ textDecoration: 'underline' }}>
+              <a href="https://t.me/prophit" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--y)', textDecoration: 'underline' }}>
                 Join our Telegram Community Today
               </a>
             </span>
@@ -61,6 +82,16 @@ export default function LandingPage() {
           <div className={styles.heroMark} style={{ border: 'none' }}>
             <img src="/Prophit-Black.png" alt="Prophit" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
           </div>
+        </div>
+        <div className={styles.heroWaitlist}>
+          <span className={styles.hwDot}></span>
+          Join <strong>{waitlistCount.toLocaleString()}</strong> on the waitlist. 
+          <span 
+            onClick={() => document.querySelector('.' + styles.signup)?.scrollIntoView({ behavior: 'smooth' })}
+            style={{ textDecoration: 'underline', cursor: 'pointer', fontWeight: 700, marginLeft: '4px' }}
+          >
+            Join Now &rarr;
+          </span>
         </div>
         <div className={styles.heroBigmark}>Pro<em>ph</em>it</div>
       </section>
@@ -231,6 +262,18 @@ export default function LandingPage() {
         </div>
       </section>
 
+      <section className={styles.wall}>
+        <div className={styles.wallLabel}>&#x2605; Communities launching at mainnet &rarr;</div>
+        <div className={styles.wallList}>
+          <div className={styles.wallItem}><span className={styles.flag}>&#x1F1F3;&#x1F1EC;</span>Naija Markets<span className={styles.tally}>2,100 waiting</span></div>
+          <div className={styles.wallItem}><span className={styles.flag}>&#x1F1F0;&#x1F1EA;</span>Kenyan Pulse<span className={styles.tally}>870 waiting</span></div>
+          <div className={styles.wallItem}><span className={styles.flag}>&#x1F1FF;&#x1F1E6;</span>SA Predict<span className={styles.tally}>1,340 waiting</span></div>
+          <div className={styles.wallItem}><span className={styles.flag}>&#x1F1EA;&#x1F1F9;</span>Habesha Markets<span className={styles.tally}>620 waiting</span></div>
+          <div className={styles.wallItem}><span className={styles.flag}>&#x1F1EC;&#x1F1ED;</span>Ghana Calls<span className={styles.tally}>490 waiting</span></div>
+
+        </div>
+      </section>
+
       <section className={styles.faq}>
         <div className={styles.faqHead}>
           <div className={styles.faqLabel}>&#x2605; Questions, answered</div>
@@ -296,48 +339,6 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <section className={styles.qwall}>
-        <div className={styles.qwallLabel}>&#x2605; What people are trading on testnet &rarr;</div>
-        <div className={styles.qwallList}>
-          <div className={styles.qItem}>
-            <span>Will Osimhen be AFCON top scorer?</span>
-            <span className={styles.qMeta}>YES 78&cent;<span className={styles.dim}>4,210 traders</span></span>
-          </div>
-          <div className={styles.qItem}>
-            <span>Will Ruto win re-election in 2027?</span>
-            <span className={styles.qMeta}>YES 58&cent;<span className={styles.dim}>1,880 traders</span></span>
-          </div>
-          <div className={styles.qItem}>
-            <span>BTC hits $150K before August 2026?</span>
-            <span className={styles.qMeta}>YES 52&cent;<span className={styles.dim}>6,540 traders</span></span>
-          </div>
-          <div className={styles.qItem}>
-            <span>Springboks retain the Rugby World Cup?</span>
-            <span className={styles.qMeta}>NO 61&cent;<span className={styles.dim}>3,100 traders</span></span>
-          </div>
-          <div className={styles.qItem}>
-            <span>Will load-shedding end in SA by December?</span>
-            <span className={styles.qMeta}>NO 67&cent;<span className={styles.dim}>2,440 traders</span></span>
-          </div>
-          <div className={styles.qItem}>
-            <span>Will Naira drop below 1800/USD this year?</span>
-            <span className={styles.qMeta}>NO 56&cent;<span className={styles.dim}>3,820 traders</span></span>
-          </div>
-        </div>
-      </section>
-
-      <section className={styles.wall}>
-        <div className={styles.wallLabel}>&#x2605; Communities launching at mainnet &rarr;</div>
-        <div className={styles.wallList}>
-          <div className={styles.wallItem}><span className={styles.flag}>&#x1F1F3;&#x1F1EC;</span>Naija Markets<span className={styles.tally}>2,100 waiting</span></div>
-          <div className={styles.wallItem}><span className={styles.flag}>&#x1F1F0;&#x1F1EA;</span>Kenyan Pulse<span className={styles.tally}>870 waiting</span></div>
-          <div className={styles.wallItem}><span className={styles.flag}>&#x1F1FF;&#x1F1E6;</span>SA Predict<span className={styles.tally}>1,340 waiting</span></div>
-          <div className={styles.wallItem}><span className={styles.flag}>&#x1F1EA;&#x1F1F9;</span>Habesha Markets<span className={styles.tally}>620 waiting</span></div>
-          <div className={styles.wallItem}><span className={styles.flag}>&#x1F1EC;&#x1F1ED;</span>Ghana Calls<span className={styles.tally}>490 waiting</span></div>
-          <div className={styles.wallItem}><span className={styles.flag}>&#x1F30D;</span>Pan-Africa Crypto<span className={styles.tally}>3,200 waiting</span></div>
-        </div>
-      </section>
-
       <section className={styles.signup}>
         <div className={styles.signupGrid}>
           <div>
@@ -350,6 +351,13 @@ export default function LandingPage() {
             {status !== 'success' && step === 1 && (
               <div className={`${styles.step} ${styles.stepActive}`}>
                 <div className={styles.emailRow}>
+                  <input 
+                    type="text" 
+                    placeholder="Your Name" 
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    style={(!name.trim() && name !== '') ? { borderColor: '#FF4B4B'} : {}}
+                  />
                   <input 
                     type="email" 
                     placeholder="your@email.com" 
@@ -428,7 +436,7 @@ export default function LandingPage() {
             <a href="#">Kenyan Pulse</a>
             <a href="#">SA Predict</a>
             <a href="#">Habesha Markets</a>
-            <a href="#">Pan-Africa Crypto</a>
+
           </div>
         </div>
         <div className={styles.fbCol}>

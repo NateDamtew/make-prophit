@@ -4,6 +4,7 @@ import { waitlists } from '@/lib/db/schema/waitlist/tables'
 import { z } from 'zod'
 
 const waitlistSchema = z.object({
+  name: z.string().optional(),
   email: z.string().email('Invalid email address'),
   role: z.string().optional(),
   country: z.string().optional(),
@@ -18,9 +19,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: result.error.issues[0].message }, { status: 400 })
     }
 
-    const { email, role, country } = result.data
+    const { name, email, role, country } = result.data
 
-    await db.insert(waitlists).values({ email, role, country }).onConflictDoNothing({ target: waitlists.email })
+    await db.insert(waitlists).values({ name, email, role, country }).onConflictDoNothing({ target: waitlists.email })
 
     return NextResponse.json({ success: true, message: 'Added to waitlist!' }, { status: 201 })
   } catch (error) {

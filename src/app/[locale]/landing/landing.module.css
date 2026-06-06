@@ -38,9 +38,12 @@
 .heroTagline { font-family: 'Archivo', sans-serif; font-weight: 700; font-size: clamp(22px, 2.2vw, 30px); letter-spacing: -.02em; color: var(--ink); max-width: 520px; line-height: 1.15; }
 .heroMark { width: 42px; height: 42px; border: 2.5px solid var(--ink); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: 'Archivo Black', sans-serif; font-size: 22px; color: var(--ink); position: relative; flex-shrink: 0; }
 .heroMark::after { content: ''; position: absolute; top: -3px; right: -3px; width: 8px; height: 8px; background: var(--ink); border-radius: 50%; }
-.heroBigmark { font-family: 'Archivo Black', sans-serif; font-size: clamp(140px, 28vw, 420px); line-height: .82; letter-spacing: -.07em; color: var(--ink); margin-top: auto; padding-bottom: 8px; font-weight: 900; }
+.heroBigmark { font-family: 'Archivo Black', sans-serif; font-size: clamp(140px, 28vw, 420px); line-height: .82; letter-spacing: -.07em; color: var(--ink); padding-bottom: 8px; font-weight: 900; }
 .heroBigmark em { font-style: normal; }
 
+.heroWaitlist { margin-top: auto; margin-left: clamp(8px, 1.2vw, 18px); font-family: 'JetBrains Mono', monospace; font-size: clamp(12px, 1.2vw, 14px); color: var(--ink); display: flex; align-items: center; gap: 8px; margin-bottom: -10px; z-index: 2; position: relative; font-weight: 500; letter-spacing: -0.01em; }
+.hwDot { width: 8px; height: 8px; background: var(--black); border-radius: 50%; display: inline-block; animation: pulseDot 2s infinite; }
+@keyframes pulseDot { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 .intro { background: var(--cream); padding: 60px 36px 56px; }
 .introLabel { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--ink); letter-spacing: .04em; margin-bottom: 20px; }
 .introBody { font-family: 'Archivo', sans-serif; font-weight: 600; font-size: clamp(28px, 3.5vw, 52px); line-height: 1.1; letter-spacing: -.025em; color: var(--ink); max-width: 1100px; }
@@ -132,13 +135,13 @@
 .qMeta { font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--y); letter-spacing: -.01em; flex-shrink: 0; }
 .qMeta .dim { color: rgba(244,241,236,.4); margin-left: 14px; }
 
-.wall { background: var(--gray); padding: 48px 36px 56px; }
-.wallLabel { font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 500; color: var(--ink); letter-spacing: .04em; margin-bottom: 24px; }
+.wall { background: var(--black); padding: 48px 36px 56px; }
+.wallLabel { font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 500; color: var(--y); letter-spacing: .04em; margin-bottom: 24px; }
 .wallList { display: flex; flex-direction: column; }
-.wallItem { font-family: 'Archivo Black', sans-serif; font-size: clamp(44px, 7vw, 92px); line-height: .95; letter-spacing: -.045em; color: var(--ink); padding: 10px 0; display: flex; align-items: center; gap: 24px; cursor: pointer; transition: transform .15s ease; font-weight: 900; }
+.wallItem { font-family: 'Archivo Black', sans-serif; font-size: clamp(44px, 7vw, 92px); line-height: .95; letter-spacing: -.045em; color: var(--cream); padding: 10px 0; display: flex; align-items: center; gap: 24px; cursor: pointer; transition: transform .15s ease; font-weight: 900; }
 .wallItem:hover { transform: translateX(10px); }
 .wallItem .flag { font-size: .55em; line-height: 1; }
-.wallItem .tally { font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 500; letter-spacing: -.01em; margin-left: auto; color: rgba(12,2,19,.55); }
+.wallItem .tally { font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 500; letter-spacing: -.01em; margin-left: auto; color: rgba(244,241,236,.55); }
 
 .signup { background: var(--black); padding: 90px 36px 100px; border-top: 1px solid rgba(255,255,255,.08); }
 .signupGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 80px; align-items: start; }
@@ -173,7 +176,7 @@
 .successB { font-family: 'Archivo', sans-serif; font-size: 14px; color: var(--cream); line-height: 1.5; opacity: .75; }
 .fnote { margin-top: 14px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: rgba(244,241,236,.4); }
 
-.footerMark { background: var(--y); padding: 32px 36px 18px; }
+.footerMark { background: var(--y); padding: 32px 36px clamp(40px, 8vw, 120px); }
 .footerBigmark { font-family: 'Archivo Black', sans-serif; font-size: clamp(140px, 28vw, 420px); line-height: .82; letter-spacing: -.07em; color: var(--ink); font-weight: 900; }
 .footerBigmark em { font-style: normal; }
 .footerBottom { background: var(--y); padding: 0 36px 32px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 40px; }
@@ -201,4 +204,5 @@
   .marqueeItem { font-size: 28px; }
   .qItem { flex-direction: column; align-items: flex-start; gap: 8px; }
   .howGrid { grid-template-columns: 1fr; }
+  .heroBigmark, .footerBigmark { font-size: 21vw; }
 }
