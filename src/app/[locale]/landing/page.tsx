@@ -45,7 +45,7 @@ export default function LandingPage() {
           The Future of Prediction Markets
         </h1>
         <p className="mt-6 text-lg leading-8 text-gray-300">
-          Be the first to experience MakeProphit. Join the waitlist to secure your early access spot and start trading on the most advanced decentralized platform.
+          Be the first to experience Prophit. Join the waitlist to secure your early access spot and start trading on the most advanced decentralized platform.
         </p>
         
         <div className="mt-10 flex items-center justify-center gap-x-6">

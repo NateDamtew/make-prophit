@@ -2,6 +2,7 @@
 
 import { Link } from '@/i18n/navigation'
 import { MessageCircle, Globe, Share2, Mail, Users } from 'lucide-react'
+import HeaderLogo from '@/components/HeaderLogo'
 
 export default function Footer() {
   return (
@@ -11,9 +12,12 @@ export default function Footer() {
           
           {/* Logo and Socials */}
           <div className="flex flex-col space-y-6">
-            <Link href="/" className="flex items-center gap-2">
-              <span className="text-2xl font-bold text-white">MakeProphit</span>
-            </Link>
+            <div 
+              className="dark"
+              style={{ '--foreground': '100% 0 0' } as React.CSSProperties}
+            >
+              <HeaderLogo />
+            </div>
             <div className="flex space-x-4 text-gray-400">
               <a href="#" className="hover:text-white transition-colors"><Globe className="h-5 w-5" /></a>
               <a href="#" className="hover:text-white transition-colors"><MessageCircle className="h-5 w-5" /></a>
@@ -61,7 +65,7 @@ export default function Footer() {
 
         {/* Bottom Section */}
         <div className="mt-16 border-t border-white/10 pt-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 text-xs">
-          <p>© 2026 MakeProphit Inc. - All rights reserved</p>
+          <p>© 2026 Prophit Inc. - All rights reserved</p>
           <div className="flex flex-wrap gap-4">
             <a href="#" className="hover:text-white transition-colors">Privacy</a>
             <a href="#" className="hover:text-white transition-colors">Data Terms of Service</a>
@@ -71,7 +75,7 @@ export default function Footer() {
         </div>
         
         <p className="mt-8 text-[11px] leading-5 text-gray-500 text-justify">
-          Trading on MakeProphit involves risk and may not be appropriate for all. Members risk losing their cost to enter any transaction, including fees. You should carefully consider whether trading on MakeProphit is appropriate for you in light of your investment experience and financial resources. Any trading decisions you make are solely your responsibility and at your own risk. Information is provided for convenience only on an &quot;AS IS&quot; basis. Past performance is not necessarily indicative of future results. MakeProphit is subject to applicable regulatory oversight.
+          Trading on Prophit involves risk and may not be appropriate for all. Members risk losing their cost to enter any transaction, including fees. You should carefully consider whether trading on Prophit is appropriate for you in light of your investment experience and financial resources. Any trading decisions you make are solely your responsibility and at your own risk. Information is provided for convenience only on an &quot;AS IS&quot; basis. Past performance is not necessarily indicative of future results. Prophit is subject to applicable regulatory oversight.
         </p>
       </div>
     </footer>

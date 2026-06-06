@@ -1,0 +1,5 @@
+CREATE TABLE IF NOT EXISTS waitlists (
+  id CHAR(26) PRIMARY KEY DEFAULT generate_ulid(),
+  email TEXT NOT NULL UNIQUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
