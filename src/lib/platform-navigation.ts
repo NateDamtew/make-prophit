@@ -123,8 +123,8 @@ export function buildPlatformNavigationTags({
   return [
     { slug: 'trending', name: trendingLabel, childs: sharedChilds },
     { slug: 'communities', name: communitiesLabel, childs: [] },
-    ...baseTags,
     { slug: 'new', name: newLabel, childs: sharedChilds.map(child => ({ ...child })) },
+    ...baseTags,
   ]
 }
 
