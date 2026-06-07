@@ -98,7 +98,7 @@ export default function LandingPage() {
 
       <section className={styles.intro}>
         <div className={styles.introLabel}>What we&apos;re building &rarr;</div>
-        <div className={styles.introBody}>Prophit is a <em>community-owned</em> prediction market built for Africa. Trade outcomes you actually care about &mdash; local football, elections, crypto &mdash; and earn from being right.</div>
+        <div className={styles.introBody}>Prophit is a decentralized prediction market built for Africa. On-chain. Smart-contract-settled. Same primitive as today&apos;s leading prediction markets &mdash; with one extra layer: communities.</div>
       </section>
 
       <div className={styles.marquee}>
@@ -119,12 +119,12 @@ export default function LandingPage() {
         <div className={`${styles.cell} ${styles.bgOrange}`}>
           <div className={styles.cellLabel}>01 / Markets, not bets.</div>
           <div>
-            <div className={styles.cellHeadline}>Every market is a question with two sides.</div>
-            <div className={styles.cellBody}>Buy YES or NO. Prices move with the crowd. Get in early, get out smart. Winning shares pay out at $1.00.</div>
+            <div className={styles.cellHeadline}>Every market is a question with priced outcomes.</div>
+            <div className={styles.cellBody}>Buy any outcome &mdash; YES/NO, UP/DOWN, or one of many. Prices reflect probability. Shares add up to $1.00, and winners pay out at $1.00 each.</div>
           </div>
         </div>
         <div className={`${styles.cell} ${styles.bgGray}`}>
-          <div className={styles.cellLabel}>YES + NO = $1.00</div>
+          <div className={styles.cellLabel}>All outcomes sum to $1.00</div>
           <div className={styles.cellNum}>1<em>.00</em></div>
         </div>
       </section>
@@ -159,14 +159,14 @@ export default function LandingPage() {
 
       <section className={styles.duo}>
         <div className={`${styles.cell} ${styles.bgGray}`}>
-          <div className={styles.cellLabel}>At launch</div>
-          <div className={styles.cellNum}>0<em>%</em></div>
+          <div className={styles.cellLabel}>Decentralized by default.</div>
+          <div className={styles.cellNum}><span style={{fontSize: '0.6em', verticalAlign: 'middle'}}>On-chain</span></div>
         </div>
         <div className={`${styles.cell} ${styles.bgOrange}`}>
-          <div className={styles.cellLabel}>04 / Zero platform fees at launch.</div>
+          <div className={styles.cellLabel}>04 / Trustless. Yours.</div>
           <div>
-            <div className={styles.cellHeadline}>Trade early. Trade free.</div>
-            <div className={styles.cellBody}>During our launch window, every trade is fee-free. Build your track record before the platform opens to everyone.</div>
+            <div className={styles.cellHeadline}>On-chain. Trustless. Yours.</div>
+            <div className={styles.cellBody}>Every trade settles via smart contracts. Your shares are yours &mdash; not held in a custodial account. Withdraw, transfer, or hold them on-chain like any other digital asset.</div>
           </div>
         </div>
       </section>
@@ -181,8 +181,8 @@ export default function LandingPage() {
           </div>
           <div className={styles.howStep}>
             <div className={styles.howNum}>02</div>
-            <div className={styles.howTitle}>Buy YES or NO.</div>
-            <div className={styles.howDesc}>Shares cost between 1&cent; and 99&cent;. The price tells you what the crowd thinks. Be early if you disagree.</div>
+            <div className={styles.howTitle}>Buy an outcome.</div>
+            <div className={styles.howDesc}>Each outcome share costs between 1&cent; and 99&cent;. Binary markets have two sides. Range markets have UP/DOWN. Multi markets have many. Smart contracts settle every trade on-chain.</div>
           </div>
           <div className={styles.howStep}>
             <div className={styles.howNum}>03</div>
@@ -211,7 +211,7 @@ export default function LandingPage() {
             <p>I built Prophit because the markets I wanted to trade didn&apos;t exist.</p>
             <p>The 2024 election made prediction markets a household name &mdash; but only if you live in the right country. There&apos;s no platform that&apos;ll let you trade <em>Osimhen for AFCON top scorer</em>, or whether load-shedding ends in Joburg by December, or who wins the next election in Nairobi.</p>
             <p>Not because no one cares. Half a continent argues about these things every day. The reason is harder: no global oracle can settle a hyper-local event. So no global platform will list them.</p>
-            <p>Prophit&apos;s answer is to let communities settle their own markets. The people who actually know who won. Built in Addis, made for the next billions.</p>
+            <p>Prophit takes the standard decentralized-market model and adds one missing layer &mdash; a jury for the markets oracles can&apos;t reach. On-chain. Decentralized. Made for the next billions.</p>
             <div className={styles.founderSig}>&mdash; Nathan</div>
             <div className={styles.founderSigSub}>nathan@makeprophit.com &middot; @makeprophit</div>
           </div>
@@ -229,11 +229,12 @@ export default function LandingPage() {
           <div className={styles.rmCol}>
             <div className={`${styles.rmStage} ${styles.rmStageLive}`}><span className={styles.blip}></span>Live now</div>
             <div className={styles.rmList}>
-              <div className={styles.rmItem}><span className={styles.check}>&#10003;</span>Mobile-first trading on testnet</div>
+              <div className={styles.rmItem}><span className={styles.check}>&#10003;</span>On-chain trading via smart contracts</div>
+              <div className={styles.rmItem}><span className={styles.check}>&#10003;</span>Decentralized oracle resolution</div>
+              <div className={styles.rmItem}><span className={styles.check}>&#10003;</span>Mobile-first app on testnet</div>
               <div className={styles.rmItem}><span className={styles.check}>&#10003;</span>Swipe-to-trade Quick View</div>
-              <div className={styles.rmItem}><span className={styles.check}>&#10003;</span>User-created communities</div>
-              <div className={styles.rmItem}><span className={styles.check}>&#10003;</span>Community jury resolution</div>
               <div className={styles.rmItem}><span className={styles.check}>&#10003;</span>Creator-built markets</div>
+              <div className={styles.rmItem}><span className={styles.check}>&#10003;</span>Community jury (for local markets)</div>
               <div className={styles.rmItem}><span className={styles.check}>&#10003;</span>Native sharing &amp; embeds</div>
               <div className={styles.rmItem}><span className={styles.check}>&#10003;</span>Agent-native API</div>
             </div>
@@ -280,12 +281,26 @@ export default function LandingPage() {
           <div className={styles.faqTitle}>Frequently <em>asked.</em></div>
         </div>
         <div className={styles.faqList}>
+          <div className={`${styles.faqItem} ${openFaq === 9 ? styles.faqItemOpen : ''}`} onClick={() => setOpenFaq(openFaq === 9 ? null : 9)}>
+            <div className={styles.faqQ}>
+              <div className={styles.faqQt}>How is Prophit different from existing prediction markets?</div>
+              <div className={styles.faqToggle}>+</div>
+            </div>
+            <div className={styles.faqA}>Same primitive. Same on-chain mechanics. Same oracle-based resolution for global markets. The difference is that Prophit adds a second resolution path &mdash; a community jury &mdash; for hyper-local markets that no decentralized oracle can settle. Polymarket can&apos;t list "who won the council seat in Lagos" because no UMA optimistic oracle can verify it. Prophit can, because the community can.</div>
+          </div>
           <div className={`${styles.faqItem} ${openFaq === 1 ? styles.faqItemOpen : ''}`} onClick={() => setOpenFaq(openFaq === 1 ? null : 1)}>
             <div className={styles.faqQ}>
               <div className={styles.faqQt}>When does Prophit launch?</div>
               <div className={styles.faqToggle}>+</div>
             </div>
             <div className={styles.faqA}>Testnet is live now &mdash; join the Telegram to get access. Mainnet launches in the coming months for everyone on the waitlist first. We&apos;ll email you before it goes live, so make sure you&apos;ve signed up above.</div>
+          </div>
+          <div className={`${styles.faqItem} ${openFaq === 10 ? styles.faqItemOpen : ''}`} onClick={() => setOpenFaq(openFaq === 10 ? null : 10)}>
+            <div className={styles.faqQ}>
+              <div className={styles.faqQt}>Is Prophit really decentralized?</div>
+              <div className={styles.faqToggle}>+</div>
+            </div>
+            <div className={styles.faqA}>Yes. Every trade is settled on-chain by smart contracts. Your shares are yours &mdash; held in your wallet, withdrawable any time. Communities, market creation, and jury voting all operate on-chain. We don&apos;t custody funds.</div>
           </div>
           <div className={`${styles.faqItem} ${openFaq === 2 ? styles.faqItemOpen : ''}`} onClick={() => setOpenFaq(openFaq === 2 ? null : 2)}>
             <div className={styles.faqQ}>
@@ -301,19 +316,12 @@ export default function LandingPage() {
             </div>
             <div className={styles.faqA}>Prediction markets and sports betting are regulated differently in every country. We operate as a Delaware C-corp, geoblock where required, and apply KYC thresholds in line with each jurisdiction. The short answer: check your local laws, and we won&apos;t let you in if it&apos;s not allowed.</div>
           </div>
-          <div className={`${styles.faqItem} ${openFaq === 4 ? styles.faqItemOpen : ''}`} onClick={() => setOpenFaq(openFaq === 4 ? null : 4)}>
-            <div className={styles.faqQ}>
-              <div className={styles.faqQt}>What&apos;s the trading fee?</div>
-              <div className={styles.faqToggle}>+</div>
-            </div>
-            <div className={styles.faqA}>Zero platform fees during our launch window. After that, a small trading fee on volume &mdash; and creators of each market keep 50% of fees their markets generate. We make money when our communities make money.</div>
-          </div>
           <div className={`${styles.faqItem} ${openFaq === 5 ? styles.faqItemOpen : ''}`} onClick={() => setOpenFaq(openFaq === 5 ? null : 5)}>
             <div className={styles.faqQ}>
-              <div className={styles.faqQt}>How do community juries resolve markets?</div>
+              <div className={styles.faqQt}>How do markets get resolved?</div>
               <div className={styles.faqToggle}>+</div>
             </div>
-            <div className={styles.faqA}>Each community elects a jury of 1&ndash;10 members. When a market&apos;s deadline hits, the jury reviews evidence publicly and votes on the outcome. Supermajority consensus is required to settle. All reasoning is on the record &mdash; no black-box decisions.</div>
+            <div className={styles.faqA}>Two paths. Global and well-documented markets (elections, sports, crypto prices) resolve via decentralized oracle &mdash; same model as Polymarket. Community-owned markets resolve via community jury: 1&ndash;10 elected members of that community review the outcome publicly and vote. Supermajority required. All reasoning on the record.</div>
           </div>
           <div className={`${styles.faqItem} ${openFaq === 6 ? styles.faqItemOpen : ''}`} onClick={() => setOpenFaq(openFaq === 6 ? null : 6)}>
             <div className={styles.faqQ}>
@@ -321,13 +329,6 @@ export default function LandingPage() {
               <div className={styles.faqToggle}>+</div>
             </div>
             <div className={styles.faqA}>Yes. Anyone can start a community and create markets in it. You set the question, the deadline, and the resolution criteria. Markets pass through a quick moderation queue before going live. You earn 50% of every trading fee your market generates.</div>
-          </div>
-          <div className={`${styles.faqItem} ${openFaq === 7 ? styles.faqItemOpen : ''}`} onClick={() => setOpenFaq(openFaq === 7 ? null : 7)}>
-            <div className={styles.faqQ}>
-              <div className={styles.faqQt}>Why is this different from Polymarket or Kalshi?</div>
-              <div className={styles.faqToggle}>+</div>
-            </div>
-            <div className={styles.faqA}>Polymarket and Kalshi are great for global, well-documented events &mdash; US elections, world cup finals. They can&apos;t serve hyper-local markets because no central oracle can settle them. Prophit&apos;s community-jury model is built specifically for the long tail of events that matter where you live.</div>
           </div>
           <div className={`${styles.faqItem} ${openFaq === 8 ? styles.faqItemOpen : ''}`} onClick={() => setOpenFaq(openFaq === 8 ? null : 8)}>
             <div className={styles.faqQ}>
@@ -451,7 +452,7 @@ export default function LandingPage() {
 
       <div className={styles.fbCopy}>
         <span>&copy; Prophit 2026</span>
-        <span>Built in Addis. Made for the next billions.</span>
+        <span>Smart contracts &middot; 100% On-chain</span>
       </div>
     </div>
   )
