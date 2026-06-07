@@ -3,7 +3,7 @@ import { Resend } from 'resend'
 import { db } from '@/lib/drizzle'
 import { waitlists } from '@/lib/db/schema/waitlist/tables'
 import { z } from 'zod'
-
+import { sql } from 'drizzle-orm'
 const waitlistSchema = z.object({
   name: z.string().optional(),
   email: z.string().email('Invalid email address'),
@@ -51,6 +51,16 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json({ success: true, message: 'Added to waitlist!' }, { status: 201 })
+  } catch (error) {
+    console.error('Waitlist API Error:', error)
+    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })
+  }
+}
+
+export async function GET() {
+  try {
+    const [{ count }] = await db.select({ count: sql`count(*)` }).from(waitlists)
+    return NextResponse.json({ count: Number(count) }, { status: 200 })
   } catch (error) {
     console.error('Waitlist API Error:', error)
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })

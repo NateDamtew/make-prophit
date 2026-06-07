@@ -11,25 +11,51 @@ export default function LandingPage() {
   const [step, setStep] = useState(1)
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
   const [openFaq, setOpenFaq] = useState<number | null>(null)
-  const [waitlistCount, setWaitlistCount] = useState(0)
+  const [waitlistCount, setWaitlistCount] = useState(150)
 
   useEffect(() => {
-    let start = 0;
-    const end = 1247;
-    const duration = 2000;
-    const increment = end / (duration / 16);
-    
-    const timer = setInterval(() => {
-      start += increment;
-      if (start >= end) {
-        setWaitlistCount(end);
-        clearInterval(timer);
-      } else {
-        setWaitlistCount(Math.floor(start));
+    let isActive = true
+    let timer: ReturnType<typeof setInterval>
+
+    async function fetchWaitlistCount() {
+      try {
+        const res = await fetch('/api/waitlist')
+        if (!res.ok) return
+        const data = await res.json()
+        
+        if (!isActive) return
+
+        const dbCount = typeof data.count === 'number' ? data.count : 0
+        const end = 150 + dbCount
+        let current = 150
+        const duration = 2000
+        const increment = (end - current) / (duration / 16)
+        
+        if (end <= current) {
+          setWaitlistCount(end)
+          return
+        }
+
+        timer = setInterval(() => {
+          current += increment
+          if (current >= end) {
+            setWaitlistCount(end)
+            clearInterval(timer)
+          } else {
+            setWaitlistCount(Math.floor(current))
+          }
+        }, 16)
+      } catch (_err) {
+        // silently fail and stay at 150
       }
-    }, 16);
+    }
+
+    fetchWaitlistCount()
     
-    return () => clearInterval(timer);
+    return () => {
+      isActive = false
+      if (timer) clearInterval(timer)
+    }
   }, [])
 
   function handleNextStep() {
@@ -348,7 +374,7 @@ export default function LandingPage() {
             <div className={styles.signupHead}>Get in<br/><em>early.</em></div>
           </div>
           <div className={styles.signupFormblock}>
-            <p className={styles.signupSub}>Join 1,247 traders, creators, and community builders on the waitlist. We&apos;ll hit you before the Testnet opens. No spam, ever.</p>
+            <p className={styles.signupSub}>Join {waitlistCount.toLocaleString()} traders, creators, and community builders on the waitlist. We&apos;ll hit you before the Testnet opens. No spam, ever.</p>
 
             {status !== 'success' && step === 1 && (
               <div className={`${styles.step} ${styles.stepActive}`}>
