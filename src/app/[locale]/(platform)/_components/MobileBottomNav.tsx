@@ -327,10 +327,10 @@ function MobileBottomNavContent({ pathname }: MobileBottomNavContentProps) {
       >
         <div className="mx-3 flex justify-center">
           <div
-            className={cn(`
-              flex w-full max-w-md items-center justify-between gap-1 rounded-full bg-primary p-1.5
-              shadow-[0_12px_32px_-8px_rgba(0,0,0,0.35)]
-            `)}
+            className={cn(
+              "flex w-full max-w-md items-center justify-between gap-1 rounded-full bg-primary p-1.5",
+              "shadow-[0_12px_32px_-8px_rgba(0,0,0,0.35)]"
+            )}
           >
             <MobileNavLink href="/" label={t('Home')} active={pathname === '/'} icon={HouseIcon} />
             <MobileNavButton label={t('Search')} active={isSearchOpen} onClick={handleSearchAction} icon={SearchIcon} />
