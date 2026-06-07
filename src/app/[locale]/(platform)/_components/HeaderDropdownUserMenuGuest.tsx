@@ -17,7 +17,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useIsMobile } from '@/hooks/useIsMobile'
-import { useIsMobile } from '@/hooks/useIsMobile'
 import { usePwaInstall } from '@/hooks/usePwaInstall'
 import { useThemeMode } from '@/providers/ThemeModeProvider'
 
@@ -100,7 +99,6 @@ function useHoverDropdownMenu(enableHoverOpen: boolean) {
   }
 }
 
-export default function HeaderDropdownUserMenuGuest() {
 export default function HeaderDropdownUserMenuGuest() {
   const t = useExtracted()
   const isMobile = useIsMobile()

@@ -27,35 +27,6 @@ import PwaInstallIosInstructions from '@/components/PwaInstallIosInstructions'
 import ThemeSelector from '@/components/ThemeSelector'
 import { Button } from '@/components/ui/button'
 import { Drawer, DrawerClose, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer'
-'use client'
-
-import type { Route } from 'next'
-import type { ComponentProps, ReactNode } from 'react'
-import type { SupportedLocale } from '@/i18n/locales'
-import {
-  BookOpenIcon,
-  ChartLineIcon,
-  CheckIcon,
-  DownloadIcon,
-  FileTextIcon,
-  HouseIcon,
-  InfoIcon,
-  MenuIcon,
-  SearchIcon,
-  SparkleIcon,
-  TrophyIcon,
-  UnplugIcon,
-} from 'lucide-react'
-import { useExtracted, useLocale } from 'next-intl'
-import { lazy, Suspense, useEffect, useState } from 'react'
-import { toast } from 'sonner'
-import SearchDiscoveryContent from '@/app/[locale]/(platform)/_components/SearchDiscoveryContent'
-import { MOBILE_BOTTOM_NAV_OFFSET } from '@/app/[locale]/(platform)/_lib/mobile-bottom-nav'
-import AppLink from '@/components/AppLink'
-import PwaInstallIosInstructions from '@/components/PwaInstallIosInstructions'
-import ThemeSelector from '@/components/ThemeSelector'
-import { Button } from '@/components/ui/button'
-import { Drawer, DrawerClose, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer'
 import { useAppKit } from '@/hooks/useAppKit'
 import { useHasHydrated } from '@/hooks/useHasHydrated'
 import { usePwaInstall } from '@/hooks/usePwaInstall'
@@ -274,6 +245,19 @@ function MobileBottomNavContent({ pathname }: MobileBottomNavContentProps) {
                       className={cn(`
                         flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-semibold
                         disabled:pointer-events-none disabled:opacity-50
+                      `)}
+                      onClick={handleInstallAction}
+                      disabled={isPrompting}
+                    >
+                      <DownloadIcon className="size-4 text-primary" />
+                      {t('Install app')}
+                    </button>
+                    <div className="mx-4 h-px bg-border/70" />
+                  </>
+                )}
+
+                <DrawerClose asChild>
+                  <button
                     type="button"
                     className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-semibold"
                     onClick={handleHowItWorksAction}
