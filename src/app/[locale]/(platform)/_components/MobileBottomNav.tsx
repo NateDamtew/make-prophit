@@ -509,7 +509,7 @@ function useLocaleChangeHandler({
 
     const currentPathname = stripLocalePrefix(window.location.pathname)
     const targetPathname = withLocalePrefix(currentPathname, nextLocale)
-    const targetUrl = `${targetPathname}${window.location.search}${window.location.hash}`
+    const targetUrl = targetPathname + window.location.search + window.location.hash
 
     onLocaleChange?.()
     setIsPending(true)
