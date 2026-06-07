@@ -27,10 +27,17 @@ export async function POST(req: Request) {
     if (process.env.RESEND_API_KEY) {
       const resend = new Resend(process.env.RESEND_API_KEY)
       await resend.emails.send({
-        from: 'Prophit <hello@makeprophit.com>',
+        from: 'Liben <liben@makeprophit.com>',
         to: email,
-        subject: 'Welcome to the Prophit Waitlist \uD83C\uDF0D',
-        html: `<p>Hi ${name || 'there'},</p><p>You're on the list! We'll reach out as soon as mainnet launches.</p><p>In the meantime, join our <a href="https://t.me/prophit">Telegram</a> to get access to the testnet.</p><p>— The Prophit Team</p>`
+        subject: 'Welcome to the Prophit waitlist.',
+        html: `<p>Hey ${name ? name.split(' ')[0] : 'there'},</p>
+<p>I'm Liben, the founder of Prophit. I wanted to personally thank you for joining the waitlist.</p>
+<p>I built Prophit because the markets I wanted to trade didn't exist, and I got tired of waiting for global platforms to list outcomes my community actually cares about.</p>
+<p>We're putting the finishing touches on our Testnet and getting ready for the big reveal. You're now on the list to be among the first to get access and help us shape the platform.</p>
+<p>In the meantime, our earliest community members are hanging out in Telegram. Come say hi—I'm active in there every day.</p>
+<p><a href="https://t.me/+t_ka6vpwklQ5NDg8">Join the Telegram here &rarr;</a></p>
+<p>Talk soon,</p>
+<p>Liben</p>`
       })
 
       // Note: To add to a Resend Audience (contacts), you'll need your Audience ID from the Resend dashboard.

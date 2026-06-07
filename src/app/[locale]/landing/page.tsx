@@ -202,7 +202,7 @@ export default function LandingPage() {
           <div>
             <div className={styles.founderLabel}>&#x2605; A note from the founder</div>
             <div className={styles.founderMeta}>
-              <strong>Nathan</strong><br/>
+              <strong>Liben</strong><br/>
               Founder, Prophit<br/>
               Addis Ababa, Ethiopia
             </div>
@@ -212,8 +212,8 @@ export default function LandingPage() {
             <p>The 2024 election made prediction markets a household name &mdash; but only if you live in the right country. There&apos;s no platform that&apos;ll let you trade <em>Osimhen for AFCON top scorer</em>, or whether load-shedding ends in Joburg by December, or who wins the next election in Nairobi.</p>
             <p>Not because no one cares. Half a continent argues about these things every day. The reason is harder: no global oracle can settle a hyper-local event. So no global platform will list them.</p>
             <p>Prophit takes the standard decentralized-market model and adds one missing layer &mdash; a jury for the markets oracles can&apos;t reach. On-chain. Decentralized. Made for the next billions.</p>
-            <div className={styles.founderSig}>&mdash; Nathan</div>
-            <div className={styles.founderSigSub}>nathan@makeprophit.com &middot; @makeprophit</div>
+            <div className={styles.founderSig}>&mdash; Liben</div>
+            <div className={styles.founderSigSub}>liben@makeprophit.com &middot; @makeprophit</div>
           </div>
         </div>
       </section>
@@ -231,7 +231,7 @@ export default function LandingPage() {
             <div className={styles.rmList}>
               <div className={styles.rmItem}><span className={styles.check}>&#10003;</span>On-chain trading via smart contracts</div>
               <div className={styles.rmItem}><span className={styles.check}>&#10003;</span>Decentralized oracle resolution</div>
-              <div className={styles.rmItem}><span className={styles.check}>&#10003;</span>Mobile-first app on testnet</div>
+              <div className={styles.rmItem}><span className={styles.check}>&#10003;</span>Building the Testnet in stealth</div>
               <div className={styles.rmItem}><span className={styles.check}>&#10003;</span>Swipe-to-trade Quick View</div>
               <div className={styles.rmItem}><span className={styles.check}>&#10003;</span>Creator-built markets</div>
               <div className={styles.rmItem}><span className={styles.check}>&#10003;</span>Community jury (for local markets)</div>
@@ -242,7 +242,7 @@ export default function LandingPage() {
           <div className={styles.rmCol}>
             <div className={`${styles.rmStage} ${styles.rmStageNext}`}><span className={styles.blip}></span>Up next</div>
             <div className={styles.rmList}>
-              <div className={`${styles.rmItem} ${styles.rmItemFuture}`}><span className={styles.check}>&rarr;</span>Mainnet launch</div>
+              <div className={`${styles.rmItem} ${styles.rmItemFuture}`}><span className={styles.check}>&rarr;</span>Testnet Reveal &amp; Early Access</div>
               <div className={`${styles.rmItem} ${styles.rmItemFuture}`}><span className={styles.check}>&rarr;</span>First 10 community design partners</div>
               <div className={`${styles.rmItem} ${styles.rmItemFuture}`}><span className={styles.check}>&rarr;</span>Mobile money on/off ramps</div>
               <div className={`${styles.rmItem} ${styles.rmItemFuture}`}><span className={styles.check}>&rarr;</span>Creator dashboards &amp; payouts</div>
@@ -253,6 +253,7 @@ export default function LandingPage() {
           <div className={styles.rmCol}>
             <div className={`${styles.rmStage} ${styles.rmStageLater}`}><span className={styles.blip}></span>Later</div>
             <div className={styles.rmList}>
+              <div className={`${styles.rmItem} ${styles.rmItemFuture}`}><span className={styles.check}>&rarr;</span>Mainnet launch</div>
               <div className={`${styles.rmItem} ${styles.rmItemFuture}`}><span className={styles.check}>&rarr;</span>AI-proposed market resolution</div>
               <div className={`${styles.rmItem} ${styles.rmItemFuture}`}><span className={styles.check}>&rarr;</span>Hybrid oracle (agent + jury)</div>
               <div className={`${styles.rmItem} ${styles.rmItemFuture}`}><span className={styles.check}>&rarr;</span>Cross-community shared liquidity</div>
@@ -264,7 +265,7 @@ export default function LandingPage() {
       </section>
 
       <section className={styles.wall}>
-        <div className={styles.wallLabel}>&#x2605; Communities launching at mainnet &rarr;</div>
+        <div className={styles.wallLabel}>&#x2605; Communities launching in Testnet &rarr;</div>
         <div className={styles.wallList}>
           <div className={styles.wallItem}><span className={styles.flag}>&#x1F1F3;&#x1F1EC;</span>Naija Markets<span className={styles.tally}>2,100 waiting</span></div>
           <div className={styles.wallItem}><span className={styles.flag}>&#x1F1F0;&#x1F1EA;</span>Kenyan Pulse<span className={styles.tally}>870 waiting</span></div>
@@ -293,7 +294,7 @@ export default function LandingPage() {
               <div className={styles.faqQt}>When does Prophit launch?</div>
               <div className={styles.faqToggle}>+</div>
             </div>
-            <div className={styles.faqA}>Testnet is live now &mdash; join the Telegram to get access. Mainnet launches in the coming months for everyone on the waitlist first. We&apos;ll email you before it goes live, so make sure you&apos;ve signed up above.</div>
+            <div className={styles.faqA}>We&apos;re putting the finishing touches on our Testnet right now. Join the waitlist above to secure your spot &mdash; we&apos;ll be sending out access invites soon. Mainnet will follow once the mechanics are battle-tested.</div>
           </div>
           <div className={`${styles.faqItem} ${openFaq === 10 ? styles.faqItemOpen : ''}`} onClick={() => setOpenFaq(openFaq === 10 ? null : 10)}>
             <div className={styles.faqQ}>
@@ -332,10 +333,10 @@ export default function LandingPage() {
           </div>
           <div className={`${styles.faqItem} ${openFaq === 8 ? styles.faqItemOpen : ''}`} onClick={() => setOpenFaq(openFaq === 8 ? null : 8)}>
             <div className={styles.faqQ}>
-              <div className={styles.faqQt}>How do I get on testnet?</div>
+              <div className={styles.faqQt}>How do I get early access?</div>
               <div className={styles.faqToggle}>+</div>
             </div>
-            <div className={styles.faqA}>Join the Telegram community &mdash; that&apos;s where the testnet runs. You&apos;ll find active markets, other traders, and direct access to the team. Link&apos;s in the footer.</div>
+            <div className={styles.faqA}>Join the Telegram community. It&apos;s the best place to get access to the Testnet when it drops, find other traders, and get direct access to the team. Link&apos;s in the footer.</div>
           </div>
         </div>
       </section>
@@ -347,7 +348,7 @@ export default function LandingPage() {
             <div className={styles.signupHead}>Get in<br/><em>early.</em></div>
           </div>
           <div className={styles.signupFormblock}>
-            <p className={styles.signupSub}>Join 1,247 traders, creators, and community builders on the waitlist. We&apos;ll hit you before mainnet opens. No spam, ever.</p>
+            <p className={styles.signupSub}>Join 1,247 traders, creators, and community builders on the waitlist. We&apos;ll hit you before the Testnet opens. No spam, ever.</p>
 
             {status !== 'success' && step === 1 && (
               <div className={`${styles.step} ${styles.stepActive}`}>
@@ -411,7 +412,7 @@ export default function LandingPage() {
             {status === 'success' && (
               <div className={styles.successBox}>
                 <div className={styles.successH}>You&apos;re on the list.</div>
-                <div className={styles.successB}>We&apos;ll hit you before mainnet goes live. Jump into Telegram in the meantime &mdash; testnet&apos;s already running.</div>
+                <div className={styles.successB}>We&apos;ll hit you before the Testnet goes live. Jump into Telegram in the meantime to connect with the earliest community members.</div>
               </div>
             )}
 
@@ -428,7 +429,7 @@ export default function LandingPage() {
         <div className={styles.fbCol}>
           <div className={styles.fbH}>Let&apos;s talk.</div>
           <p>For traders and creators, hit us up at <a href="mailto:hello@makeprophit.com">hello@makeprophit.com</a>.</p>
-          <p style={{marginTop: '10px'}}>For partnerships and press, reach <a href="mailto:nathan@makeprophit.com">nathan@makeprophit.com</a>.</p>
+          <p style={{marginTop: '10px'}}>For partnerships and press, reach <a href="mailto:liben@makeprophit.com">liben@makeprophit.com</a>.</p>
         </div>
         <div className={styles.fbCol}>
           <div className={styles.fbH}>Communities</div>
@@ -444,7 +445,7 @@ export default function LandingPage() {
           <div className={styles.fbH}>Read our mind</div>
           <div className={styles.fbList}>
             <a href="https://twitter.com/makeprophit">Twitter &#8599;</a>
-            <a href="https://t.me/prophit">Telegram &#8599;</a>
+            <a href="https://t.me/+t_ka6vpwklQ5NDg8">Telegram &#8599;</a>
             <a href="https://makeprophit.com">makeprophit.com &#8599;</a>
           </div>
         </div>
