@@ -362,12 +362,10 @@ function MobileBottomNavContent({ pathname }: MobileBottomNavContentProps) {
  */
 function navChipClassName(active: boolean) {
   return cn(
-    `
-      flex h-11 items-center justify-center rounded-full px-3 text-black transition-[background-color,flex-grow]
-      duration-200 ease-out
-      focus-visible:ring-2 focus-visible:ring-black/40 focus-visible:outline-none
-      active:scale-[0.97]
-    `,
+    "flex h-11 items-center justify-center rounded-full px-3 text-black transition-[background-color,flex-grow]",
+    "duration-200 ease-out",
+    "focus-visible:ring-2 focus-visible:ring-black/40 focus-visible:outline-none",
+    "active:scale-[0.97]",
     active ? 'flex-1 bg-black/15' : 'flex-none hover:bg-black/5',
   )
 }
