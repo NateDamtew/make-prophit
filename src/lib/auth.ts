@@ -164,6 +164,11 @@ export const auth = betterAuth({
     SITE_URL,
     `https://tma.${siteUrlObject.hostname}`,
     ...(process.env.TMA_DOMAIN ? [`https://${process.env.TMA_DOMAIN}`] : []),
+    ...(process.env.ADDITIONAL_TRUSTED_ORIGINS
+      ? process.env.ADDITIONAL_TRUSTED_ORIGINS.split(',').map(o => o.trim()).filter(Boolean)
+      : []),
+    ...(process.env.VERCEL_URL ? [`https://${process.env.VERCEL_URL}`] : []),
+    ...(process.env.VERCEL_BRANCH_URL ? [`https://${process.env.VERCEL_BRANCH_URL}`] : []),
   ],
   advanced: {
     database: {
