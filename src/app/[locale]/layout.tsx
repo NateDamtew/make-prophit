@@ -121,7 +121,7 @@ export default async function LocaleLayout({ params, children }: LayoutProps<'/[
         {runtimeTheme.theme.cssText && <style id="theme-vars" dangerouslySetInnerHTML={{ __html: runtimeTheme.theme.cssText }} />}
         <SiteIdentityProvider site={runtimeTheme.site}>
           <NextIntlClientProvider locale={locale}>
-            <AppProviders>
+            <AppProviders themeMode={runtimeTheme.themeMode}>
               {hasGlobalAnnouncement
                 ? (
                     <GlobalAnnouncementBanner

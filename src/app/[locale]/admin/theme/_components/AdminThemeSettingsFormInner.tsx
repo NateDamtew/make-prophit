@@ -2,6 +2,7 @@
 
 import type { AdminThemeSettingsFormProps } from '@/app/[locale]/admin/theme/_components/admin-theme-utils'
 import type { ThemeOverrides } from '@/lib/theme'
+import type { ThemeMode } from '@/lib/theme-settings'
 import { useExtracted } from 'next-intl'
 import Form from 'next/form'
 import { useActionState, useEffect, useMemo, useRef, useState } from 'react'
@@ -47,6 +48,7 @@ function AdminThemeSettingsFormInner({
 
   const [preset, setPreset] = useState<string>(initialPreset)
   const [radius, setRadius] = useState(initialRadius)
+  const [themeMode, setThemeMode] = useState<ThemeMode>(initialThemeSettings.themeMode)
 
   const initialLightParse = useMemo(
     () => parseThemeOverridesJson(initialLightJson, t('Light theme colors')),
@@ -181,6 +183,7 @@ function AdminThemeSettingsFormInner({
       <input type="hidden" name="radius" value={radius} />
       <input type="hidden" name="light_json" value={lightJsonValue} />
       <input type="hidden" name="dark_json" value={darkJsonValue} />
+      <input type="hidden" name="theme_mode" value={themeMode} />
 
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="grid items-start gap-6 self-start">
@@ -199,6 +202,34 @@ function AdminThemeSettingsFormInner({
                     </div>
                   </SelectItem>
                 ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="theme-mode">{t('Theme Mode')}</Label>
+            <Select value={themeMode} onValueChange={(v) => setThemeMode(v as ThemeMode)} disabled={isPending}>
+              <SelectTrigger id="theme-mode" className="h-12! w-full">
+                <SelectValue placeholder={t('Select theme mode')} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="both">
+                  <div className="grid gap-0.5 text-left">
+                    <span>{t('Both')}</span>
+                    <span className="text-xs text-muted-foreground">{t('Users can toggle between light and dark')}</span>
+                  </div>
+                </SelectItem>
+                <SelectItem value="dark">
+                  <div className="grid gap-0.5 text-left">
+                    <span>{t('Dark Only')}</span>
+                    <span className="text-xs text-muted-foreground">{t('Force dark mode, hide toggle')}</span>
+                  </div>
+                </SelectItem>
+                <SelectItem value="light">
+                  <div className="grid gap-0.5 text-left">
+                    <span>{t('Light Only')}</span>
+                    <span className="text-xs text-muted-foreground">{t('Force light mode, hide toggle')}</span>
+                  </div>
+                </SelectItem>
               </SelectContent>
             </Select>
           </div>

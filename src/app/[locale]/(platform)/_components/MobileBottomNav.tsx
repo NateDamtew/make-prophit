@@ -27,6 +27,35 @@ import PwaInstallIosInstructions from '@/components/PwaInstallIosInstructions'
 import ThemeSelector from '@/components/ThemeSelector'
 import { Button } from '@/components/ui/button'
 import { Drawer, DrawerClose, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer'
+'use client'
+
+import type { Route } from 'next'
+import type { ComponentProps, ReactNode } from 'react'
+import type { SupportedLocale } from '@/i18n/locales'
+import {
+  BookOpenIcon,
+  ChartLineIcon,
+  CheckIcon,
+  DownloadIcon,
+  FileTextIcon,
+  HouseIcon,
+  InfoIcon,
+  MenuIcon,
+  SearchIcon,
+  SparkleIcon,
+  TrophyIcon,
+  UnplugIcon,
+} from 'lucide-react'
+import { useExtracted, useLocale } from 'next-intl'
+import { lazy, Suspense, useEffect, useState } from 'react'
+import { toast } from 'sonner'
+import SearchDiscoveryContent from '@/app/[locale]/(platform)/_components/SearchDiscoveryContent'
+import { MOBILE_BOTTOM_NAV_OFFSET } from '@/app/[locale]/(platform)/_lib/mobile-bottom-nav'
+import AppLink from '@/components/AppLink'
+import PwaInstallIosInstructions from '@/components/PwaInstallIosInstructions'
+import ThemeSelector from '@/components/ThemeSelector'
+import { Button } from '@/components/ui/button'
+import { Drawer, DrawerClose, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer'
 import { useAppKit } from '@/hooks/useAppKit'
 import { useHasHydrated } from '@/hooks/useHasHydrated'
 import { usePwaInstall } from '@/hooks/usePwaInstall'
@@ -35,6 +64,7 @@ import { usePathname, useRouter } from '@/i18n/navigation'
 import { authClient } from '@/lib/auth-client'
 import { stripLocalePrefix, withLocalePrefix } from '@/lib/locale-path'
 import { cn } from '@/lib/utils'
+import { useThemeMode } from '@/providers/ThemeModeProvider'
 import { useUser } from '@/stores/useUser'
 
 const HeaderSearch = lazy(() => import('@/app/[locale]/(platform)/_components/HeaderSearch'))
@@ -76,6 +106,7 @@ function MobileBottomNavContent({ pathname }: MobileBottomNavContentProps) {
   const { open } = useAppKit()
   const { data: session } = useSession()
   const user = useUser()
+  const themeMode = useThemeMode()
   const hasHydrated = useHasHydrated()
   const { canShowInstallUi, isIos, isPrompting, requestInstall } = usePwaInstall()
   const {
@@ -243,59 +274,6 @@ function MobileBottomNavContent({ pathname }: MobileBottomNavContentProps) {
                       className={cn(`
                         flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-semibold
                         disabled:pointer-events-none disabled:opacity-50
-                      `)}
-                      onClick={() => {
-                        void handleInstallAction()
-                      }}
-                      disabled={isPrompting}
-                    >
-                      <DownloadIcon className="size-4 text-sky-500" />
-                      {t('Install app')}
-                    </button>
-
-                    <div className="mx-4 h-px bg-border/70" />
-                  </>
-                )}
-
-                <DrawerClose asChild>
-                  <AppLink
-                    intentPrefetch
-                    href="/leaderboard"
-                    className="flex items-center gap-3 px-4 py-3 text-sm font-semibold"
-                  >
-                    <TrophyIcon className="size-4 text-amber-500" />
-                    {t('Leaderboard')}
-                  </AppLink>
-                </DrawerClose>
-
-                <div className="mx-4 h-px bg-border/70" />
-
-                <DrawerClose asChild>
-                  <AppLink
-                    intentPrefetch
-                    href="/docs/api-reference"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex items-center gap-3 px-4 py-3 text-sm font-semibold"
-                  >
-                    <UnplugIcon className="size-4 text-pink-500" />
-                    {t('APIs')}
-                  </AppLink>
-                </DrawerClose>
-              </div>
-
-              <div className="rounded-2xl border border-border/70 px-4 py-3">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-sm font-semibold">{t('Dark Mode')}</span>
-                  <ThemeSelector />
-                </div>
-              </div>
-
-              <MobileLocaleSwitcher onLocaleChange={() => setIsGuestMenuOpen(false)} />
-
-              <div className="overflow-hidden rounded-2xl border border-border/70">
-                <DrawerClose asChild>
-                  <button
                     type="button"
                     className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-semibold"
                     onClick={handleHowItWorksAction}
