@@ -32,14 +32,14 @@ export default function LandingPage() {
     return () => clearInterval(timer);
   }, [])
 
-  const handleNextStep = () => {
+  function handleNextStep() {
     if (!name.trim() || !email || !email.includes('@')) {
       return
     }
     setStep(2)
   }
 
-  const handleSubmit = async () => {
+  async function handleSubmit() {
     setStatus('loading')
 
     try {
@@ -56,7 +56,7 @@ export default function LandingPage() {
       }
 
       setStatus('success')
-    } catch (err: any) {
+    } catch (_err) {
       setStatus('error')
     }
   }
@@ -145,10 +145,10 @@ export default function LandingPage() {
 
       <section className={styles.duo}>
         <div className={`${styles.cell} ${styles.bgBlue}`}>
-          <div className={styles.cellLabel}>03 / Settled by your community.</div>
+          <div className={styles.cellLabel}>03 / Resolution that scales.</div>
           <div>
-            <div className={styles.cellHeadline}>No central oracle. No black box.</div>
-            <div className={styles.cellBody}>Markets are resolved by elected community juries &mdash; the people who actually know who won. Public reasoning, transparent settlement.</div>
+            <div className={styles.cellHeadline}>Oracle for global. Community for local.</div>
+            <div className={styles.cellBody}>Major markets settle via decentralized oracle. Community markets get an extra layer: a jury of locals who actually know the answer to questions no oracle can.</div>
           </div>
         </div>
         <div className={`${styles.cell} ${styles.bgBlack}`}>
