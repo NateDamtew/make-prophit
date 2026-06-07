@@ -38,7 +38,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const site = runtimeTheme.site
   const siteUrl = resolveSiteUrl(process.env)
   const defaultTitle = `${site.name} | ${site.description}`
-  const fallbackOgImage = new URL('/api/og', siteUrl).toString()
+  const fallbackOgImage = new URL('/prophit.png', siteUrl).toString()
   const socialImage = {
     url: fallbackOgImage,
     width: 1200,
