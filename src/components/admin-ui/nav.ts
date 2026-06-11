@@ -55,8 +55,8 @@ export const ADMIN_NAV: AdminNavGroup[] = [
     items: [
       { id: 'events', label: 'Events', href: '/admin/events', icon: CalendarIcon, keywords: ['markets', 'calendar'] },
       { id: 'community-reviews', label: 'Community Reviews', href: '/admin/communities/review', icon: ShieldCheckIcon, keywords: ['resolution', 'moderation'] },
-      { id: 'sync-jobs', label: 'Sync Jobs', href: '/admin/sync-jobs', icon: RefreshCwIcon, comingSoon: true, keywords: ['cron', 'jobs'] },
-      { id: 'notifications', label: 'Notifications', href: '/admin/notifications', icon: BellIcon, comingSoon: true, keywords: ['announce', 'broadcast'] },
+      { id: 'sync-jobs', label: 'Sync Jobs', href: '/admin/sync-jobs', icon: RefreshCwIcon, keywords: ['cron', 'jobs'] },
+      { id: 'notifications', label: 'Notifications', href: '/admin/notifications', icon: BellIcon, keywords: ['announce', 'broadcast'] },
     ],
   },
   {
@@ -65,7 +65,7 @@ export const ADMIN_NAV: AdminNavGroup[] = [
     items: [
       { id: 'waitlist', label: 'Waitlist', href: '/admin/waitlist', icon: ClipboardListIcon, keywords: ['signups', 'invite', 'email'] },
       { id: 'affiliate', label: 'Affiliate & Fees', href: '/admin/affiliate', icon: BadgePercentIcon, keywords: ['referral', 'fees'] },
-      { id: 'analytics', label: 'Analytics', href: '/admin/analytics', icon: ActivityIcon, comingSoon: true, keywords: ['metrics', 'charts'] },
+      { id: 'analytics', label: 'Analytics', href: '/admin/analytics', icon: ActivityIcon, keywords: ['metrics', 'charts'] },
     ],
   },
   {
@@ -73,7 +73,7 @@ export const ADMIN_NAV: AdminNavGroup[] = [
     label: 'People',
     items: [
       { id: 'users', label: 'Users', href: '/admin/users', icon: UsersIcon, keywords: ['accounts', 'members'] },
-      { id: 'agents', label: 'Agents', href: '/admin/agents', icon: BotIcon, comingSoon: true, keywords: ['bots', 'api keys'] },
+      { id: 'agents', label: 'Agents', href: '/admin/agents', icon: BotIcon, keywords: ['bots', 'api keys'] },
     ],
   },
   {
@@ -91,8 +91,8 @@ export const ADMIN_NAV: AdminNavGroup[] = [
     id: 'system',
     label: 'System',
     items: [
-      { id: 'audit-log', label: 'Audit Log', href: '/admin/audit-log', icon: ClipboardListIcon, comingSoon: true, keywords: ['history', 'changes'] },
-      { id: 'health', label: 'Health', href: '/admin/health', icon: HeartPulseIcon, comingSoon: true, keywords: ['status', 'diagnostics'] },
+      { id: 'audit-log', label: 'Audit Log', href: '/admin/audit-log', icon: ClipboardListIcon, keywords: ['history', 'changes'] },
+      { id: 'health', label: 'Health', href: '/admin/health', icon: HeartPulseIcon, keywords: ['status', 'diagnostics'] },
     ],
   },
 ]
