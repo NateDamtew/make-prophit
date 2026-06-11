@@ -1,12 +1,7 @@
 import type { Metadata } from 'next'
 import type { SupportedLocale } from '@/i18n/locales'
-import { cacheLife } from 'next/cache'
 import { notFound } from 'next/navigation'
-import HomeContent from '@/app/[locale]/(platform)/(home)/_components/HomeContent'
-import {
-  getHomeInitialCurrentTimestamp,
-  HOME_INITIAL_EVENTS_CACHE_LIFE,
-} from '@/app/[locale]/(platform)/(home)/_utils/homeInitialEventsCache'
+import HomeInitialContent from '@/app/[locale]/(platform)/(home)/_components/HomeInitialContent'
 import {
   buildLocalizedPagePath,
   buildPredictionResultsOgImageUrl,
@@ -18,46 +13,26 @@ import {
   getMainTagSeoTitle,
 } from '@/lib/platform-routing'
 import resolveSiteUrl from '@/lib/site-url'
-import { STATIC_PARAMS_PLACEHOLDER } from '@/lib/static-params'
+import { getPublicShellStaticParams, shouldBypassPublicShellPlaceholder, STATIC_PARAMS_PLACEHOLDER } from '@/lib/static-params'
 
 async function getMainTags(locale: SupportedLocale) {
   const { data: mainTags } = await loadPlatformMainTags(locale)
   return mainTags ?? []
 }
 
-async function CachedDynamicHomeContent({
-  initialMainTag,
-  initialTag,
-  locale,
-}: {
-  initialMainTag?: string
-  initialTag: string
-  locale: SupportedLocale
-}) {
-  'use cache'
-  cacheLife(HOME_INITIAL_EVENTS_CACHE_LIFE)
-
-  const currentTimestamp = getHomeInitialCurrentTimestamp()
-  return (
-    <HomeContent
-      locale={locale}
-      currentTimestamp={currentTimestamp}
-      initialTag={initialTag}
-      initialMainTag={initialMainTag}
-    />
-  )
-}
-
 export async function generateDynamicHomeCategoryStaticParams() {
-  return [{ slug: STATIC_PARAMS_PLACEHOLDER }]
+  return getPublicShellStaticParams({ slug: STATIC_PARAMS_PLACEHOLDER })
 }
 
 export async function generateDynamicHomeSubcategoryStaticParams() {
-  return [{ slug: STATIC_PARAMS_PLACEHOLDER, subcategory: STATIC_PARAMS_PLACEHOLDER }]
+  return getPublicShellStaticParams({ slug: STATIC_PARAMS_PLACEHOLDER, subcategory: STATIC_PARAMS_PLACEHOLDER })
 }
 
 export async function buildDynamicHomeCategoryMetadata(locale: SupportedLocale, slug: string): Promise<Metadata> {
   if (slug === STATIC_PARAMS_PLACEHOLDER) {
+    if (shouldBypassPublicShellPlaceholder(slug)) {
+      return {}
+    }
     notFound()
   }
 
@@ -101,6 +76,9 @@ export async function buildDynamicHomeSubcategoryMetadata(
   subcategory: string,
 ): Promise<Metadata> {
   if (slug === STATIC_PARAMS_PLACEHOLDER || subcategory === STATIC_PARAMS_PLACEHOLDER) {
+    if (shouldBypassPublicShellPlaceholder(slug, subcategory)) {
+      return {}
+    }
     notFound()
   }
 
@@ -139,13 +117,18 @@ export async function buildDynamicHomeSubcategoryMetadata(
 }
 
 export async function DynamicHomeCategoryPageContent({
+  deferHomeRuntimePrerender,
   locale,
   slug,
 }: {
+  deferHomeRuntimePrerender?: boolean
   locale: SupportedLocale
   slug: string
 }) {
   if (slug === STATIC_PARAMS_PLACEHOLDER) {
+    if (shouldBypassPublicShellPlaceholder(slug)) {
+      return null
+    }
     notFound()
   }
 
@@ -154,19 +137,30 @@ export async function DynamicHomeCategoryPageContent({
     notFound()
   }
 
-  return <CachedDynamicHomeContent locale={locale} initialTag={category.slug} />
+  return (
+    <HomeInitialContent
+      locale={locale}
+      initialTag={category.slug}
+      deferRuntimePrerender={deferHomeRuntimePrerender}
+    />
+  )
 }
 
 export async function DynamicHomeSubcategoryPageContent({
+  deferHomeRuntimePrerender,
   locale,
   slug,
   subcategory,
 }: {
+  deferHomeRuntimePrerender?: boolean
   locale: SupportedLocale
   slug: string
   subcategory: string
 }) {
   if (slug === STATIC_PARAMS_PLACEHOLDER || subcategory === STATIC_PARAMS_PLACEHOLDER) {
+    if (shouldBypassPublicShellPlaceholder(slug, subcategory)) {
+      return null
+    }
     notFound()
   }
 
@@ -181,10 +175,11 @@ export async function DynamicHomeSubcategoryPageContent({
   }
 
   return (
-    <CachedDynamicHomeContent
+    <HomeInitialContent
       locale={locale}
       initialTag={resolvedSubcategory.subcategory.slug}
       initialMainTag={resolvedSubcategory.category.slug}
+      deferRuntimePrerender={deferHomeRuntimePrerender}
     />
   )
 }

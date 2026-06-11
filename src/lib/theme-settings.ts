@@ -5,6 +5,7 @@ import { cacheTag } from 'next/cache'
 import { cacheTags } from '@/lib/cache-tags'
 import { DEFAULT_FEE_RECEIVER_WALLET_ADDRESS, ZERO_ADDRESS } from '@/lib/contracts'
 import { validateCustomJavascriptCodesJson } from '@/lib/custom-javascript-code'
+import { hasDatabaseEnv } from '@/lib/db/env'
 import { SettingsRepository } from '@/lib/db/queries/settings'
 import { getPublicAssetUrl } from '@/lib/storage'
 import {
@@ -818,7 +819,7 @@ export function validateThemeSiteSettingsInput(params: {
   })
 }
 
-export async function loadRuntimeThemeState(): Promise<RuntimeThemeState> {
+async function loadCachedRuntimeThemeState(): Promise<RuntimeThemeState> {
   'use cache'
   cacheTag(cacheTags.settings)
 
@@ -911,6 +912,14 @@ export async function loadRuntimeThemeState(): Promise<RuntimeThemeState> {
     source: normalizedTheme?.data || normalizedSite?.data ? 'settings' : 'default',
     themeMode,
   }
+}
+
+export async function loadRuntimeThemeState(): Promise<RuntimeThemeState> {
+  if (!hasDatabaseEnv()) {
+    return buildDefaultThemeState()
+  }
+
+  return loadCachedRuntimeThemeState()
 }
 
 export async function loadRuntimeThemeSiteName() {

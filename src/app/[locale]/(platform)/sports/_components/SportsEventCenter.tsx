@@ -45,6 +45,7 @@ import {
   headerIconButtonClass,
 } from '@/app/[locale]/(platform)/sports/_components/sports-event-center-types'
 import {
+  formatSportsEventStartLabels,
   normalizeLivestreamUrl,
   parseSportsScore,
   resolveMoneylineButtonGridClass,
@@ -62,6 +63,7 @@ import {
   resolveButtonOverlayStyle,
   resolveButtonStyle,
   resolveSelectedButton,
+  resolveSelectedMarket,
   SportsGameDetailsPanel,
   SportsGameGraph,
   SportsOrderPanelMarketInfo,
@@ -310,7 +312,47 @@ export default function SportsEventCenter({
     orderMarketConditionId,
     orderOutcomeIndex,
   })
-  const pageAboutMarket = activeTradeHeaderContext?.market ?? activeTradeContext?.market ?? null
+  const pageAboutMarket = useMemo(() => {
+    if (activeTradeHeaderContext?.market) {
+      return activeTradeHeaderContext.market
+    }
+
+    if (activeTradeContext?.market) {
+      return activeTradeContext.market
+    }
+
+    const candidateKeys = [
+      openSectionKey ? selectedButtonBySection[openSectionKey] : null,
+      openAuxiliaryConditionId ? selectedAuxiliaryButtonByConditionId[openAuxiliaryConditionId] : null,
+      marketSlugToButtonKey,
+      selectedButtonBySection.moneyline,
+      selectedButtonBySection.spread,
+      selectedButtonBySection.total,
+      selectedButtonBySection.btts,
+      moneylineButtonKey,
+      null,
+    ]
+
+    for (const buttonKey of candidateKeys) {
+      const market = resolveSelectedMarket(activeCard, buttonKey)
+      if (market) {
+        return market
+      }
+    }
+
+    return null
+  }, [
+    activeCard,
+    activeTradeContext?.market,
+    activeTradeHeaderContext?.market,
+    marketSlugToButtonKey,
+    moneylineButtonKey,
+    openAuxiliaryConditionId,
+    openSectionKey,
+    selectedAuxiliaryButtonByConditionId,
+    selectedButtonBySection,
+  ])
+  const pageAboutOutcome = pageAboutMarket?.outcomes[0] ?? null
 
   const activeTradeContextButtonKey = activeTradeContext?.button.key ?? null
 
@@ -427,12 +469,11 @@ export default function SportsEventCenter({
         ? Date.parse(heroCard.event.start_date)
         : Number.NaN
   const startTimestamp = Number.isFinite(parsedStartTimestamp) ? parsedStartTimestamp : null
-  const timeLabel = startTimestamp !== null
-    ? new Intl.DateTimeFormat(locale, { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' }).format(startTimestamp)
-    : 'TBD'
-  const dayLabel = startTimestamp !== null
-    ? new Intl.DateTimeFormat(locale, { month: 'long', day: 'numeric', timeZone: 'UTC' }).format(startTimestamp)
-    : 'Date TBD'
+  const startLabels = startTimestamp !== null
+    ? formatSportsEventStartLabels(startTimestamp, locale)
+    : null
+  const timeLabel = startLabels?.timeLabel ?? 'TBD'
+  const dayLabel = startLabels?.dayLabel ?? 'Date TBD'
 
   const team1 = heroCard.teams[0] ?? null
   const team2 = heroCard.teams[1] ?? null
@@ -1588,6 +1629,7 @@ export default function SportsEventCenter({
                   <EventOrderPanelForm
                     isMobile={false}
                     event={activeCard.event}
+                    className="bg-card"
                     oddsFormat={oddsFormat}
                     outcomeButtonStyleVariant="sports3d"
                     optimisticallyClaimedConditionIds={claimedConditionIds}
@@ -1613,11 +1655,33 @@ export default function SportsEventCenter({
                   />
                 </div>
               )
-            : (
-                <div className="rounded-xl border bg-card p-4 text-sm text-muted-foreground">
-                  Select a market to trade.
-                </div>
-              )}
+            : pageAboutMarket
+              ? (
+                  <div className="grid gap-6">
+                    <EventOrderPanelForm
+                      isMobile={false}
+                      event={activeCard.event}
+                      className="bg-card"
+                      oddsFormat={oddsFormat}
+                      optimisticallyClaimedConditionIds={claimedConditionIds}
+                      initialMarket={pageAboutMarket}
+                      initialOutcome={pageAboutOutcome}
+                    />
+                    <EventOrderPanelTermsDisclaimer />
+                    <SportsEventRelatedGames
+                      cards={relatedCards}
+                      sportSlug={sportSlug}
+                      sportLabel={sportLabel}
+                      locale={locale}
+                      vertical={vertical}
+                    />
+                  </div>
+                )
+              : (
+                  <div className="rounded-xl border bg-card p-4 text-sm text-muted-foreground">
+                    Select a market to trade.
+                  </div>
+                )}
         </aside>
       </div>
 

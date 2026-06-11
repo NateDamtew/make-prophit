@@ -5,6 +5,8 @@ export interface Event {
   creator: string
   icon_url: string
   livestream_url?: string | null
+  additional_context?: string | null
+  additional_context_updated_at?: string | null
   show_market_icons: boolean
   enable_neg_risk?: boolean
   neg_risk_augmented?: boolean
@@ -108,6 +110,8 @@ export interface Market {
   icon_url: string
   is_active: boolean
   is_resolved: boolean
+  accepting_orders?: boolean
+  archived?: boolean
   block_number: number
   block_timestamp: string
   metadata?: any

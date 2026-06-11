@@ -60,6 +60,7 @@ function WalletSendForm({
   const [isBreakdownOpen, setIsBreakdownOpen] = useState(false)
   const inputValue = formatDisplayAmount(sendAmount)
   const appKitAccount = useAppKitAccount()
+  const isEmbeddedWallet = Boolean(appKitAccount.embeddedWalletInfo)
   const isSubmitDisabled = (
     isSending
     || !trimmedRecipient
@@ -67,7 +68,7 @@ function WalletSendForm({
     || !Number.isFinite(parsedAmount)
     || parsedAmount <= 0
   )
-  const showConnectedWalletButton = !sendTo?.trim()
+  const showConnectedWalletButton = !sendTo.trim() && !isEmbeddedWallet
   const amountDisplay = Number.isFinite(parsedAmount)
     ? parsedAmount.toLocaleString('en-US', {
         minimumFractionDigits: 2,
@@ -146,7 +147,7 @@ function WalletSendForm({
                 variant="default"
                 size="sm"
                 onClick={onUseConnectedWallet}
-                disabled={!connectedWalletAddress || !!appKitAccount.embeddedWalletInfo?.authProvider}
+                disabled={!connectedWalletAddress}
                 className="absolute inset-y-2 right-2 text-xs"
               >
                 <WalletIcon className="size-3.5 shrink-0" />

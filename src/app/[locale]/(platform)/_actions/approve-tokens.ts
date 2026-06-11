@@ -42,11 +42,6 @@ interface SubmitWalletTransactionResult {
 
 const WALLET_TX_POLL_ATTEMPTS = 45
 const WALLET_TX_POLL_DELAY_MS = 2_000
-const PUBLIC_WALLET_SUBMIT_METADATA = new Set([
-  'approve_tokens',
-  'auto_redeem_approval',
-  'claim_fees',
-])
 
 function sleep(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms))
@@ -154,12 +149,13 @@ async function syncClobCollateralBalanceAllowanceSignatureType3(user: {
   }
 
   const query = 'asset_type=COLLATERAL&signature_type=3'
-  const path = `/balance-allowance/update?${query}`
+  const path = '/balance-allowance/update'
+  const pathWithQuery = `${path}?${query}`
   const timestamp = Math.floor(Date.now() / 1000)
   const signature = buildClobHmacSignature(auth.clob.secret, timestamp, 'GET', path)
 
   try {
-    const response = await fetch(`${clobUrl}${path}`, {
+    const response = await fetch(`${clobUrl}${pathWithQuery}`, {
       method: 'GET',
       headers: {
         Accept: 'application/json',
@@ -260,9 +256,7 @@ export async function submitDepositWalletTransactionAction(
   }
 
   const auth = await getUserTradingAuthSecrets(user.id)
-  const canUsePublicWalletSubmit = typeof request.metadata === 'string'
-    && PUBLIC_WALLET_SUBMIT_METADATA.has(request.metadata)
-  if (!auth?.relayer && !canUsePublicWalletSubmit) {
+  if (!auth?.relayer) {
     return { error: TRADING_AUTH_REQUIRED_ERROR }
   }
 
@@ -439,15 +433,6 @@ export async function submitDepositWalletTransactionAction(
     if (request.metadata === 'auto_redeem_approval') {
       autoRedeem = await markAutoRedeemApprovalCompleted(user.id)
     }
-
-    captureDepositWalletEvent('Deposit Wallet submit accepted', {
-      operation: 'wallet_submit',
-      userAddress: user.address,
-      depositWallet: user.deposit_wallet_address,
-      txHash,
-      durationMs: Date.now() - startedAt,
-      metadata: request.metadata,
-    })
 
     return { error: null, approvals, autoRedeem, txHash }
   }

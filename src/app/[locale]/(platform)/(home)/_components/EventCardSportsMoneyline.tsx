@@ -7,7 +7,9 @@ import Image from 'next/image'
 import EventBookmark from '@/app/[locale]/(platform)/event/[slug]/_components/EventBookmark'
 import AppLink from '@/components/AppLink'
 import { Card, CardContent } from '@/components/ui/card'
+import { NewBadge } from '@/components/ui/new-badge'
 import { ensureReadableTextColorOnDark } from '@/lib/color-contrast'
+import { shouldShowEventNewBadge } from '@/lib/event-new-badge'
 import { resolveEventOutcomePath } from '@/lib/events-routing'
 import { formatDate, formatVolume } from '@/lib/formatters'
 import { isEventResolvedLike } from '@/lib/home-events'
@@ -23,6 +25,28 @@ export interface EventCardSportsMoneylineProps {
 }
 
 const HOME_OUTCOME_BUTTON_HEIGHT_CLASS = 'h-[40px]'
+const SPORTS_EVENT_TIME_ZONE = 'America/New_York'
+const SPORTS_EVENT_TIME_ZONE_LABEL = 'ET'
+const SPORTS_EVENT_TIME_FORMATTER = new Intl.DateTimeFormat('en-US', {
+  hour: 'numeric',
+  minute: '2-digit',
+  timeZone: SPORTS_EVENT_TIME_ZONE,
+})
+const SPORTS_EVENT_DATE_FORMATTER = new Intl.DateTimeFormat('en-US', {
+  month: 'short',
+  day: 'numeric',
+  timeZone: SPORTS_EVENT_TIME_ZONE,
+})
+const SPORTS_EVENT_WEEKDAY_FORMATTER = new Intl.DateTimeFormat('en-US', {
+  weekday: 'short',
+  timeZone: SPORTS_EVENT_TIME_ZONE,
+})
+const SPORTS_EVENT_DATE_PARTS_FORMATTER = new Intl.DateTimeFormat('en-US', {
+  year: 'numeric',
+  month: 'numeric',
+  day: 'numeric',
+  timeZone: SPORTS_EVENT_TIME_ZONE,
+})
 
 function normalizeComparableText(value: string | null | undefined) {
   return value
@@ -69,6 +93,19 @@ function resolveSportsCompetitionLabel(event: Event) {
     ?? formatSportsDisplayLabel(event.sports_sport_slug)
 }
 
+function getSportsEventDayNumber(date: Date) {
+  const parts = SPORTS_EVENT_DATE_PARTS_FORMATTER.formatToParts(date)
+  const year = Number(parts.find(part => part.type === 'year')?.value)
+  const month = Number(parts.find(part => part.type === 'month')?.value)
+  const day = Number(parts.find(part => part.type === 'day')?.value)
+
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) {
+    return null
+  }
+
+  return Math.floor(Date.UTC(year, month - 1, day) / 86_400_000)
+}
+
 function formatSportsStartTime(value: string | null | undefined, currentTimestamp?: number | null) {
   if (!value) {
     return null
@@ -79,23 +116,22 @@ function formatSportsStartTime(value: string | null | undefined, currentTimestam
     return null
   }
 
-  const timeLabel = parsed.toLocaleTimeString('en-US', {
-    hour: 'numeric',
-    minute: '2-digit',
-  })
+  const timeLabel = `${SPORTS_EVENT_TIME_FORMATTER.format(parsed)} ${SPORTS_EVENT_TIME_ZONE_LABEL}`
 
   if (currentTimestamp == null) {
-    const dateLabel = parsed.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-    })
+    const dateLabel = SPORTS_EVENT_DATE_FORMATTER.format(parsed)
     return `${dateLabel} ${timeLabel}`
   }
 
   const now = new Date(currentTimestamp)
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  const startOfTarget = new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate())
-  const dayDiff = Math.round((startOfTarget.getTime() - startOfToday.getTime()) / 86_400_000)
+  const todayDayNumber = getSportsEventDayNumber(now)
+  const targetDayNumber = getSportsEventDayNumber(parsed)
+
+  if (todayDayNumber == null || targetDayNumber == null) {
+    return timeLabel
+  }
+
+  const dayDiff = targetDayNumber - todayDayNumber
 
   if (dayDiff === 0) {
     return timeLabel
@@ -110,14 +146,11 @@ function formatSportsStartTime(value: string | null | undefined, currentTimestam
   }
 
   if (dayDiff > 1 && dayDiff < 7) {
-    const weekdayLabel = parsed.toLocaleDateString('en-US', { weekday: 'short' })
+    const weekdayLabel = SPORTS_EVENT_WEEKDAY_FORMATTER.format(parsed)
     return `${weekdayLabel} ${timeLabel}`
   }
 
-  const dateLabel = parsed.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-  })
+  const dateLabel = SPORTS_EVENT_DATE_FORMATTER.format(parsed)
   return `${dateLabel} ${timeLabel}`
 }
 
@@ -176,6 +209,7 @@ export default function EventCardSportsMoneyline({
   const isResolvedEvent = isEventResolvedLike(event)
   const sportsCompetitionLabel = resolveSportsCompetitionLabel(event)
   const startTimeLabel = formatSportsStartTime(event.sports_start_time ?? event.start_date, currentTimestamp)
+  const shouldShowNewBadge = shouldShowEventNewBadge(event, currentTimestamp ?? null)
   const endedLabel = isResolvedEvent && event.resolved_at
     ? (() => {
         const resolvedDate = new Date(event.resolved_at)
@@ -346,11 +380,15 @@ export default function EventCardSportsMoneyline({
 
         <div className="relative flex w-full items-center justify-between gap-2 text-xs text-muted-foreground">
           <div className="flex min-w-0 items-center gap-1.5 overflow-x-auto whitespace-nowrap">
-            <span>
-              {formatVolume(event.volume)}
-              {' '}
-              Vol.
-            </span>
+            {shouldShowNewBadge
+              ? <NewBadge />
+              : (
+                  <span>
+                    {formatVolume(event.volume)}
+                    {' '}
+                    Vol.
+                  </span>
+                )}
             {isResolvedEvent
               ? (
                   sportsCompetitionLabel

@@ -13,6 +13,7 @@ import {
 } from '@/lib/event-creation'
 
 type MarketMode = 'binary' | 'multi_multiple' | 'multi_unique'
+type ResolutionType = 'dro_moov2' | 'uma_moov2'
 
 interface CategoryItem {
   label: string
@@ -27,8 +28,9 @@ interface PreparePayloadOption {
   slug: string
 }
 
-export interface EventCreationPreparePayload {
+interface EventCreationPreparePayload {
   chainId: number
+  resolutionType: ResolutionType
   creator: string
   title: string
   slug: string
@@ -249,6 +251,7 @@ export function buildEventCreationPreparePayload(input: {
 
   const payload: EventCreationPreparePayload = {
     chainId: input.chainId,
+    resolutionType: 'dro_moov2',
     creator: input.creator,
     title: occurrence.title,
     slug: occurrence.slug,

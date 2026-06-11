@@ -20,6 +20,8 @@ export default function PublicActivityRow({ activity }: PublicActivityRowProps) 
   const outcomeText = activity.outcome?.text || 'Outcome'
   const outcomeIsYes = outcomeText.toLowerCase().includes('yes') || activity.outcome?.index === 0
   const outcomeColor = outcomeIsYes ? 'bg-yes/15 text-yes' : 'bg-no/15 text-no'
+  const showOutcomeBadge = (variant === 'buy' || variant === 'sell' || variant === 'redeem')
+    && outcomeText !== 'Outcome'
   const imageUrl = activity.market.icon_url
     ? (
         activity.market.icon_url.startsWith('http')
@@ -68,11 +70,17 @@ export default function PublicActivityRow({ activity }: PublicActivityRowProps) 
                     containerClassName="size-full"
                   />
                 )
-              : (
-                  <div className="grid size-full place-items-center text-2xs text-muted-foreground">
-                    No image
-                  </div>
-                )}
+              : variant === 'redeem'
+                ? (
+                    <div className="grid size-full place-items-center text-primary/80">
+                      <CircleDollarSignIcon className="size-5" />
+                    </div>
+                  )
+                : (
+                    <div className="grid size-full place-items-center text-2xs text-muted-foreground">
+                      No image
+                    </div>
+                  )}
           </AppLink>
 
           <div className="min-w-0 flex-1 space-y-1">
@@ -90,11 +98,15 @@ export default function PublicActivityRow({ activity }: PublicActivityRowProps) 
               {activity.market.title}
             </AppLink>
             <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-              {(variant === 'buy' || variant === 'sell') && (
+              {showOutcomeBadge && (
                 <span className={cn('inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-xs font-semibold', outcomeColor)}>
                   {outcomeText}
-                  {' '}
-                  {priceText}
+                  {(variant === 'buy' || variant === 'sell') && priceText && (
+                    <>
+                      {' '}
+                      {priceText}
+                    </>
+                  )}
                 </span>
               )}
               {sharesText && <span>{sharesText}</span>}

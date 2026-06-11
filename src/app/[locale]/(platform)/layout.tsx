@@ -12,10 +12,13 @@ import { QuickViewProvider } from '@/app/[locale]/(platform)/_providers/QuickVie
 import { TradingOnboardingProvider } from '@/app/[locale]/(platform)/_providers/TradingOnboardingProvider'
 import { loadPlatformMainTags } from '@/lib/platform-main-tags'
 import { buildChildParentMap, buildPlatformNavigationTags } from '@/lib/platform-navigation'
+import { deferPublicShellPrerenderIfNeeded } from '@/lib/public-shell-rendering'
 import AppKitProvider from '@/providers/AppKitProvider'
 import Footer from '@/app/[locale]/(platform)/_components/Footer'
 
 export default async function PlatformLayout({ params, children }: LayoutProps<'/[locale]'>) {
+  await deferPublicShellPrerenderIfNeeded()
+
   const { locale } = await params
   const resolvedLocale = locale as SupportedLocale
   setRequestLocale(resolvedLocale)

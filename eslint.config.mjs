@@ -5,7 +5,6 @@ import reactYouMightNotNeedAnEffect from 'eslint-plugin-react-you-might-not-need
 export default antfu({
   react: true,
   nextjs: true,
-  ignores: ['tests'],
 }, {
   plugins: {
     'better-tailwindcss': eslintPluginBetterTailwindcss,
@@ -30,7 +29,7 @@ export default antfu({
   },
   settings: {
     'better-tailwindcss': {
-      tailwindConfig: './src/app/globals.css',
+      entryPoint: './src/app/globals.css',
     },
   },
 })

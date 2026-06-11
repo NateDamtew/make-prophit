@@ -1,9 +1,11 @@
+import { unstable_rethrow } from 'next/navigation'
 import { NextResponse } from 'next/server'
 import { AFFILIATE_SHARE_BPS_KEY, getAffiliateFeeSettings } from '@/lib/affiliate-fee-settings'
 import { DEFAULT_ERROR_MESSAGE } from '@/lib/constants'
 import { ZERO_ADDRESS } from '@/lib/contracts'
 import { SettingsRepository } from '@/lib/db/queries/settings'
 import { UserRepository } from '@/lib/db/queries/user'
+import { deferPublicShellPrerenderIfNeeded } from '@/lib/public-shell-rendering'
 
 const GENERAL_SETTINGS_GROUP = 'general'
 const FEE_RECIPIENT_WALLET_KEY = 'fee_recipient_wallet'
@@ -17,6 +19,8 @@ function getFeeRecipientAddress(settings?: Record<string, Record<string, { value
 
 export async function GET() {
   try {
+    await deferPublicShellPrerenderIfNeeded()
+
     const { data: settings } = await SettingsRepository.getSettings()
     const referrerAddress = getFeeRecipientAddress(settings ?? undefined)
     const affiliateSettings = settings?.affiliate
@@ -64,6 +68,7 @@ export async function GET() {
     })
   }
   catch (error) {
+    unstable_rethrow(error)
     console.error('Failed to load affiliate info', error)
     return NextResponse.json({ error: DEFAULT_ERROR_MESSAGE }, { status: 500 })
   }

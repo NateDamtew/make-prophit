@@ -17,7 +17,8 @@
       "fumadocs-mdx:collections/*": ["./.source/*"]
     },
     "resolveJsonModule": true,
-    "allowJs": true,
+    "allowImportingTsExtensions": true,
+    "allowJs": false,
     "strict": true,
     "noEmit": true,
     "esModuleInterop": true,

@@ -33,6 +33,12 @@ interface DataApiActivity {
   profileImageOptimized?: string
 }
 
+interface HydratedActivityProfile {
+  username?: string | null
+  image?: string | null
+  created_at?: string
+}
+
 function normalizeAvatarUrl(image: string | null | undefined) {
   if (!image) {
     return ''
@@ -43,6 +49,46 @@ function normalizeAvatarUrl(image: string | null | undefined) {
   }
 
   return getPublicAssetUrl(image)
+}
+
+function normalizeCreatedAt(value: string | Date | null | undefined) {
+  if (!value) {
+    return undefined
+  }
+
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return undefined
+  }
+
+  return date.toISOString()
+}
+
+function mergeHydratedProfiles(
+  preferred: HydratedActivityProfile,
+  fallback?: HydratedActivityProfile | null,
+): HydratedActivityProfile {
+  return {
+    username: preferred.username || fallback?.username,
+    image: preferred.image || fallback?.image,
+    created_at: preferred.created_at || fallback?.created_at,
+  }
+}
+
+function storeHydratedProfile(
+  profileLookup: Map<string, HydratedActivityProfile>,
+  addresses: Array<string | null | undefined>,
+  profile: HydratedActivityProfile,
+) {
+  for (const address of addresses) {
+    const normalized = normalizeAddress(address)?.toLowerCase()
+    if (!normalized) {
+      continue
+    }
+
+    const existing = profileLookup.get(normalized)
+    profileLookup.set(normalized, mergeHydratedProfiles(profile, existing))
+  }
 }
 
 export async function GET(request: Request) {
@@ -104,7 +150,7 @@ export async function GET(request: Request) {
       }
     })
 
-    const profileLookup = new Map<string, { username?: string | null, image?: string | null, created_at?: string }>()
+    const profileLookup = new Map<string, HydratedActivityProfile>()
 
     if (addressSet.size > 0) {
       const { data: profiles, error } = await UserRepository.getUsersByAddresses(Array.from(addressSet))
@@ -118,16 +164,13 @@ export async function GET(request: Request) {
         const normalizedDepositWallet = normalizeAddress(profile.deposit_wallet_address)?.toLowerCase()
         const imageUrl = normalizeAvatarUrl(profile.image)
 
-        const createdAt = profile.created_at
-          ? new Date(profile.created_at).toISOString()
-          : undefined
+        const createdAt = normalizeCreatedAt(profile.created_at)
 
-        if (normalizedAddress) {
-          profileLookup.set(normalizedAddress, { username: profile.username, image: imageUrl, created_at: createdAt })
-        }
-        if (normalizedDepositWallet) {
-          profileLookup.set(normalizedDepositWallet, { username: profile.username, image: imageUrl, created_at: createdAt })
-        }
+        storeHydratedProfile(
+          profileLookup,
+          [normalizedAddress, normalizedDepositWallet],
+          { username: profile.username, image: imageUrl, created_at: createdAt },
+        )
       }
     }
 
@@ -136,8 +179,8 @@ export async function GET(request: Request) {
       const matchedProfile = normalized ? profileLookup.get(normalized) : null
       const fallbackAddress = activity.user.address || activity.user.id
 
-      const username = matchedProfile?.username || activity.user.username || fallbackAddress || 'trader'
-      const image = normalizeAvatarUrl(matchedProfile?.image || activity.user.image)
+      const username = activity.user.username || matchedProfile?.username || fallbackAddress || 'trader'
+      const image = normalizeAvatarUrl(activity.user.image || matchedProfile?.image)
 
       return {
         ...activity,

@@ -9,11 +9,11 @@ interface ClobOpenOrderLike {
   market?: string | null
   original_size?: string | number | null
   outcome?: string | null
+  order_type?: string | null
   price?: string | number | null
   side?: string | null
   size_matched?: string | number | null
   status?: string | null
-  type?: string | null
 }
 
 export interface OpenOrderOutcomeMeta {
@@ -56,7 +56,7 @@ export function mapClobOpenOrder<TMarket extends UserOpenOrder['market'], TOrder
   return {
     id: order.id,
     side,
-    type: normalizeClobOrderType(order.type),
+    type: normalizeClobOrderType(order.order_type),
     status: order.status || 'live',
     price: priceValue,
     maker_amount: makerAmount,
@@ -143,7 +143,7 @@ function clampClobNumber(value: number, min: number, max: number) {
 
 export function normalizeClobOpenOrdersResponse<TOrder>(result: unknown) {
   if (Array.isArray(result)) {
-    return { data: result as TOrder[], next_cursor: 'LTE=' }
+    return { data: result as TOrder[], next_cursor: '' }
   }
 
   if (result && typeof result === 'object') {
@@ -152,10 +152,10 @@ export function normalizeClobOpenOrdersResponse<TOrder>(result: unknown) {
       : []
     const next_cursor = typeof (result as { next_cursor?: unknown }).next_cursor === 'string'
       ? (result as { next_cursor: string }).next_cursor
-      : 'LTE='
+      : ''
 
     return { data, next_cursor }
   }
 
-  return { data: [] as TOrder[], next_cursor: 'LTE=' }
+  return { data: [] as TOrder[], next_cursor: '' }
 }

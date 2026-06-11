@@ -9,9 +9,9 @@ import { decryptSecret, encryptSecret } from '@/lib/encryption'
 import {
   createL2AuthContextId,
   createL2AuthContextRecord,
+  getL2AuthContextCookieNames,
   hashL2AuthContextId,
   isValidL2AuthContextId,
-  L2_AUTH_CONTEXT_COOKIE_NAMES,
   L2_AUTH_CONTEXT_MAX_PER_USER,
   normalizeL2AuthContextRecords,
 } from '@/lib/l2-auth-context'
@@ -99,7 +99,7 @@ function decodeEntry(entry?: TradingAuthSecretEntry | null) {
   }
 }
 
-async function getL2AuthContextIdFromRequestCookies() {
+async function getL2AuthContextIdFromRequestCookies(userId: string) {
   let cookieStore: Awaited<ReturnType<typeof cookies>>
   try {
     cookieStore = await cookies()
@@ -108,7 +108,7 @@ async function getL2AuthContextIdFromRequestCookies() {
     return null
   }
 
-  for (const cookieName of L2_AUTH_CONTEXT_COOKIE_NAMES) {
+  for (const cookieName of getL2AuthContextCookieNames(userId)) {
     const value = cookieStore.get(cookieName)?.value
     if (isValidL2AuthContextId(value)) {
       return value
@@ -126,7 +126,7 @@ function upsertAndPruneL2AuthContexts(current: unknown, contextId: string, now =
   return [nextContext, ...deduped].slice(0, L2_AUTH_CONTEXT_MAX_PER_USER)
 }
 
-async function validateL2AuthContext(settings: Record<string, any>) {
+async function validateL2AuthContext(userId: string, settings: Record<string, any>) {
   const tradingAuth = (settings.tradingAuth ?? {}) as TradingAuthSecretSettings
   const hasSecrets = hasStoredTradingCredentials(tradingAuth)
 
@@ -141,7 +141,7 @@ async function validateL2AuthContext(settings: Record<string, any>) {
     return { valid: false, contextsChanged, normalizedContexts }
   }
 
-  const contextId = await getL2AuthContextIdFromRequestCookies()
+  const contextId = await getL2AuthContextIdFromRequestCookies(userId)
   if (!contextId) {
     return { valid: false, contextsChanged, normalizedContexts }
   }
@@ -210,7 +210,10 @@ export async function ensureUserTradingAuthSecretFingerprint(userId: string, raw
   return result.settings
 }
 
-export async function getUserTradingAuthSecrets(userId: string): Promise<TradingAuthSecrets | null> {
+export async function getUserTradingAuthSecrets(
+  userId: string,
+  options: { requireL2Context?: boolean } = {},
+): Promise<TradingAuthSecrets | null> {
   const [row] = await db
     .select({ settings: users.settings })
     .from(users)
@@ -229,38 +232,40 @@ export async function getUserTradingAuthSecrets(userId: string): Promise<Trading
     return null
   }
 
-  const l2Validation = await validateL2AuthContext(settings)
-  if (l2Validation.contextsChanged) {
-    await withLockedUserSettings(userId, async ({ settings: lockedSettings, tx }) => {
-      const lockedTradingAuth = (lockedSettings as any)?.tradingAuth as TradingAuthSecretSettings | undefined
-      if (!lockedTradingAuth) {
-        return
-      }
+  if (options.requireL2Context !== false) {
+    const l2Validation = await validateL2AuthContext(userId, settings)
+    if (l2Validation.contextsChanged) {
+      await withLockedUserSettings(userId, async ({ settings: lockedSettings, tx }) => {
+        const lockedTradingAuth = (lockedSettings as any)?.tradingAuth as TradingAuthSecretSettings | undefined
+        if (!lockedTradingAuth) {
+          return
+        }
 
-      const normalizedContexts = normalizeL2AuthContextRecords(lockedTradingAuth.l2Contexts)
-      const contextsChanged = JSON.stringify(lockedTradingAuth.l2Contexts ?? []) !== JSON.stringify(normalizedContexts)
-      if (!contextsChanged) {
-        return
-      }
+        const normalizedContexts = normalizeL2AuthContextRecords(lockedTradingAuth.l2Contexts)
+        const contextsChanged = JSON.stringify(lockedTradingAuth.l2Contexts ?? []) !== JSON.stringify(normalizedContexts)
+        if (!contextsChanged) {
+          return
+        }
 
-      const nextTradingAuth: TradingAuthSecretSettings = {
-        ...lockedTradingAuth,
-        l2Contexts: normalizedContexts,
-      }
-      const nextSettings = {
-        ...lockedSettings,
-        tradingAuth: nextTradingAuth,
-      }
+        const nextTradingAuth: TradingAuthSecretSettings = {
+          ...lockedTradingAuth,
+          l2Contexts: normalizedContexts,
+        }
+        const nextSettings = {
+          ...lockedSettings,
+          tradingAuth: nextTradingAuth,
+        }
 
-      await tx
-        .update(users)
-        .set({ settings: nextSettings })
-        .where(eq(users.id, userId))
-    })
-  }
+        await tx
+          .update(users)
+          .set({ settings: nextSettings })
+          .where(eq(users.id, userId))
+      })
+    }
 
-  if (!l2Validation.valid) {
-    return null
+    if (!l2Validation.valid) {
+      return null
+    }
   }
 
   return {

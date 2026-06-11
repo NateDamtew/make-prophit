@@ -1,16 +1,18 @@
 import type { AdminSportsTeamHostStatus } from '@/lib/admin-sports-create'
 
 export type MarketMode = 'binary' | 'multi_multiple' | 'multi_unique'
+export type ResolutionType = 'dro_moov2' | 'uma_moov2'
 export type EventCreationMode = 'single' | 'recurring'
 
 export type SlugValidationState = 'idle' | 'checking' | 'unique' | 'duplicate' | 'error'
 export type FundingCheckState = 'idle' | 'checking' | 'ok' | 'insufficient' | 'no_wallet' | 'error'
 export type NativeGasCheckState = 'idle' | 'checking' | 'ok' | 'insufficient' | 'no_wallet' | 'error'
 export type AllowedCreatorCheckState = 'idle' | 'checking' | 'ok' | 'missing' | 'no_wallet' | 'error'
+export type ProposerWhitelistCheckState = 'idle' | 'checking' | 'ok' | 'missing' | 'no_wallet' | 'error'
 export type OpenRouterCheckState = 'idle' | 'checking' | 'ok' | 'error'
 export type ContentCheckState = 'idle' | 'checking' | 'ok' | 'error'
 export type SignatureTxStatus = 'idle' | 'awaiting_wallet' | 'confirming' | 'success' | 'error'
-export type PreSignCheckKey = 'funding' | 'nativeGas' | 'allowedCreator' | 'slug' | 'openRouter' | 'content'
+export type PreSignCheckKey = 'funding' | 'nativeGas' | 'allowedCreator' | 'proposerWhitelist' | 'slug' | 'openRouter' | 'content'
 
 export interface CategorySuggestion {
   name: string
@@ -71,12 +73,15 @@ export interface SlugCheckResponse {
 
 export interface MarketConfigResponse {
   defaultChainId?: number
+  defaultResolutionType?: ResolutionType
   supportedChainIds?: number[]
   chains?: Array<{
     chainId: number
     usdcToken: string
   }>
   requiredCreatorFundingUsdc?: string
+  directNormalMarketFeeUsdc?: string
+  directNegRiskQuestionFeeUsdc?: string
   usdcToken?: string
 }
 
@@ -128,6 +133,7 @@ interface PreparePayloadOption {
 
 export interface PreparePayloadBody {
   chainId: number
+  resolutionType: ResolutionType
   creator: string
   title: string
   slug: string

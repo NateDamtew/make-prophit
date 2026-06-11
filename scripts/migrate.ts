@@ -15,6 +15,7 @@ let fs: NodeFs
 let path: NodePath
 let postgres: Postgres
 let resolveSiteUrl: ResolveSiteUrl
+let scriptDirname: string
 
 interface SyncCronOptions {
   jobName: string
@@ -40,9 +41,10 @@ interface CronExtensionCapabilities {
 }
 
 async function loadScriptDependencies(): Promise<void> {
-  const [fsModule, pathModule, postgresModule, siteUrlModule] = await Promise.all([
+  const [fsModule, pathModule, urlModule, postgresModule, siteUrlModule] = await Promise.all([
     import('node:fs'),
     import('node:path'),
+    import('node:url'),
     import('postgres'),
     import(SITE_URL_MODULE_PATH),
   ])
@@ -55,6 +57,7 @@ async function loadScriptDependencies(): Promise<void> {
   fs = fsModule
   path = pathModule
   postgres = postgresImport.default ?? postgresImport
+  scriptDirname = path.dirname(urlModule.fileURLToPath(import.meta.url))
   const importedResolveSiteUrl = siteUrlImport.default ?? siteUrlImport.resolveSiteUrl
 
   if (!importedResolveSiteUrl) {
@@ -143,8 +146,7 @@ function rewriteMigrationSqlForMode(migrationSql: string, isSupabase: boolean): 
   }
 
   return migrationSql
-    .replace(/\bTO\s+"service_role"\b/gi, 'TO CURRENT_USER')
-    .replace(/\bTO\s+service_role\b/gi, 'TO CURRENT_USER')
+    .replace(/\bTO\s+(?:"service_role"|service_role\b)/gi, 'TO CURRENT_USER')
 }
 
 async function withReservedTransaction<T>(
@@ -194,7 +196,7 @@ async function applyMigrations(sql: ReservedSql, isSupabase: boolean): Promise<v
   `, []).simple()
   console.log('Migrations table ready')
 
-  const migrationsDir = path.join(__dirname, '../src/lib/db/migrations')
+  const migrationsDir = path.join(scriptDirname, '../src/lib/db/migrations')
   const migrationFiles = fs.readdirSync(migrationsDir)
     .filter(file => file.endsWith('.sql'))
     .sort()
@@ -339,12 +341,21 @@ async function createSyncVolumeCron(
   cronSecret: string,
 ): Promise<void> {
   await createSyncCron(sql, {
-    jobName: 'sync-volume',
+    jobName: 'sync-volume-enqueue',
     schedule: '*/10 * * * *',
-    endpointPath: '/api/sync/volume?limit=150',
+    endpointPath: '/api/sync/volume/enqueue',
     siteUrl,
     cronSecret,
-    timeoutMilliseconds: 60000,
+    timeoutMilliseconds: 10000,
+  })
+
+  await createSyncCron(sql, {
+    jobName: 'sync-volume',
+    schedule: '*/5 * * * *',
+    endpointPath: '/api/sync/volume',
+    siteUrl,
+    cronSecret,
+    timeoutMilliseconds: 30000,
   })
 }
 
@@ -354,11 +365,21 @@ async function createSyncTranslationsCron(
   cronSecret: string,
 ): Promise<void> {
   await createSyncCron(sql, {
+    jobName: 'sync-translations-enqueue',
+    schedule: '17 * * * *',
+    endpointPath: '/api/sync/translations/enqueue',
+    siteUrl,
+    cronSecret,
+    timeoutMilliseconds: 20000,
+  })
+
+  await createSyncCron(sql, {
     jobName: 'sync-translations',
-    schedule: '13,37 * * * *',
+    schedule: '18 * * * *',
     endpointPath: '/api/sync/translations',
     siteUrl,
     cronSecret,
+    timeoutMilliseconds: 30000,
   })
 }
 
@@ -382,8 +403,17 @@ async function createSyncEventCreationsCron(
   cronSecret: string,
 ): Promise<void> {
   await createSyncCron(sql, {
-    jobName: 'sync-event-creations',
+    jobName: 'sync-event-creations-enqueue',
     schedule: '0,30 * * * *',
+    endpointPath: '/api/sync/event-creations/enqueue',
+    siteUrl,
+    cronSecret,
+    timeoutMilliseconds: 10000,
+  })
+
+  await createSyncCron(sql, {
+    jobName: 'sync-event-creations',
+    schedule: '1,31 * * * *',
     endpointPath: '/api/sync/event-creations',
     siteUrl,
     cronSecret,

@@ -19,11 +19,14 @@ import type {
   NativeGasCheckState,
   OpenRouterCheckState,
   OptionItem,
+  PendingRequestItem,
   PrepareFinalizeRequestTx,
   PreparePayloadBody,
   PrepareResponse,
   PreSignCheckKey,
+  ProposerWhitelistCheckState,
   RecurringOccurrencePreview,
+  ResolutionType,
   SignatureExecutionTx,
   SignerOption,
   SlugValidationState,
@@ -38,7 +41,7 @@ import type {
 } from '@/lib/admin-sports-create'
 import type { EventCreationDraftRecord } from '@/lib/db/queries/event-creations'
 import type { EventCreationAssetPayload, EventCreationRecurrenceUnit } from '@/lib/event-creation'
-import { useAppKitAccount } from '@reown/appkit/react'
+import { useAppKitAccount, useAppKitNetworkCore, useAppKitProvider } from '@reown/appkit/react'
 import {
   ArrowLeftIcon,
   ArrowRightIcon,
@@ -56,10 +59,12 @@ import {
   SparkleIcon,
   SquarePenIcon,
   Trash2Icon,
+  UserCheckIcon,
 } from 'lucide-react'
+import { useExtracted } from 'next-intl'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { createPublicClient, formatUnits, getAddress, http, isAddress, keccak256, stringToHex, toHex } from 'viem'
+import { createPublicClient, createWalletClient, custom, formatUnits, getAddress, http, isAddress, keccak256, stringToHex } from 'viem'
 import { usePublicClient, useWalletClient } from 'wagmi'
 import AppLink from '@/components/AppLink'
 import EventIconImage from '@/components/EventIconImage'
@@ -114,9 +119,13 @@ import {
   slugifyEventCreationValue as slugify,
   slugifyEventCreationTemplate as slugifyTemplate,
 } from '@/lib/event-creation'
-import { AMOY_CHAIN_ID } from '@/lib/network'
+import {
+  isProposerWhitelistStatusResponse,
+  resolveProposerWhitelistAddress,
+} from '@/lib/proposer-whitelist'
+import { sendWithEstimatedFeeRetry } from '@/lib/transaction-fees'
 import { cn } from '@/lib/utils'
-import { defaultViemNetwork, defaultViemRpcUrl } from '@/lib/viem-network'
+import { defaultViemNetwork, defaultViemRpcUrl, resolveViemNetworkByChainId } from '@/lib/viem-network'
 import { useUser } from '@/stores/useUser'
 import {
   APPROVE_GAS_UNITS_ESTIMATE,
@@ -136,7 +145,6 @@ import {
   GAS_ESTIMATE_BUFFER_DENOMINATOR,
   GAS_ESTIMATE_BUFFER_NUMERATOR,
   INITIALIZE_GAS_UNITS_ESTIMATE,
-  MIN_AMOY_PRIORITY_FEE_WEI,
   OPENROUTER_CHECK_TIMEOUT_MS,
   PREPARE_POLL_DELAY_MS,
   PREPARE_POLL_MAX_ATTEMPTS,
@@ -152,6 +160,7 @@ import { CheckIndicator, OutcomeStateDot, SignatureTxIndicator } from './admin-c
 import {
   areCategoryItemsEqual,
   areOptionItemsEqual,
+  buildRpcTransactionRequest,
   buildStepErrors,
   createInitialForm,
   createOption,
@@ -177,7 +186,6 @@ import {
   isPrepareAuthChallengeResponse,
   isSlugCheckResponse,
   mapSignatureFlowErrorForUser,
-  parseMinTipCapFromError,
   readApiError,
   readResponseBody,
   readResponseErrorMessage,
@@ -185,6 +193,111 @@ import {
   shortenAddress,
   shouldRetryFinalizeRequest,
 } from './admin-create-event-form-utils'
+import AdminProposersDialog from './AdminProposersDialog'
+
+interface LoadedSignaturePlan {
+  pending: PendingRequestItem
+  prepared: PrepareResponse
+  signatureTxs: SignatureExecutionTx[]
+}
+
+interface RpcWalletProvider {
+  request: (args: {
+    method: string
+    params?: unknown[] | object
+  }) => Promise<unknown>
+}
+
+const UMA_RESOLUTION_TEMPORARILY_DISABLED = true
+
+type PreSignIndicatorState = 'idle' | 'checking' | 'ok' | 'error'
+
+function buildSignatureExecutionTxs(
+  prepared: PrepareResponse,
+  confirmedTxs: PrepareFinalizeRequestTx[],
+): SignatureExecutionTx[] {
+  const confirmedById = new Map(confirmedTxs.map(item => [item.id, item.hash]))
+  return prepared.txPlan.map((planned) => {
+    const hash = confirmedById.get(planned.id)
+    return {
+      ...planned,
+      status: hash ? 'success' : 'idle',
+      hash: hash ?? undefined,
+    }
+  })
+}
+
+function buildLoadedSignaturePlan(pending: PendingRequestItem): LoadedSignaturePlan | null {
+  if (!pending.prepared) {
+    return null
+  }
+
+  return {
+    pending,
+    prepared: pending.prepared,
+    signatureTxs: buildSignatureExecutionTxs(pending.prepared, pending.txs),
+  }
+}
+
+function isFinalizationPendingStatus(status: string) {
+  return status === 'finalized' || status === 'finalize_running' || status === 'finalize_in_progress'
+}
+
+function isRpcWalletProvider(value: unknown): value is RpcWalletProvider {
+  return Boolean(value)
+    && typeof value === 'object'
+    && typeof (value as { request?: unknown }).request === 'function'
+}
+
+function isEmbeddedWalletProvider(value: unknown): value is RpcWalletProvider {
+  if (!isRpcWalletProvider(value)) {
+    return false
+  }
+
+  const candidate = value as {
+    connectEmail?: unknown
+    connectSocial?: unknown
+    getEmail?: unknown
+    switchNetwork?: unknown
+    constructor?: { name?: string }
+  }
+
+  return candidate.constructor?.name === 'W3mFrameProvider'
+    || (
+      typeof candidate.connectEmail === 'function'
+      && typeof candidate.connectSocial === 'function'
+      && typeof candidate.getEmail === 'function'
+      && typeof candidate.switchNetwork === 'function'
+    )
+}
+
+function resolveChainId(value: number | string | undefined) {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value
+  }
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : null
+  }
+  return null
+}
+
+function isSameAddress(first?: string | null, second?: string | null) {
+  return Boolean(first && second && first.toLowerCase() === second.toLowerCase())
+}
+
+function getCheckIndicatorState(state: string, okState = 'ok'): PreSignIndicatorState {
+  if (state === okState) {
+    return 'ok'
+  }
+  if (state === 'checking') {
+    return 'checking'
+  }
+  if (state === 'idle') {
+    return 'idle'
+  }
+  return 'error'
+}
 
 function getCategorySlugKey(slug: string) {
   return slug.trim().toLowerCase()
@@ -245,10 +358,14 @@ function useAdminCreateEventForm({
   serverAssetPayload: EventCreationAssetPayload | null
 }) {
   const router = useRouter()
-  const { address: connectedAddress } = useAppKitAccount()
+  const appKitAccount = useAppKitAccount({ namespace: 'eip155' })
+  const { address: connectedAddress } = appKitAccount
+  const { walletProvider, walletProviderType } = useAppKitProvider<RpcWalletProvider>('eip155')
+  const { chainId: appKitChainId } = useAppKitNetworkCore()
   const { data: walletClient } = useWalletClient()
   const publicClient = usePublicClient()
   const { runWithSignaturePrompt } = useSignaturePromptRunner()
+  const t = useExtracted()
   const user = useUser()
   const normalizedInitialTitle = initialTitle.trim()
   const normalizedInitialSlug = initialSlug.trim()
@@ -262,16 +379,21 @@ function useAdminCreateEventForm({
   const initialRecurrenceInterval = initialDraftRecord?.recurrenceInterval
     ? String(initialDraftRecord.recurrenceInterval)
     : '1'
-  const eoaAddress = useMemo(() => {
-    const candidate = connectedAddress ?? user?.address ?? ''
-    if (!candidate || !isAddress(candidate)) {
-      return null
-    }
-    return getAddress(candidate)
-  }, [connectedAddress, user?.address])
+  const eoaAddress = useMemo(
+    () => resolveProposerWhitelistAddress(connectedAddress, user?.address),
+    [connectedAddress, user?.address],
+  )
   const eoaShortAddress = useMemo(
     () => (eoaAddress ? shortenAddress(eoaAddress) : ''),
     [eoaAddress],
+  )
+  const isEmbeddedWallet = Boolean(appKitAccount.embeddedWalletInfo)
+    || walletProviderType === 'AUTH'
+    || isEmbeddedWalletProvider(walletProvider)
+  const connectedWalletTransportChainId = resolveChainId(appKitChainId)
+  const walletClientMatchesConnectedAddress = Boolean(
+    walletClient?.account?.address
+    && isSameAddress(walletClient.account.address, eoaAddress),
   )
 
   const [currentStep, setCurrentStep] = useState(1)
@@ -301,6 +423,8 @@ function useAdminCreateEventForm({
   const [storedAssets, setStoredAssets] = useState<EventCreationAssetPayload>(() => normalizeEventCreationAssetPayload(serverAssetPayload))
   const [slugValidationState, setSlugValidationState] = useState<SlugValidationState>('idle')
   const [slugCheckError, setSlugCheckError] = useState('')
+  const [resolutionType, setResolutionType] = useState<ResolutionType>('dro_moov2')
+  const [resolutionTypeTouched, setResolutionTypeTouched] = useState(false)
   const [requiredRewardUsdc, setRequiredRewardUsdc] = useState(FALLBACK_REQUIRED_USDC)
   const [targetChainId, setTargetChainId] = useState<number>(DEFAULT_CREATE_EVENT_CHAIN_ID)
   const [eoaUsdcBalance, setEoaUsdcBalance] = useState(0)
@@ -312,6 +436,8 @@ function useAdminCreateEventForm({
   const [nativeGasCheckError, setNativeGasCheckError] = useState('')
   const [allowedCreatorCheckState, setAllowedCreatorCheckState] = useState<AllowedCreatorCheckState>('idle')
   const [allowedCreatorCheckError, setAllowedCreatorCheckError] = useState('')
+  const [proposerWhitelistCheckState, setProposerWhitelistCheckState] = useState<ProposerWhitelistCheckState>('idle')
+  const [proposerWhitelistCheckError, setProposerWhitelistCheckError] = useState('')
   const [openRouterCheckState, setOpenRouterCheckState] = useState<OpenRouterCheckState>('idle')
   const [openRouterCheckError, setOpenRouterCheckError] = useState('')
   const [contentCheckState, setContentCheckState] = useState<ContentCheckState>('idle')
@@ -322,6 +448,7 @@ function useAdminCreateEventForm({
   const [contentCheckError, setContentCheckError] = useState('')
   const [isAddingCreatorWallet, setIsAddingCreatorWallet] = useState(false)
   const [creatorWalletDialogOpen, setCreatorWalletDialogOpen] = useState(false)
+  const [proposersDialogOpen, setProposersDialogOpen] = useState(false)
   const [creatorWalletName, setCreatorWalletName] = useState('')
   const [isGeneratingRules, setIsGeneratingRules] = useState(false)
   const [isSigningAuth, setIsSigningAuth] = useState(false)
@@ -337,10 +464,44 @@ function useAdminCreateEventForm({
   const [pendingWorkflowStatus, setPendingWorkflowStatus] = useState<string | null>(null)
   const [preparedSignaturePlan, setPreparedSignaturePlan] = useState<PrepareResponse | null>(null)
   const [signatureTxs, setSignatureTxs] = useState<SignatureExecutionTx[]>([])
+  const resolutionSelectionRef = useRef<{ resolutionType: ResolutionType, touched: boolean }>({
+    resolutionType: 'dro_moov2',
+    touched: false,
+  })
+  useEffect(() => {
+    resolutionSelectionRef.current = {
+      resolutionType,
+      touched: resolutionTypeTouched,
+    }
+  }, [resolutionType, resolutionTypeTouched])
+  const handleResolutionTypeChange = useCallback((nextResolutionType: ResolutionType) => {
+    if (nextResolutionType === 'uma_moov2' && UMA_RESOLUTION_TEMPORARILY_DISABLED) {
+      toast.warning(t('UMA resolution is temporarily unavailable. Direct resolution is currently used for new markets.'))
+      return
+    }
+    if (nextResolutionType === resolutionSelectionRef.current.resolutionType) {
+      return
+    }
+
+    resolutionSelectionRef.current = {
+      resolutionType: nextResolutionType,
+      touched: true,
+    }
+    setResolutionTypeTouched(true)
+    setResolutionType(nextResolutionType)
+    setFundingCheckState('idle')
+    setPreparedSignaturePlan(null)
+    setSignatureTxs([])
+    setPendingWorkflowRequestId(null)
+    setPendingWorkflowStatus(null)
+    setSignatureFlowError('')
+    setSignatureFlowDone(false)
+  }, [t])
   const [expandedPreSignChecks, setExpandedPreSignChecks] = useState<Record<PreSignCheckKey, boolean>>({
     funding: true,
     nativeGas: true,
     allowedCreator: true,
+    proposerWhitelist: true,
     slug: true,
     openRouter: true,
     content: true,
@@ -474,11 +635,16 @@ function useAdminCreateEventForm({
 
     return isKnownLeagueSlug ? normalizedLeagueSlug : undefined
   }, [isCustomLeagueSlug, isKnownLeagueSlug, normalizedLeagueSlug])
+  const selectedCreatorAddress = useMemo(() => {
+    const candidate = automaticWalletAddress.trim() || eoaAddress || ''
+    if (!candidate || !isAddress(candidate)) {
+      return null
+    }
+    return getAddress(candidate)
+  }, [automaticWalletAddress, eoaAddress])
   const slugWalletAddress = useMemo(
-    () => creationMode === 'recurring'
-      ? automaticWalletAddress.trim()
-      : (eoaAddress || ''),
-    [automaticWalletAddress, creationMode, eoaAddress],
+    () => selectedCreatorAddress ?? '',
+    [selectedCreatorAddress],
   )
   const creatorSlugTail = useMemo(
     () => buildEventCreationWalletTail(slugWalletAddress),
@@ -534,7 +700,7 @@ function useAdminCreateEventForm({
   const preSignChecksFingerprint = useMemo(() => JSON.stringify({
     eoaAddress: eoaAddress?.toLowerCase() ?? '',
     creationMode,
-    creator: automaticWalletAddress.trim().toLowerCase(),
+    creator: selectedCreatorAddress?.toLowerCase() ?? '',
     recurrenceUnit,
     recurrenceInterval,
     targetChainId,
@@ -566,13 +732,13 @@ function useAdminCreateEventForm({
       resolutionRules: form.resolutionRules.trim(),
     },
   }), [
-    automaticWalletAddress,
     creationMode,
     eoaAddress,
     form,
     marketCount,
     recurrenceInterval,
     recurrenceUnit,
+    selectedCreatorAddress,
     sportsDerivedContent.payload,
     targetChainId,
   ])
@@ -973,17 +1139,20 @@ function useAdminCreateEventForm({
   const allowedCreatorHasIssue = allowedCreatorCheckState === 'missing'
     || allowedCreatorCheckState === 'no_wallet'
     || allowedCreatorCheckState === 'error'
+  const proposerWhitelistHasIssue = proposerWhitelistCheckState === 'missing'
+    || proposerWhitelistCheckState === 'no_wallet'
+    || proposerWhitelistCheckState === 'error'
   const slugHasIssue = slugValidationState === 'duplicate' || slugValidationState === 'error'
   const openRouterHasIssue = openRouterCheckState === 'error'
-  const contentIndicatorState = useMemo<'checking' | 'ok' | 'error'>(() => {
+  const contentIndicatorState = useMemo<PreSignIndicatorState>(() => {
     if (openRouterCheckState === 'error') {
       return 'error'
     }
-    if (openRouterCheckState !== 'ok') {
+    if (openRouterCheckState === 'checking' || contentCheckState === 'checking') {
       return 'checking'
     }
-    if (contentCheckState === 'checking' || contentCheckState === 'idle') {
-      return 'checking'
+    if (openRouterCheckState === 'idle' || contentCheckState === 'idle') {
+      return 'idle'
     }
     if (contentCheckError || pendingAiIssues.length > 0 || contentCheckState === 'error') {
       return 'error'
@@ -1110,6 +1279,7 @@ function useAdminCreateEventForm({
       fundingCheckState,
       nativeGasCheckState,
       allowedCreatorCheckState,
+      proposerWhitelistCheckState,
       openRouterCheckState,
       contentCheckState,
       hasPendingAiErrors: pendingAiIssues.length > 0,
@@ -1133,6 +1303,7 @@ function useAdminCreateEventForm({
     contentCheckError,
     openRouterCheckState,
     pendingAiIssues.length,
+    proposerWhitelistCheckState,
     recurrenceUnit,
     recurringPreviewErrors,
     slugValidationState,
@@ -1329,6 +1500,8 @@ function useAdminCreateEventForm({
     nativeGasHasIssue,
     openRouterCheckState,
     openRouterHasIssue,
+    proposerWhitelistCheckState,
+    proposerWhitelistHasIssue,
     slugHasIssue,
     slugValidationState,
   }), [
@@ -1342,6 +1515,8 @@ function useAdminCreateEventForm({
     nativeGasHasIssue,
     openRouterCheckState,
     openRouterHasIssue,
+    proposerWhitelistCheckState,
+    proposerWhitelistHasIssue,
     slugHasIssue,
     slugValidationState,
   ])
@@ -1373,6 +1548,7 @@ function useAdminCreateEventForm({
       apply('funding', fundingHasIssue, fundingCheckState === 'ok')
       apply('nativeGas', nativeGasHasIssue, nativeGasCheckState === 'ok')
       apply('allowedCreator', allowedCreatorHasIssue, allowedCreatorCheckState === 'ok')
+      apply('proposerWhitelist', proposerWhitelistHasIssue, proposerWhitelistCheckState === 'ok')
       apply('slug', slugHasIssue, slugValidationState === 'unique')
       apply('openRouter', openRouterHasIssue, openRouterCheckState === 'ok')
       apply('content', contentHasIssue, contentIndicatorState === 'ok')
@@ -2524,6 +2700,7 @@ function useAdminCreateEventForm({
 
     const payload: PreparePayloadBody = {
       chainId: targetChainId,
+      resolutionType,
       creator: eoaAddress,
       title: resolvedForm.title.trim(),
       slug: resolvedForm.slug.trim(),
@@ -2564,7 +2741,7 @@ function useAdminCreateEventForm({
       slug: option.slug.trim(),
     }))
     return payload
-  }, [creationMode, eoaAddress, getResolvedDateForms, isSportsEvent, recurringResolvedRules, selectedMainCategory, sportsDerivedContent.categories, sportsDerivedContent.options, sportsDerivedContent.payload, targetChainId])
+  }, [creationMode, eoaAddress, getResolvedDateForms, isSportsEvent, recurringResolvedRules, resolutionType, selectedMainCategory, sportsDerivedContent.categories, sportsDerivedContent.options, sportsDerivedContent.payload, targetChainId])
 
   const runOpenRouterCheck = useCallback(async () => {
     setOpenRouterCheckState('checking')
@@ -2760,7 +2937,7 @@ function useAdminCreateEventForm({
 
   const addCurrentWalletToAllowedCreators = useCallback(async () => {
     if (!eoaAddress) {
-      toast.error('Connect wallet first.')
+      toast.error(t('Select an EOA wallet first.'))
       return
     }
 
@@ -2803,9 +2980,43 @@ function useAdminCreateEventForm({
     finally {
       setIsAddingCreatorWallet(false)
     }
-  }, [creatorWalletName, eoaAddress, runAllowedCreatorCheck])
+  }, [creatorWalletName, eoaAddress, runAllowedCreatorCheck, t])
+
+  const runProposerWhitelistCheck = useCallback(async () => {
+    setProposerWhitelistCheckState('checking')
+    setProposerWhitelistCheckError('')
+
+    if (!selectedCreatorAddress) {
+      setProposerWhitelistCheckState('no_wallet')
+      return false
+    }
+
+    try {
+      const response = await fetchAdminApi(`/proposer-whitelists?creator=${encodeURIComponent(selectedCreatorAddress)}`, {
+        method: 'GET',
+        cache: 'no-store',
+      })
+      const payload = await response.json().catch(() => null) as unknown
+      const apiError = readApiError(payload)
+
+      if (!response.ok || apiError || !isProposerWhitelistStatusResponse(payload) || !payload.status) {
+        throw new Error(apiError || t('Proposer whitelist check failed ({status})', { status: String(response.status) }))
+      }
+
+      const hasWhitelist = Boolean(payload.status.whitelistAddress)
+      setProposerWhitelistCheckState(hasWhitelist ? 'ok' : 'missing')
+      return hasWhitelist
+    }
+    catch (error) {
+      console.error('Error validating proposer whitelist:', error)
+      setProposerWhitelistCheckState('error')
+      setProposerWhitelistCheckError(t('Could not validate resolution proposers whitelist.'))
+      return false
+    }
+  }, [selectedCreatorAddress, t])
 
   const runFundingCheck = useCallback(async () => {
+    const resolutionSelectionAtStart = resolutionSelectionRef.current
     setFundingCheckState('checking')
     setFundingCheckError('')
 
@@ -2820,7 +3031,40 @@ function useAdminCreateEventForm({
       }
 
       const payload: MarketConfigResponse = await response.json()
-      const required = Number(payload.requiredCreatorFundingUsdc ?? FALLBACK_REQUIRED_USDC)
+      const resolvedServerDefaultResolutionType: ResolutionType
+        = payload.defaultResolutionType === 'dro_moov2' || payload.defaultResolutionType === 'uma_moov2'
+          ? payload.defaultResolutionType
+          : 'dro_moov2'
+      const serverDefaultResolutionType: ResolutionType
+        = resolvedServerDefaultResolutionType === 'uma_moov2' && UMA_RESOLUTION_TEMPORARILY_DISABLED
+          ? 'dro_moov2'
+          : resolvedServerDefaultResolutionType
+      const resolutionSelectionChanged
+        = resolutionSelectionRef.current.resolutionType !== resolutionSelectionAtStart.resolutionType
+          || resolutionSelectionRef.current.touched !== resolutionSelectionAtStart.touched
+      if (resolutionSelectionChanged) {
+        setFundingCheckState('idle')
+        return false
+      }
+
+      const effectiveResolutionType = resolutionSelectionAtStart.touched
+        ? resolutionSelectionAtStart.resolutionType
+        : serverDefaultResolutionType
+      if (!resolutionSelectionAtStart.touched && resolutionSelectionAtStart.resolutionType !== serverDefaultResolutionType) {
+        resolutionSelectionRef.current = {
+          resolutionType: serverDefaultResolutionType,
+          touched: false,
+        }
+        setResolutionType(serverDefaultResolutionType)
+      }
+      const directFee = form.marketMode === 'multi_unique'
+        ? payload.directNegRiskQuestionFeeUsdc
+        : payload.directNormalMarketFeeUsdc
+      const required = Number(
+        effectiveResolutionType === 'dro_moov2'
+          ? directFee ?? payload.requiredCreatorFundingUsdc ?? FALLBACK_REQUIRED_USDC
+          : payload.requiredCreatorFundingUsdc ?? FALLBACK_REQUIRED_USDC,
+      )
       const normalizedRequired = Number.isFinite(required) && required > 0 ? required : FALLBACK_REQUIRED_USDC
       setRequiredRewardUsdc(normalizedRequired)
       const configuredChainId = typeof payload.defaultChainId === 'number' && payload.defaultChainId > 0
@@ -2868,7 +3112,7 @@ function useAdminCreateEventForm({
       setFundingCheckError('Could not validate USDC balance right now.')
       return false
     }
-  }, [eoaAddress, marketCount])
+  }, [eoaAddress, form.marketMode, marketCount])
 
   const runNativeGasCheck = useCallback(async () => {
     setNativeGasCheckState('checking')
@@ -2935,10 +3179,11 @@ function useAdminCreateEventForm({
     }
 
     lastPreSignChecksCompletedRef.current = false
-    const [fundingOk, nativeGasOk, creatorOk, openRouterOk, slugOk] = await Promise.all([
+    const [fundingOk, nativeGasOk, creatorOk, proposerWhitelistOk, openRouterOk, slugOk] = await Promise.all([
       runFundingCheck(),
       runNativeGasCheck(),
       runAllowedCreatorCheck(),
+      runProposerWhitelistCheck(),
       runOpenRouterCheck(),
       runSlugCheck(),
     ])
@@ -2956,100 +3201,20 @@ function useAdminCreateEventForm({
       setContentCheckProgressLine('')
     }
 
-    const nextResult = fundingOk && nativeGasOk && creatorOk && openRouterOk && slugOk && contentOk
+    const nextResult = fundingOk && nativeGasOk && creatorOk && proposerWhitelistOk && openRouterOk && slugOk && contentOk
     lastPreSignChecksFingerprintRef.current = preSignChecksFingerprint
     lastPreSignChecksCompletedRef.current = true
     lastPreSignChecksResultRef.current = nextResult
 
     return nextResult
-  }, [preSignChecksFingerprint, runAllowedCreatorCheck, runContentCheck, runFundingCheck, runNativeGasCheck, runOpenRouterCheck, runSlugCheck])
-
-  const getFeeOverridesForTx = useCallback(async (chainId: number) => {
-    if (!publicClient) {
-      return {}
-    }
-
-    const priorityFloor = chainId === AMOY_CHAIN_ID ? MIN_AMOY_PRIORITY_FEE_WEI : 0n
-
-    try {
-      const estimated = await publicClient.estimateFeesPerGas()
-      const hasEip1559Fees = typeof estimated.maxFeePerGas === 'bigint' || typeof estimated.maxPriorityFeePerGas === 'bigint'
-      if (hasEip1559Fees) {
-        const maxPriorityFeePerGas = (() => {
-          const value = estimated.maxPriorityFeePerGas ?? null
-          if (!value) {
-            return priorityFloor > 0n ? priorityFloor : null
-          }
-          if (value < priorityFloor) {
-            return priorityFloor
-          }
-          return value
-        })()
-
-        const maxFeePerGas = (() => {
-          const base = estimated.maxFeePerGas ?? (typeof estimated.gasPrice === 'bigint' ? estimated.gasPrice * 2n : null)
-          if (!maxPriorityFeePerGas) {
-            return base
-          }
-          if (!base || base <= maxPriorityFeePerGas) {
-            return maxPriorityFeePerGas * 2n
-          }
-          return base
-        })()
-
-        if (typeof maxFeePerGas === 'bigint' && typeof maxPriorityFeePerGas === 'bigint') {
-          return { maxFeePerGas, maxPriorityFeePerGas }
-        }
-      }
-
-      if (typeof estimated.gasPrice === 'bigint') {
-        const maxPriorityFeePerGas = estimated.gasPrice < priorityFloor ? priorityFloor : estimated.gasPrice
-        return {
-          maxPriorityFeePerGas,
-          maxFeePerGas: maxPriorityFeePerGas * 2n,
-        }
-      }
-    }
-    catch (error) {
-      console.warn('Could not estimate fees with estimateFeesPerGas:', error)
-    }
-
-    try {
-      const gasPrice = await publicClient.getGasPrice()
-      const maxPriorityFeePerGas = gasPrice < priorityFloor ? priorityFloor : gasPrice
-      return {
-        maxPriorityFeePerGas,
-        maxFeePerGas: maxPriorityFeePerGas * 2n,
-      }
-    }
-    catch (error) {
-      console.warn('Could not estimate fees with getGasPrice:', error)
-    }
-
-    if (priorityFloor > 0n) {
-      return {
-        maxPriorityFeePerGas: priorityFloor,
-        maxFeePerGas: priorityFloor * 2n,
-      }
-    }
-
-    return {}
-  }, [publicClient])
+  }, [preSignChecksFingerprint, runAllowedCreatorCheck, runContentCheck, runFundingCheck, runNativeGasCheck, runOpenRouterCheck, runProposerWhitelistCheck, runSlugCheck])
 
   const applyPreparedSignatureState = useCallback((input: {
     prepared: PrepareResponse
     confirmedTxs: PrepareFinalizeRequestTx[]
     errorMessage?: string | null
   }) => {
-    const confirmedById = new Map(input.confirmedTxs.map(item => [item.id, item.hash]))
-    const txs: SignatureExecutionTx[] = input.prepared.txPlan.map((planned) => {
-      const hash = confirmedById.get(planned.id)
-      return {
-        ...planned,
-        status: hash ? 'success' : 'idle',
-        hash: hash ?? undefined,
-      }
-    })
+    const txs = buildSignatureExecutionTxs(input.prepared, input.confirmedTxs)
 
     skipNextSignatureResetRef.current = true
     setTargetChainId(input.prepared.chainId)
@@ -3058,6 +3223,7 @@ function useAdminCreateEventForm({
     setSignatureFlowDone(false)
     setSignatureFlowError(typeof input.errorMessage === 'string' ? input.errorMessage : '')
     setAuthChallengeExpiresAtMs(null)
+    return txs
   }, [])
 
   const fetchPendingSignatureRequest = useCallback(async (options?: {
@@ -3196,11 +3362,12 @@ function useAdminCreateEventForm({
     requestId?: string
   }) => {
     if (!eoaAddress) {
-      return false
+      return null
     }
 
     const silent = Boolean(options?.silent)
     setIsLoadingPendingRequest(true)
+    let loadedPlan: LoadedSignaturePlan | null = null
 
     try {
       const pending = await fetchPendingSignatureRequest({
@@ -3209,11 +3376,11 @@ function useAdminCreateEventForm({
       })
 
       if (!pending) {
-        return false
+        return null
       }
 
       if (options?.expectedPayloadHash && pending.payloadHash.toLowerCase() !== options.expectedPayloadHash.toLowerCase()) {
-        return false
+        return null
       }
 
       setPendingWorkflowRequestId(pending.requestId)
@@ -3223,14 +3390,19 @@ function useAdminCreateEventForm({
         if (!isAddress(pending.prepared.creator) || getAddress(pending.prepared.creator) !== eoaAddress) {
           setPendingWorkflowRequestId(null)
           setPendingWorkflowStatus(null)
-          return false
+          return null
         }
 
-        applyPreparedSignatureState({
+        const loadedSignatureTxs = applyPreparedSignatureState({
           prepared: pending.prepared,
           confirmedTxs: pending.txs,
           errorMessage: pending.errorMessage,
         })
+        loadedPlan = {
+          pending,
+          prepared: pending.prepared,
+          signatureTxs: loadedSignatureTxs,
+        }
         if (pending.status === 'finalized') {
           setSignatureFlowDone(true)
         }
@@ -3240,22 +3412,24 @@ function useAdminCreateEventForm({
       }
 
       if (pending.status === 'prepare_running') {
-        await pollPendingPreparation({
+        const preparedPending = await pollPendingPreparation({
           requestId: pending.requestId,
           chainId: pending.chainId,
           expectedPayloadHash: options?.expectedPayloadHash,
         })
+        loadedPlan = buildLoadedSignaturePlan(preparedPending)
       }
       else if (pending.status === 'finalize_running') {
-        await pollPendingFinalization({
+        const finalizedPending = await pollPendingFinalization({
           requestId: pending.requestId,
           chainId: pending.chainId,
         })
+        loadedPlan = buildLoadedSignaturePlan(finalizedPending)
       }
       else if (!pending.prepared) {
         setPendingWorkflowRequestId(null)
         setPendingWorkflowStatus(null)
-        return false
+        return null
       }
       else if (pending.status !== 'finalized' && pending.status !== 'finalize_in_progress') {
         setPendingWorkflowRequestId(null)
@@ -3265,7 +3439,7 @@ function useAdminCreateEventForm({
       if (!silent) {
         toast.success('Recovered pending signature progress from server.')
       }
-      return true
+      return loadedPlan
     }
     catch (error) {
       console.error('Error loading pending signature plan:', error)
@@ -3275,7 +3449,7 @@ function useAdminCreateEventForm({
         const message = error instanceof Error ? error.message : 'Could not recover pending signature progress.'
         toast.error(message)
       }
-      return false
+      return null
     }
     finally {
       setIsLoadingPendingRequest(false)
@@ -3312,12 +3486,35 @@ function useAdminCreateEventForm({
     }
   }, [eoaAddress])
 
-  const resumeAnyPendingSignaturePlan = useCallback(() => {
-    void loadPendingSignaturePlan({
-      silent: false,
-      chainId: targetChainId,
-    })
-  }, [loadPendingSignaturePlan, targetChainId])
+  const getConnectedWalletConnection = useCallback(() => {
+    if (!eoaAddress) {
+      throw new Error('Connect wallet first.')
+    }
+
+    const rpcProvider = isRpcWalletProvider(walletProvider)
+      ? walletProvider
+      : walletClientMatchesConnectedAddress && isRpcWalletProvider(walletClient)
+        ? walletClient
+        : null
+    const walletClientMatchesAddress = walletClientMatchesConnectedAddress
+
+    if (!walletClientMatchesAddress && !rpcProvider) {
+      throw new Error('Wallet connection is not ready. Please try again.')
+    }
+
+    return {
+      rpcProvider,
+      walletClient,
+      walletClientMatchesAddress,
+      chainId: connectedWalletTransportChainId ?? null,
+    }
+  }, [
+    connectedWalletTransportChainId,
+    eoaAddress,
+    walletClient,
+    walletClientMatchesConnectedAddress,
+    walletProvider,
+  ])
 
   const generateRulesWithAi = useCallback(async () => {
     setIsGeneratingRules(true)
@@ -3360,9 +3557,6 @@ function useAdminCreateEventForm({
     if (!eoaAddress) {
       throw new Error('Connect wallet first.')
     }
-    if (!walletClient) {
-      throw new Error('Wallet client not available.')
-    }
 
     setIsPreparingSignaturePlan(true)
     setIsSigningAuth(true)
@@ -3373,8 +3567,21 @@ function useAdminCreateEventForm({
     let currentPayloadChainId: number | null = null
 
     try {
-      const activeWalletClient = walletClient
+      const connection = getConnectedWalletConnection()
       const payload = buildPreparePayload()
+      const payloadNetwork = resolveViemNetworkByChainId(payload.chainId)
+      const activeWalletClient = connection.walletClientMatchesAddress && connection.walletClient
+        ? connection.walletClient
+        : connection.rpcProvider
+          ? createWalletClient({
+              account: eoaAddress,
+              transport: custom(connection.rpcProvider),
+              ...(payloadNetwork ? { chain: payloadNetwork } : {}),
+            })
+          : null
+      if (!activeWalletClient) {
+        throw new Error('Wallet connection is not ready. Please try again.')
+      }
       const payloadJson = JSON.stringify(payload)
       const payloadHash = keccak256(stringToHex(payloadJson))
       currentPayloadHash = payloadHash
@@ -3407,8 +3614,8 @@ function useAdminCreateEventForm({
       if (!isAddress(authPayload.domain.verifyingContract)) {
         throw new Error('Invalid verifying contract in auth challenge response.')
       }
-      if (activeWalletClient.chain?.id && activeWalletClient.chain.id !== authPayload.chainId) {
-        throw new Error(`Switch wallet to ${getChainLabel()} before signing auth.`)
+      if (connection.chainId && connection.chainId !== authPayload.chainId) {
+        throw new Error(`Switch wallet to ${getChainLabel(authPayload.chainId)} before signing auth.`)
       }
       setAuthChallengeExpiresAtMs(authPayload.expiresAt)
       setSignatureNowMs(Date.now())
@@ -3516,6 +3723,7 @@ function useAdminCreateEventForm({
       else {
         toast.success(`Auth completed. Prepared ${txCount} signature request${txCount > 1 ? 's' : ''}.`)
       }
+      return buildLoadedSignaturePlan(preparedPending)
     }
     catch (error) {
       console.error('Error preparing signature plan:', error)
@@ -3529,7 +3737,7 @@ function useAdminCreateEventForm({
           expectedPayloadHash: currentPayloadHash || undefined,
         })
         if (resumed) {
-          return
+          return resumed
         }
       }
 
@@ -3550,6 +3758,7 @@ function useAdminCreateEventForm({
     eoaAddress,
     eventImageFile,
     form.options,
+    getConnectedWalletConnection,
     isSportsEvent,
     storedAssets.eventImage,
     storedAssets.optionImages,
@@ -3559,11 +3768,15 @@ function useAdminCreateEventForm({
     pollPendingPreparation,
     runWithSignaturePrompt,
     teamLogoFiles,
-    walletClient,
   ])
 
-  const finalizeSignatureFlow = useCallback(async (completedTxsInput?: PrepareFinalizeRequestTx[]) => {
-    if (!preparedSignaturePlan) {
+  const finalizeSignatureFlow = useCallback(async (
+    completedTxsInput?: PrepareFinalizeRequestTx[],
+    preparedInput?: PrepareResponse,
+  ) => {
+    const activePreparedSignaturePlan = preparedInput ?? preparedSignaturePlan
+
+    if (!activePreparedSignaturePlan) {
       throw new Error('Prepare signatures first.')
     }
     if (!eoaAddress) {
@@ -3589,7 +3802,7 @@ function useAdminCreateEventForm({
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            requestId: preparedSignaturePlan.requestId,
+            requestId: activePreparedSignaturePlan.requestId,
             creator: eoaAddress,
             txs: completedTxs,
           }),
@@ -3597,7 +3810,7 @@ function useAdminCreateEventForm({
 
         const { payload: responsePayload, text: responseText } = await readResponseBody(response)
         if (response.ok && isFinalizeResponse(responsePayload)) {
-          if (responsePayload.requestId !== preparedSignaturePlan.requestId) {
+          if (responsePayload.requestId !== activePreparedSignaturePlan.requestId) {
             throw new Error('Finalize response requestId mismatch.')
           }
 
@@ -3617,7 +3830,7 @@ function useAdminCreateEventForm({
             setPendingWorkflowStatus(responsePayload.status)
             await pollPendingFinalization({
               requestId: responsePayload.requestId,
-              chainId: preparedSignaturePlan.chainId,
+              chainId: activePreparedSignaturePlan.chainId,
             })
             return
           }
@@ -3639,24 +3852,48 @@ function useAdminCreateEventForm({
     }
   }, [eoaAddress, pollPendingFinalization, preparedSignaturePlan, signatureTxs])
 
-  const executeSignatureFlow = useCallback(async () => {
-    if (!preparedSignaturePlan) {
+  const executeSignatureFlow = useCallback(async (input?: {
+    prepared: PrepareResponse
+    signatureTxs: SignatureExecutionTx[]
+  }) => {
+    const activePreparedSignaturePlan = input?.prepared ?? preparedSignaturePlan
+    const activeSignatureTxs = input?.signatureTxs ?? signatureTxs
+
+    if (!activePreparedSignaturePlan) {
       throw new Error('Prepare signatures first.')
     }
     if (!eoaAddress) {
       throw new Error('Connect wallet first.')
     }
-    if (!walletClient) {
-      throw new Error('Wallet client not available.')
-    }
     if (!publicClient) {
       throw new Error('Public client not available.')
     }
+    const chainPublicClient = publicClient
+    const connection = getConnectedWalletConnection()
     const senderAddress = eoaAddress
-    const activeWalletClient = walletClient
+    const preparedNetwork = resolveViemNetworkByChainId(activePreparedSignaturePlan.chainId)
+    const activeWalletClient = connection.walletClientMatchesAddress && connection.walletClient
+      ? connection.walletClient
+      : connection.rpcProvider
+        ? createWalletClient({
+            account: senderAddress,
+            transport: custom(connection.rpcProvider),
+            ...(preparedNetwork ? { chain: preparedNetwork } : {}),
+          })
+        : null
+    if (!activeWalletClient) {
+      throw new Error('Wallet connection is not ready. Please try again.')
+    }
 
-    if (activeWalletClient.chain?.id && activeWalletClient.chain.id !== preparedSignaturePlan.chainId) {
-      throw new Error(`Switch wallet to ${getChainLabel()} before signing.`)
+    if (connection.chainId && connection.chainId !== activePreparedSignaturePlan.chainId) {
+      throw new Error(`Switch wallet to ${getChainLabel(activePreparedSignaturePlan.chainId)} before signing.`)
+    }
+
+    if (input) {
+      skipNextSignatureResetRef.current = true
+      setTargetChainId(activePreparedSignaturePlan.chainId)
+      setPreparedSignaturePlan(activePreparedSignaturePlan)
+      setSignatureTxs(activeSignatureTxs)
     }
 
     setIsExecutingSignatures(true)
@@ -3665,21 +3902,21 @@ function useAdminCreateEventForm({
 
     try {
       const completedById = new Map<string, string>()
-      for (let index = 0; index < preparedSignaturePlan.txPlan.length; index += 1) {
-        const planned = preparedSignaturePlan.txPlan[index]
-        const existing = signatureTxs[index]
+      for (let index = 0; index < activePreparedSignaturePlan.txPlan.length; index += 1) {
+        const planned = activePreparedSignaturePlan.txPlan[index]
+        const existing = activeSignatureTxs[index]
         if (existing?.status === 'success' && existing.hash) {
           completedById.set(planned.id, existing.hash)
         }
       }
 
-      for (let index = 0; index < preparedSignaturePlan.txPlan.length; index += 1) {
-        const existingTx = signatureTxs[index]
+      for (let index = 0; index < activePreparedSignaturePlan.txPlan.length; index += 1) {
+        const existingTx = activeSignatureTxs[index]
         if (existingTx?.status === 'success') {
           continue
         }
 
-        const tx = preparedSignaturePlan.txPlan[index]
+        const tx = activePreparedSignaturePlan.txPlan[index]
         if (!isAddress(tx.to)) {
           throw new Error(`Invalid tx target for ${tx.id}.`)
         }
@@ -3687,6 +3924,31 @@ function useAdminCreateEventForm({
         if (!tx.data.startsWith('0x')) {
           throw new Error(`Invalid tx data for ${tx.id}.`)
         }
+        const signaturePromptCopy = (() => {
+          if (tx.id === 'approve-uma-reward' || tx.id === 'approve-direct-resolution-fee') {
+            return {
+              title: t('Approve USDC spending'),
+              description: t('Open your wallet to allow the market creation fees.'),
+            }
+          }
+          if (tx.id.startsWith('pay-direct-')) {
+            return {
+              title: t('Pay direct resolution fee'),
+              description: t('Open your wallet to pay the direct resolution fee.'),
+            }
+          }
+          if (tx.id.startsWith('initialize-market-')) {
+            return {
+              title: t('Initialize market'),
+              description: t('Open your wallet to create the market onchain.'),
+            }
+          }
+
+          return {
+            title: t('Confirm transaction'),
+            description: t('Open your wallet and approve the transaction to continue.'),
+          }
+        })()
 
         if (existingTx?.hash) {
           setSignatureTxs(previous => previous.map((item, itemIndex) => {
@@ -3700,7 +3962,7 @@ function useAdminCreateEventForm({
             }
           }))
 
-          const existingReceipt = await publicClient.waitForTransactionReceipt({
+          const existingReceipt = await chainPublicClient.waitForTransactionReceipt({
             hash: existingTx.hash as `0x${string}`,
           })
           if (existingReceipt.status !== 'success') {
@@ -3719,7 +3981,7 @@ function useAdminCreateEventForm({
           completedById.set(tx.id, existingTx.hash)
           const completedTxs = Array.from(completedById.entries()).map(([id, hash]) => ({ id, hash }))
           try {
-            await persistConfirmedTxs(preparedSignaturePlan.requestId, completedTxs)
+            await persistConfirmedTxs(activePreparedSignaturePlan.requestId, completedTxs)
           }
           catch (persistError) {
             console.error('Could not persist previously confirmed tx hashes:', persistError)
@@ -3742,9 +4004,13 @@ function useAdminCreateEventForm({
           maxFeePerGas?: bigint
           maxPriorityFeePerGas?: bigint
         }) {
-          return activeWalletClient.sendTransaction({
+          if (!connection.walletClient || !connection.walletClientMatchesAddress) {
+            throw new Error('Wallet connection is not ready. Please try again.')
+          }
+
+          return connection.walletClient.sendTransaction({
             account: senderAddress,
-            chain: activeWalletClient.chain,
+            chain: connection.walletClient.chain,
             to: toAddress,
             data: tx.data as `0x${string}`,
             value: BigInt(tx.value || '0'),
@@ -3752,15 +4018,91 @@ function useAdminCreateEventForm({
           })
         }
 
+        async function estimateEmbeddedGas() {
+          try {
+            const estimatedGas = await chainPublicClient.estimateGas({
+              account: senderAddress,
+              to: toAddress,
+              data: tx.data as `0x${string}`,
+              value: BigInt(tx.value || '0'),
+            })
+
+            return (estimatedGas * 12n) / 10n
+          }
+          catch {
+            return undefined
+          }
+        }
+
+        async function sendRpc(overrides?: {
+          maxFeePerGas?: bigint
+          maxPriorityFeePerGas?: bigint
+        }) {
+          if (!connection.rpcProvider) {
+            throw new Error('Wallet connection is not ready. Please try again.')
+          }
+          const rpcProvider = connection.rpcProvider
+
+          const rpcWalletClient = createWalletClient({
+            account: senderAddress,
+            transport: custom(rpcProvider),
+            ...(preparedNetwork ? { chain: preparedNetwork } : {}),
+          })
+
+          if (isEmbeddedWallet) {
+            const gas = await estimateEmbeddedGas()
+            const txRequest = buildRpcTransactionRequest({
+              from: senderAddress,
+              to: toAddress,
+              data: tx.data as `0x${string}`,
+              value: BigInt(tx.value || '0'),
+              gas,
+              ...(overrides ?? {}),
+            })
+            const rpcHash = await runWithSignaturePrompt(
+              () => rpcProvider.request({
+                method: 'eth_sendTransaction',
+                params: [txRequest],
+              }),
+              signaturePromptCopy,
+            )
+            if (typeof rpcHash !== 'string' || !rpcHash.startsWith('0x')) {
+              throw new Error('Wallet provider returned an invalid transaction hash.')
+            }
+            return rpcHash
+          }
+
+          const rpcHash = await runWithSignaturePrompt(
+            () => rpcWalletClient.sendTransaction({
+              account: senderAddress,
+              chain: preparedNetwork ?? undefined,
+              to: toAddress,
+              data: tx.data as `0x${string}`,
+              value: BigInt(tx.value || '0'),
+              ...(overrides ?? {}),
+            }),
+            signaturePromptCopy,
+          )
+          if (typeof rpcHash !== 'string' || !rpcHash.startsWith('0x')) {
+            throw new Error('Wallet provider returned an invalid transaction hash.')
+          }
+          return rpcHash
+        }
+
         async function sendWithRpcFallback(overrides?: {
           maxFeePerGas?: bigint
           maxPriorityFeePerGas?: bigint
         }) {
+          if (isEmbeddedWallet) {
+            return await sendRpc(overrides)
+          }
+
+          if (!connection.walletClientMatchesAddress) {
+            return await sendRpc(overrides)
+          }
+
           try {
-            return await runWithSignaturePrompt(() => send(overrides), {
-              title: 'Confirm transaction',
-              description: 'Open your wallet and approve the transaction to continue.',
-            })
+            return await runWithSignaturePrompt(() => send(overrides), signaturePromptCopy)
           }
           catch (sendError) {
             const message = sendError instanceof Error ? sendError.message : String(sendError)
@@ -3768,32 +4110,19 @@ function useAdminCreateEventForm({
               throw sendError
             }
 
-            const txRequest = {
-              from: senderAddress,
-              to: toAddress,
-              data: tx.data as `0x${string}`,
-              value: toHex(BigInt(tx.value || '0')),
-            }
-            const rpcHash = await runWithSignaturePrompt(
-              () => activeWalletClient.request({
-                method: 'eth_sendTransaction',
-                params: [txRequest],
-              }) as Promise<unknown>,
-              {
-                title: 'Confirm transaction',
-                description: 'Open your wallet and approve the transaction to continue.',
-              },
-            )
-            if (typeof rpcHash !== 'string' || !rpcHash.startsWith('0x')) {
-              throw new Error('Wallet provider returned an invalid transaction hash.')
-            }
-            return rpcHash
+            return await sendRpc(overrides)
           }
         }
 
         let hash: string
         try {
-          hash = await sendWithRpcFallback()
+          hash = isEmbeddedWallet
+            ? await sendWithRpcFallback()
+            : await sendWithEstimatedFeeRetry({
+                chainId: activePreparedSignaturePlan.chainId,
+                client: chainPublicClient,
+                send: sendWithRpcFallback,
+              })
         }
         catch (sendError) {
           const message = sendError instanceof Error ? sendError.message : String(sendError)
@@ -3811,24 +4140,7 @@ function useAdminCreateEventForm({
             continue
           }
 
-          const minTip = parseMinTipCapFromError(message)
-          if (minTip) {
-            hash = await sendWithRpcFallback({
-              maxPriorityFeePerGas: minTip,
-              maxFeePerGas: minTip * 2n,
-            })
-          }
-          else {
-            const feeOverrides = await getFeeOverridesForTx(preparedSignaturePlan.chainId)
-            const retryOverrides: {
-              maxFeePerGas?: bigint
-              maxPriorityFeePerGas?: bigint
-            } = feeOverrides
-            if (!retryOverrides.maxFeePerGas && !retryOverrides.maxPriorityFeePerGas) {
-              throw sendError
-            }
-            hash = await sendWithRpcFallback(retryOverrides)
-          }
+          throw sendError
         }
 
         setSignatureTxs(previous => previous.map((item, itemIndex) => {
@@ -3842,7 +4154,7 @@ function useAdminCreateEventForm({
           }
         }))
 
-        const receipt = await publicClient.waitForTransactionReceipt({ hash: hash as `0x${string}` })
+        const receipt = await chainPublicClient.waitForTransactionReceipt({ hash: hash as `0x${string}` })
         if (receipt.status !== 'success') {
           throw new Error(`Transaction ${tx.id} failed on-chain.`)
         }
@@ -3862,7 +4174,7 @@ function useAdminCreateEventForm({
           hash: confirmedHash,
         }))
         try {
-          await persistConfirmedTxs(preparedSignaturePlan.requestId, completedTxs)
+          await persistConfirmedTxs(activePreparedSignaturePlan.requestId, completedTxs)
         }
         catch (persistError) {
           console.error('Could not persist confirmed tx hashes:', persistError)
@@ -3872,14 +4184,14 @@ function useAdminCreateEventForm({
       const completedTxs = Array.from(completedById.entries()).map(([id, hash]) => ({ id, hash }))
       if (completedTxs.length > 0) {
         try {
-          await persistConfirmedTxs(preparedSignaturePlan.requestId, completedTxs)
+          await persistConfirmedTxs(activePreparedSignaturePlan.requestId, completedTxs)
         }
         catch (persistError) {
           console.error('Could not persist confirmed tx hashes before finalize:', persistError)
         }
       }
 
-      await finalizeSignatureFlow(completedTxs)
+      await finalizeSignatureFlow(completedTxs, activePreparedSignaturePlan)
     }
     catch (error) {
       console.error('Error executing signature flow:', error)
@@ -3910,13 +4222,14 @@ function useAdminCreateEventForm({
   }, [
     eoaAddress,
     finalizeSignatureFlow,
-    getFeeOverridesForTx,
+    getConnectedWalletConnection,
+    isEmbeddedWallet,
     persistConfirmedTxs,
     preparedSignaturePlan,
     publicClient,
     runWithSignaturePrompt,
     signatureTxs,
-    walletClient,
+    t,
   ])
 
   const copyWalletAddress = useCallback(async () => {
@@ -3963,6 +4276,7 @@ function useAdminCreateEventForm({
       fundingCheckState,
       nativeGasCheckState,
       allowedCreatorCheckState,
+      proposerWhitelistCheckState,
       openRouterCheckState,
       contentCheckState,
       hasPendingAiErrors: pendingAiIssues.length > 0,
@@ -3994,6 +4308,7 @@ function useAdminCreateEventForm({
     contentCheckError,
     openRouterCheckState,
     pendingAiIssues.length,
+    proposerWhitelistCheckState,
     recurrenceUnit,
     recurringPreviewErrors,
     showFirstError,
@@ -4042,6 +4357,8 @@ function useAdminCreateEventForm({
     setNativeGasCheckError('')
     setAllowedCreatorCheckState('idle')
     setAllowedCreatorCheckError('')
+    setProposerWhitelistCheckState('idle')
+    setProposerWhitelistCheckError('')
     setOpenRouterCheckState('idle')
     setOpenRouterCheckError('')
     setContentCheckState('idle')
@@ -4129,6 +4446,8 @@ function useAdminCreateEventForm({
     setNativeGasCheckError('')
     setAllowedCreatorCheckState('idle')
     setAllowedCreatorCheckError('')
+    setProposerWhitelistCheckState('idle')
+    setProposerWhitelistCheckError('')
     setOpenRouterCheckState('idle')
     setOpenRouterCheckError('')
     setContentCheckState('idle')
@@ -4217,9 +4536,21 @@ function useAdminCreateEventForm({
             expectedPayloadHash: payloadHash,
           })
           if (resumed) {
+            if (!isFinalizationPendingStatus(resumed.pending.status)) {
+              await executeSignatureFlow({
+                prepared: resumed.prepared,
+                signatureTxs: resumed.signatureTxs,
+              })
+            }
             return
           }
-          await prepareSignaturePlan()
+          const prepared = await prepareSignaturePlan()
+          if (prepared && !isFinalizationPendingStatus(prepared.pending.status)) {
+            await executeSignatureFlow({
+              prepared: prepared.prepared,
+              signatureTxs: prepared.signatureTxs,
+            })
+          }
           return
         }
         await executeSignatureFlow()
@@ -4339,6 +4670,7 @@ function useAdminCreateEventForm({
 
   const isStepFourPreSignChecksRunning = fundingCheckState === 'checking'
     || allowedCreatorCheckState === 'checking'
+    || proposerWhitelistCheckState === 'checking'
     || slugValidationState === 'checking'
     || openRouterCheckState === 'checking'
     || contentCheckState === 'checking'
@@ -4355,6 +4687,7 @@ function useAdminCreateEventForm({
     router,
     eoaAddress,
     eoaShortAddress,
+    selectedCreatorAddress,
     currentStep,
     maxVisitedStep,
     form,
@@ -4380,6 +4713,8 @@ function useAdminCreateEventForm({
     storedAssets,
     slugValidationState,
     slugCheckError,
+    resolutionType,
+    handleResolutionTypeChange,
     requiredRewardUsdc,
     targetChainId,
     eoaUsdcBalance,
@@ -4391,6 +4726,8 @@ function useAdminCreateEventForm({
     nativeGasCheckError,
     allowedCreatorCheckState,
     allowedCreatorCheckError,
+    proposerWhitelistCheckState,
+    proposerWhitelistCheckError,
     openRouterCheckState,
     openRouterCheckError,
     contentCheckState,
@@ -4402,6 +4739,8 @@ function useAdminCreateEventForm({
     isAddingCreatorWallet,
     creatorWalletDialogOpen,
     setCreatorWalletDialogOpen,
+    proposersDialogOpen,
+    setProposersDialogOpen,
     creatorWalletName,
     setCreatorWalletName,
     isGeneratingRules,
@@ -4486,6 +4825,7 @@ function useAdminCreateEventForm({
     fundingHasIssue,
     nativeGasHasIssue,
     allowedCreatorHasIssue,
+    proposerWhitelistHasIssue,
     slugHasIssue,
     openRouterHasIssue,
     contentHasIssue,
@@ -4538,10 +4878,11 @@ function useAdminCreateEventForm({
     bypassIssue,
     goToIssueStep,
     togglePreSignCheck,
-    resumeAnyPendingSignaturePlan,
     continueFromFinalPreview,
     generateRulesWithAi,
     addCurrentWalletToAllowedCreators,
+    runProposerWhitelistCheck,
+    setProposerWhitelistCheckState,
     isStepFourPreSignChecksRunning,
     stepFourNextButtonContent,
     creationMode,
@@ -4562,6 +4903,7 @@ export default function AdminCreateEventForm({
   serverDraftPayload = null,
   serverAssetPayload = null,
 }: AdminCreateEventFormProps) {
+  const t = useExtracted()
   const hook = useAdminCreateEventForm({
     sportsSlugCatalog,
     creationMode,
@@ -4580,6 +4922,7 @@ export default function AdminCreateEventForm({
     router,
     eoaAddress,
     eoaShortAddress,
+    selectedCreatorAddress,
     currentStep,
     maxVisitedStep,
     form,
@@ -4600,6 +4943,8 @@ export default function AdminCreateEventForm({
     setCategoryQuery,
     slugValidationState,
     slugCheckError,
+    resolutionType,
+    handleResolutionTypeChange,
     requiredRewardUsdc,
     eoaUsdcBalance,
     fundingCheckState,
@@ -4610,6 +4955,8 @@ export default function AdminCreateEventForm({
     nativeGasCheckError,
     allowedCreatorCheckState,
     allowedCreatorCheckError,
+    proposerWhitelistCheckState,
+    proposerWhitelistCheckError,
     openRouterCheckState,
     openRouterCheckError,
     contentCheckState,
@@ -4619,6 +4966,8 @@ export default function AdminCreateEventForm({
     isAddingCreatorWallet,
     creatorWalletDialogOpen,
     setCreatorWalletDialogOpen,
+    proposersDialogOpen,
+    setProposersDialogOpen,
     creatorWalletName,
     setCreatorWalletName,
     isGeneratingRules,
@@ -4690,6 +5039,7 @@ export default function AdminCreateEventForm({
     fundingHasIssue,
     nativeGasHasIssue,
     allowedCreatorHasIssue,
+    proposerWhitelistHasIssue,
     slugHasIssue,
     openRouterHasIssue,
     contentHasIssue,
@@ -4737,10 +5087,11 @@ export default function AdminCreateEventForm({
     bypassIssue,
     goToIssueStep,
     togglePreSignCheck,
-    resumeAnyPendingSignaturePlan,
     continueFromFinalPreview,
     generateRulesWithAi,
     addCurrentWalletToAllowedCreators,
+    runProposerWhitelistCheck,
+    setProposerWhitelistCheckState,
     stepFourNextButtonContent,
   } = hook
 
@@ -6288,6 +6639,19 @@ export default function AdminCreateEventForm({
         </DialogContent>
       </Dialog>
 
+      <AdminProposersDialog
+        open={proposersDialogOpen}
+        onOpenChange={setProposersDialogOpen}
+        initialCreatorAddress={selectedCreatorAddress}
+        lockCreatorSelection
+        onStatusChange={(nextStatus) => {
+          if (!selectedCreatorAddress || nextStatus.creator.toLowerCase() !== selectedCreatorAddress.toLowerCase()) {
+            return
+          }
+          setProposerWhitelistCheckState(nextStatus.whitelistAddress ? 'ok' : 'missing')
+        }}
+      />
+
       <Dialog open={recurringRequiresServerWalletSetup} onOpenChange={() => {}}>
         <DialogContent
           showCloseButton={false}
@@ -6539,7 +6903,7 @@ export default function AdminCreateEventForm({
                   {selectedCategoryChips.length > 0
                     ? (
                         <div className={cn(`
-                          flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none]
+                          flex scrollbar-none gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none]
                           [&::-webkit-scrollbar]:hidden
                         `)}
                         >
@@ -6585,6 +6949,44 @@ export default function AdminCreateEventForm({
           </CardHeader>
           <CardContent className="space-y-3 pb-8">
             <div className="rounded-md border px-4 py-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="space-y-1">
+                  <p className="text-xl font-semibold text-foreground">
+                    {t('Resolution mode')}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    {resolutionType === 'dro_moov2'
+                      ? t('Approved proposers can submit the final result directly.')
+                      : t('Use UMA’s oracle and dispute process.')}
+                  </p>
+                </div>
+                <div className="grid grid-cols-2 overflow-hidden rounded-md border">
+                  {(['dro_moov2', 'uma_moov2'] as const).map((mode) => {
+                    const isUnavailable = mode === 'uma_moov2' && UMA_RESOLUTION_TEMPORARILY_DISABLED
+                    return (
+                      <button
+                        key={mode}
+                        type="button"
+                        aria-disabled={isUnavailable}
+                        className={cn(
+                          'px-3 py-2 text-sm font-semibold transition-colors',
+                          resolutionType === mode
+                            ? 'bg-primary text-primary-foreground'
+                            : 'bg-background text-muted-foreground hover:text-foreground',
+                          isUnavailable && 'cursor-not-allowed opacity-60 hover:text-muted-foreground',
+                        )}
+                        onClick={() => handleResolutionTypeChange(mode)}
+                      >
+                        {mode === 'dro_moov2'
+                          ? t('Direct')
+                          : t('UMA')}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+            <div className="rounded-md border px-4 py-3">
               <div className="flex items-center justify-between gap-3">
                 <button
                   type="button"
@@ -6608,19 +7010,15 @@ export default function AdminCreateEventForm({
                   </p>
                 </button>
                 <CheckIndicator
-                  state={
-                    fundingCheckState === 'ok'
-                      ? 'ok'
-                      : (fundingCheckState === 'checking' || fundingCheckState === 'idle')
-                          ? 'checking'
-                          : 'error'
-                  }
+                  state={getCheckIndicatorState(fundingCheckState)}
                 />
               </div>
               {expandedPreSignChecks.funding && (
                 <div className="mt-2 space-y-1">
                   <p className="text-sm text-muted-foreground">
-                    This reward pays the UMA proposer who resolves the question correctly.
+                    {resolutionType === 'dro_moov2'
+                      ? t('This direct fee is paid onchain to Kuest when the market request is created.')
+                      : t('This reward pays the UMA proposer who resolves the question correctly.')}
                   </p>
                   <p className="text-sm text-muted-foreground">
                     Need
@@ -6689,13 +7087,7 @@ export default function AdminCreateEventForm({
                   </p>
                 </button>
                 <CheckIndicator
-                  state={
-                    nativeGasCheckState === 'ok'
-                      ? 'ok'
-                      : (nativeGasCheckState === 'checking' || nativeGasCheckState === 'idle')
-                          ? 'checking'
-                          : 'error'
-                  }
+                  state={getCheckIndicatorState(nativeGasCheckState)}
                 />
               </div>
               {expandedPreSignChecks.nativeGas && (
@@ -6757,13 +7149,7 @@ export default function AdminCreateEventForm({
                   <p className="text-xl font-semibold text-foreground">Wallet on allowed market creator wallets</p>
                 </button>
                 <CheckIndicator
-                  state={
-                    allowedCreatorCheckState === 'ok'
-                      ? 'ok'
-                      : (allowedCreatorCheckState === 'checking' || allowedCreatorCheckState === 'idle')
-                          ? 'checking'
-                          : 'error'
-                  }
+                  state={getCheckIndicatorState(allowedCreatorCheckState)}
                 />
               </div>
               {expandedPreSignChecks.allowedCreator && (
@@ -6813,6 +7199,71 @@ export default function AdminCreateEventForm({
               <div className="flex items-center justify-between gap-3">
                 <button
                   type="button"
+                  onClick={() => togglePreSignCheck('proposerWhitelist', proposerWhitelistHasIssue)}
+                  disabled={proposerWhitelistHasIssue}
+                  className={cn(
+                    'flex items-center gap-2 text-left',
+                    proposerWhitelistHasIssue ? 'cursor-default' : 'cursor-pointer',
+                  )}
+                >
+                  {expandedPreSignChecks.proposerWhitelist
+                    ? <ChevronDownIcon className="size-5 text-muted-foreground" />
+                    : (
+                        <ChevronRightIcon className="size-5 text-muted-foreground" />
+                      )}
+                  <p className="text-xl font-semibold text-foreground">{t('Resolution proposers whitelist')}</p>
+                </button>
+                <CheckIndicator
+                  state={getCheckIndicatorState(proposerWhitelistCheckState)}
+                />
+              </div>
+              {expandedPreSignChecks.proposerWhitelist && (
+                <div className="mt-2 space-y-2">
+                  <div className="flex flex-wrap gap-2">
+                    {proposerWhitelistCheckState === 'missing' && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-7"
+                        onClick={() => setProposersDialogOpen(true)}
+                        disabled={!selectedCreatorAddress}
+                      >
+                        {t('Create whitelist')}
+                      </Button>
+                    )}
+                    {proposerWhitelistCheckState === 'ok' && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-7"
+                        onClick={() => setProposersDialogOpen(true)}
+                      >
+                        <UserCheckIcon className="mr-2 size-3.5" />
+                        {t('Manage proposers')}
+                      </Button>
+                    )}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7"
+                      onClick={() => void runProposerWhitelistCheck()}
+                      disabled={proposerWhitelistCheckState === 'checking' || !selectedCreatorAddress}
+                    >
+                      {t('Re-check')}
+                    </Button>
+                  </div>
+                </div>
+              )}
+              {proposerWhitelistCheckError && <p className="mt-2 text-sm text-destructive">{proposerWhitelistCheckError}</p>}
+            </div>
+
+            <div className="rounded-md border px-4 py-3">
+              <div className="flex items-center justify-between gap-3">
+                <button
+                  type="button"
                   onClick={() => togglePreSignCheck('slug', slugHasIssue)}
                   disabled={slugHasIssue}
                   className={cn(
@@ -6828,13 +7279,7 @@ export default function AdminCreateEventForm({
                   <p className="text-xl font-semibold text-foreground">Slug available</p>
                 </button>
                 <CheckIndicator
-                  state={
-                    slugValidationState === 'unique'
-                      ? 'ok'
-                      : (slugValidationState === 'checking' || slugValidationState === 'idle')
-                          ? 'checking'
-                          : 'error'
-                  }
+                  state={getCheckIndicatorState(slugValidationState, 'unique')}
                 />
               </div>
               {expandedPreSignChecks.slug && (
@@ -6892,13 +7337,7 @@ export default function AdminCreateEventForm({
                   <p className="text-xl font-semibold text-foreground">OpenRouter active</p>
                 </button>
                 <CheckIndicator
-                  state={
-                    openRouterCheckState === 'ok'
-                      ? 'ok'
-                      : (openRouterCheckState === 'checking' || openRouterCheckState === 'idle')
-                          ? 'checking'
-                          : 'error'
-                  }
+                  state={getCheckIndicatorState(openRouterCheckState)}
                 />
               </div>
               {expandedPreSignChecks.openRouter && (
@@ -7085,25 +7524,6 @@ export default function AdminCreateEventForm({
                           {pendingWorkflowRequestId}
                         </p>
                       )}
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="h-7"
-                        onClick={resumeAnyPendingSignaturePlan}
-                        disabled={isLoadingPendingRequest || isSigningAuth || isPreparingSignaturePlan || isExecutingSignatures || isFinalizingSignatureFlow}
-                      >
-                        {isLoadingPendingRequest
-                          ? (
-                              <>
-                                <Loader2Icon className="mr-2 size-3.5 animate-spin" />
-                                Loading pending...
-                              </>
-                            )
-                          : (
-                              'Resume pending plan'
-                            )}
-                      </Button>
                     </div>
                   )}
             </div>
@@ -7311,6 +7731,7 @@ export default function AdminCreateEventForm({
                   && (
                     fundingCheckState === 'checking'
                     || allowedCreatorCheckState === 'checking'
+                    || proposerWhitelistCheckState === 'checking'
                     || slugValidationState === 'checking'
                     || openRouterCheckState === 'checking'
                     || contentCheckState === 'checking'

@@ -1,5 +1,6 @@
 'use server'
 
+import type { TradingAuthSecrets } from '@/lib/trading-auth/server'
 import type { DepositWalletStatus } from '@/types'
 import { eq } from 'drizzle-orm'
 import { cookies } from 'next/headers'
@@ -13,11 +14,12 @@ import { captureDepositWalletError, captureDepositWalletEvent } from '@/lib/depo
 import { db } from '@/lib/drizzle'
 import { buildClobHmacSignature } from '@/lib/hmac'
 import {
-  L2_AUTH_CONTEXT_COOKIE_NAME,
-  L2_AUTH_CONTEXT_COOKIE_NAME_SECURE,
+  getL2AuthContextCookieName,
   L2_AUTH_CONTEXT_TTL_SECONDS,
 } from '@/lib/l2-auth-context'
+import { TRADING_AUTH_REQUIRED_ERROR } from '@/lib/trading-auth/errors'
 import {
+  getUserTradingAuthSecrets,
   markAutoRedeemApprovalCompleted,
   saveUserTradingAuthCredentials,
 } from '@/lib/trading-auth/server'
@@ -240,12 +242,12 @@ async function requestApiKey(baseUrl: string, headers: Record<string, string>) {
   }
 }
 
-async function persistL2AuthCookie(l2AuthContextId: string) {
+async function persistL2AuthCookie(userId: string, l2AuthContextId: string) {
   const cookieStore = await cookies()
   const isProduction = process.env.NODE_ENV === 'production'
 
   cookieStore.set({
-    name: isProduction ? L2_AUTH_CONTEXT_COOKIE_NAME_SECURE : L2_AUTH_CONTEXT_COOKIE_NAME,
+    name: getL2AuthContextCookieName({ secure: isProduction, userId }),
     value: l2AuthContextId,
     httpOnly: true,
     sameSite: 'lax',
@@ -258,9 +260,11 @@ async function persistL2AuthCookie(l2AuthContextId: string) {
 async function submitWalletCreate({
   userAddress,
   depositWallet,
+  auth,
 }: {
   userAddress: string
   depositWallet: string
+  auth: NonNullable<TradingAuthSecrets['relayer']>
 }) {
   const relayerUrl = process.env.RELAYER_URL
   if (!relayerUrl) {
@@ -325,7 +329,15 @@ async function submitWalletCreate({
   })
 
   const { payload, rawError, contentType } = await readTradingFlowErrorResponse(response)
-  if (!response.ok || !payload || typeof payload.transactionID !== 'string') {
+  const transactionId = typeof payload?.transactionID === 'string'
+    ? payload.transactionID
+    : typeof payload?.transactionId === 'string'
+      ? payload.transactionId
+      : typeof payload?.id === 'string'
+        ? payload.id
+        : null
+
+  if (!response.ok || !payload || !transactionId) {
     const durationMs = Date.now() - startedAt
     console.error('Deposit Wallet create submit failed.', {
       status: response.status,
@@ -349,7 +361,7 @@ async function submitWalletCreate({
   }
 
   return {
-    transactionId: payload.transactionID as string,
+    transactionId,
     state: typeof payload.state === 'string' ? payload.state : null,
     txHash: typeof payload.transactionHash === 'string'
       ? payload.transactionHash
@@ -577,9 +589,15 @@ export async function createDepositWalletAction(): Promise<EnableDepositWalletTr
       txHash = null
     }
     else {
+      const auth = await getUserTradingAuthSecrets(user.id)
+      if (!auth?.relayer) {
+        return { error: TRADING_AUTH_REQUIRED_ERROR, data: null }
+      }
+
       const submitResult = await submitWalletCreate({
         userAddress: user.address,
         depositWallet: depositWalletAddress,
+        auth: auth.relayer,
       })
       txHash = submitResult.txHash
       status = submitResult.state === 'STATE_CONFIRMED' || submitResult.state === 'STATE_MINED'
@@ -656,10 +674,6 @@ export async function enableTradingAuthAction(
     return { error: parsed.error.issues[0]?.message ?? 'Invalid signature.', data: null }
   }
 
-  if (user.deposit_wallet_status !== 'deployed') {
-    return { error: 'Create your Deposit Wallet before enabling trading.', data: null }
-  }
-
   const relayerUrl = process.env.RELAYER_URL
   const clobUrl = process.env.CLOB_URL
   if (!relayerUrl || !clobUrl) {
@@ -688,7 +702,7 @@ export async function enableTradingAuthAction(
     if (!l2AuthContextId) {
       return { error: DEFAULT_ERROR_MESSAGE, data: null }
     }
-    await persistL2AuthCookie(l2AuthContextId)
+    await persistL2AuthCookie(user.id, l2AuthContextId)
 
     const updatedAt = new Date().toISOString()
     return {

@@ -15,16 +15,21 @@ import { WagmiProvider } from 'wagmi'
 import { SignaturePromptHost } from '@/components/SignaturePromptHost'
 import { AppKitContext, defaultAppKitValue } from '@/hooks/useAppKit'
 import { useHasHydrated } from '@/hooks/useHasHydrated'
+import { usePublicRuntimeConfig } from '@/hooks/usePublicRuntimeConfig'
 import { useSiteIdentity } from '@/hooks/useSiteIdentity'
-import { defaultNetwork, networks, wagmiAdapter, wagmiConfig } from '@/lib/appkit'
+import { createAppKitWagmiAdapter, defaultNetwork, networks } from '@/lib/appkit'
 import { authClient } from '@/lib/auth-client'
 import { IS_BROWSER } from '@/lib/constants'
-import { reownProjectId } from '@/lib/reown-project-id'
 import { clearBrowserStorage, clearNonHttpOnlyCookies } from '@/lib/utils'
 import { mergeSessionUserState, useUser } from '@/stores/useUser'
 
 let hasInitializedAppKit = false
 let appKitInstance: AppKit | null = null
+// The wagmi config is now instance-bound (created per-adapter from the runtime
+// projectId) rather than a module-level singleton. We stash the active config
+// here so getConnectedAccount — a module-level helper used by the SIWE nonce/
+// message callbacks — can still read the connected address + chainId.
+let activeWagmiConfig: ReturnType<typeof createAppKitWagmiAdapter>['wagmiConfig'] | null = null
 const appKitStateListeners = new Set<() => void>()
 const APPKIT_INIT_RETRY_DELAY_MS = 3000
 
@@ -38,7 +43,7 @@ const APPKIT_INIT_RETRY_DELAY_MS = 3000
  * both so the keys always match.
  */
 function getConnectedAccount(): { address: `0x${string}` | undefined, chainId: number } {
-  const state = wagmiConfig.state
+  const state = activeWagmiConfig?.state
   const current = state?.current
   const connection = current ? state.connections.get(current) : undefined
   const address = connection?.accounts?.[0]
@@ -75,21 +80,23 @@ function getAppKitInstanceSnapshot() {
 function initializeAppKitSingleton(
   themeMode: 'light' | 'dark',
   site: { name: string, description: string, logoUrl: string },
+  runtimeConfig: { projectId: string, siteUrl: string },
+  wagmiAdapter: ReturnType<typeof createAppKitWagmiAdapter>,
 ) {
-  if (hasInitializedAppKit || !IS_BROWSER) {
+  if (hasInitializedAppKit || !IS_BROWSER || !runtimeConfig.projectId) {
     return appKitInstance
   }
 
   try {
     appKitInstance = createAppKit({
-      projectId: reownProjectId,
+      projectId: runtimeConfig.projectId,
       adapters: [wagmiAdapter],
       themeMode,
       defaultAccountTypes: { eip155: 'eoa' },
       metadata: {
         name: site.name,
         description: site.description,
-        url: process.env.SITE_URL!,
+        url: runtimeConfig.siteUrl,
         icons: [site.logoUrl],
       },
       themeVariables: {
@@ -98,6 +105,7 @@ function initializeAppKitSingleton(
         '--w3m-accent': 'var(--primary)',
       },
       networks,
+      defaultNetwork,
       featuredWalletIds: ['c57ca95b47569778a828d19178114f4db188b89b763c899ba0be274e97267d96'],
       features: {
         analytics: false,
@@ -117,7 +125,7 @@ function initializeAppKitSingleton(
           // just to authenticate. Chain restriction applies to trading, not sign-in.
           const { chainId } = getConnectedAccount()
           return {
-            domain: new URL(process.env.SITE_URL!).host,
+            domain: new URL(runtimeConfig.siteUrl).host,
             uri: typeof window !== 'undefined' ? window.location.origin : '',
             chains: [chainId],
             statement: 'Please sign with your account',
@@ -283,14 +291,20 @@ function createAppKitContextValue({
 
 function useAppKitInstance({
   appKitThemeMode,
+  projectId,
   siteName,
   siteDescription,
   siteLogoUrl,
+  siteUrl,
+  wagmiAdapter,
 }: {
   appKitThemeMode: 'light' | 'dark'
+  projectId: string
   siteName: string
   siteDescription: string
   siteLogoUrl: string
+  siteUrl: string
+  wagmiAdapter: ReturnType<typeof createAppKitWagmiAdapter>
 }) {
   const [appKitInitRetryToken, setAppKitInitRetryToken] = useState(0)
   const instance = useSyncExternalStore(
@@ -300,7 +314,7 @@ function useAppKitInstance({
   )
 
   useEffect(function initializeAppKitWithRetry() {
-    if (instance) {
+    if (instance || !projectId) {
       return
     }
 
@@ -308,7 +322,10 @@ function useAppKitInstance({
       name: siteName,
       description: siteDescription,
       logoUrl: siteLogoUrl,
-    })
+    }, {
+      projectId,
+      siteUrl,
+    }, wagmiAdapter)
     if (initializedInstance) {
       return
     }
@@ -319,7 +336,7 @@ function useAppKitInstance({
     return function cancelAppKitInitRetry() {
       window.clearTimeout(retryTimeout)
     }
-  }, [appKitThemeMode, appKitInitRetryToken, instance, siteDescription, siteLogoUrl, siteName])
+  }, [appKitThemeMode, appKitInitRetryToken, instance, projectId, siteDescription, siteLogoUrl, siteName, siteUrl, wagmiAdapter])
 
   return instance
 }
@@ -343,15 +360,25 @@ function useAppKitContextValue({
 export default function AppKitProvider({ children }: { children: ReactNode }) {
   const t = useExtracted()
   const site = useSiteIdentity()
+  const { reownAppKitProjectId, siteUrl } = usePublicRuntimeConfig()
   const hasHydrated = useHasHydrated()
   const currentUser = useUser()
   const resolvedTheme = useResolvedThemeMode()
   const appKitThemeMode: 'light' | 'dark' = resolvedTheme === 'dark' ? 'dark' : 'light'
+  const wagmiAdapter = useMemo(
+    () => createAppKitWagmiAdapter(reownAppKitProjectId),
+    [reownAppKitProjectId],
+  )
+  const wagmiConfig = wagmiAdapter.wagmiConfig
+  activeWagmiConfig = wagmiConfig
   const instance = useAppKitInstance({
     appKitThemeMode,
+    projectId: reownAppKitProjectId,
     siteName: site.name,
     siteDescription: site.description,
     siteLogoUrl: site.logoUrl,
+    siteUrl,
+    wagmiAdapter,
   })
   const appKitValue = useAppKitContextValue({
     instance,

@@ -1,17 +1,15 @@
-export const VOLUME_BATCH_SIZE = 5
-export const VOLUME_REQUEST_TIMEOUT_MS = 10_000
-export const DEFAULT_VOLUME_SYNC_LIMIT = 150
-export const MAX_VOLUME_SYNC_LIMIT = 500
-export const SYNC_TIME_LIMIT_MS = 250_000
+import type { SQLWrapper } from 'drizzle-orm'
+import { sql } from 'drizzle-orm'
 
-export interface VolumeWorkItem {
-  conditionId: string
-  eventSlug: string
-  tokenIds: [string, string]
-  previousTotalVolume: string
-  previousVolume24h: string
-  advancesCursor: boolean
-}
+export const VOLUME_SYNC_JOB_TYPE = 'sync_market_volume'
+export const VOLUME_JOB_ENQUEUE_LIMIT = 100
+export const VOLUME_JOB_PROCESS_LIMIT = 10
+export const VOLUME_JOB_PROCESS_CONCURRENCY = 2
+export const VOLUME_JOB_MAX_ATTEMPTS = 8
+export const VOLUME_JOB_REQUEST_TIMEOUT_MS = 8_000
+export const VOLUME_JOB_PROCESSING_STALE_MS = 2 * 60 * 1000
+export const VOLUME_JOB_REFRESH_INTERVAL_MS = 10 * 60 * 1000
+export const VOLUME_JOB_FAILED_REFRESH_INTERVAL_MS = 60 * 60 * 1000
 
 export interface VolumeResponseItem {
   condition_id: string
@@ -21,36 +19,20 @@ export interface VolumeResponseItem {
   error?: string
 }
 
-export function parseLimitParam(
-  rawValue: string | null,
-  defaultLimit: number = DEFAULT_VOLUME_SYNC_LIMIT,
-  maxLimit: number = MAX_VOLUME_SYNC_LIMIT,
-): number {
-  if (!rawValue) {
-    return defaultLimit
-  }
-
-  const parsed = Number.parseInt(rawValue, 10)
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    return defaultLimit
-  }
-
-  return Math.min(parsed, maxLimit)
+export interface VolumeJobPayload {
+  conditionId: string
 }
 
-export function hasReachedTimeLimit(startedAtMs: number, nowMs: number, limitMs: number = SYNC_TIME_LIMIT_MS): boolean {
-  return nowMs - startedAtMs >= limitMs
-}
-
-export function chunkVolumeWork(
-  items: VolumeWorkItem[],
-  chunkSize: number = VOLUME_BATCH_SIZE,
-): VolumeWorkItem[][] {
-  const chunks: VolumeWorkItem[][] = []
-  for (let index = 0; index < items.length; index += chunkSize) {
-    chunks.push(items.slice(index, index + chunkSize))
-  }
-  return chunks
+export interface VolumeJobRow {
+  id: string
+  job_type: string
+  dedupe_key: string
+  payload: unknown
+  status: 'pending' | 'processing' | 'completed' | 'failed'
+  attempts: number
+  max_attempts: number
+  available_at: Date
+  reserved_at: Date | null
 }
 
 export function normalizeVolumeValue(value: unknown): string {
@@ -75,4 +57,43 @@ export function normalizeVolumeValue(value: unknown): string {
   }
 
   return '0'
+}
+
+export function buildVolumeJobDedupeKey(conditionId: string) {
+  return conditionId
+}
+
+export function buildVolumeJobDedupeKeySql(conditionId: SQLWrapper) {
+  return sql<string>`${conditionId}`
+}
+
+export function parseVolumeJobPayload(payload: unknown, dedupeKey: string): VolumeJobPayload {
+  if (payload && typeof payload === 'object') {
+    const candidate = payload as Partial<VolumeJobPayload>
+    if (typeof candidate.conditionId === 'string' && candidate.conditionId.trim()) {
+      return { conditionId: candidate.conditionId.trim() }
+    }
+  }
+
+  const fallbackConditionId = dedupeKey.trim()
+  if (fallbackConditionId) {
+    return { conditionId: fallbackConditionId }
+  }
+
+  throw new Error('Volume job payload is missing conditionId.')
+}
+
+export function buildVolumeJobRetryAt(attempts: number) {
+  const backoffMinutes = Math.min(60, Math.max(1, attempts * 2))
+  return new Date(Date.now() + (backoffMinutes * 60_000))
+}
+
+export function truncateVolumeJobError(error: unknown) {
+  const message = error instanceof Error
+    ? error.message
+    : typeof error === 'string'
+      ? error
+      : 'Unknown volume sync error'
+
+  return message.slice(0, 1000)
 }
