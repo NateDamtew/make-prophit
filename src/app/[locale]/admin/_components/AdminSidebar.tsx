@@ -1,74 +1,53 @@
 'use client'
 
-import type { LucideIcon } from 'lucide-react'
-import type { Route } from 'next'
-import { BadgePercentIcon, CalendarIcon, LanguagesIcon, SettingsIcon, ShieldCheckIcon, SwatchBookIcon, TagsIcon, TextSelectIcon, UsersIcon } from 'lucide-react'
-import { useExtracted } from 'next-intl'
-import AppLink from '@/components/AppLink'
-import { Button } from '@/components/ui/button'
-import { usePathname } from '@/i18n/navigation'
+import { PanelLeftCloseIcon, PanelLeftOpenIcon } from 'lucide-react'
+import { AdminNavList } from '@/components/admin-ui/shell/AdminNavList'
+import { useAdminSidebar } from '@/components/admin-ui/shell/SidebarProvider'
 import { cn } from '@/lib/utils'
 
-interface AdminMenuItem {
-  id: string
-  label: string
-  href: Route
-  icon: LucideIcon
-}
-
+/**
+ * Desktop admin sidebar. Collapsible (icon-only) with state persisted to a
+ * cookie via {@link useAdminSidebar}. The nav list itself lives in AdminNavList
+ * so the mobile drawer can reuse it. Hidden below lg — mobile uses the header's
+ * drawer trigger.
+ */
 export default function AdminSidebar() {
-  const t = useExtracted()
-  const adminMenuItems: AdminMenuItem[] = [
-    { id: 'general', label: t('General'), href: '/admin' as Route, icon: SettingsIcon },
-    { id: 'theme', label: t('Theme'), href: '/admin/theme' as Route, icon: SwatchBookIcon },
-    { id: 'locales', label: t('Locales'), href: '/admin/locales' as Route, icon: LanguagesIcon },
-    { id: 'categories', label: t('Categories'), href: '/admin/categories' as Route, icon: TagsIcon },
-    { id: 'market-context', label: t('Market Context'), href: '/admin/market-context' as Route, icon: TextSelectIcon },
-    { id: 'affiliate', label: t('Affiliate & Fees'), href: '/admin/affiliate' as Route, icon: BadgePercentIcon },
-    { id: 'events', label: t('Events'), href: '/admin/events' as Route, icon: CalendarIcon },
-    { id: 'community-reviews', label: 'Community Reviews', href: '/admin/communities/review' as Route, icon: ShieldCheckIcon },
-    { id: 'users', label: t('Users'), href: '/admin/users' as Route, icon: UsersIcon },
-  ]
-  const pathname = usePathname()
-  const activeItem = adminMenuItems.find((item) => {
-    if (item.id === 'general') {
-      return pathname === item.href
-    }
-    return pathname === item.href || pathname.startsWith(`${item.href}/`)
-  })
-  const active = pathname.startsWith('/admin/events/calendar')
-    ? 'events'
-    : (activeItem?.id ?? 'general')
+  const { collapsed, toggleCollapsed } = useAdminSidebar()
 
   return (
-    <aside className="min-w-0 lg:sticky lg:top-28 lg:self-start">
-      <nav
-        className={cn(`
-          flex w-full max-w-full snap-x snap-mandatory gap-2 overflow-x-auto rounded-sm
-          lg:grid lg:gap-1 lg:overflow-visible lg:rounded-none lg:bg-transparent
-        `)}
-      >
-        {adminMenuItems.map(item => (
-          <Button
-            key={item.id}
-            type="button"
-            variant="ghost"
-            className={cn(
-              `
-                h-auto shrink-0 snap-start flex-col gap-1.5 px-3 py-2 text-foreground
-                lg:h-11 lg:min-w-0 lg:flex-row lg:justify-start lg:gap-2 lg:px-4 lg:py-2
-              `,
-              { 'bg-accent hover:bg-accent': active === item.id },
-            )}
-            asChild
-          >
-            <AppLink intentPrefetch href={item.href}>
-              <item.icon className="size-6 text-muted-foreground lg:size-5" />
-              <span>{item.label}</span>
-            </AppLink>
-          </Button>
-        ))}
-      </nav>
+    <aside
+      className={cn(
+        `
+          sticky top-0 hidden h-svh shrink-0 flex-col border-r border-border/60 bg-card transition-[width] duration-200
+          lg:flex
+        `,
+        collapsed ? 'w-16' : 'w-60',
+      )}
+    >
+      <div className="flex-1 overflow-y-auto px-3 py-4">
+        <AdminNavList collapsed={collapsed} />
+      </div>
+
+      <div className="border-t border-border/60 p-3">
+        <button
+          type="button"
+          onClick={toggleCollapsed}
+          className={cn(
+            `
+              flex h-9 w-full items-center gap-3 rounded-md px-3 text-sm font-medium text-muted-foreground
+              transition-colors
+              hover:bg-accent/60 hover:text-foreground
+            `,
+            collapsed && 'justify-center px-0',
+          )}
+          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        >
+          {collapsed
+            ? <PanelLeftOpenIcon className="size-4.5" />
+            : <PanelLeftCloseIcon className="size-4.5" />}
+          {!collapsed && <span>Collapse</span>}
+        </button>
+      </div>
     </aside>
   )
 }
