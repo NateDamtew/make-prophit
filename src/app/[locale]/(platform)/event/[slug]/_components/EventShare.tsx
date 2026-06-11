@@ -15,7 +15,6 @@ import { useSiteIdentity } from '@/hooks/useSiteIdentity'
 import { fetchAffiliateSettingsFromAPI } from '@/lib/affiliate-data'
 import { maybeShowAffiliateToast } from '@/lib/affiliate-toast'
 import { resolveEventMarketPath, resolveEventPagePath } from '@/lib/events-routing'
-import { shareOrCopy } from '@/lib/native-share'
 import { cn } from '@/lib/utils'
 import { useUser } from '@/stores/useUser'
 
@@ -273,33 +272,27 @@ export default function EventShare({ event }: EventShareProps) {
   }
 
   async function handleShare() {
-    // Build the URL synchronously, then hand off to shareOrCopy immediately so
-    // the user gesture is preserved for navigator.share on mobile.
-    const url = buildShareUrl(eventPath)
-    const result = await shareOrCopy({ url, title: event.title })
-
-    if (result === 'copied') {
-      // Desktop / no native sheet — show the inline "copied" checkmark.
+    try {
+      const url = buildShareUrl(eventPath)
+      await navigator.clipboard.writeText(url)
       setShareSuccess(true)
+      await showAffiliateToast()
       setTimeout(setShareSuccess, 2000, false)
     }
-
-    // Reinforce the referral earning on both native share and copy.
-    if (result === 'shared' || result === 'copied') {
-      await showAffiliateToast()
+    catch (error) {
+      console.error('Error copying URL:', error)
     }
   }
 
   async function handleCopy(key: string, path: string) {
-    const url = buildShareUrl(path)
-    const result = await shareOrCopy({ url, title: event.title })
-
-    if (result === 'copied') {
+    try {
+      const url = buildShareUrl(path)
+      await navigator.clipboard.writeText(url)
       markKeyAsCopied(key)
-    }
-
-    if (result === 'shared' || result === 'copied') {
       await showAffiliateToast()
+    }
+    catch (error) {
+      console.error('Error copying URL:', error)
     }
   }
 

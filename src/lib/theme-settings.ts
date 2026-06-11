@@ -37,7 +37,6 @@ const THEME_PRESET_KEY = 'preset'
 const THEME_LIGHT_JSON_KEY = 'light_json'
 const THEME_DARK_JSON_KEY = 'dark_json'
 const THEME_RADIUS_KEY = 'radius'
-const THEME_MODE_KEY = 'theme_mode'
 const THEME_SITE_NAME_KEY = 'site_name'
 const THEME_SITE_DESCRIPTION_KEY = 'site_description'
 const THEME_SITE_LOGO_MODE_KEY = 'site_logo_mode'
@@ -59,17 +58,6 @@ const GENERAL_FEE_RECIPIENT_WALLET_KEY = 'fee_recipient_wallet'
 const GENERAL_LIFI_INTEGRATOR_KEY = 'lifi_integrator'
 const GENERAL_LIFI_API_KEY = 'lifi_api_key'
 const WALLET_ADDRESS_PATTERN = /^0x[0-9a-fA-F]{40}$/
-
-export type ThemeMode = 'both' | 'dark' | 'light'
-const VALID_THEME_MODES: ThemeMode[] = ['both', 'dark', 'light']
-
-export function validateThemeMode(value: string | null | undefined): ThemeMode {
-  const normalized = typeof value === 'string' ? value.trim().toLowerCase() : ''
-  if (VALID_THEME_MODES.includes(normalized as ThemeMode)) {
-    return normalized as ThemeMode
-  }
-  return 'both'
-}
 
 type SettingsGroup = Record<string, { value: string, updated_at: string }>
 interface SettingsMap {
@@ -135,7 +123,6 @@ export interface RuntimeThemeState {
   theme: ResolvedThemeConfig
   site: ThemeSiteIdentity
   source: RuntimeThemeSource
-  themeMode: ThemeMode
 }
 
 export interface ThemeSettingsFormState {
@@ -143,7 +130,6 @@ export interface ThemeSettingsFormState {
   radius: string
   lightJson: string
   darkJson: string
-  themeMode: ThemeMode
 }
 
 export interface ThemeSiteSettingsFormState {
@@ -541,7 +527,6 @@ function buildDefaultThemeState(): RuntimeThemeState {
     theme: buildResolvedThemeConfig(DEFAULT_THEME_PRESET_ID),
     site: createDefaultThemeSiteIdentity(),
     source: 'default',
-    themeMode: 'both',
   }
 }
 
@@ -622,15 +607,11 @@ export function getThemeSettingsFormState(allSettings?: SettingsMap): ThemeSetti
   const lightParsed = parseThemeOverridesJson(lightRaw, 'Theme light overrides')
   const darkParsed = parseThemeOverridesJson(darkRaw, 'Theme dark overrides')
 
-  const themeModeRaw = themeSettings?.[THEME_MODE_KEY]?.value ?? ''
-  const themeMode = validateThemeMode(themeModeRaw)
-
   return {
     preset: presetResolution.preset.id,
     radius: radiusValidated.error ? radiusRaw.trim() : (radiusValidated.value ?? ''),
     lightJson: lightParsed.error ? lightRaw || '{}' : formatThemeOverridesJson(lightParsed.data ?? {}),
     darkJson: darkParsed.error ? darkRaw || '{}' : formatThemeOverridesJson(darkParsed.data ?? {}),
-    themeMode,
   }
 }
 
@@ -903,14 +884,10 @@ async function loadCachedRuntimeThemeState(): Promise<RuntimeThemeState> {
     ? buildThemeSiteIdentity(normalizedSite.data)
     : defaults.site
 
-  const themeModeRaw = themeSettings?.[THEME_MODE_KEY]?.value ?? ''
-  const themeMode = validateThemeMode(themeModeRaw)
-
   return {
     theme,
     site,
     source: normalizedTheme?.data || normalizedSite?.data ? 'settings' : 'default',
-    themeMode,
   }
 }
 

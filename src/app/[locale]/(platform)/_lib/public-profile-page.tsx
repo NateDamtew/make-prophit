@@ -151,15 +151,11 @@ async function resolvePublicProfileForSlug(
   normalized: ReturnType<typeof normalizePublicProfileSlug>,
 ) {
   const communityProfile = mapCommunityPublicProfile(await fetchCommunityProfileForSlug(normalized))
-  // Always try to resolve the local user (for id) so features like Communities work
-  const { data: localProfile } = await UserRepository.getProfileByUsernameOrDepositWalletAddress(normalized.value)
+  if (communityProfile || normalized.type === 'invalid') {
+    return communityProfile
+  }
 
-  if (communityProfile) {
-    return { ...communityProfile, id: localProfile?.id }
-  }
-  if (normalized.type === 'invalid') {
-    return null
-  }
+  const { data: localProfile } = await UserRepository.getProfileByUsernameOrDepositWalletAddress(normalized.value)
   return localProfile
 }
 
@@ -248,7 +244,7 @@ export async function PublicProfilePageContent({ slug }: { slug: string }) {
           snapshot={snapshot}
           fallbackChartEndDate={fallbackChartEndDate}
         />
-        <PublicProfileTabs userAddress={normalized.value} userId={null} />
+        <PublicProfileTabs userAddress={normalized.value} />
       </>
     )
   }
@@ -269,7 +265,7 @@ export async function PublicProfilePageContent({ slug }: { slug: string }) {
         snapshot={snapshot}
         fallbackChartEndDate={fallbackChartEndDate}
       />
-      <PublicProfileTabs userAddress={userAddress} userId={(profile as { id?: string }).id ?? null} />
+      <PublicProfileTabs userAddress={userAddress} />
     </>
   )
 }

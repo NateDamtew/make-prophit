@@ -13,10 +13,6 @@ import { buildDynamicHomeCategorySlugSet, isPlatformReservedRootSlug } from '@/l
 import { cn } from '@/lib/utils'
 
 function getMainTagHref(slug: string, dynamicHomeCategorySlugSet: ReadonlySet<string>): Route {
-  if (slug === 'communities') {
-    return '/communities' as Route
-  }
-
   if (slug === 'trending') {
     return '/' as Route
   }

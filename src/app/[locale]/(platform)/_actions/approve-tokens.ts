@@ -288,48 +288,22 @@ export async function submitDepositWalletTransactionAction(
     return { error: DEFAULT_ERROR_MESSAGE }
   }
 
-  const platformKey = process.env.KUEST_API_KEY
-  const platformSecret = process.env.KUEST_API_SECRET
-  const platformPassphrase = process.env.KUEST_PASSPHRASE
-  const platformAddress = process.env.KUEST_ADDRESS
-
-  const useUserAuth = !!auth?.relayer
-  const usePlatformAuth = !useUserAuth && !!(platformKey && platformSecret && platformPassphrase && platformAddress)
-
-  const path = (useUserAuth || usePlatformAuth) ? '/submit' : '/submit/wallet'
+  const path = '/submit'
   const body = JSON.stringify(request)
+  const timestamp = Math.floor(Date.now() / 1000)
+  const signature = buildClobHmacSignature(auth.relayer.secret, timestamp, 'POST', path, body)
   const startedAt = Date.now()
-
-  let timestamp: number | null = null
-  let signature: string | null = null
-  if (useUserAuth) {
-    timestamp = Math.floor(Date.now() / 1000)
-    signature = buildClobHmacSignature(auth!.relayer!.secret, timestamp, 'POST', path, body)
-  }
-  else if (usePlatformAuth) {
-    timestamp = Math.floor(Date.now() / 1000)
-    signature = buildClobHmacSignature(platformSecret!, timestamp, 'POST', path, body)
-  }
 
   try {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
     }
-    if (useUserAuth && timestamp !== null && signature) {
-      headers.KUEST_ADDRESS = user.address
-      headers.KUEST_API_KEY = auth!.relayer!.key
-      headers.KUEST_PASSPHRASE = auth!.relayer!.passphrase
-      headers.KUEST_TIMESTAMP = timestamp.toString()
-      headers.KUEST_SIGNATURE = signature
-    }
-    else if (usePlatformAuth && timestamp !== null && signature) {
-      headers.KUEST_ADDRESS = platformAddress!
-      headers.KUEST_API_KEY = platformKey!
-      headers.KUEST_PASSPHRASE = platformPassphrase!
-      headers.KUEST_TIMESTAMP = timestamp.toString()
-      headers.KUEST_SIGNATURE = signature
-    }
+    headers.KUEST_ADDRESS = user.address
+    headers.KUEST_API_KEY = auth.relayer.key
+    headers.KUEST_PASSPHRASE = auth.relayer.passphrase
+    headers.KUEST_TIMESTAMP = timestamp.toString()
+    headers.KUEST_SIGNATURE = signature
 
     const response = await fetch(`${relayerUrl}${path}`, {
       method: 'POST',

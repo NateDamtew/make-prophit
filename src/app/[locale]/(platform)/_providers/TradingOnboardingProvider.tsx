@@ -178,7 +178,6 @@ function useOnboardingStatus(user: User | null, requiresTradingAuthRefresh: bool
       && !onboardingSettings.emailSkippedAt
       && !onboardingSettings.emailCompletedAt,
     )
-    const hasValidWalletAddress = Boolean(user?.address && /^0x[0-9a-f]{40}$/i.test(user.address))
     const hasDepositWalletAddress = Boolean(user?.deposit_wallet_address)
     const hasDeployedDepositWallet = Boolean(user?.deposit_wallet_address && user?.deposit_wallet_status === 'deployed')
     const isDepositWalletDeploying = Boolean(
@@ -197,7 +196,6 @@ function useOnboardingStatus(user: User | null, requiresTradingAuthRefresh: bool
     return {
       needsUsername,
       needsEmail,
-      hasValidWalletAddress,
       hasDepositWalletAddress,
       hasDeployedDepositWallet,
       isDepositWalletDeploying,
@@ -212,7 +210,6 @@ function useOnboardingStatus(user: User | null, requiresTradingAuthRefresh: bool
 function resolveNextOnboardingModal({
   needsUsername,
   needsEmail,
-  hasValidWalletAddress,
   hasDeployedDepositWallet,
   hasTradingAuth,
   hasTokenApprovals,
@@ -220,19 +217,11 @@ function resolveNextOnboardingModal({
 }: {
   needsUsername: boolean
   needsEmail: boolean
-  hasValidWalletAddress: boolean
   hasDeployedDepositWallet: boolean
   hasTradingAuth: boolean
   hasTokenApprovals: boolean
   allowTradingAuthPrompt: boolean
 }): Exclude<OnboardingModal, null> | null {
-  // Skip ALL onboarding for users without a connected EVM wallet
-  // (e.g. Telegram-only users who haven't connected a wallet yet).
-  // Username submission and deposit wallet creation both require a
-  // valid address, so showing those modals would just produce errors.
-  if (!hasValidWalletAddress) {
-    return null
-  }
   if (needsUsername) {
     return 'username'
   }

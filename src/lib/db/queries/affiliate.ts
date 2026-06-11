@@ -14,7 +14,7 @@ interface AffiliateUser {
   id: string
   affiliate_code: string | null
   username: string
-  address: string | null
+  address: string
   image: string | null
 }
 
@@ -44,7 +44,7 @@ interface AffiliateOverview {
 interface AffiliateProfile {
   id: string
   username: string
-  address: string | null
+  address: string
   deposit_wallet_address: string | null
   image: string | null
   affiliate_code: string | null
@@ -55,7 +55,7 @@ interface ReferralList {
   created_at: Date
   users: {
     username: string
-    address: string | null
+    address: string
     deposit_wallet_address: string | null
     image: string | null
   }
@@ -81,8 +81,8 @@ function convertAffiliateStats(rawData: any): AffiliateStats {
   }
 }
 
-function getDisplayUsername(username: string | null, address: string | null) {
-  return username?.trim() || address || ''
+function getDisplayUsername(username: string | null, address: string) {
+  return username?.trim() || address
 }
 
 function convertAffiliateOverview(rawData: any[]): AffiliateOverview[] {

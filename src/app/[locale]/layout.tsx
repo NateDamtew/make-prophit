@@ -5,7 +5,6 @@ import type { RuntimeThemeState } from '@/lib/theme-settings'
 import { hasLocale, NextIntlClientProvider } from 'next-intl'
 import { setRequestLocale } from 'next-intl/server'
 import { notFound } from 'next/navigation'
-import Script from 'next/script'
 import { Suspense } from 'react'
 import CustomJavascriptCode from '@/components/CustomJavascriptCode'
 import GlobalAnnouncementBanner from '@/components/GlobalAnnouncementBanner'
@@ -49,7 +48,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const site = runtimeTheme.site
   const siteUrl = resolveSiteUrl(process.env)
   const defaultTitle = `${site.name} | ${site.description}`
-  const fallbackOgImage = new URL('/prophit.png', siteUrl).toString()
+  const fallbackOgImage = new URL('/api/og', siteUrl).toString()
   const socialImage = {
     url: fallbackOgImage,
     width: 1200,
@@ -163,14 +162,13 @@ function LocaleBody({
 }: LocaleDocumentProps & LocaleRuntimeData & { syncRootPreset: boolean }) {
   return (
     <body className="flex min-h-screen flex-col font-sans">
-      <Script src="https://telegram.org/js/telegram-web-app.js" strategy="beforeInteractive" />
       <ThemeDocumentState runtimeTheme={runtimeTheme} syncRootPreset={syncRootPreset} />
       <SiteStructuredData locale={locale} site={runtimeTheme.site} />
       <PwaServiceWorker />
       <PublicRuntimeConfigProvider config={publicRuntimeConfig}>
         <SiteIdentityProvider site={runtimeTheme.site}>
           <NextIntlClientProvider locale={locale}>
-            <AppProviders themeMode={runtimeTheme.themeMode}>
+            <AppProviders>
               {hasGlobalAnnouncement
                 ? (
                     <GlobalAnnouncementBanner

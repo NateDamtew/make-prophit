@@ -15,8 +15,14 @@ test.describe('desktop and mobile', () => {
     await expect(page).toHaveTitle('Kuest | Decentralized Prediction Markets')
   })
 
-  test('shows appkit modal from the Get Started button', async ({ page }) => {
-    await page.getByTestId('header-get-started-button').click()
+  test('shows appkit modal with log in button', async ({ page }) => {
+    await page.getByTestId('header-login-button').click()
+
+    await expectAppKitModal(page)
+  })
+
+  test('shows appkit modal with sign up button', async ({ page }) => {
+    await page.getByTestId('header-signup-button').click()
 
     await expectAppKitModal(page)
   })

@@ -1,4 +1,3 @@
-// Trigger Vercel build
 import type { SupportedLocale } from '@/i18n/locales'
 import type { Event } from '@/types'
 import HomeClient from '@/app/[locale]/(platform)/(home)/_components/HomeClient'
@@ -50,7 +49,7 @@ export default async function HomeContent({
   }
 
   return (
-    <main className="container flex min-w-0 flex-col gap-4 py-4">
+    <main className="container grid gap-4 py-4">
       <HomeClient
         initialEvents={initialEvents}
         initialCurrentTimestamp={initialCurrentTimestamp}

@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { DEFAULT_ERROR_MESSAGE } from '@/lib/constants'
 import { SettingsRepository } from '@/lib/db/queries/settings'
 import { UserRepository } from '@/lib/db/queries/user'
-import { validateThemeMode, validateThemeSettingsInput } from '@/lib/theme-settings'
+import { validateThemeSettingsInput } from '@/lib/theme-settings'
 
 export interface ThemeSettingsActionState {
   error: string | null
@@ -35,10 +35,6 @@ export async function updateThemeSettingsAction(
   const darkJson = typeof darkJsonValue === 'string'
     ? darkJsonValue
     : '{}'
-  const themeModeValue = formData.get('theme_mode')
-  const themeMode = validateThemeMode(
-    typeof themeModeValue === 'string' ? themeModeValue : null,
-  )
 
   const validatedTheme = validateThemeSettingsInput({
     preset,
@@ -56,7 +52,6 @@ export async function updateThemeSettingsAction(
     { group: 'theme', key: 'radius', value: validatedTheme.data.radiusValue },
     { group: 'theme', key: 'light_json', value: validatedTheme.data.lightJson },
     { group: 'theme', key: 'dark_json', value: validatedTheme.data.darkJson },
-    { group: 'theme', key: 'theme_mode', value: themeMode },
   ])
 
   if (error) {

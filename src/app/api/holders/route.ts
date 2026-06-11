@@ -86,7 +86,7 @@ export async function GET(request: Request) {
           : undefined
         const profileData: HolderUser = {
           id: profile.id,
-          username: profile.username || fallbackAddress || '',
+          username: profile.username || fallbackAddress,
           deposit_wallet_address: profile.deposit_wallet_address ?? null,
           image: imageUrl,
           created_at: createdAt,

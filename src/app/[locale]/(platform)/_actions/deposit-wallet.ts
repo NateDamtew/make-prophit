@@ -271,59 +271,32 @@ async function submitWalletCreate({
     throw new Error(DEFAULT_DEPOSIT_WALLET_CREATE_ERROR_MESSAGE)
   }
 
+  const path = '/submit'
+  const body = JSON.stringify({
+    type: 'WALLET-CREATE',
+    from: userAddress,
+    to: DEPOSIT_WALLET_FACTORY_ADDRESS,
+    data: '0x',
+    value: '0',
+    signature: '',
+    signatureParams: {},
+    metadata: 'wallet_create',
+  })
+  const timestamp = Math.floor(Date.now() / 1000)
+  const signature = buildClobHmacSignature(auth.secret, timestamp, 'POST', path, body)
   const startedAt = Date.now()
-
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    'Accept': 'application/json',
-  }
-
-  const platformKey = process.env.KUEST_API_KEY
-  const platformSecret = process.env.KUEST_API_SECRET
-  const platformPassphrase = process.env.KUEST_PASSPHRASE
-  const platformAddress = process.env.KUEST_ADDRESS
-
-  let path: string
-  let body: string
-
-  if (platformKey && platformSecret && platformPassphrase && platformAddress) {
-    path = '/submit'
-    body = JSON.stringify({
-      type: 'WALLET-CREATE',
-      from: platformAddress,
-      to: DEPOSIT_WALLET_FACTORY_ADDRESS,
-      data: '0x',
-      value: '0',
-      signature: '',
-      signatureParams: {},
-      metadata: 'wallet_create',
-    })
-    const timestamp = Math.floor(Date.now() / 1000)
-    const signature = buildClobHmacSignature(platformSecret, timestamp, 'POST', path, body)
-
-    headers.KUEST_API_KEY = platformKey
-    headers.KUEST_PASSPHRASE = platformPassphrase
-    headers.KUEST_TIMESTAMP = timestamp.toString()
-    headers.KUEST_SIGNATURE = signature
-    headers.KUEST_ADDRESS = platformAddress
-  }
-  else {
-    path = '/submit/wallet'
-    body = JSON.stringify({
-      type: 'WALLET-CREATE',
-      from: userAddress,
-      to: DEPOSIT_WALLET_FACTORY_ADDRESS,
-      data: '0x',
-      value: '0',
-      signature: '',
-      signatureParams: {},
-      metadata: 'wallet_create',
-    })
-  }
 
   const response = await fetch(`${relayerUrl}${path}`, {
     method: 'POST',
-    headers,
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      'KUEST_ADDRESS': userAddress,
+      'KUEST_API_KEY': auth.key,
+      'KUEST_PASSPHRASE': auth.passphrase,
+      'KUEST_TIMESTAMP': timestamp.toString(),
+      'KUEST_SIGNATURE': signature,
+    },
     body,
     signal: AbortSignal.timeout(15_000),
   })

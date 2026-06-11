@@ -420,34 +420,6 @@ async function createSyncEventCreationsCron(
   })
 }
 
-async function createSyncCommunityResolutionsCron(
-  sql: ReservedSql,
-  siteUrl: string,
-  cronSecret: string,
-): Promise<void> {
-  await createSyncCron(sql, {
-    jobName: 'sync-community-resolutions',
-    schedule: '7,37 * * * *',
-    endpointPath: '/api/sync/community-resolutions',
-    siteUrl,
-    cronSecret,
-  })
-}
-
-async function createSyncCommunityDeployRecoveryCron(
-  sql: ReservedSql,
-  siteUrl: string,
-  cronSecret: string,
-): Promise<void> {
-  await createSyncCron(sql, {
-    jobName: 'sync-community-deploy-recovery',
-    schedule: '17,47 * * * *',
-    endpointPath: '/api/sync/community-deploy-recovery',
-    siteUrl,
-    cronSecret,
-  })
-}
-
 async function resolveCronExtensionCapabilities(sql: ReservedSql): Promise<CronExtensionCapabilities> {
   const result = await sql<CronExtensionCapabilitiesRow[]>`
     SELECT
@@ -491,8 +463,6 @@ async function configureSupabaseScheduler(
   await createSyncTranslationsCron(sql, siteUrl, cronSecret)
   await createSyncResolutionCron(sql, siteUrl, cronSecret)
   await createSyncVolumeCron(sql, siteUrl, cronSecret)
-  await createSyncCommunityResolutionsCron(sql, siteUrl, cronSecret)
-  await createSyncCommunityDeployRecoveryCron(sql, siteUrl, cronSecret)
 }
 
 function resolveMigrationConnectionString(): string | null {

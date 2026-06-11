@@ -3,8 +3,7 @@
 import type { Metadata } from 'next'
 import type { SupportedLocale } from '@/i18n/locales'
 import { getExtracted, setRequestLocale } from 'next-intl/server'
-import { Suspense } from 'react'
-import LeaderboardViews from '@/app/[locale]/(platform)/leaderboard/_components/LeaderboardViews'
+import LeaderboardClient from '@/app/[locale]/(platform)/leaderboard/_components/LeaderboardClient'
 import {
   buildLeaderboardPath,
   CATEGORY_OPTIONS,
@@ -124,16 +123,9 @@ export default async function LeaderboardPage({ params }: PageProps<'/[locale]/l
 
   const initialFilters = parseLeaderboardFilters(filters)
 
-  // The Traders/Agents view switch happens client-side (LeaderboardViews reads
-  // ?view via useSearchParams). Keeping searchParams out of this 'use cache'
-  // page preserves its static caching under cacheComponents — but useSearchParams
-  // must be wrapped in Suspense so the page can still be statically prerendered
-  // (searchParams aren't known at prerender time; the fallback renders then).
   return (
     <main className="container w-full py-6 md:py-8">
-      <Suspense fallback={null}>
-        <LeaderboardViews initialFilters={initialFilters} />
-      </Suspense>
+      <LeaderboardClient initialFilters={initialFilters} />
     </main>
   )
 }

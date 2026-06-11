@@ -22,7 +22,6 @@ function parseAdminWalletsEnv(value: string): string[] {
 }
 
 let cachedAdminWallets: string[] | null = null
-let cachedAdminEmails: string[] | null = null
 
 function getAdminWallets(): string[] {
   if (cachedAdminWallets) {
@@ -39,46 +38,10 @@ function getAdminWallets(): string[] {
   return cachedAdminWallets
 }
 
-function getAdminEmails(): string[] {
-  if (cachedAdminEmails) {
-    return cachedAdminEmails
-  }
-
-  const envValue = process.env.ADMIN_EMAILS
-  if (!envValue) {
-    cachedAdminEmails = ['nathandamtew@gmail.com']
-    return cachedAdminEmails
-  }
-
-  cachedAdminEmails = parseAdminWalletsEnv(envValue)
-  return cachedAdminEmails
-}
-
-function getAdminUsernames(): string[] {
-  return ['natedamtew']
-}
-
-export function isAdminWallet(addressOrEmail?: string | null): boolean {
-  if (!addressOrEmail) {
+export function isAdminWallet(address?: string | null): boolean {
+  if (!address) {
     return false
   }
 
-  const normalized = addressOrEmail.toLowerCase()
-  if (normalized.includes('@')) {
-    return getAdminEmails().includes(normalized)
-  }
-
-  return getAdminWallets().includes(normalized) || getAdminUsernames().includes(normalized)
-}
-
-/**
- * Returns the lists used to identify admins. Useful for queries that
- * need to fetch admin user rows (e.g. for notifications).
- */
-export function getAdminIdentifierLists() {
-  return {
-    wallets: getAdminWallets(),
-    emails: getAdminEmails(),
-    usernames: getAdminUsernames(),
-  }
+  return getAdminWallets().includes(address.toLowerCase())
 }

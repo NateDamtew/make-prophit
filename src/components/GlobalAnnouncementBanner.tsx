@@ -48,9 +48,7 @@ export default function GlobalAnnouncementBanner({
   const hasMessage = message.trim().length > 0
   const isEnabled = isCustomJavascriptCodeEnabledOnPathname({ disabledOn }, localizedPathname)
 
-  const isLandingPage = localizedPathname === '/' || localizedPathname?.startsWith('/landing')
-
-  if (!hasMessage || !isEnabled || isLandingPage) {
+  if (!hasMessage || !isEnabled) {
     return null
   }
 

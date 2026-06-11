@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
     const { data: referredUsers } = await UserRepository.getUsersByIds(referredIds)
     const referredEntries = (referredUsers ?? []).filter((ref): ref is typeof ref & { username: string } => Boolean(ref.username))
 
-    const referredMap = new Map<string, { username: string, address: string | null, deposit_wallet_address?: string | null, image?: string | null }>(
+    const referredMap = new Map<string, { username: string, address: string, deposit_wallet_address?: string | null, image?: string | null }>(
       referredEntries.map(referred => [referred.id, {
         username: referred.username,
         address: referred.address,

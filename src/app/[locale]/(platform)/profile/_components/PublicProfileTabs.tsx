@@ -3,22 +3,19 @@
 import { useExtracted } from 'next-intl'
 import { useMemo, useState } from 'react'
 import PublicActivityList from '@/app/[locale]/(platform)/profile/_components/PublicActivityList'
-import PublicCommunitiesList from '@/app/[locale]/(platform)/profile/_components/PublicCommunitiesList'
 import PublicPositionsList from '@/app/[locale]/(platform)/profile/_components/PublicPositionsList'
 import { useTabIndicatorPosition } from '@/hooks/useTabIndicatorPosition'
 import { cn } from '@/lib/utils'
 
-type TabType = 'positions' | 'activity' | 'communities'
+type TabType = 'positions' | 'activity'
 
 const baseTabs = [
   { id: 'positions' as const },
   { id: 'activity' as const },
-  { id: 'communities' as const },
 ]
 
 interface PublicProfileTabsProps {
   userAddress: string
-  userId: string | null
 }
 
 function usePublicProfileTabs() {
@@ -29,19 +26,9 @@ function usePublicProfileTabs() {
   return { tabs, activeTab, setActiveTab, tabRef, indicatorStyle, isInitialized }
 }
 
-export default function PublicProfileTabs({ userAddress, userId }: PublicProfileTabsProps) {
+export default function PublicProfileTabs({ userAddress }: PublicProfileTabsProps) {
   const t = useExtracted()
   const { tabs, activeTab, setActiveTab, tabRef, indicatorStyle, isInitialized } = usePublicProfileTabs()
-
-  function getLabel(id: TabType) {
-    if (id === 'positions') {
-      return t('Positions')
-    }
-    if (id === 'activity') {
-      return t('Activity')
-    }
-    return 'Communities'
-  }
 
   return (
     <div className="overflow-hidden rounded-2xl border">
@@ -62,7 +49,7 @@ export default function PublicProfileTabs({ userAddress, userId }: PublicProfile
                   : 'text-muted-foreground hover:text-foreground',
               )}
             >
-              {getLabel(tab.id)}
+              {tab.id === 'positions' ? t('Positions') : t('Activity')}
             </button>
           ))}
         </div>
@@ -83,7 +70,6 @@ export default function PublicProfileTabs({ userAddress, userId }: PublicProfile
       <div className="space-y-4 px-0 pt-4 pb-0 sm:px-0">
         {activeTab === 'positions' && <PublicPositionsList userAddress={userAddress} />}
         {activeTab === 'activity' && <PublicActivityList userAddress={userAddress} />}
-        {activeTab === 'communities' && <PublicCommunitiesList userId={userId} />}
       </div>
     </div>
   )

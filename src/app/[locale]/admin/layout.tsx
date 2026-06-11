@@ -6,8 +6,6 @@ import PlatformViewerState from '@/app/[locale]/(platform)/_components/PlatformV
 import AdminHeader from '@/app/[locale]/admin/_components/AdminHeader'
 import AdminSidebar from '@/app/[locale]/admin/_components/AdminSidebar'
 import CopyVersion from '@/app/[locale]/admin/_components/CopyVersion'
-import { AdminCommandProvider } from '@/components/admin-ui/CommandPalette'
-import { AdminSidebarProvider } from '@/components/admin-ui/shell/SidebarProvider'
 import AppKitProvider from '@/providers/AppKitProvider'
 
 export const metadata: Metadata = {
@@ -33,26 +31,16 @@ export default async function AdminLayout({ params, children }: LayoutProps<'/[l
   return (
     <AppKitProvider>
       <PlatformViewerState />
-      <AdminSidebarProvider>
-        <AdminCommandProvider>
-          <div className="flex min-h-svh w-full bg-background">
-            <AdminSidebar />
-            <div className="flex min-w-0 flex-1 flex-col">
-              <AdminHeader />
-              <main className="flex-1 px-4 py-6 lg:p-8">
-                <div className="mx-auto w-full max-w-6xl space-y-8">
-                  {children}
-                </div>
-              </main>
-              <footer className="px-4 pb-6 lg:px-8">
-                <div className="mx-auto w-full max-w-6xl">
-                  <CopyVersion forkRepositoryUrl={forkRepositoryUrl} />
-                </div>
-              </footer>
-            </div>
+      <AdminHeader />
+      <main className="container py-4 lg:py-8">
+        <div className="grid gap-8 lg:grid-cols-[200px_1fr] lg:gap-16">
+          <AdminSidebar />
+          <div className="space-y-8">
+            {children}
           </div>
-        </AdminCommandProvider>
-      </AdminSidebarProvider>
+        </div>
+        <CopyVersion forkRepositoryUrl={forkRepositoryUrl} />
+      </main>
     </AppKitProvider>
   )
 }

@@ -9,7 +9,6 @@ import { and, asc, count, desc, eq, exists, ilike, inArray, or, sql } from 'driz
 import { cacheTag } from 'next/cache'
 import { DEFAULT_LOCALE } from '@/i18n/locales'
 import { cacheTags } from '@/lib/cache-tags'
-import { buildEventVisibilityFilter } from '@/lib/community-visibility'
 import { OUTCOME_INDEX } from '@/lib/constants'
 import { getSportsSlugResolverFromDb } from '@/lib/db/queries/sports-menu'
 import { bookmarks } from '@/lib/db/schema/bookmarks/tables'
@@ -1297,7 +1296,6 @@ async function buildEventListQueryContext({
   }
   whereConditions.push(buildPublicEventListVisibilityCondition(events.id))
   whereConditions.push(eq(events.is_hidden, false))
-  whereConditions.push(buildEventVisibilityFilter(userId))
 
   if (excludeSportsAuxiliary) {
     whereConditions.push(sql`${events.slug} !~* ${SPORTS_AUXILIARY_SLUG_SQL_REGEX}`)
@@ -1560,7 +1558,6 @@ export const EventRepository = {
       }
       whereConditions.push(buildPublicEventListVisibilityCondition(events.id))
       whereConditions.push(eq(events.is_hidden, false))
-      whereConditions.push(buildEventVisibilityFilter(userId))
 
       if (search) {
         const searchTerms = normalizedSearch.split(/\s+/).filter(Boolean)

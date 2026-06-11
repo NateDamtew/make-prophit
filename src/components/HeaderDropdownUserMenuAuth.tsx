@@ -27,7 +27,6 @@ import { usePathname } from '@/i18n/navigation'
 import { getAvatarPlaceholderStyle, shouldUseAvatarPlaceholder } from '@/lib/avatar'
 import { signOutAndRedirect } from '@/lib/logout'
 import { cn } from '@/lib/utils'
-import { useThemeMode } from '@/providers/ThemeModeProvider'
 import { useUser } from '@/stores/useUser'
 
 function useHoverMenu(enableHoverOpen: boolean) {
@@ -103,7 +102,6 @@ export default function HeaderDropdownUserMenuAuth() {
   const { isReady } = useAppKit()
   const { disconnect } = useDisconnect()
   const user = useUser()
-  const themeMode = useThemeMode()
   const { canShowInstallUi, isIos, isPrompting, requestInstall } = usePwaInstall()
   const pathname = usePathname()
   const isAdmin = pathname.startsWith('/admin')
@@ -302,12 +300,10 @@ export default function HeaderDropdownUserMenuAuth() {
             </DropdownMenuItem>
           )}
 
-          {themeMode === 'both' && (
           <div className="flex items-center justify-between gap-2 px-2 py-1 text-sm font-semibold">
             <span>{t('Dark Mode')}</span>
             <ThemeSelector />
           </div>
-          )}
 
           {isMobile && (
             <DropdownMenuItem asChild className="py-2 text-sm font-semibold">

@@ -1,12 +1,4 @@
-// Use the scoped `./market` entry, not the full `dist/index.js` barrel. The
-// barrel registers every embed component and at least two share a constructor,
-// which throws `NotSupportedError: this constructor has already been used with
-// this registry` on load — the custom element never upgrades and the widget
-// renders blank. The market-only entry defines a single clean element.
-//
-// Pinned to an explicit version so an unpkg "latest" publish can't silently
-// break embeds again (which is exactly what happened with 1.3.8's barrel).
-const EMBED_SCRIPT_URL = 'https://unpkg.com/@kuestcom/embeds@1.3.8/dist/embeds/market/index.js'
+const EMBED_SCRIPT_URL = 'https://unpkg.com/@kuestcom/embeds/dist/index.js'
 
 type EmbedTheme = 'light' | 'dark'
 const CUSTOM_ELEMENT_NAME_PATTERN = /^[a-z](?:[a-z0-9-]*[a-z0-9])?$/

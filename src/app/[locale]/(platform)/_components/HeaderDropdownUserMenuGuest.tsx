@@ -18,7 +18,6 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { usePwaInstall } from '@/hooks/usePwaInstall'
-import { useThemeMode } from '@/providers/ThemeModeProvider'
 
 function relatedTargetIsWithin(ref: React.RefObject<HTMLElement | null>, relatedTarget: EventTarget | null) {
   const current = ref.current
@@ -102,7 +101,6 @@ function useHoverDropdownMenu(enableHoverOpen: boolean) {
 export default function HeaderDropdownUserMenuGuest() {
   const t = useExtracted()
   const isMobile = useIsMobile()
-  const themeMode = useThemeMode()
   const { canShowInstallUi, isIos, isPrompting, requestInstall } = usePwaInstall()
   const enableHoverOpen = !isMobile
   const {
@@ -200,12 +198,10 @@ export default function HeaderDropdownUserMenuGuest() {
             </DropdownMenuItem>
           )}
 
-          {themeMode === 'both' && (
           <div className="flex items-center justify-between gap-2 px-2 py-1 text-sm font-semibold text-foreground">
             <span>{t('Dark Mode')}</span>
             <ThemeSelector />
           </div>
-          )}
 
           <DropdownMenuSeparator />
 

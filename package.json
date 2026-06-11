@@ -12,7 +12,7 @@
     "node": "24.x"
   },
   "scripts": {
-    "dev": "next dev --turbo",
+    "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "knip": "knip --fix --no-config-hints",
@@ -73,7 +73,6 @@
     "react-animated-counter": "1.9.0",
     "react-dom": "19.2.6",
     "react-qr-code": "2.0.21",
-    "resend": "^6.12.4",
     "sharp": "0.34.5",
     "sonner": "2.0.7",
     "tailwind-merge": "3.6.0",

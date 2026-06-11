@@ -1,16 +1,13 @@
-import { createHmac } from 'node:crypto'
 import { drizzleAdapter } from '@better-auth/drizzle-adapter'
 import { createHMAC } from '@better-auth/utils/hmac'
 import { getChainIdFromMessage } from '@reown/appkit-siwe'
 import { betterAuth } from 'better-auth'
-import { APIError, createAuthEndpoint, createAuthMiddleware } from 'better-auth/api'
-import { deleteSessionCookie, setSessionCookie } from 'better-auth/cookies'
+import { createAuthMiddleware } from 'better-auth/api'
+import { deleteSessionCookie } from 'better-auth/cookies'
 import { generateRandomString } from 'better-auth/crypto'
 import { nextCookies } from 'better-auth/next-js'
 import { customSession, siwe, twoFactor } from 'better-auth/plugins'
-import { eq, sql } from 'drizzle-orm'
-import { createPublicClient, http, verifyMessage as viemVerifyMessage } from 'viem'
-import { z } from 'zod'
+import { createPublicClient, http } from 'viem'
 import { isAdminWallet } from '@/lib/admin'
 import { AffiliateRepository } from '@/lib/db/queries/affiliate'
 import { db } from '@/lib/drizzle'
@@ -173,16 +170,6 @@ export const auth = betterAuth({
   appName: DEFAULT_THEME_SITE_NAME,
   secret: resolveBetterAuthSecret(),
   baseURL: SITE_URL,
-  trustedOrigins: [
-    SITE_URL,
-    `https://tma.${siteUrlObject.hostname}`,
-    ...(process.env.TMA_DOMAIN ? [`https://${process.env.TMA_DOMAIN}`] : []),
-    ...(process.env.ADDITIONAL_TRUSTED_ORIGINS
-      ? process.env.ADDITIONAL_TRUSTED_ORIGINS.split(',').map(o => o.trim()).filter(Boolean)
-      : []),
-    ...(process.env.VERCEL_URL ? [`https://${process.env.VERCEL_URL}`] : []),
-    ...(process.env.VERCEL_BRANCH_URL ? [`https://${process.env.VERCEL_BRANCH_URL}`] : []),
-  ],
   advanced: {
     database: {
       generateId: false,
@@ -233,200 +220,6 @@ export const auth = betterAuth({
     },
   },
   plugins: [
-    {
-      id: 'telegram-tma',
-      endpoints: {
-        verifyTmaTelegram: createAuthEndpoint(
-          '/telegram/verify-tma',
-          {
-            method: 'POST',
-            body: z.object({
-              initData: z.string(),
-            }),
-            requireRequest: true,
-          },
-          async (ctx) => {
-            const botToken = process.env.TELEGRAM_BOT_TOKEN
-            if (!botToken) {
-              throw new APIError('INTERNAL_SERVER_ERROR', {
-                message: 'Telegram Bot Token is not configured on the server.',
-              })
-            }
-
-            const { initData } = ctx.body as { initData: string }
-
-            const params = new URLSearchParams(initData)
-            const hash = params.get('hash')
-            if (!hash) {
-              throw new APIError('BAD_REQUEST', { message: 'Missing hash in initData.' })
-            }
-
-            params.delete('hash')
-            const keys = Array.from(params.keys()).sort()
-            const checkString = keys.map(key => `${key}=${params.get(key)}`).join('\n')
-
-            const secretKey = createHmac('sha256', 'WebAppData').update(botToken).digest()
-            const computedHash = createHmac('sha256', secretKey).update(checkString).digest('hex')
-            const computedHashFallback = createHmac('sha256', botToken).update(checkString).digest('hex')
-
-            if (computedHash !== hash && computedHashFallback !== hash) {
-              throw new APIError('UNAUTHORIZED', { message: 'Invalid Telegram authentication signature.' })
-            }
-
-            const authDateStr = params.get('auth_date')
-            if (authDateStr) {
-              const authDate = Number.parseInt(authDateStr, 10)
-              const now = Math.floor(Date.now() / 1000)
-              if (now - authDate > 86400) {
-                throw new APIError('UNAUTHORIZED', { message: 'Telegram authentication request expired.' })
-              }
-            }
-
-            const userStr = params.get('user')
-            if (!userStr) {
-              throw new APIError('BAD_REQUEST', { message: 'Missing user object in initData.' })
-            }
-
-            let tgUser: any
-            try {
-              tgUser = JSON.parse(userStr)
-            }
-            catch {
-              throw new APIError('BAD_REQUEST', { message: 'Invalid user object in initData.' })
-            }
-
-            if (!tgUser.id) {
-              throw new APIError('BAD_REQUEST', { message: 'Missing user ID in initData.' })
-            }
-
-            // Find existing user by telegram account link
-            let user: any = null
-            try {
-              const account = await ctx.context.internalAdapter.findAccountByProviderId(
-                String(tgUser.id),
-                'telegram',
-              )
-              if (account) {
-                user = await ctx.context.internalAdapter.findUserById(account.userId)
-              }
-            }
-            catch (findErr) {
-              console.error('[TMA Auth] Error finding existing account:', findErr)
-            }
-
-            // Also check by email in case user exists but account link is missing
-            if (!user) {
-              const userEmail = `telegram_${tgUser.id}@${SIWE_EMAIL_DOMAIN}`
-              try {
-                const existing = await ctx.context.internalAdapter.findUserByEmail(userEmail)
-                if (existing?.user) {
-                  user = existing.user
-                  // Ensure account link exists
-                  try {
-                    await ctx.context.internalAdapter.createAccount({
-                      userId: user.id,
-                      providerId: 'telegram',
-                      accountId: String(tgUser.id),
-                      createdAt: new Date(),
-                      updatedAt: new Date(),
-                    })
-                  }
-                  catch {
-                    // Account link may already exist — ignore
-                  }
-                }
-              }
-              catch (emailErr) {
-                console.error('[TMA Auth] Error finding user by email:', emailErr)
-              }
-            }
-
-            // Create new user if not found
-            if (!user) {
-              const userEmail = `telegram_${tgUser.id}@${SIWE_EMAIL_DOMAIN}`
-              const name = tgUser.username
-                || [tgUser.first_name, tgUser.last_name].filter(Boolean).join(' ')
-                || `Telegram User ${tgUser.id}`
-
-              let username = tgUser.username || ''
-              if (username) {
-                try {
-                  const existing = await db
-                    .select()
-                    .from(schema.users)
-                    .where(eq(sql`LOWER(${schema.users.username})`, username.toLowerCase()))
-                    .limit(1)
-                  if (existing.length > 0) {
-                    username = ''
-                  }
-                }
-                catch {
-                  username = ''
-                }
-              }
-
-              try {
-                user = await ctx.context.internalAdapter.createUser({
-                  name,
-                  email: userEmail,
-                  image: tgUser.photo_url || '',
-                  emailVerified: true,
-                })
-              }
-              catch (createErr) {
-                console.error('[TMA Auth] Failed to create user:', createErr)
-                throw new APIError('INTERNAL_SERVER_ERROR', {
-                  message: `Failed to create user: ${createErr instanceof Error ? createErr.message : 'Unknown error'}`,
-                })
-              }
-
-              if (!user) {
-                throw new APIError('INTERNAL_SERVER_ERROR', { message: 'Failed to create user account.' })
-              }
-
-              // Set username — better-auth's adapter doesn't handle custom fields
-              if (username) {
-                await db
-                  .update(schema.users)
-                  .set({ username })
-                  .where(eq(schema.users.id, user.id))
-              }
-
-              try {
-                await ctx.context.internalAdapter.createAccount({
-                  userId: user.id,
-                  providerId: 'telegram',
-                  accountId: String(tgUser.id),
-                  createdAt: new Date(),
-                  updatedAt: new Date(),
-                })
-              }
-              catch (accountErr) {
-                console.error('[TMA Auth] Failed to create account link:', accountErr)
-              }
-            }
-
-            const session = await ctx.context.internalAdapter.createSession(user.id)
-            if (!session) {
-              throw new APIError('INTERNAL_SERVER_ERROR', { message: 'Failed to create session.' })
-            }
-
-            await setSessionCookie(ctx as any, { session, user })
-
-            return ctx.json({
-              token: session.token,
-              success: true,
-              user: {
-                id: user.id,
-                name: user.name,
-                email: user.email,
-                image: user.image,
-              },
-            })
-          },
-        ),
-      },
-    },
     customSession(async ({ user, session }) => {
       const userId = String((user as any).id ?? '')
       const email = isWalletPlaceholderEmail(user.email, [SIWE_EMAIL_DOMAIN]) ? '' : user.email
@@ -444,10 +237,7 @@ export const auth = betterAuth({
           email,
           settings,
           image: user.image ? getPublicAssetUrl(user.image) : '',
-          is_admin:
-            isAdminWallet(user.name)
-            || isAdminWallet(user.email)
-            || (typeof (user as any).username === 'string' && isAdminWallet((user as any).username)),
+          is_admin: isAdminWallet(user.name),
         },
         session,
       }
@@ -470,30 +260,21 @@ export const auth = betterAuth({
       anonymous: true,
       getNonce: async () => generateRandomString(32),
       verifyMessage: async ({ message, signature, address }) => {
-        // First try pure ECDSA recovery — works for all EOA wallets (Metamask,
-        // Binance Wallet, Coinbase, etc.) without any RPC call. This avoids
-        // the WalletConnect RPC domain-allowlist requirement.
-        try {
-          return await viemVerifyMessage({
-            message,
-            address: address as `0x${string}`,
-            signature: signature as `0x${string}`,
-          })
-        }
-        catch {
-          // Fallback: RPC-based EIP-1271 check for smart contract wallets
-          const chainId = getChainIdFromMessage(message)
-          const publicClient = createPublicClient({
+        const chainId = getChainIdFromMessage(message)
+
+        const publicClient = createPublicClient(
+          {
             transport: http(
               `https://rpc.walletconnect.org/v1/?chainId=${chainId}&projectId=${reownProjectId}`,
             ),
-          })
-          return await publicClient.verifyMessage({
-            message,
-            address: address as `0x${string}`,
-            signature: signature as `0x${string}`,
-          })
-        }
+          },
+        )
+
+        return await publicClient.verifyMessage({
+          message,
+          address: address as `0x${string}`,
+          signature: signature as `0x${string}`,
+        })
       },
     }),
     siweTwoFactorRedirect(),
