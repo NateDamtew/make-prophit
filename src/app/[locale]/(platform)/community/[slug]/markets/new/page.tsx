@@ -43,7 +43,7 @@ async function NewMarketContent({ slug }: { slug: string }) {
   const { data: drafts } = await CommunityRepository.listDrafts(community.id)
 
   return (
-    <>
+    <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
       <Link
         href={`/community/${slug}` as any}
         className="
@@ -75,7 +75,7 @@ async function NewMarketContent({ slug }: { slug: string }) {
         communityIcon={community.icon_url ?? null}
         drafts={drafts ?? []}
       />
-    </>
+    </div>
   )
 }
 

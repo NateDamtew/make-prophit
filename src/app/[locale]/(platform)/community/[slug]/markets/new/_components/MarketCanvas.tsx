@@ -228,7 +228,7 @@ export function MarketCanvas({ communityId, communitySlug, communityName, commun
   }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[1.05fr_1fr]">
+    <div className="grid gap-6 lg:grid-cols-[1.15fr_1fr] xl:grid-cols-[1.2fr_1fr] xl:gap-8">
       {/* Left: AI prompt + template picker + form */}
       <div className="grid gap-6">
         {/* AI assist */}
