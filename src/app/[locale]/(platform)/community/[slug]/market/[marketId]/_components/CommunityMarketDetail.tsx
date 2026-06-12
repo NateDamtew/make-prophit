@@ -1,24 +1,25 @@
 'use client'
 
+import {
+  AlertCircle,
+  Calendar,
+  CheckCircle,
+  ChevronLeft,
+  Clock,
+  ExternalLink,
+  FileText,
+  Gavel,
+  Sparkles,
+  XCircle,
+} from 'lucide-react'
 import Link from 'next/link'
 import { useMemo, useState, useTransition } from 'react'
 import { toast } from 'sonner'
-import {
-  ChevronLeft,
-  CheckCircle,
-  XCircle,
-  AlertCircle,
-  Calendar,
-  FileText,
-  ExternalLink,
-  Gavel,
-  Sparkles,
-  Clock,
-} from 'lucide-react'
-import { castJuryVoteAction } from '../../../_actions/community-actions'
+import { CommentsSection } from '@/components/community-engagement/CommentsSection'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
+import { castJuryVoteAction } from '../../../_actions/community-actions'
 import CommunityVoteChart from './CommunityVoteChart'
 
 interface Market {
@@ -130,10 +131,15 @@ export default function CommunityMarketDetail({
         {/* Back link */}
         <Link
           href={`/community/${community.slug}` as any}
-          className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
+          className="
+            inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors
+            hover:text-foreground
+          "
         >
           <ChevronLeft className="size-4" />
-          Back to {community.name}
+          Back to
+          {' '}
+          {community.name}
         </Link>
 
         <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
@@ -145,7 +151,10 @@ export default function CommunityMarketDetail({
                 <div className="flex items-center gap-2 text-xs">
                   <Link
                     href={`/community/${community.slug}` as any}
-                    className="flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 font-medium hover:bg-muted/80"
+                    className="
+                      flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 font-medium
+                      hover:bg-muted/80
+                    "
                   >
                     {community.icon_url
                       ? <img src={community.icon_url} alt="" className="size-4 rounded-sm object-cover" />
@@ -153,30 +162,45 @@ export default function CommunityMarketDetail({
                     {community.name}
                   </Link>
                   {community.type === 'private' && (
-                    <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-600">
+                    <span className="
+                      rounded-full bg-amber-500/10 px-2 py-0.5 text-2xs font-medium tracking-wide text-amber-600
+                      uppercase
+                    "
+                    >
                       Private
                     </span>
                   )}
                   {isResolved
                     ? (
                         <span className={cn(
-                          'flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide',
-                          market.resolved_outcome === 'yes' ? 'bg-yes/15 text-yes-foreground' : 'bg-no/15 text-no-foreground',
+                          `
+                            flex items-center gap-1 rounded-full px-2 py-0.5 text-2xs font-medium tracking-wide
+                            uppercase
+                          `,
+                          market.resolved_outcome === 'yes'
+                            ? 'bg-yes/15 text-yes-foreground'
+                            : `bg-no/15 text-no-foreground`,
                         )}
                         >
                           <CheckCircle className="size-3" />
-                          Resolved {market.resolved_outcome?.toUpperCase()}
+                          Resolved
+                          {' '}
+                          {market.resolved_outcome?.toUpperCase()}
                         </span>
                       )
                     : (
-                        <span className="flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-primary">
+                        <span className="
+                          flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-2xs font-medium
+                          tracking-wide text-primary uppercase
+                        "
+                        >
                           <span className="size-1.5 animate-pulse rounded-full bg-primary" />
                           Live
                         </span>
                       )}
                 </div>
 
-                <h1 className="text-xl font-bold leading-snug sm:text-2xl">{market.title}</h1>
+                <h1 className="text-xl/snug font-bold sm:text-2xl">{market.title}</h1>
 
                 {market.description && (
                   <p className="text-sm text-muted-foreground">{market.description}</p>
@@ -197,7 +221,11 @@ export default function CommunityMarketDetail({
                   )}
                   <span className="flex items-center gap-1">
                     <Gavel className="size-3.5" />
-                    {tally.total}/{community.jury_size} jury votes
+                    {tally.total}
+                    /
+                    {community.jury_size}
+                    {' '}
+                    jury votes
                   </span>
                   {market.event_id && (
                     <Link
@@ -217,7 +245,7 @@ export default function CommunityMarketDetail({
               <CardContent className="p-5">
                 <div className="mb-4 flex items-end justify-between">
                   <div>
-                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
                       Current Sentiment
                     </p>
                     <p className="mt-1 text-4xl font-bold tabular-nums">
@@ -226,7 +254,12 @@ export default function CommunityMarketDetail({
                     </p>
                   </div>
                   <div className="text-right text-xs text-muted-foreground">
-                    <p>Based on {tally.total} {tally.total === 1 ? 'vote' : 'votes'}</p>
+                    <p>
+                      Based on
+                      {tally.total}
+                      {' '}
+                      {tally.total === 1 ? 'vote' : 'votes'}
+                    </p>
                     {market.resolution_date && (
                       <p className="mt-0.5 flex items-center justify-end gap-1">
                         <Clock className="size-3" />
@@ -254,22 +287,28 @@ export default function CommunityMarketDetail({
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-medium text-yes-foreground">YES</span>
                       <span className="text-lg font-bold text-yes-foreground tabular-nums">
-                        {roundedYes}%
+                        {roundedYes}
+                        %
                       </span>
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      {tally.yes} {tally.yes === 1 ? 'vote' : 'votes'}
+                      {tally.yes}
+                      {' '}
+                      {tally.yes === 1 ? 'vote' : 'votes'}
                     </p>
                   </div>
                   <div className="rounded-lg bg-no/10 p-3">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-medium text-no-foreground">NO</span>
                       <span className="text-lg font-bold text-no-foreground tabular-nums">
-                        {Math.round(tally.noPct)}%
+                        {Math.round(tally.noPct)}
+                        %
                       </span>
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      {tally.no} {tally.no === 1 ? 'vote' : 'votes'}
+                      {tally.no}
+                      {' '}
+                      {tally.no === 1 ? 'vote' : 'votes'}
                     </p>
                   </div>
                 </div>
@@ -282,7 +321,7 @@ export default function CommunityMarketDetail({
                 <CardContent className="space-y-3 p-5">
                   <div className="flex items-center gap-2">
                     <FileText className="size-4 text-muted-foreground" />
-                    <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                    <h2 className="text-sm font-semibold tracking-wide text-muted-foreground uppercase">
                       Resolution
                     </h2>
                   </div>
@@ -295,7 +334,7 @@ export default function CommunityMarketDetail({
                   {market.resolution_rules && (
                     <div>
                       <p className="text-xs font-medium text-muted-foreground">Rules</p>
-                      <p className="mt-0.5 whitespace-pre-wrap text-sm text-muted-foreground">
+                      <p className="mt-0.5 text-sm whitespace-pre-wrap text-muted-foreground">
                         {market.resolution_rules}
                       </p>
                     </div>
@@ -309,11 +348,15 @@ export default function CommunityMarketDetail({
               <CardContent className="space-y-3 p-5">
                 <div className="flex items-center gap-2">
                   <Gavel className="size-4 text-muted-foreground" />
-                  <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                  <h2 className="text-sm font-semibold tracking-wide text-muted-foreground uppercase">
                     Jury Votes
                   </h2>
                   <span className="text-xs text-muted-foreground">
-                    ({votes.length}/{community.jury_size})
+                    (
+                    {votes.length}
+                    /
+                    {community.jury_size}
+                    )
                   </span>
                 </div>
 
@@ -332,7 +375,11 @@ export default function CommunityMarketDetail({
                         {votes.map(v => (
                           <li key={v.id} className="rounded-xl border bg-background p-3">
                             <div className="flex items-start gap-3">
-                              <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium">
+                              <div className="
+                                flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-sm
+                                font-medium
+                              "
+                              >
                                 {v.juror_image
                                   ? <img src={v.juror_image} alt="" className="size-9 rounded-full object-cover" />
                                   : (v.juror_username?.[0] ?? '?').toUpperCase()}
@@ -343,19 +390,31 @@ export default function CommunityMarketDetail({
                                     {v.juror_username ? `@${v.juror_username}` : 'Anonymous'}
                                   </span>
                                   {v.vote === 'yes' && (
-                                    <span className="flex items-center gap-1 rounded-full bg-yes/15 px-1.5 py-0.5 text-[10px] font-medium text-yes-foreground">
+                                    <span className="
+                                      flex items-center gap-1 rounded-full bg-yes/15 px-1.5 py-0.5 text-2xs font-medium
+                                      text-yes-foreground
+                                    "
+                                    >
                                       <CheckCircle className="size-2.5" />
                                       YES
                                     </span>
                                   )}
                                   {v.vote === 'no' && (
-                                    <span className="flex items-center gap-1 rounded-full bg-no/15 px-1.5 py-0.5 text-[10px] font-medium text-no-foreground">
+                                    <span className="
+                                      flex items-center gap-1 rounded-full bg-no/15 px-1.5 py-0.5 text-2xs font-medium
+                                      text-no-foreground
+                                    "
+                                    >
                                       <XCircle className="size-2.5" />
                                       NO
                                     </span>
                                   )}
                                   {v.vote === 'disputed' && (
-                                    <span className="flex items-center gap-1 rounded-full bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-600">
+                                    <span className="
+                                      flex items-center gap-1 rounded-full bg-amber-500/10 px-1.5 py-0.5 text-2xs
+                                      font-medium text-amber-600
+                                    "
+                                    >
                                       <AlertCircle className="size-2.5" />
                                       DISPUTED
                                     </span>
@@ -429,7 +488,10 @@ export default function CommunityMarketDetail({
                           </div>
                           {myVote && (
                             <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 text-xs">
-                              <p className="font-medium text-primary">You already voted: {(myVote as any).vote?.toUpperCase()}</p>
+                              <p className="font-medium text-primary">
+                                You already voted:
+                                {(myVote as any).vote?.toUpperCase()}
+                              </p>
                               <p className="mt-1 text-muted-foreground">Submitting again will replace your vote.</p>
                             </div>
                           )}
@@ -455,7 +517,10 @@ export default function CommunityMarketDetail({
                             type="button"
                             onClick={() => setVoteChoice('disputed')}
                             className={cn(
-                              'flex w-full items-center justify-center gap-1.5 rounded-md border px-3 py-2 text-xs font-medium transition-colors',
+                              `
+                                flex w-full items-center justify-center gap-1.5 rounded-md border px-3 py-2 text-xs
+                                font-medium transition-colors
+                              `,
                               voteChoice === 'disputed'
                                 ? 'border-amber-500/40 bg-amber-500/10 text-amber-600'
                                 : 'hover:bg-muted/30',
@@ -471,7 +536,11 @@ export default function CommunityMarketDetail({
                               value={reasoning}
                               onChange={e => setReasoning(e.target.value)}
                               placeholder="Explain your vote based on the resolution source..."
-                              className="w-full resize-none rounded-lg border bg-background px-3 py-2 text-sm outline-none placeholder:text-muted-foreground focus:ring-1 focus:ring-primary"
+                              className="
+                                w-full resize-none rounded-lg border bg-background px-3 py-2 text-sm outline-none
+                                placeholder:text-muted-foreground
+                                focus:ring-1 focus:ring-primary
+                              "
                               rows={4}
                               maxLength={1000}
                             />
@@ -487,7 +556,11 @@ export default function CommunityMarketDetail({
                               value={evidenceUrl}
                               onChange={e => setEvidenceUrl(e.target.value)}
                               placeholder="https://..."
-                              className="w-full rounded-lg border bg-background px-3 py-2 text-sm outline-none placeholder:text-muted-foreground focus:ring-1 focus:ring-primary"
+                              className="
+                                w-full rounded-lg border bg-background px-3 py-2 text-sm outline-none
+                                placeholder:text-muted-foreground
+                                focus:ring-1 focus:ring-primary
+                              "
                             />
                           </div>
 
@@ -499,7 +572,7 @@ export default function CommunityMarketDetail({
                             {isSubmitting ? 'Submitting...' : myVote ? 'Update Vote' : 'Submit Vote'}
                           </Button>
 
-                          <p className="text-center text-[10px] text-muted-foreground">
+                          <p className="text-center text-2xs text-muted-foreground">
                             All votes are public and binding once resolved.
                           </p>
                         </>
@@ -559,6 +632,15 @@ export default function CommunityMarketDetail({
             </Card>
           </aside>
         </div>
+
+        <section className="mt-8">
+          <CommentsSection
+            marketId={market.id}
+            currentUserId={currentUserId}
+            memberRole={memberRole}
+            joinHref={`/community/${community.slug}`}
+          />
+        </section>
       </div>
     </main>
   )

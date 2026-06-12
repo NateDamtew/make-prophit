@@ -2,9 +2,15 @@
 
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
+import { recordCommunityEvent } from '@/lib/communities/events'
+import { dispatchCommunityNotification } from '@/lib/communities/notifications'
 import { DEFAULT_ERROR_MESSAGE } from '@/lib/constants'
 import { CommunityRepository } from '@/lib/db/queries/community'
 import { UserRepository } from '@/lib/db/queries/user'
+
+function actorLabel(user: any): string {
+  return user?.username || user?.name || user?.email || user?.address || user?.id || 'unknown'
+}
 
 const CreateCommunitySchema = z.object({
   name: z.string().trim().min(3, 'Name must be at least 3 characters').max(50),
@@ -82,6 +88,15 @@ export async function joinCommunityAction(communityId: string, inviteCode?: stri
     return { error: result.error, data: null }
   }
 
+  await recordCommunityEvent({
+    communityId,
+    actor: { id: user.id, label: actorLabel(user) },
+    kind: 'member.joined',
+    targetType: 'member',
+    targetId: user.id,
+    payload: { invited_by: invitedBy ?? null },
+  })
+
   revalidatePath(`/community/[slug]`, 'layout')
   return { error: null, data: result.data }
 }
@@ -96,6 +111,14 @@ export async function leaveCommunityAction(communityId: string, communitySlug: s
   if (result.error) {
     return { error: result.error, data: null }
   }
+
+  await recordCommunityEvent({
+    communityId,
+    actor: { id: user.id, label: actorLabel(user) },
+    kind: 'member.left',
+    targetType: 'member',
+    targetId: user.id,
+  })
 
   revalidatePath(`/community/${communitySlug}`, 'layout')
   return { error: null, data: result.data }
@@ -131,6 +154,14 @@ export async function submitReviewAction(
   if (result.error) {
     return { error: result.error, data: null }
   }
+
+  await recordCommunityEvent({
+    communityId,
+    actor: { id: user.id, label: actorLabel(user) },
+    kind: 'review.submitted',
+    targetType: 'review',
+    payload: { rating: parsed.data.rating },
+  })
 
   revalidatePath(`/community/${communitySlug}`, 'layout')
   return { error: null, data: result.data }
@@ -169,12 +200,46 @@ export async function castJuryVoteAction(
     return { error: result.error, data: null }
   }
 
+  await recordCommunityEvent({
+    communityId,
+    actor: { id: user.id, label: actorLabel(user) },
+    kind: 'jury.voted',
+    targetType: 'market',
+    targetId: communityMarketId,
+    payload: { vote: parsed.data.vote },
+  })
+
   // After casting the vote, check if consensus has been reached and
   // resolve automatically. This propagates to conditions for on-chain
   // settlement when the market is event-linked.
   const community = await CommunityRepository.getById(communityId)
   if (community.data) {
-    await CommunityRepository.resolveMarket(communityMarketId, community.data.jury_size)
+    const resolution = await CommunityRepository.resolveMarket(communityMarketId, community.data.jury_size)
+    // If consensus was reached and the market actually moved to a terminal
+    // state, emit the resolved event + member-wide notification.
+    if (resolution && (resolution.status === 'resolved' || resolution.status === 'disputed')) {
+      const marketRow = await CommunityRepository.getMarket(communityMarketId)
+      const title = marketRow.data?.title ?? 'A market'
+
+      await recordCommunityEvent({
+        communityId,
+        actor: { id: user.id, label: actorLabel(user) },
+        kind: resolution.status === 'disputed' ? 'market.disputed' : 'market.resolved',
+        targetType: 'market',
+        targetId: communityMarketId,
+        payload: { title, outcome: resolution.outcome ?? null },
+      })
+
+      await dispatchCommunityNotification({
+        communityId,
+        category: 'community.market_resolved',
+        title: resolution.status === 'disputed' ? 'A market was disputed' : `Market resolved: ${resolution.outcome ?? '—'}`,
+        description: title,
+        link: { type: 'internal', url: `/community/${communitySlug}/market/${communityMarketId}`, label: 'View market' },
+        fanout: 'all-members',
+        payload: { market_id: communityMarketId, outcome: resolution.outcome ?? null },
+      })
+    }
   }
 
   revalidatePath(`/community/${communitySlug}`, 'layout')

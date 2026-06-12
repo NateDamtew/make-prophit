@@ -1,21 +1,20 @@
 'use client'
 
-import { useMemo, useState } from 'react'
-import Link from 'next/link'
 import {
-  Users,
-  Star,
-  TrendingUp,
+  Activity,
+  Award,
+  Clock,
+  Globe,
+  Lock,
   Search,
   Sparkles,
-  Clock,
-  Award,
-  Activity,
-  Lock,
-  Globe,
+  Star,
+  TrendingUp,
+  Users,
 } from 'lucide-react'
+import Link from 'next/link'
+import { useMemo, useState } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 
@@ -60,9 +59,6 @@ const FILTERS: { id: Sort, label: string, icon: React.ElementType }[] = [
 ]
 
 function FeaturedMarketCard({ market }: { market: FeaturedMarket }) {
-  // Until trading is wired, default to 50/50 — same as a new platform market
-  const roundedYes = 50
-  const noChance = 100 - roundedYes
   const href = `/community/${market.community_slug}` as const
 
   return (
@@ -74,70 +70,46 @@ function FeaturedMarketCard({ market }: { market: FeaturedMarket }) {
           dark:hover:bg-secondary
         `)}
       >
-        <CardContent className="flex h-full flex-col px-3 pt-3 pb-3 md:pb-1">
-          {/* HEADER: community icon + title + chance ring */}
-          <div className="mb-3 flex items-start justify-between">
-            <div className="flex flex-1 items-center gap-2 pr-2">
-              <div className="flex size-10 shrink-0 items-center justify-center self-start rounded-sm bg-primary/10 text-base">
-                {market.community_icon
-                  ? <img src={market.community_icon} alt="" className="size-full rounded-sm object-cover" />
-                  : '🏛️'}
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                  {market.community_name}
-                </p>
-                <h3 className="line-clamp-2 w-full text-sm/5 font-semibold underline-offset-2 transition-colors duration-200 group-hover:text-foreground group-hover:underline">
-                  {market.title}
-                </h3>
-              </div>
+        <CardContent className="flex h-full flex-col p-3 md:pb-1">
+          <div className="mb-3 flex items-start gap-2 pr-2">
+            <div className="
+              flex size-10 shrink-0 items-center justify-center self-start rounded-sm bg-primary/10 text-base
+            "
+            >
+              {market.community_icon
+                ? <img src={market.community_icon} alt="" className="size-full rounded-sm object-cover" />
+                : '🏛️'}
             </div>
-
-            {/* Chance ring */}
-            <div className="relative -mt-3 flex flex-col items-center">
-              <div className="relative">
-                <svg width="72" height="52" viewBox="0 0 72 52" className="rotate-0 transform">
-                  <path
-                    d="M 6 46 A 30 30 0 0 1 66 46"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="5"
-                    strokeLinecap="round"
-                    className="text-slate-200 dark:text-slate-600"
-                  />
-                  <path
-                    d="M 6 46 A 30 30 0 0 1 66 46"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="5"
-                    strokeLinecap="round"
-                    className="text-slate-400 transition-all duration-300"
-                    strokeDasharray={`${(roundedYes / 100) * 94.25} 94.25`}
-                    strokeDashoffset="0"
-                  />
-                </svg>
-                <div className="absolute inset-0 flex items-center justify-center pt-4">
-                  <span className="text-sm font-bold text-slate-900 dark:text-slate-100">
-                    {roundedYes}%
-                  </span>
-                </div>
-              </div>
-              <div className="-mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">
-                chance
-              </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-2xs font-medium tracking-wide text-muted-foreground uppercase">
+                {market.community_name}
+              </p>
+              <h3 className="
+                line-clamp-2 w-full text-sm/5 font-semibold underline-offset-2 transition-colors duration-200
+                group-hover:text-foreground group-hover:underline
+              "
+              >
+                {market.title}
+              </h3>
             </div>
           </div>
 
-          {/* ACTIONS: Yes/No buttons */}
-          <div className="flex flex-1 flex-col">
-            <div className="mt-auto mb-2 grid grid-cols-2 gap-2">
-              <Button variant="yes" size="outcome" asChild>
-                <span className="truncate">Yes {roundedYes}¢</span>
-              </Button>
-              <Button variant="no" size="outcome" asChild>
-                <span className="truncate">No {noChance}¢</span>
-              </Button>
-            </div>
+          {/*
+            Honest pre-launch state: rather than fake a 50/50 chance ring,
+            surface the real status until live trading is wired through Kuest.
+          */}
+          <div className="
+            mt-auto mb-2 flex items-center justify-center rounded-md border border-dashed border-border bg-muted/30 px-3
+            py-2
+          "
+          >
+            <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+              <span className="relative flex size-1.5">
+                <span className="absolute inline-flex size-full animate-ping rounded-full bg-amber-500 opacity-60" />
+                <span className="relative inline-flex size-1.5 rounded-full bg-amber-500" />
+              </span>
+              Trading opens soon
+            </span>
           </div>
 
           {/* FOOTER */}
@@ -147,7 +119,7 @@ function FeaturedMarketCard({ market }: { market: FeaturedMarket }) {
                 <span className="absolute inline-flex size-2 animate-ping rounded-full bg-amber-500 opacity-75" />
                 <span className="relative inline-flex size-2 rounded-full bg-amber-500" />
               </span>
-              <span className="font-medium uppercase leading-none text-amber-600">
+              <span className="leading-none font-medium text-amber-600 uppercase">
                 Live
               </span>
             </span>
@@ -173,16 +145,23 @@ function CommunityCard({ community }: { community: Community }) {
   return (
     <Link
       href={`/community/${community.slug}` as any}
-      className="group block overflow-hidden rounded-2xl border bg-card transition-all hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md hover:shadow-primary/5"
+      className="
+        group block overflow-hidden rounded-2xl border bg-card transition-all
+        hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md hover:shadow-primary/5
+      "
     >
       {/* Banner accent */}
-      <div className="relative h-16 overflow-hidden bg-gradient-to-br from-primary/20 via-primary/10 to-background">
+      <div className="relative h-16 overflow-hidden bg-linear-to-br from-primary/20 via-primary/10 to-background">
         {community.banner_url
           ? <img src={community.banner_url} alt="" className="size-full object-cover" />
           : null}
         {/* Type pill in top-right */}
-        <div className="absolute right-3 top-3">
-          <span className="flex items-center gap-1 rounded-full bg-background/80 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-foreground backdrop-blur-sm">
+        <div className="absolute top-3 right-3">
+          <span className="
+            flex items-center gap-1 rounded-full bg-background/80 px-2 py-0.5 text-2xs font-medium tracking-wide
+            text-foreground uppercase backdrop-blur-sm
+          "
+          >
             {community.type === 'private'
               ? <Lock className="size-2.5" />
               : <Globe className="size-2.5" />}
@@ -194,7 +173,11 @@ function CommunityCard({ community }: { community: Community }) {
       <div className="-mt-6 px-5 pb-5">
         {/* Icon overlapping banner */}
         <div className="mb-3 flex items-end gap-3">
-          <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl border-4 border-background bg-card text-xl shadow-sm">
+          <div className="
+            flex size-12 shrink-0 items-center justify-center rounded-2xl border-4 border-background bg-card text-xl
+            shadow-sm
+          "
+          >
             {community.icon_url
               ? <img src={community.icon_url} alt={community.name} className="size-full rounded-xl object-cover" />
               : '🏛️'}
@@ -242,8 +225,10 @@ function CommunityCard({ community }: { community: Community }) {
               @
               {community.creator_username}
             </span>
-            <span className="ml-auto rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium">
-              Jury size: {community.jury_size}
+            <span className="ml-auto rounded-full bg-muted px-2 py-0.5 text-2xs font-medium">
+              Jury size:
+              {' '}
+              {community.jury_size}
             </span>
           </div>
         )}
@@ -255,14 +240,22 @@ function CommunityCard({ community }: { community: Community }) {
 interface Props {
   initialCommunities: Community[]
   featuredMarkets: FeaturedMarket[]
+  /** IDs of communities the viewer has already joined. */
+  joinedCommunityIds?: string[]
 }
 
-export default function CommunitiesBrowse({ initialCommunities, featuredMarkets }: Props) {
+export default function CommunitiesBrowse({ initialCommunities, featuredMarkets, joinedCommunityIds = [] }: Props) {
   const [filter, setFilter] = useState<Sort>('popular')
   const [search, setSearch] = useState('')
+  const [onlyJoined, setOnlyJoined] = useState(false)
+  const joinedSet = useMemo(() => new Set(joinedCommunityIds), [joinedCommunityIds])
 
   const filteredCommunities = useMemo(() => {
     let result = [...initialCommunities]
+
+    if (onlyJoined) {
+      result = result.filter(c => joinedSet.has(c.id))
+    }
 
     if (search.trim()) {
       const q = search.trim().toLowerCase()
@@ -272,7 +265,6 @@ export default function CommunitiesBrowse({ initialCommunities, featuredMarkets 
       )
     }
 
-    // Client-side sort
     if (filter === 'newest') {
       result.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     }
@@ -287,7 +279,9 @@ export default function CommunitiesBrowse({ initialCommunities, featuredMarkets 
     }
 
     return result
-  }, [initialCommunities, search, filter])
+  }, [initialCommunities, search, filter, onlyJoined, joinedSet])
+
+  const hasJoinedAny = joinedCommunityIds.length > 0
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
@@ -295,14 +289,19 @@ export default function CommunitiesBrowse({ initialCommunities, featuredMarkets 
       {featuredMarkets.length > 0 && (
         <section className="mb-8">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+            <h2 className="text-sm font-semibold tracking-wide text-muted-foreground uppercase">
               Featured Markets
             </h2>
             <span className="text-xs text-muted-foreground">
               From community-governed markets
             </span>
           </div>
-          <div className="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4 sm:-mx-6 sm:px-6 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+          <div className="
+            -mx-4 flex scrollbar-none gap-3 overflow-x-auto px-4 pb-2 [-ms-overflow-style:none]
+            sm:-mx-6 sm:px-6
+            [&::-webkit-scrollbar]:hidden
+          "
+          >
             {featuredMarkets.map(market => (
               <FeaturedMarketCard key={market.id} market={market} />
             ))}
@@ -317,12 +316,15 @@ export default function CommunitiesBrowse({ initialCommunities, featuredMarkets 
           <nav className="flex gap-2 overflow-x-auto lg:flex-col lg:overflow-visible">
             {FILTERS.map((f) => {
               const Icon = f.icon
-              const isActive = filter === f.id
+              const isActive = filter === f.id && !onlyJoined
               return (
                 <button
                   key={f.id}
                   type="button"
-                  onClick={() => setFilter(f.id)}
+                  onClick={() => {
+                    setFilter(f.id)
+                    setOnlyJoined(false)
+                  }}
                   className={cn(
                     'flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors',
                     isActive
@@ -335,6 +337,24 @@ export default function CommunitiesBrowse({ initialCommunities, featuredMarkets 
                 </button>
               )
             })}
+            {hasJoinedAny && (
+              <button
+                type="button"
+                onClick={() => setOnlyJoined(v => !v)}
+                className={cn(
+                  'flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors',
+                  onlyJoined
+                    ? 'bg-primary/10 font-medium text-primary'
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                )}
+              >
+                <Users className="size-4" />
+                Joined by you
+                <span className="ml-1 rounded-full bg-muted px-1.5 text-2xs font-medium">
+                  {joinedCommunityIds.length}
+                </span>
+              </button>
+            )}
           </nav>
         </aside>
 
@@ -354,7 +374,7 @@ export default function CommunitiesBrowse({ initialCommunities, featuredMarkets 
               </p>
             </div>
             <div className="relative w-full sm:w-72">
-              <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 value={search}
                 onChange={e => setSearch(e.target.value)}
@@ -367,7 +387,10 @@ export default function CommunitiesBrowse({ initialCommunities, featuredMarkets 
           {/* Grid */}
           {filteredCommunities.length === 0
             ? (
-                <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed py-24 text-center">
+                <div className="
+                  flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed py-24 text-center
+                "
+                >
                   <div className="flex size-14 items-center justify-center rounded-full bg-muted">
                     <Users className="size-7 text-muted-foreground" />
                   </div>

@@ -1,7 +1,9 @@
 import type { SupportedLocale } from '@/i18n/locales'
-import { Suspense } from 'react'
 import { setRequestLocale } from 'next-intl/server'
+import { Suspense } from 'react'
 import { CommunityRepository } from '@/lib/db/queries/community'
+import { MyCommunitiesRepository } from '@/lib/db/queries/my-communities'
+import { UserRepository } from '@/lib/db/queries/user'
 import { STATIC_PARAMS_PLACEHOLDER } from '@/lib/static-params'
 import CommunitiesBrowse from './_components/CommunitiesBrowse'
 
@@ -23,18 +25,22 @@ function CommunitiesLoadingSkeleton() {
 }
 
 async function CommunitiesContent() {
+  const viewer = await UserRepository.getCurrentUser({ minimal: true })
   const [
     { data: communities },
     { data: featuredMarkets },
+    joined,
   ] = await Promise.all([
     CommunityRepository.listPublic({ limit: 30, sort: 'popular' }),
     CommunityRepository.listFeaturedMarkets(8),
+    viewer ? MyCommunitiesRepository.listForUser(viewer.id) : Promise.resolve([]),
   ])
 
   return (
     <CommunitiesBrowse
       initialCommunities={communities ?? []}
       featuredMarkets={featuredMarkets ?? []}
+      joinedCommunityIds={joined.map(c => c.id)}
     />
   )
 }

@@ -3,9 +3,15 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { analyzeMarketQuestion } from '@/lib/ai/gemini'
+import { recordCommunityEvent } from '@/lib/communities/events'
+import { dispatchCommunityNotification } from '@/lib/communities/notifications'
 import { DEFAULT_ERROR_MESSAGE } from '@/lib/constants'
 import { CommunityRepository } from '@/lib/db/queries/community'
 import { UserRepository } from '@/lib/db/queries/user'
+
+function actorLabel(user: any): string {
+  return user?.username || user?.name || user?.email || user?.address || user?.id || 'unknown'
+}
 
 const MarketOptionSchema = z.object({
   id: z.string(),
@@ -130,6 +136,26 @@ export async function publishMarketAction(
   if (result.error) {
     return { error: result.error, data: null }
   }
+
+  const marketRow = await CommunityRepository.getMarket(marketId)
+  await recordCommunityEvent({
+    communityId,
+    actor: { id: user.id, label: actorLabel(user) },
+    kind: 'market.created',
+    targetType: 'market',
+    targetId: marketId,
+    payload: { title: marketRow.data?.title ?? null },
+  })
+  await dispatchCommunityNotification({
+    communityId,
+    category: 'community.market_added',
+    title: 'New market in your community',
+    description: marketRow.data?.title ?? 'A new market is live.',
+    link: { type: 'internal', url: `/community/${communitySlug}/market/${marketId}`, label: 'View market' },
+    fanout: 'all-members',
+    excludeUserId: user.id,
+    payload: { market_id: marketId },
+  })
 
   revalidatePath(`/community/${communitySlug}`, 'layout')
   revalidatePath(`/community/${communitySlug}/markets`, 'layout')

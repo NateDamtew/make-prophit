@@ -1,10 +1,10 @@
 'use client'
 
+import { Check, Copy, Globe, Lock, Plus, Scale, Share2, Star, TrendingUp, Users } from 'lucide-react'
 import Link from 'next/link'
 import { useState, useTransition } from 'react'
 import { toast } from 'sonner'
-import { Users, Star, TrendingUp, Lock, Globe, Share2, Copy, Check, Plus, Scale } from 'lucide-react'
-import { joinCommunityAction, leaveCommunityAction, generateInviteAction } from '../_actions/community-actions'
+import { ActivityTicker } from '@/components/community-engagement/ActivityTicker'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -13,6 +13,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
+import { generateInviteAction, joinCommunityAction, leaveCommunityAction } from '../_actions/community-actions'
 
 interface Community {
   id: string
@@ -109,16 +110,16 @@ export default function CommunityHeader({ community, memberRole, currentUserId }
     const link = `${window.location.origin}/community/${community.slug}?invite=${inviteCode}`
     await navigator.clipboard.writeText(link)
     setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+    setTimeout(setCopied, 2000, false)
   }
 
   return (
     <>
       {/* Banner — richer gradient with subtle pattern */}
       <div className="relative h-44 overflow-hidden rounded-3xl sm:h-56">
-        <div className="absolute inset-0 bg-gradient-to-br from-primary/40 via-primary/15 to-background" />
+        <div className="absolute inset-0 bg-linear-to-br from-primary/40 via-primary/15 to-background" />
         {/* Subtle radial accent */}
-        <div className="absolute -left-20 -top-20 size-72 rounded-full bg-primary/20 blur-3xl" />
+        <div className="absolute -top-20 -left-20 size-72 rounded-full bg-primary/20 blur-3xl" />
         <div className="absolute -right-32 -bottom-20 size-72 rounded-full bg-amber-500/10 blur-3xl" />
         {community.banner_url && (
           <img
@@ -128,8 +129,12 @@ export default function CommunityHeader({ community, memberRole, currentUserId }
           />
         )}
         {/* Top-right type pill */}
-        <div className="absolute right-4 top-4">
-          <span className="flex items-center gap-1.5 rounded-full bg-background/80 px-3 py-1 text-xs font-medium uppercase tracking-wide text-foreground shadow-sm backdrop-blur-sm">
+        <div className="absolute top-4 right-4">
+          <span className="
+            flex items-center gap-1.5 rounded-full bg-background/80 px-3 py-1 text-xs font-medium tracking-wide
+            text-foreground uppercase shadow-sm backdrop-blur-sm
+          "
+          >
             {community.type === 'private'
               ? <Lock className="size-3" />
               : <Globe className="size-3" />}
@@ -139,17 +144,22 @@ export default function CommunityHeader({ community, memberRole, currentUserId }
       </div>
 
       {/* Main info card — overlapping banner */}
-      <div className="relative -mt-10 mx-2 rounded-2xl border bg-card p-5 shadow-sm sm:mx-4">
+      <div className="relative mx-2 -mt-10 rounded-2xl border bg-card p-5 shadow-sm sm:mx-4">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex items-start gap-4">
             {/* Icon — bigger, ring shadow */}
-            <div className="flex size-20 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/30 to-primary/10 text-3xl shadow-lg ring-4 ring-background sm:size-24 sm:text-4xl">
+            <div className="
+              flex size-20 shrink-0 items-center justify-center rounded-2xl bg-linear-to-br from-primary/30
+              to-primary/10 text-3xl shadow-lg ring-4 ring-background
+              sm:size-24 sm:text-4xl
+            "
+            >
               {community.icon_url
                 ? <img src={community.icon_url} alt="" className="size-full rounded-xl object-cover" />
                 : '🏛️'}
             </div>
             <div className="min-w-0 flex-1 pt-1 sm:pt-2">
-              <h1 className="text-2xl font-bold leading-tight tracking-tight sm:text-3xl">
+              <h1 className="text-2xl/tight font-bold tracking-tight sm:text-3xl">
                 {community.name}
               </h1>
               {community.description && (
@@ -157,6 +167,7 @@ export default function CommunityHeader({ community, memberRole, currentUserId }
                   {community.description}
                 </p>
               )}
+              <ActivityTicker communityId={community.id} className="mt-2" />
               {/* Role badge inline */}
               {memberRole && (
                 <div className="mt-2">
@@ -211,10 +222,12 @@ export default function CommunityHeader({ community, memberRole, currentUserId }
               <Users className="size-4" />
             </div>
             <div className="min-w-0">
-              <p className="truncate text-base font-bold leading-none">
+              <p className="truncate text-base leading-none font-bold">
                 {community.member_count}
                 <span className="text-xs font-normal text-muted-foreground">
-                  {' '}/ {community.max_members}
+                  {' '}
+                  /
+                  {community.max_members}
                 </span>
               </p>
               <p className="text-[11px] text-muted-foreground">Members</p>
@@ -226,7 +239,7 @@ export default function CommunityHeader({ community, memberRole, currentUserId }
               <TrendingUp className="size-4" />
             </div>
             <div className="min-w-0">
-              <p className="text-base font-bold leading-none">{community.market_count}</p>
+              <p className="text-base leading-none font-bold">{community.market_count}</p>
               <p className="text-[11px] text-muted-foreground">Markets</p>
             </div>
           </div>
@@ -236,11 +249,14 @@ export default function CommunityHeader({ community, memberRole, currentUserId }
               <Star className="size-4 fill-current" />
             </div>
             <div className="min-w-0">
-              <p className="text-base font-bold leading-none">
+              <p className="text-base leading-none font-bold">
                 {community.review_count > 0 ? rating.toFixed(1) : '—'}
                 {community.review_count > 0 && (
                   <span className="text-xs font-normal text-muted-foreground">
-                    {' '}({community.review_count})
+                    {' '}
+                    (
+                    {community.review_count}
+                    )
                   </span>
                 )}
               </p>
@@ -249,11 +265,14 @@ export default function CommunityHeader({ community, memberRole, currentUserId }
           </div>
 
           <div className="flex items-center gap-2">
-            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-purple-500/10 text-purple-600">
+            <div className="
+              flex size-9 shrink-0 items-center justify-center rounded-lg bg-purple-500/10 text-purple-600
+            "
+            >
               <Scale className="size-4" />
             </div>
             <div className="min-w-0">
-              <p className="text-base font-bold leading-none">{community.jury_size}</p>
+              <p className="text-base leading-none font-bold">{community.jury_size}</p>
               <p className="text-[11px] text-muted-foreground">
                 {community.jury_size === 1 ? 'Juror' : 'Jurors'}
               </p>
@@ -261,7 +280,6 @@ export default function CommunityHeader({ community, memberRole, currentUserId }
           </div>
         </div>
       </div>
-
 
       {/* Invite dialog */}
       <Dialog open={showInviteDialog} onOpenChange={setShowInviteDialog}>

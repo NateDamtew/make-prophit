@@ -1,7 +1,7 @@
 'use client'
 
 import { useDisconnect } from '@reown/appkit/react'
-import { BadgePercentIcon, ChevronDownIcon, DownloadIcon, SettingsIcon, ShieldIcon, TrophyIcon, UnplugIcon } from 'lucide-react'
+import { BadgePercentIcon, ChevronDownIcon, DownloadIcon, SettingsIcon, ShieldIcon, TrophyIcon, UnplugIcon, UsersIcon } from 'lucide-react'
 import { useExtracted } from 'next-intl'
 import Image from 'next/image'
 import { useEffect, useRef, useState } from 'react'
@@ -274,6 +274,13 @@ export default function HeaderDropdownUserMenuAuth() {
           </DropdownMenuItem>
 
           <DropdownMenuItem asChild className="py-2 text-sm font-semibold">
+            <AppLink intentPrefetch href="/me/communities" className="flex w-full items-center gap-1.5">
+              <UsersIcon className="size-4 text-violet-500" />
+              {t('My Communities')}
+            </AppLink>
+          </DropdownMenuItem>
+
+          <DropdownMenuItem asChild className="py-2 text-sm font-semibold">
             <AppLink intentPrefetch href="/settings/affiliate" className="flex w-full items-center gap-1.5">
               <BadgePercentIcon className="size-4 text-emerald-600" />
               {t('Affiliate')}
@@ -303,10 +310,10 @@ export default function HeaderDropdownUserMenuAuth() {
           )}
 
           {themeMode === 'both' && (
-          <div className="flex items-center justify-between gap-2 px-2 py-1 text-sm font-semibold">
-            <span>{t('Dark Mode')}</span>
-            <ThemeSelector />
-          </div>
+            <div className="flex items-center justify-between gap-2 px-2 py-1 text-sm font-semibold">
+              <span>{t('Dark Mode')}</span>
+              <ThemeSelector />
+            </div>
           )}
 
           {isMobile && (
