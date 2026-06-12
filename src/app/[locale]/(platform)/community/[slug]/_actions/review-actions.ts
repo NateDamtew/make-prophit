@@ -3,6 +3,7 @@
 import { eq } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
+import { recordCommunityEvent } from '@/lib/communities/events'
 import {
   notifyMarketApproved,
   notifyMarketRejected,
@@ -103,6 +104,24 @@ export async function rejectMarketAction(
       communitySlug,
       marketTitle: result.data.title,
       feedback: feedback.trim(),
+    })
+
+    // Activity-feed event so the community sees rejection in their Activity
+    // tab. Deliberately stays neutral in tone — feedback is private to the
+    // submitting admin via the notification.
+    await recordCommunityEvent({
+      communityId: result.data.community_id,
+      actor: {
+        id: user.id,
+        label: (user as any)?.username || (user as any)?.name || 'Super admin',
+      },
+      kind: 'market.disputed',
+      targetType: 'market',
+      targetId: result.data.id,
+      payload: {
+        stage: 'rejected',
+        title: result.data.title,
+      },
     })
   }
 
@@ -255,6 +274,24 @@ export async function approveMarketAction(
     communityAdminId: market.created_by,
     communitySlug,
     marketTitle: finalTitle,
+  })
+
+  // Phase 1 activity feed: record the review-pipeline outcome so the
+  // community's Activity tab reflects what's happening behind the scenes.
+  await recordCommunityEvent({
+    communityId: market.community_id,
+    actor: {
+      id: user.id,
+      label: (user as any)?.username || (user as any)?.name || 'Super admin',
+    },
+    kind: 'market.created',
+    targetType: 'market',
+    targetId: market.id,
+    payload: {
+      stage: 'approved',
+      title: finalTitle,
+      submitted_at: market.submitted_at?.toISOString() ?? null,
+    },
   })
 
   revalidatePath(`/community/${communitySlug}`, 'layout')

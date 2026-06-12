@@ -1,9 +1,9 @@
 import type { SupportedLocale } from '@/i18n/locales'
-import { Suspense } from 'react'
-import { notFound, redirect } from 'next/navigation'
+import { ChevronLeft } from 'lucide-react'
 import { setRequestLocale } from 'next-intl/server'
 import Link from 'next/link'
-import { ChevronLeft } from 'lucide-react'
+import { notFound, redirect } from 'next/navigation'
+import { Suspense } from 'react'
 import { CommunityRepository } from '@/lib/db/queries/community'
 import { UserRepository } from '@/lib/db/queries/user'
 import { STATIC_PARAMS_PLACEHOLDER } from '@/lib/static-params'
@@ -46,22 +46,33 @@ async function NewMarketContent({ slug }: { slug: string }) {
     <>
       <Link
         href={`/community/${slug}` as any}
-        className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
+        className="
+          mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors
+          hover:text-foreground
+        "
       >
         <ChevronLeft className="size-4" />
-        Back to {community.name}
+        Back to
+        {' '}
+        {community.name}
       </Link>
 
       <div className="mb-6">
         <h1 className="text-2xl font-bold">Create Market</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Add a market to {community.name} — pull from the platform or create a custom one with AI assistance.
+          Add a market to
+          {' '}
+          {community.name}
+          {' '}
+          — pull from the platform or create a custom one with AI assistance.
         </p>
       </div>
 
       <CreateMarketPanel
         communityId={community.id}
         communitySlug={slug}
+        communityName={community.name}
+        communityIcon={community.icon_url ?? null}
         drafts={drafts ?? []}
       />
     </>

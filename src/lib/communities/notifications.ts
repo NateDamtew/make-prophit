@@ -5,14 +5,20 @@ import { community_notification_prefs } from '@/lib/db/schema/communities/engage
 import { notifications } from '@/lib/db/schema/notifications/tables'
 import { db } from '@/lib/drizzle'
 
-const COMMUNITY_NOTIFICATION_CATEGORIES = [
+const _COMMUNITY_NOTIFICATION_CATEGORIES = [
   'community.market_added',
   'community.comment_reply',
   'community.market_resolved',
   'community.invite',
+  // Phase 2 (Workstream D) — review-pipeline feedback to the community admin.
+  // The actual inbox row currently lands via the legacy notifyMarketApproved /
+  // notifyMarketRejected helpers; these categories are registered so future
+  // call sites can route through the Phase 1 dispatcher (mute-aware, audited).
+  'community.market_approved',
+  'community.market_rejected',
 ] as const
 
-type CommunityNotificationCategory = (typeof COMMUNITY_NOTIFICATION_CATEGORIES)[number]
+type CommunityNotificationCategory = (typeof _COMMUNITY_NOTIFICATION_CATEGORIES)[number]
 
 /** Which mute toggle in `community_notification_prefs` gates a given category. */
 const MUTE_FIELD_BY_CATEGORY: Record<CommunityNotificationCategory, keyof typeof community_notification_prefs.$inferSelect> = {
@@ -20,6 +26,8 @@ const MUTE_FIELD_BY_CATEGORY: Record<CommunityNotificationCategory, keyof typeof
   'community.comment_reply': 'mute_comments',
   'community.market_resolved': 'mute_resolutions',
   'community.invite': 'mute_markets', // direct invite uses the broader "markets" toggle
+  'community.market_approved': 'mute_markets',
+  'community.market_rejected': 'mute_markets',
 }
 
 interface DispatchInput {
