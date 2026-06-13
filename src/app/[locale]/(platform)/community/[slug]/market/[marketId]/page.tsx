@@ -1,7 +1,8 @@
 import type { Metadata } from 'next'
 import type { SupportedLocale } from '@/i18n/locales'
-import { notFound } from 'next/navigation'
 import { setRequestLocale } from 'next-intl/server'
+import { notFound } from 'next/navigation'
+import { CommunityMarketEmbedButton } from '@/components/community-engagement/EmbedCodeButtonWrapper'
 import { CommunityRepository } from '@/lib/db/queries/community'
 import { UserRepository } from '@/lib/db/queries/user'
 import { STATIC_PARAMS_PLACEHOLDER } from '@/lib/static-params'
@@ -51,6 +52,16 @@ export default async function CommunityMarketDetailPage({
 
   const { data: votes } = await CommunityRepository.getVotes(marketId)
 
+  // The Embed button is only useful for actively-trading markets, and only
+  // community admins / super-admins should ever see it (it generates iframes
+  // any reader could grab from the network tab otherwise).
+  const canManageEmbed
+    = (memberRole === 'admin' || (user as any)?.is_admin === true)
+      && data.market.status === 'active'
+  const embedSlot = canManageEmbed
+    ? <CommunityMarketEmbedButton communitySlug={slug} marketId={marketId} />
+    : null
+
   return (
     <CommunityMarketDetail
       market={data.market}
@@ -58,6 +69,7 @@ export default async function CommunityMarketDetailPage({
       votes={votes ?? []}
       memberRole={memberRole}
       currentUserId={user?.id ?? null}
+      embedSlot={embedSlot}
     />
   )
 }

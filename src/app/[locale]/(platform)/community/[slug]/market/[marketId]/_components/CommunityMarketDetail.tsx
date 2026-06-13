@@ -61,6 +61,21 @@ interface Props {
   votes: Vote[]
   memberRole: string | null
   currentUserId: string | null
+  /** Optional server-rendered embed button — only present when the viewer can manage embeds. */
+  embedSlot?: React.ReactNode
+}
+
+function daysUntilLabel(resolutionDate: Date): string {
+  const days = Math.ceil(
+    (new Date(resolutionDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24),
+  )
+  if (days < 0) {
+    return 'Past resolution date'
+  }
+  if (days === 0) {
+    return 'Resolves today'
+  }
+  return `${days} ${days === 1 ? 'day' : 'days'} left`
 }
 
 export default function CommunityMarketDetail({
@@ -69,6 +84,7 @@ export default function CommunityMarketDetail({
   votes,
   memberRole,
   currentUserId,
+  embedSlot,
 }: Props) {
   const [voteChoice, setVoteChoice] = useState<'yes' | 'no' | 'disputed' | null>(null)
   const [reasoning, setReasoning] = useState('')
@@ -127,7 +143,7 @@ export default function CommunityMarketDetail({
 
   return (
     <main className="container py-6">
-      <div className="mx-auto grid max-w-6xl gap-6">
+      <div className="mx-auto grid max-w-7xl gap-6">
         {/* Back link */}
         <Link
           href={`/community/${community.slug}` as any}
@@ -200,7 +216,10 @@ export default function CommunityMarketDetail({
                       )}
                 </div>
 
-                <h1 className="text-xl/snug font-bold sm:text-2xl">{market.title}</h1>
+                <div className="flex items-start justify-between gap-3">
+                  <h1 className="text-xl/snug font-bold sm:text-2xl">{market.title}</h1>
+                  {embedSlot && <div className="shrink-0">{embedSlot}</div>}
+                </div>
 
                 {market.description && (
                   <p className="text-sm text-muted-foreground">{market.description}</p>
@@ -263,18 +282,7 @@ export default function CommunityMarketDetail({
                     {market.resolution_date && (
                       <p className="mt-0.5 flex items-center justify-end gap-1">
                         <Clock className="size-3" />
-                        {(() => {
-                          const days = Math.ceil(
-                            (new Date(market.resolution_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24),
-                          )
-                          if (days < 0) {
-                            return 'Past resolution date'
-                          }
-                          if (days === 0) {
-                            return 'Resolves today'
-                          }
-                          return `${days} ${days === 1 ? 'day' : 'days'} left`
-                        })()}
+                        {daysUntilLabel(market.resolution_date)}
                       </p>
                     )}
                   </div>

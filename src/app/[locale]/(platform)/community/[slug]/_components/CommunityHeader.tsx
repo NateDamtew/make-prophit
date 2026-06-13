@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useState, useTransition } from 'react'
 import { toast } from 'sonner'
 import { ActivityTicker } from '@/components/community-engagement/ActivityTicker'
+import { VerifiedBadge } from '@/components/community-engagement/VerifiedBadge'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -29,30 +30,14 @@ interface Community {
   market_count: number
   average_rating: string | null
   review_count: number
+  /** Phase 2 — verified badge state. Optional so older callers don't break. */
+  is_verified?: boolean | null
 }
 
 interface Props {
   community: Community
   memberRole: string | null
   currentUserId: string | null
-}
-
-function StarRating({ rating }: { rating: number }) {
-  return (
-    <div className="flex items-center gap-0.5">
-      {[1, 2, 3, 4, 5].map(star => (
-        <Star
-          key={star}
-          className={cn(
-            'size-3.5',
-            star <= Math.round(rating)
-              ? 'fill-amber-400 text-amber-400'
-              : 'text-muted-foreground/30',
-          )}
-        />
-      ))}
-    </div>
-  )
 }
 
 export default function CommunityHeader({ community, memberRole, currentUserId }: Props) {
@@ -159,8 +144,9 @@ export default function CommunityHeader({ community, memberRole, currentUserId }
                 : '🏛️'}
             </div>
             <div className="min-w-0 flex-1 pt-1 sm:pt-2">
-              <h1 className="text-2xl/tight font-bold tracking-tight sm:text-3xl">
-                {community.name}
+              <h1 className="flex items-center gap-1.5 text-2xl/tight font-bold tracking-tight sm:text-3xl">
+                <span>{community.name}</span>
+                <VerifiedBadge isVerified={community.is_verified} />
               </h1>
               {community.description && (
                 <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">

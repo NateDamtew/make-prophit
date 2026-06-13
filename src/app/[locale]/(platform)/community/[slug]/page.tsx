@@ -1,9 +1,10 @@
 import type { Metadata } from 'next'
 import type { SupportedLocale } from '@/i18n/locales'
-import { Suspense } from 'react'
-import { notFound } from 'next/navigation'
 import { setRequestLocale } from 'next-intl/server'
+import { notFound } from 'next/navigation'
+import { Suspense } from 'react'
 import { CommunityRepository } from '@/lib/db/queries/community'
+import { CommunityMonetizationRepository } from '@/lib/db/queries/community-monetization'
 import { UserRepository } from '@/lib/db/queries/user'
 import { STATIC_PARAMS_PLACEHOLDER } from '@/lib/static-params'
 import CommunityHeader from './_components/CommunityHeader'
@@ -32,8 +33,8 @@ function CommunityLoadingSkeleton() {
       <div className="flex items-end gap-4 px-1">
         <div className="size-16 animate-pulse rounded-2xl bg-muted" />
         <div className="space-y-2 pb-1">
-          <div className="h-5 w-40 animate-pulse rounded bg-muted" />
-          <div className="h-3 w-64 animate-pulse rounded bg-muted" />
+          <div className="h-5 w-40 animate-pulse rounded-sm bg-muted" />
+          <div className="h-3 w-64 animate-pulse rounded-sm bg-muted" />
         </div>
       </div>
       <div className="h-96 animate-pulse rounded-2xl border bg-muted/30" />
@@ -56,16 +57,23 @@ async function CommunityContent({ slug }: { slug: string }) {
     { data: members },
     { data: markets },
     { data: reviews },
+    monetization,
   ] = await Promise.all([
     CommunityRepository.listMembers(community.id),
     CommunityRepository.listMarketsWithVoteTallies(community.id),
     CommunityRepository.listReviews(community.id),
+    CommunityMonetizationRepository.getFields(community.id).catch(() => null),
   ])
+
+  const communityWithVerified = {
+    ...community,
+    is_verified: monetization?.is_verified ?? false,
+  }
 
   return (
     <>
       <CommunityHeader
-        community={community}
+        community={communityWithVerified}
         memberRole={memberRole}
         currentUserId={user?.id ?? null}
       />
@@ -96,7 +104,7 @@ export default async function CommunityDetailPage({
   }
 
   return (
-    <div className="mx-auto max-w-6xl px-2 py-6 sm:px-4 lg:px-6">
+    <div className="mx-auto max-w-7xl px-2 py-6 sm:px-4 lg:px-8">
       <Suspense fallback={<CommunityLoadingSkeleton />}>
         <CommunityContent slug={slug} />
       </Suspense>

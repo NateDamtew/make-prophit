@@ -6,7 +6,7 @@ import { db } from '@/lib/drizzle'
  * place to register it; both the feed renderer and the notifications
  * dispatcher key off this union.
  */
-const COMMUNITY_EVENT_KINDS = [
+const _COMMUNITY_EVENT_KINDS = [
   'market.created',
   'market.resolved',
   'market.disputed',
@@ -17,9 +17,11 @@ const COMMUNITY_EVENT_KINDS = [
   'member.left',
   'review.submitted',
   'jury.voted',
+  // Phase 2: external embedded view tracked from the public /embed route.
+  'embed.view',
 ] as const
 
-type CommunityEventKind = (typeof COMMUNITY_EVENT_KINDS)[number]
+type CommunityEventKind = (typeof _COMMUNITY_EVENT_KINDS)[number]
 
 export interface RecordCommunityEventInput {
   communityId: string

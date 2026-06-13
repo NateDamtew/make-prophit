@@ -55,6 +55,7 @@ export const ADMIN_NAV: AdminNavGroup[] = [
     items: [
       { id: 'events', label: 'Events', href: '/admin/events', icon: CalendarIcon, keywords: ['markets', 'calendar'] },
       { id: 'community-reviews', label: 'Community Reviews', href: '/admin/communities/review', icon: ShieldCheckIcon, keywords: ['resolution', 'moderation'] },
+      { id: 'communities-admin', label: 'Communities', href: '/admin/communities', icon: ShieldCheckIcon, keywords: ['verified', 'fee', 'monetization'] },
       { id: 'sync-jobs', label: 'Sync Jobs', href: '/admin/sync-jobs', icon: RefreshCwIcon, keywords: ['cron', 'jobs'] },
       { id: 'notifications', label: 'Notifications', href: '/admin/notifications', icon: BellIcon, keywords: ['announce', 'broadcast'] },
     ],

@@ -1,0 +1,204 @@
+/*
+ * Standalone styles for the public embed page. No Tailwind imports, no
+ * platform tokens — the iframe should render the same in any host page.
+ *
+ * Theme:
+ *   - default = auto (follows the parent page's prefers-color-scheme)
+ *   - data-embed-mode="light" or "dark" forces a mode
+ *   - --embed-accent overrides the accent (configurable per community)
+ */
+
+:root {
+  --embed-accent: #4f8cff;
+  --embed-bg: #ffffff;
+  --embed-fg: #0f172a;
+  --embed-muted: #64748b;
+  --embed-border: rgba(15, 23, 42, 0.08);
+  --embed-surface: rgba(15, 23, 42, 0.02);
+  --embed-yes: #10b981;
+  --embed-no: #ef4444;
+}
+
+@media (prefers-color-scheme: dark) {
+  [data-embed-mode='auto'] {
+    --embed-bg: #0b1220;
+    --embed-fg: #e2e8f0;
+    --embed-muted: #94a3b8;
+    --embed-border: rgba(255, 255, 255, 0.08);
+    --embed-surface: rgba(255, 255, 255, 0.03);
+  }
+}
+
+[data-embed-mode='dark'] {
+  --embed-bg: #0b1220;
+  --embed-fg: #e2e8f0;
+  --embed-muted: #94a3b8;
+  --embed-border: rgba(255, 255, 255, 0.08);
+  --embed-surface: rgba(255, 255, 255, 0.03);
+}
+
+[data-embed-mode='light'] {
+  --embed-bg: #ffffff;
+  --embed-fg: #0f172a;
+  --embed-muted: #64748b;
+  --embed-border: rgba(15, 23, 42, 0.08);
+  --embed-surface: rgba(15, 23, 42, 0.02);
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  color: var(--embed-fg);
+  -webkit-font-smoothing: antialiased;
+}
+
+.embed-card {
+  background: var(--embed-bg);
+  color: var(--embed-fg);
+  border: 1px solid var(--embed-border);
+  border-radius: 12px;
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+  max-width: 560px;
+  margin: 8px auto;
+  box-sizing: border-box;
+}
+
+.embed-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.embed-card__community {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-decoration: none;
+  color: var(--embed-muted);
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.embed-card__community img {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  object-fit: cover;
+}
+
+.embed-card__community:hover {
+  color: var(--embed-fg);
+}
+
+.embed-card__live-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #f59e0b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.embed-card__pulse {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  background: #f59e0b;
+  border-radius: 50%;
+  position: relative;
+}
+
+.embed-card__pulse::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: inherit;
+  opacity: 0.7;
+  animation: embed-pulse 1.4s ease-out infinite;
+}
+
+@keyframes embed-pulse {
+  0% { transform: scale(1); opacity: 0.7; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
+
+.embed-card__title {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.35;
+  font-weight: 600;
+}
+
+.embed-card__outcomes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.embed-card__outcome {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--embed-border);
+  background: var(--embed-surface);
+  text-align: center;
+}
+
+.embed-card__outcome span {
+  font-weight: 600;
+}
+
+.embed-card__outcome small {
+  color: var(--embed-muted);
+  font-size: 11px;
+}
+
+.embed-card__outcome--yes {
+  border-color: color-mix(in oklab, var(--embed-yes) 30%, transparent);
+  background: color-mix(in oklab, var(--embed-yes) 8%, transparent);
+}
+
+.embed-card__outcome--yes span { color: var(--embed-yes); }
+
+.embed-card__outcome--no {
+  border-color: color-mix(in oklab, var(--embed-no) 30%, transparent);
+  background: color-mix(in oklab, var(--embed-no) 8%, transparent);
+}
+
+.embed-card__outcome--no span { color: var(--embed-no); }
+
+.embed-card__resolves {
+  margin: 0;
+  font-size: 12px;
+  color: var(--embed-muted);
+}
+
+.embed-card__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid var(--embed-border);
+  padding-top: 10px;
+  font-size: 12px;
+}
+
+.embed-card__footer a {
+  color: var(--embed-accent);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.embed-card__footer a:hover {
+  text-decoration: underline;
+}
