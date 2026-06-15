@@ -1,6 +1,6 @@
 'use client'
 
-import { Check, Copy, Globe, Lock, Plus, Scale, Share2, Star, TrendingUp, Users } from 'lucide-react'
+import { ActivityIcon, Check, Code2 as Code2Icon, Copy, Globe, Lock, Paintbrush, Plus, Scale, Share2, Star, TrendingUp, Users } from 'lucide-react'
 import Link from 'next/link'
 import { useState, useTransition } from 'react'
 import { toast } from 'sonner'
@@ -13,6 +13,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
 import { generateInviteAction, joinCommunityAction, leaveCommunityAction } from '../_actions/community-actions'
 
@@ -186,6 +192,33 @@ export default function CommunityHeader({ community, memberRole, currentUserId }
                     Add Market
                   </Link>
                 </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm" aria-label="Community settings">
+                      <Paintbrush className="size-3.5" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56">
+                    <DropdownMenuItem asChild>
+                      <Link href={`/community/${community.slug}/theme` as any}>
+                        <Paintbrush className="size-3.5" />
+                        Theme & layout
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href={`/community/${community.slug}/insights` as any}>
+                        <ActivityIcon className="size-3.5" />
+                        Insights
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href={`/community/${community.slug}/embed-settings` as any}>
+                        <Code2Icon className="size-3.5" />
+                        Embed settings
+                      </Link>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </>
             )}
             {!isAdmin && !isMember && community.type === 'public' && (

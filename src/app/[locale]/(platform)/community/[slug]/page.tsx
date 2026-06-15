@@ -3,12 +3,14 @@ import type { SupportedLocale } from '@/i18n/locales'
 import { setRequestLocale } from 'next-intl/server'
 import { notFound } from 'next/navigation'
 import { Suspense } from 'react'
+import { CommunityThemeStyle } from '@/components/community-themes/CommunityThemeStyle'
 import { CommunityRepository } from '@/lib/db/queries/community'
 import { CommunityMonetizationRepository } from '@/lib/db/queries/community-monetization'
+import { CommunityThemeRepository } from '@/lib/db/queries/community-theme'
 import { UserRepository } from '@/lib/db/queries/user'
 import { STATIC_PARAMS_PLACEHOLDER } from '@/lib/static-params'
 import CommunityHeader from './_components/CommunityHeader'
-import CommunityTabs from './_components/CommunityTabs'
+import { CommunityPresetSwitch } from './_components/presets/PresetDispatcher'
 
 export async function generateStaticParams() {
   return [{ slug: STATIC_PARAMS_PLACEHOLDER }]
@@ -58,11 +60,13 @@ async function CommunityContent({ slug }: { slug: string }) {
     { data: markets },
     { data: reviews },
     monetization,
+    theme,
   ] = await Promise.all([
     CommunityRepository.listMembers(community.id),
     CommunityRepository.listMarketsWithVoteTallies(community.id),
     CommunityRepository.listReviews(community.id),
     CommunityMonetizationRepository.getFields(community.id).catch(() => null),
+    CommunityThemeRepository.get(community.id),
   ])
 
   const communityWithVerified = {
@@ -70,24 +74,29 @@ async function CommunityContent({ slug }: { slug: string }) {
     is_verified: monetization?.is_verified ?? false,
   }
 
+  const themeScopeId = `community-theme-${community.id}`
+
   return (
-    <>
+    <div id={themeScopeId}>
+      <CommunityThemeStyle scopeId={themeScopeId} theme={theme} />
       <CommunityHeader
         community={communityWithVerified}
         memberRole={memberRole}
         currentUserId={user?.id ?? null}
       />
       <div className="mt-6">
-        <CommunityTabs
-          community={community}
-          members={members ?? []}
-          markets={markets ?? []}
-          reviews={reviews ?? []}
+        <CommunityPresetSwitch
+          preset={theme.layout_preset}
+          community={community as any}
+          members={(members ?? []) as any}
+          markets={(markets ?? []) as any}
+          reviews={(reviews ?? []) as any}
           memberRole={memberRole}
           currentUserId={user?.id ?? null}
+          theme={theme}
         />
       </div>
-    </>
+    </div>
   )
 }
 
