@@ -2,6 +2,7 @@ import type { SupportedLocale } from '@/i18n/locales'
 import { setRequestLocale } from 'next-intl/server'
 import { Suspense } from 'react'
 import { CommunityRepository } from '@/lib/db/queries/community'
+import { CommunityDiscoveryRepository } from '@/lib/db/queries/community-discovery'
 import { MyCommunitiesRepository } from '@/lib/db/queries/my-communities'
 import { UserRepository } from '@/lib/db/queries/user'
 import { STATIC_PARAMS_PLACEHOLDER } from '@/lib/static-params'
@@ -30,10 +31,14 @@ async function CommunitiesContent() {
     { data: communities },
     { data: featuredMarkets },
     joined,
+    trending,
+    categories,
   ] = await Promise.all([
     CommunityRepository.listPublic({ limit: 30, sort: 'popular' }),
     CommunityRepository.listFeaturedMarkets(8),
     viewer ? MyCommunitiesRepository.listForUser(viewer.id) : Promise.resolve([]),
+    CommunityDiscoveryRepository.listTrending(30),
+    CommunityDiscoveryRepository.listCategories(12),
   ])
 
   return (
@@ -41,6 +46,8 @@ async function CommunitiesContent() {
       initialCommunities={communities ?? []}
       featuredMarkets={featuredMarkets ?? []}
       joinedCommunityIds={joined.map(c => c.id)}
+      trendingCommunities={trending as any}
+      categories={categories}
     />
   )
 }

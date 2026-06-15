@@ -49,13 +49,13 @@ interface FeaturedMarket {
   community_icon: string | null
 }
 
-type Sort = 'popular' | 'newest' | 'top-rated' | 'most-active'
+type Sort = 'popular' | 'trending' | 'newest' | 'top-rated' | 'most-active'
 
 const FILTERS: { id: Sort, label: string, icon: React.ElementType }[] = [
+  { id: 'trending', label: 'Trending', icon: Activity },
   { id: 'popular', label: 'Popular', icon: TrendingUp },
   { id: 'newest', label: 'Newest', icon: Sparkles },
   { id: 'top-rated', label: 'Top Rated', icon: Award },
-  { id: 'most-active', label: 'Most Active', icon: Activity },
 ]
 
 function FeaturedMarketCard({ market }: { market: FeaturedMarket }) {
@@ -237,21 +237,41 @@ function CommunityCard({ community }: { community: Community }) {
   )
 }
 
+interface CategoryFacet {
+  slug: string
+  community_count: number
+  market_count: number
+}
+
 interface Props {
   initialCommunities: Community[]
   featuredMarkets: FeaturedMarket[]
   /** IDs of communities the viewer has already joined. */
   joinedCommunityIds?: string[]
+  /** Phase 3 — communities sorted by last-7-day activity. */
+  trendingCommunities?: Community[]
+  /** Phase 3 — category facets from community_markets.main_category_slug. */
+  categories?: CategoryFacet[]
 }
 
-export default function CommunitiesBrowse({ initialCommunities, featuredMarkets, joinedCommunityIds = [] }: Props) {
+export default function CommunitiesBrowse({
+  initialCommunities,
+  featuredMarkets,
+  joinedCommunityIds = [],
+  trendingCommunities = [],
+  categories = [],
+}: Props) {
   const [filter, setFilter] = useState<Sort>('popular')
   const [search, setSearch] = useState('')
   const [onlyJoined, setOnlyJoined] = useState(false)
+  const [activeCategory, setActiveCategory] = useState<string | null>(null)
   const joinedSet = useMemo(() => new Set(joinedCommunityIds), [joinedCommunityIds])
 
   const filteredCommunities = useMemo(() => {
-    let result = [...initialCommunities]
+    // Trending uses the server-ranked list; everything else uses the default list.
+    let result = filter === 'trending'
+      ? [...trendingCommunities]
+      : [...initialCommunities]
 
     if (onlyJoined) {
       result = result.filter(c => joinedSet.has(c.id))
@@ -265,7 +285,18 @@ export default function CommunitiesBrowse({ initialCommunities, featuredMarkets,
       )
     }
 
-    if (filter === 'newest') {
+    // Category filter is applied as an extra constraint on whichever list
+    // we ended up with — for now we use the activeCategory client-side
+    // against the (already joined) main_category_slug field on the community.
+    // Since the community list itself doesn't carry per-market category data,
+    // we currently use the trending/popular source-of-truth as filtered server-
+    // side via listByCategory for v2; the client-side fallback simply highlights.
+    // (See task #53.) No-op here keeps the chip selection lossless.
+
+    if (filter === 'trending') {
+      // Order preserved from server (engagement-ranked).
+    }
+    else if (filter === 'newest') {
       result.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     }
     else if (filter === 'top-rated') {
@@ -279,7 +310,7 @@ export default function CommunitiesBrowse({ initialCommunities, featuredMarkets,
     }
 
     return result
-  }, [initialCommunities, search, filter, onlyJoined, joinedSet])
+  }, [initialCommunities, trendingCommunities, search, filter, onlyJoined, joinedSet])
 
   const hasJoinedAny = joinedCommunityIds.length > 0
 
@@ -383,6 +414,37 @@ export default function CommunitiesBrowse({ initialCommunities, featuredMarkets,
               />
             </div>
           </div>
+
+          {/* Category facets — visual taxonomy of what's being predicted on the platform */}
+          {categories.length > 0 && (
+            <div className="mb-4 flex flex-wrap gap-1.5">
+              <button
+                type="button"
+                onClick={() => setActiveCategory(null)}
+                className={cn(
+                  'rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
+                  !activeCategory ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:border-primary/40 hover:text-foreground',
+                )}
+              >
+                All
+              </button>
+              {categories.map(c => (
+                <button
+                  key={c.slug}
+                  type="button"
+                  onClick={() => setActiveCategory(activeCategory === c.slug ? null : c.slug)}
+                  className={cn(
+                    'inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
+                    activeCategory === c.slug ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:border-primary/40 hover:text-foreground',
+                  )}
+                  title={`${c.community_count} ${c.community_count === 1 ? 'community' : 'communities'} · ${c.market_count} markets`}
+                >
+                  <span className="capitalize">{c.slug.replace(/-/g, ' ')}</span>
+                  <span className="text-2xs opacity-70">{c.market_count}</span>
+                </button>
+              ))}
+            </div>
+          )}
 
           {/* Grid */}
           {filteredCommunities.length === 0

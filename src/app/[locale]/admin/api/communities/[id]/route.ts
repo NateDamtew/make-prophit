@@ -3,12 +3,14 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { recordAuditEvent } from '@/lib/admin-ui/audit'
 import { getAdminActor } from '@/lib/admin-ui/guard'
+import { CommunityIntegrityRepository } from '@/lib/db/queries/community-integrity'
 import { CommunityMonetizationRepository } from '@/lib/db/queries/community-monetization'
 
 const patchSchema = z.object({
   is_verified: z.boolean().optional(),
   community_fee_bps: z.number().int().min(0).max(1000).optional(),
   fee_payout_address: z.string().trim().max(255).nullable().optional(),
+  white_label: z.boolean().optional(),
 })
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -46,6 +48,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     }
     if (parsed.data.fee_payout_address !== undefined && parsed.data.fee_payout_address !== existing.fee_payout_address) {
       ops.push(CommunityMonetizationRepository.setPayoutAddress(id, parsed.data.fee_payout_address))
+    }
+    if (parsed.data.white_label !== undefined) {
+      ops.push(CommunityIntegrityRepository.setWhiteLabel(id, parsed.data.white_label))
     }
     await Promise.all(ops)
 

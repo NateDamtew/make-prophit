@@ -16,6 +16,7 @@ import Link from 'next/link'
 import { useMemo, useState, useTransition } from 'react'
 import { toast } from 'sonner'
 import { CommentsSection } from '@/components/community-engagement/CommentsSection'
+import { EvidencePanel } from '@/components/community-engagement/EvidencePanel'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
@@ -63,6 +64,8 @@ interface Props {
   currentUserId: string | null
   /** Optional server-rendered embed button — only present when the viewer can manage embeds. */
   embedSlot?: React.ReactNode
+  /** Optional moderation toolbar — community admins only. */
+  moderationSlot?: React.ReactNode
 }
 
 function daysUntilLabel(resolutionDate: Date): string {
@@ -85,6 +88,7 @@ export default function CommunityMarketDetail({
   memberRole,
   currentUserId,
   embedSlot,
+  moderationSlot,
 }: Props) {
   const [voteChoice, setVoteChoice] = useState<'yes' | 'no' | 'disputed' | null>(null)
   const [reasoning, setReasoning] = useState('')
@@ -220,6 +224,8 @@ export default function CommunityMarketDetail({
                   <h1 className="text-xl/snug font-bold sm:text-2xl">{market.title}</h1>
                   {embedSlot && <div className="shrink-0">{embedSlot}</div>}
                 </div>
+
+                {moderationSlot && <div className="-mt-1">{moderationSlot}</div>}
 
                 {market.description && (
                   <p className="text-sm text-muted-foreground">{market.description}</p>
@@ -640,6 +646,13 @@ export default function CommunityMarketDetail({
             </Card>
           </aside>
         </div>
+
+        <section className="mt-8">
+          <EvidencePanel
+            marketId={market.id}
+            canManage={memberRole === 'admin' || memberRole === 'juror'}
+          />
+        </section>
 
         <section className="mt-8">
           <CommentsSection

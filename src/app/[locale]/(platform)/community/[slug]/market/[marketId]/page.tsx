@@ -3,7 +3,9 @@ import type { SupportedLocale } from '@/i18n/locales'
 import { setRequestLocale } from 'next-intl/server'
 import { notFound } from 'next/navigation'
 import { CommunityMarketEmbedButton } from '@/components/community-engagement/EmbedCodeButtonWrapper'
+import { ModerationBar } from '@/components/community-engagement/ModerationBar'
 import { CommunityRepository } from '@/lib/db/queries/community'
+import { CommunityIntegrityRepository } from '@/lib/db/queries/community-integrity'
 import { UserRepository } from '@/lib/db/queries/user'
 import { STATIC_PARAMS_PLACEHOLDER } from '@/lib/static-params'
 import CommunityMarketDetail from './_components/CommunityMarketDetail'
@@ -25,6 +27,23 @@ export async function generateMetadata({
   return {
     title: `${data.market.title} — ${data.community.name}`,
     description: data.market.description ?? undefined,
+    openGraph: {
+      title: data.market.title,
+      description: data.market.description ?? `Prediction market in ${data.community.name}`,
+      images: [{
+        url: `/og/community/${data.community.slug}/market/${data.market.id}`,
+        width: 1200,
+        height: 630,
+        alt: data.market.title,
+      }],
+      type: 'article',
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: data.market.title,
+      description: data.market.description ?? undefined,
+      images: [`/og/community/${data.community.slug}/market/${data.market.id}`],
+    },
   }
 }
 
@@ -50,16 +69,31 @@ export default async function CommunityMarketDetailPage({
     ? await CommunityRepository.getMemberRole(data.community.id, user.id)
     : { data: null }
 
-  const { data: votes } = await CommunityRepository.getVotes(marketId)
+  const [{ data: votes }, moderation] = await Promise.all([
+    CommunityRepository.getVotes(marketId),
+    CommunityIntegrityRepository.getModerationFields(marketId),
+  ])
 
   // The Embed button is only useful for actively-trading markets, and only
   // community admins / super-admins should ever see it (it generates iframes
   // any reader could grab from the network tab otherwise).
-  const canManageEmbed
-    = (memberRole === 'admin' || (user as any)?.is_admin === true)
-      && data.market.status === 'active'
+  const isCommunityAdmin = memberRole === 'admin' || (user as any)?.is_admin === true
+  const canManageEmbed = isCommunityAdmin && data.market.status === 'active'
   const embedSlot = canManageEmbed
     ? <CommunityMarketEmbedButton communitySlug={slug} marketId={marketId} />
+    : null
+
+  const moderationSlot = isCommunityAdmin
+    ? (
+        <ModerationBar
+          marketId={marketId}
+          initial={{
+            is_pinned: moderation?.is_pinned ?? false,
+            is_locked: !!moderation?.locked_at,
+            is_archived: !!moderation?.archived_at,
+          }}
+        />
+      )
     : null
 
   return (
@@ -70,6 +104,7 @@ export default async function CommunityMarketDetailPage({
       memberRole={memberRole}
       currentUserId={user?.id ?? null}
       embedSlot={embedSlot}
+      moderationSlot={moderationSlot}
     />
   )
 }

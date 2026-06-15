@@ -2,6 +2,9 @@
 
 import type { CommunityMemberSummary, CommunitySummary } from './types'
 import { Crown, Gavel } from 'lucide-react'
+import { useMemo } from 'react'
+import { ResolverBadge } from '@/components/community-engagement/ResolverBadge'
+import { useResolverStats } from '@/components/community-engagement/useResolverStats'
 import { cn } from '@/lib/utils'
 import MemberRoleManager from '../MemberRoleManager'
 
@@ -14,6 +17,11 @@ interface MembersTabProps {
 
 export function MembersTab({ community, members, memberRole, currentUserId }: MembersTabProps) {
   const jurors = members.filter(m => m.role === 'juror' || m.role === 'admin')
+  // Resolver badges are only meaningful for jurors + admins — they're the
+  // ones who actually cast resolution votes. Skip the rest to keep the batch
+  // request small and the UI clean.
+  const jurorIds = useMemo(() => jurors.map(j => j.user_id), [jurors])
+  const resolverStats = useResolverStats(jurorIds)
 
   return (
     <div className="space-y-3">
@@ -48,11 +56,17 @@ export function MembersTab({ community, members, memberRole, currentUserId }: Me
                   <span className="ml-1.5 text-xs text-muted-foreground">(you)</span>
                 )}
               </p>
-              <p className="text-xs text-muted-foreground">
-                Joined
-                {' '}
-                {new Date(member.joined_at).toLocaleDateString()}
-              </p>
+              <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                <span>
+                  Joined
+                  {' '}
+                  {new Date(member.joined_at).toLocaleDateString()}
+                </span>
+                <JurorBadgeFromStats
+                  role={member.role}
+                  stats={resolverStats.get(member.user_id)}
+                />
+              </div>
             </div>
             {memberRole === 'admin'
               ? (
@@ -84,4 +98,20 @@ export function MembersTab({ community, members, memberRole, currentUserId }: Me
       </div>
     </div>
   )
+}
+
+function JurorBadgeFromStats({
+  role,
+  stats,
+}: {
+  role: string
+  stats: { markets_resolved: number, upheld_rate: number | null } | null
+}) {
+  if (role !== 'admin' && role !== 'juror') {
+    return null
+  }
+  if (!stats) {
+    return null
+  }
+  return <ResolverBadge marketsResolved={stats.markets_resolved} upheldRate={stats.upheld_rate} />
 }

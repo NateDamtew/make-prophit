@@ -4,7 +4,9 @@ import { setRequestLocale } from 'next-intl/server'
 import { notFound } from 'next/navigation'
 import { Suspense } from 'react'
 import { CommunityThemeStyle } from '@/components/community-themes/CommunityThemeStyle'
+import { WhiteLabelBrandBar } from '@/components/community-themes/WhiteLabelBrandBar'
 import { CommunityRepository } from '@/lib/db/queries/community'
+import { CommunityIntegrityRepository } from '@/lib/db/queries/community-integrity'
 import { CommunityMonetizationRepository } from '@/lib/db/queries/community-monetization'
 import { CommunityThemeRepository } from '@/lib/db/queries/community-theme'
 import { UserRepository } from '@/lib/db/queries/user'
@@ -22,9 +24,22 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   if (!community) {
     return { title: 'Community Not Found' }
   }
+  const ogUrl = `/og/community/${community.slug}`
   return {
     title: `${community.name} — Community`,
     description: community.description ?? undefined,
+    openGraph: {
+      title: community.name,
+      description: community.description ?? undefined,
+      images: [{ url: ogUrl, width: 1200, height: 630, alt: community.name }],
+      type: 'website',
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: community.name,
+      description: community.description ?? undefined,
+      images: [ogUrl],
+    },
   }
 }
 
@@ -61,24 +76,38 @@ async function CommunityContent({ slug }: { slug: string }) {
     { data: reviews },
     monetization,
     theme,
+    whiteLabel,
   ] = await Promise.all([
     CommunityRepository.listMembers(community.id),
     CommunityRepository.listMarketsWithVoteTallies(community.id),
     CommunityRepository.listReviews(community.id),
     CommunityMonetizationRepository.getFields(community.id).catch(() => null),
     CommunityThemeRepository.get(community.id),
+    CommunityIntegrityRepository.getWhiteLabelFlag(community.id),
   ])
 
+  const isVerified = monetization?.is_verified ?? false
   const communityWithVerified = {
     ...community,
-    is_verified: monetization?.is_verified ?? false,
+    is_verified: isVerified,
   }
+  // White-label only takes effect for verified communities (defense in depth —
+  // even if the flag leaks on, an unverified brand can't ride the look).
+  const showWhiteLabel = isVerified && whiteLabel
 
   const themeScopeId = `community-theme-${community.id}`
 
   return (
     <div id={themeScopeId}>
       <CommunityThemeStyle scopeId={themeScopeId} theme={theme} />
+      {showWhiteLabel && (
+        <div className="mb-4">
+          <WhiteLabelBrandBar
+            communityName={community.name}
+            communityIcon={community.icon_url ?? null}
+          />
+        </div>
+      )}
       <CommunityHeader
         community={communityWithVerified}
         memberRole={memberRole}
