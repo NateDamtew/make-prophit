@@ -4,7 +4,7 @@ import type { Route } from 'next'
 import type { FilterState } from '@/app/[locale]/(platform)/_providers/FilterProvider'
 import type { Event } from '@/types'
 import dynamic from 'next/dynamic'
-import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import EventsGrid from '@/app/[locale]/(platform)/(home)/_components/EventsGrid'
 import FilterToolbar from '@/app/[locale]/(platform)/(home)/_components/FilterToolbar'
 import HomeSecondaryNavigation from '@/app/[locale]/(platform)/(home)/_components/HomeSecondaryNavigation'
@@ -21,7 +21,6 @@ const CategorySidebar = dynamic(
 const HomeHero = dynamic(
   () => import('@/app/[locale]/(platform)/(home)/_components/HomeHero'),
   {
-    ssr: false,
     loading: () => <div className="mb-6 h-96 w-full animate-pulse rounded-xl bg-accent/20" />,
   },
 )
@@ -333,9 +332,7 @@ function HomeClientContent({
   return (
     <div className="space-y-6">
       {pathState.isHomePage && initialEvents.length > 0 && (
-        <Suspense fallback={<div className="mb-6 h-96 w-full animate-pulse rounded-xl bg-accent/20" />}>
-          <HomeHero events={initialEvents} />
-        </Suspense>
+        <HomeHero events={initialEvents} />
       )}
       <div className="flex min-w-0 gap-6 lg:items-start lg:gap-10">
         {categorySidebar && (
