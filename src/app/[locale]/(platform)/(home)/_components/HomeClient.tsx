@@ -21,7 +21,6 @@ const CategorySidebar = dynamic(
 const HomeHero = dynamic(
   () => import('@/app/[locale]/(platform)/(home)/_components/HomeHero'),
   {
-    ssr: false,
     loading: () => <div className="mb-6 h-96 w-full animate-pulse rounded-xl bg-accent/20" />,
   },
 )
