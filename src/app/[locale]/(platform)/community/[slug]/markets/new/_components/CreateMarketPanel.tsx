@@ -4,12 +4,11 @@ import { FileEdit, Link2, WandSparkles } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { cn } from '@/lib/utils'
-import CustomMarketCreator from './CustomMarketCreator'
 import DraftsList from './DraftsList'
-import { MarketCanvas } from './MarketCanvas'
+import MarketWizard from './MarketWizard'
 import PlatformMarketPicker from './PlatformMarketPicker'
 
-type Mode = 'canvas' | 'platform' | 'drafts' | 'advanced'
+type Mode = 'quickcreate' | 'platform' | 'drafts'
 
 interface Props {
   communityId: string
@@ -20,19 +19,20 @@ interface Props {
 }
 
 function isValidMode(value: string | null): value is Mode {
-  return value === 'canvas' || value === 'platform' || value === 'drafts' || value === 'advanced'
+  return value === 'quickcreate' || value === 'platform' || value === 'drafts'
 }
 
-const VISIBLE_TABS: Array<{ id: Exclude<Mode, 'advanced'>, label: string, sub: string, icon: typeof WandSparkles }> = [
-  { id: 'canvas', label: 'Quick Create', sub: 'AI canvas + templates', icon: WandSparkles },
-  { id: 'platform', label: 'Pull from Platform', sub: 'Use an existing market', icon: Link2 },
-  { id: 'drafts', label: 'Drafts', sub: 'Saved markets', icon: FileEdit },
+const TABS: Array<{ id: Mode, label: string, icon: typeof WandSparkles }> = [
+  { id: 'quickcreate', label: 'Quick Create', icon: WandSparkles },
+  { id: 'platform', label: 'Pull from Platform', icon: Link2 },
+  { id: 'drafts', label: 'Draft', icon: FileEdit },
 ]
 
 /**
- * Phase 2: default mode is the one-screen `canvas`. The legacy 5-step wizard
- * is preserved at `?tab=advanced` so power users (and anyone with a bookmarked
- * URL) can still reach it. The Drafts tab badges count.
+ * Single unified creation flow. Quick Create is the 5-step wizard (AI drafter
+ * + templates baked into step 1); Pull from Platform reuses an existing market;
+ * Draft lists saved-but-unsubmitted markets. Legacy `?tab=canvas|advanced`
+ * values fall back to Quick Create.
  */
 export default function CreateMarketPanel({
   communityId,
@@ -45,24 +45,23 @@ export default function CreateMarketPanel({
   const searchParams = useSearchParams()
   const initialMode: Mode = isValidMode(searchParams.get('tab'))
     ? (searchParams.get('tab') as Mode)
-    : 'canvas'
+    : 'quickcreate'
   const [mode, setMode] = useState<Mode>(initialMode)
 
-  // Keep mode in sync with URL when the param changes (back/forward).
   useEffect(() => {
     const param = searchParams.get('tab')
     if (isValidMode(param) && param !== mode) {
       setMode(param)
     }
-    else if (!param && mode !== 'canvas') {
-      setMode('canvas')
+    else if (!isValidMode(param) && mode !== 'quickcreate') {
+      setMode('quickcreate')
     }
   }, [searchParams, mode])
 
   function switchMode(next: Mode) {
     setMode(next)
     const params = new URLSearchParams(searchParams.toString())
-    if (next === 'canvas') {
+    if (next === 'quickcreate') {
       params.delete('tab')
     }
     else {
@@ -74,46 +73,41 @@ export default function CreateMarketPanel({
 
   return (
     <>
-      {mode !== 'advanced' && (
-        <div className="mb-6 grid grid-cols-3 gap-2">
-          {VISIBLE_TABS.map((tab) => {
-            const Icon = tab.icon
-            const isActive = mode === tab.id
-            const showBadge = tab.id === 'drafts' && drafts.length > 0
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => switchMode(tab.id)}
-                className={cn(
-                  'group flex flex-col items-center gap-2 rounded-sm border p-4 text-center transition-all',
-                  isActive ? 'border-primary bg-primary/5' : 'border-border hover:border-border/80 hover:bg-muted/30',
-                )}
-              >
-                <div className={cn(
-                  'flex size-9 items-center justify-center rounded-sm transition-colors',
-                  isActive ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground',
-                )}
-                >
-                  <Icon className="size-4" />
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <p className="text-sm font-semibold">{tab.label}</p>
-                  {showBadge && (
-                    <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-2xs font-medium text-primary">
-                      {drafts.length}
-                    </span>
-                  )}
-                </div>
-                <p className="text-xs text-muted-foreground">{tab.sub}</p>
-              </button>
-            )
-          })}
-        </div>
-      )}
+      {/* Mode pills */}
+      <div className="mb-6 flex flex-wrap gap-2">
+        {TABS.map((tab) => {
+          const Icon = tab.icon
+          const isActive = mode === tab.id
+          const showBadge = tab.id === 'drafts' && drafts.length > 0
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => switchMode(tab.id)}
+              className={cn(
+                `
+                  flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-semibold tracking-wide uppercase
+                  transition-colors
+                `,
+                isActive
+                  ? 'border-primary bg-primary/10 text-primary'
+                  : 'border-border text-muted-foreground hover:border-primary/40 hover:text-foreground',
+              )}
+            >
+              <Icon className="size-4" />
+              {tab.label}
+              {showBadge && (
+                <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-2xs font-bold text-primary">
+                  {drafts.length}
+                </span>
+              )}
+            </button>
+          )
+        })}
+      </div>
 
-      {mode === 'canvas' && (
-        <MarketCanvas
+      {mode === 'quickcreate' && (
+        <MarketWizard
           communityId={communityId}
           communitySlug={communitySlug}
           communityName={communityName}
@@ -125,31 +119,6 @@ export default function CreateMarketPanel({
       )}
       {mode === 'drafts' && (
         <DraftsList communityId={communityId} communitySlug={communitySlug} drafts={drafts} />
-      )}
-      {mode === 'advanced' && (
-        <div className="grid gap-4">
-          <div className="
-            flex items-center justify-between gap-3 rounded-sm border border-dashed border-border/70 bg-muted/30 px-4
-            py-3 text-xs
-          "
-          >
-            <span className="text-muted-foreground">
-              You're in
-              {' '}
-              <strong>Advanced</strong>
-              {' '}
-              mode — the original 5-step wizard. The faster AI canvas is one click away.
-            </span>
-            <button
-              type="button"
-              onClick={() => switchMode('canvas')}
-              className="font-medium text-primary hover:underline"
-            >
-              Back to Quick Create →
-            </button>
-          </div>
-          <CustomMarketCreator communityId={communityId} communitySlug={communitySlug} />
-        </div>
       )}
     </>
   )

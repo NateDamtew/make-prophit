@@ -58,13 +58,13 @@ async function NewMarketContent({ slug }: { slug: string }) {
       </Link>
 
       <div className="mb-6">
-        <h1 className="text-2xl font-bold">Create Market</h1>
+        <h1 className="text-3xl font-bold tracking-tight">Create a market</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Add a market to
           {' '}
           {community.name}
           {' '}
-          — pull from the platform or create a custom one with AI assistance.
+          — draft with AI, start from a template, or pull one from the platform.
         </p>
       </div>
 
@@ -92,10 +92,13 @@ export default async function NewCommunityMarketPage({
   }
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
-      <Suspense fallback={<NewMarketSkeleton />}>
-        <NewMarketContent slug={slug} />
-      </Suspense>
-    </div>
+    <Suspense fallback={(
+      <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+        <NewMarketSkeleton />
+      </div>
+    )}
+    >
+      <NewMarketContent slug={slug} />
+    </Suspense>
   )
 }
