@@ -74,7 +74,7 @@ vi.mock('@/lib/auth-client', () => ({
   },
 }))
 
-vi.mock('@wagmi/core', () => ({
+vi.mock('wagmi/actions', () => ({
   signMessage: vi.fn(),
 }))
 
