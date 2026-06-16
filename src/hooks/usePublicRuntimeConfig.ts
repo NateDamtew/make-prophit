@@ -5,6 +5,7 @@ import { createContext, use } from 'react'
 
 const defaultPublicRuntimeConfig: PublicRuntimeConfig = {
   reownAppKitProjectId: '',
+  dynamicEnvId: '',
   siteUrl: 'http://localhost:3000',
 }
 

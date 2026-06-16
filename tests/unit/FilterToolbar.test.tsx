@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
   open: vi.fn(),
 }))
 
-vi.mock('@reown/appkit/react', () => ({
+vi.mock('@/hooks/useAppKitAccount', () => ({
   useAppKitAccount: () => ({ isConnected: true }),
 }))
 

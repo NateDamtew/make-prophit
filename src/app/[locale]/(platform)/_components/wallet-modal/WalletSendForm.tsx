@@ -2,7 +2,6 @@
 
 import type { ChangeEventHandler, FormEventHandler } from 'react'
 import type { PendingWithdrawalItem } from '@/app/[locale]/(platform)/_components/wallet-modal/utils'
-import { useAppKitAccount } from '@reown/appkit/react'
 import {
   ArrowLeftIcon,
   ChevronRightIcon,
@@ -19,6 +18,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { useAppKitAccount } from '@/hooks/useAppKitAccount'
 import { formatDisplayAmount, MAX_AMOUNT_INPUT, sanitizeNumericInput } from '@/lib/amount-input'
 import { formatAmountInputValue } from '@/lib/formatters'
 import { cn } from '@/lib/utils'

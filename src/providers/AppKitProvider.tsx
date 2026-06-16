@@ -1,47 +1,37 @@
 'use client'
 
-import type { AppKit } from '@reown/appkit'
-import type { SIWECreateMessageArgs, SIWESession, SIWEVerifyMessageArgs } from '@reown/appkit-siwe'
+import type { Wallet } from '@dynamic-labs/sdk-react-core'
 import type { ReactNode } from 'react'
+import type { Config } from 'wagmi'
 import type { User } from '@/types'
-import { createSIWEConfig, formatMessage, getAddressFromMessage } from '@reown/appkit-siwe'
-import { createAppKit, useAppKitTheme } from '@reown/appkit/react'
+import { EthereumWalletConnectors } from '@dynamic-labs/ethereum'
+import { DynamicContextProvider, useDynamicContext } from '@dynamic-labs/sdk-react-core'
+import { DynamicWagmiConnector } from '@dynamic-labs/wagmi-connector'
+import { signMessage } from '@wagmi/core'
 import { generateRandomString } from 'better-auth/crypto'
 import { useExtracted } from 'next-intl'
 import { useTheme } from 'next-themes'
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
+import { useEffect, useMemo } from 'react'
 import { toast } from 'sonner'
+import { createSiweMessage } from 'viem/siwe'
 import { WagmiProvider } from 'wagmi'
 import { SignaturePromptHost } from '@/components/SignaturePromptHost'
-import { AppKitContext, defaultAppKitValue } from '@/hooks/useAppKit'
+import { AppKitContext } from '@/hooks/useAppKit'
 import { useHasHydrated } from '@/hooks/useHasHydrated'
 import { usePublicRuntimeConfig } from '@/hooks/usePublicRuntimeConfig'
 import { useSiteIdentity } from '@/hooks/useSiteIdentity'
-import { createAppKitWagmiAdapter, defaultNetwork, networks } from '@/lib/appkit'
+import { createDynamicWagmiConfig, defaultNetwork } from '@/lib/appkit'
 import { authClient } from '@/lib/auth-client'
 import { IS_BROWSER } from '@/lib/constants'
 import { clearBrowserStorage, clearNonHttpOnlyCookies } from '@/lib/utils'
 import { mergeSessionUserState, useUser } from '@/stores/useUser'
 
-let hasInitializedAppKit = false
-let appKitInstance: AppKit | null = null
-// The wagmi config is now instance-bound (created per-adapter from the runtime
-// projectId) rather than a module-level singleton. We stash the active config
-// here so getConnectedAccount — a module-level helper used by the SIWE nonce/
-// message callbacks — can still read the connected address + chainId.
-let activeWagmiConfig: ReturnType<typeof createAppKitWagmiAdapter>['wagmiConfig'] | null = null
-const appKitStateListeners = new Set<() => void>()
-const APPKIT_INIT_RETRY_DELAY_MS = 3000
+// Stable wagmi config — created once per module load
+const wagmiConfig = createDynamicWagmiConfig()
 
-/**
- * Reads the currently-connected wallet address and chainId straight from the
- * wagmi config state. better-auth's SIWE plugin stores the nonce keyed by
- * `siwe:${checksum(address)}:${chainId}` and looks it up by the exact same key
- * on /siwe/verify, so the nonce request MUST supply the wallet address and the
- * SAME chainId that verify will use — otherwise verify throws
- * "Invalid or expired nonce". This helper is the single source of truth for
- * both so the keys always match.
- */
+// Module-level reference so SIWE callbacks can read wagmi state outside React
+let activeWagmiConfig: Config = wagmiConfig
+
 function getConnectedAccount(): { address: `0x${string}` | undefined, chainId: number } {
   const state = activeWagmiConfig?.state
   const current = state?.current
@@ -51,7 +41,7 @@ function getConnectedAccount(): { address: `0x${string}` | undefined, chainId: n
   return { address, chainId }
 }
 
-function clearAppKitState() {
+function clearWalletState() {
   if (!IS_BROWSER) {
     return
   }
@@ -60,193 +50,11 @@ function clearAppKitState() {
   clearNonHttpOnlyCookies()
 }
 
-function notifyAppKitStateChange() {
-  appKitStateListeners.forEach((listener) => {
-    listener()
-  })
-}
-
-function subscribeAppKitStateChange(onStoreChange: () => void) {
-  appKitStateListeners.add(onStoreChange)
-  return () => {
-    appKitStateListeners.delete(onStoreChange)
-  }
-}
-
-function getAppKitInstanceSnapshot() {
-  return appKitInstance
-}
-
-function initializeAppKitSingleton(
-  themeMode: 'light' | 'dark',
-  site: { name: string, description: string, logoUrl: string },
-  runtimeConfig: { projectId: string, siteUrl: string },
-  wagmiAdapter: ReturnType<typeof createAppKitWagmiAdapter>,
-) {
-  if (hasInitializedAppKit || !IS_BROWSER || !runtimeConfig.projectId) {
-    return appKitInstance
-  }
-
-  try {
-    appKitInstance = createAppKit({
-      projectId: runtimeConfig.projectId,
-      adapters: [wagmiAdapter],
-      themeMode,
-      defaultAccountTypes: { eip155: 'eoa' },
-      metadata: {
-        name: site.name,
-        description: site.description,
-        url: runtimeConfig.siteUrl,
-        icons: [site.logoUrl],
-      },
-      themeVariables: {
-        '--w3m-font-family': 'var(--font-sans)',
-        '--w3m-border-radius-master': '2px',
-        '--w3m-accent': 'var(--primary)',
-      },
-      networks,
-      defaultNetwork,
-      featuredWalletIds: ['c57ca95b47569778a828d19178114f4db188b89b763c899ba0be274e97267d96'],
-      features: {
-        analytics: false,
-        swaps: false,
-        onramp: false,
-        receive: false,
-        send: false,
-        history: false,
-        pay: false,
-        headless: false,
-        socials: ['google', 'x', 'discord', 'github'],
-      },
-      siweConfig: createSIWEConfig({
-        signOutOnAccountChange: true,
-        getMessageParams: async () => {
-          // Use the wallet's current chain so AppKit never forces a network switch
-          // just to authenticate. Chain restriction applies to trading, not sign-in.
-          const { chainId } = getConnectedAccount()
-          return {
-            domain: new URL(runtimeConfig.siteUrl).host,
-            uri: typeof window !== 'undefined' ? window.location.origin : '',
-            chains: [chainId],
-            statement: 'Please sign with your account',
-          }
-        },
-        createMessage: ({ address, ...args }: SIWECreateMessageArgs) => formatMessage(args, address),
-        getNonce: async () => {
-          try {
-            // Must pass walletAddress + chainId: the server stores the nonce
-            // keyed by siwe:${address}:${chainId}. Without these the request is
-            // rejected, the nonce is never stored, and verify fails with
-            // "Invalid or expired nonce".
-            const { address, chainId } = getConnectedAccount()
-            if (!address) {
-              return generateRandomString(32)
-            }
-            const { data } = await authClient.siwe.nonce({ walletAddress: address, chainId })
-            return data?.nonce || generateRandomString(32)
-          }
-          catch {
-            return generateRandomString(32)
-          }
-        },
-        getSession: async () => {
-          try {
-            const session = await authClient.getSession()
-            if (!session.data?.user) {
-              return null
-            }
-
-            return {
-              // @ts-expect-error address not defined in session type
-              address: session.data?.user.address,
-              chainId: getConnectedAccount().chainId,
-            } satisfies SIWESession
-          }
-          catch {
-            return null
-          }
-        },
-        verifyMessage: async ({ message, signature }: SIWEVerifyMessageArgs) => {
-          try {
-            const address = getAddressFromMessage(message)
-            // Use the SAME connected chainId that getNonce used, so the nonce
-            // lookup key siwe:${address}:${chainId} matches what was stored.
-            const { chainId } = getConnectedAccount()
-            const { data } = await authClient.siwe.verify({
-              message,
-              signature,
-              walletAddress: address,
-              chainId,
-            })
-            return Boolean(data?.success)
-          }
-          catch {
-            return false
-          }
-        },
-        signOut: async () => {
-          try {
-            await authClient.signOut()
-            useUser.setState(null)
-            return true
-          }
-          catch {
-            return false
-          }
-        },
-        onSignIn: () => {
-          authClient.getSession().then((session) => {
-            const user = session?.data?.user
-            if (user) {
-              useUser.setState((previous) => {
-                return mergeSessionUserState(previous, user as unknown as User)
-              })
-            }
-          }).catch(() => {})
-        },
-        onSignOut: () => {
-          clearAppKitState()
-          window.location.reload()
-        },
-      }),
-    })
-
-    hasInitializedAppKit = true
-    notifyAppKitStateChange()
-    return appKitInstance
-  }
-  catch (error) {
-    console.warn('Wallet initialization failed. Using local/default values.', error)
-    return null
-  }
-}
-
-function AppKitThemeSynchronizer({ themeMode }: { themeMode: 'light' | 'dark' }) {
-  useSyncAppKitThemeMode(themeMode)
-
-  return null
-}
-
-function useSyncAppKitThemeMode(themeMode: 'light' | 'dark') {
-  const { setThemeMode } = useAppKitTheme()
-
-  useEffect(() => {
-    setThemeMode(themeMode)
-  }, [setThemeMode, themeMode])
-}
-
-function useResolvedThemeMode() {
-  const { resolvedTheme } = useTheme()
-  return resolvedTheme
-}
-
 async function isCurrentRegionBlocked() {
   try {
     const response = await fetch('/api/geoblock-status', {
       cache: 'no-store',
-      headers: {
-        accept: 'application/json',
-      },
+      headers: { accept: 'application/json' },
     })
     if (!response.ok) {
       return false
@@ -260,140 +68,177 @@ async function isCurrentRegionBlocked() {
   }
 }
 
-function createAppKitContextValue({
-  instance,
-  hasAuthenticatedUser,
-  regionBlockedMessage,
-}: {
-  instance: AppKit | null
-  hasAuthenticatedUser: boolean
-  regionBlockedMessage: string
-}) {
-  if (!instance) {
-    return defaultAppKitValue
+async function driveSIWEHandshake(primaryWallet: Wallet, siteUrl: string) {
+  const address = primaryWallet.address as `0x${string}` | undefined
+  if (!address) {
+    return
   }
 
-  return {
-    open: async (options: Parameters<AppKit['open']>[0]) => {
+  const { chainId } = getConnectedAccount()
+
+  // Skip if better-auth session already exists for this address
+  try {
+    const session = await authClient.getSession()
+    const sessionAddress = (session?.data?.user as any)?.address as string | undefined
+    if (sessionAddress?.toLowerCase() === address.toLowerCase()) {
+      const user = session.data?.user
+      if (user) {
+        useUser.setState(previous => mergeSessionUserState(previous, user as unknown as User))
+      }
+      return
+    }
+  }
+  catch {
+    // continue — no session yet
+  }
+
+  try {
+    // Get nonce keyed by address + chainId so verify can find the same key
+    const { data: nonceData } = await authClient.siwe.nonce({ walletAddress: address, chainId })
+    const nonce = nonceData?.nonce || generateRandomString(32)
+
+    const domain = new URL(siteUrl).host
+    const message = createSiweMessage({
+      domain,
+      address,
+      statement: 'Please sign with your account',
+      uri: typeof window !== 'undefined' ? window.location.origin : siteUrl,
+      version: '1',
+      chainId,
+      nonce,
+    })
+
+    // Sign using wagmi action (works outside React, no hook needed)
+    const signature = await signMessage(activeWagmiConfig, { message })
+
+    const { data: verifyData } = await authClient.siwe.verify({
+      message,
+      signature,
+      walletAddress: address,
+      chainId,
+    })
+
+    if (verifyData?.success) {
+      const session = await authClient.getSession()
+      const user = session?.data?.user
+      if (user) {
+        useUser.setState(previous => mergeSessionUserState(previous, user as unknown as User))
+      }
+    }
+  }
+  catch (error) {
+    console.warn('[SIWE] Handshake failed', error)
+  }
+}
+
+function DynamicThemeSynchronizer() {
+  const { resolvedTheme } = useTheme()
+
+  useEffect(() => {
+    if (!IS_BROWSER) {
+      return
+    }
+    const root = document.documentElement
+    root.setAttribute('data-dynamic-theme', resolvedTheme === 'dark' ? 'dark' : 'light')
+  }, [resolvedTheme])
+
+  return null
+}
+
+function DynamicAppKitBridge({
+  children,
+  regionBlockedMessage,
+  hasAuthenticatedUser,
+}: {
+  children: ReactNode
+  regionBlockedMessage: string
+  hasAuthenticatedUser: boolean
+}) {
+  const { setShowAuthFlow } = useDynamicContext()
+
+  const appKitValue = useMemo(() => ({
+    open: async (_options?: { view?: string }) => {
       if (!hasAuthenticatedUser && await isCurrentRegionBlocked()) {
         toast.warning(regionBlockedMessage)
         return
       }
 
-      await instance.open(options)
+      setShowAuthFlow(true)
     },
     close: async () => {
-      await instance.close()
+      setShowAuthFlow(false)
     },
     isReady: true,
-  }
-}
+  }), [hasAuthenticatedUser, regionBlockedMessage, setShowAuthFlow])
 
-function useAppKitInstance({
-  appKitThemeMode,
-  projectId,
-  siteName,
-  siteDescription,
-  siteLogoUrl,
-  siteUrl,
-  wagmiAdapter,
-}: {
-  appKitThemeMode: 'light' | 'dark'
-  projectId: string
-  siteName: string
-  siteDescription: string
-  siteLogoUrl: string
-  siteUrl: string
-  wagmiAdapter: ReturnType<typeof createAppKitWagmiAdapter>
-}) {
-  const [appKitInitRetryToken, setAppKitInitRetryToken] = useState(0)
-  const instance = useSyncExternalStore(
-    subscribeAppKitStateChange,
-    getAppKitInstanceSnapshot,
-    () => null,
+  return (
+    <AppKitContext value={appKitValue}>
+      {children}
+    </AppKitContext>
   )
-
-  useEffect(function initializeAppKitWithRetry() {
-    if (instance || !projectId) {
-      return
-    }
-
-    const initializedInstance = initializeAppKitSingleton(appKitThemeMode, {
-      name: siteName,
-      description: siteDescription,
-      logoUrl: siteLogoUrl,
-    }, {
-      projectId,
-      siteUrl,
-    }, wagmiAdapter)
-    if (initializedInstance) {
-      return
-    }
-
-    const retryTimeout = window.setTimeout(() => {
-      setAppKitInitRetryToken(previous => previous + 1)
-    }, APPKIT_INIT_RETRY_DELAY_MS)
-    return function cancelAppKitInitRetry() {
-      window.clearTimeout(retryTimeout)
-    }
-  }, [appKitThemeMode, appKitInitRetryToken, instance, projectId, siteDescription, siteLogoUrl, siteName, siteUrl, wagmiAdapter])
-
-  return instance
-}
-
-function useAppKitContextValue({
-  instance,
-  hasAuthenticatedUser,
-  regionBlockedMessage,
-}: {
-  instance: AppKit | null
-  hasAuthenticatedUser: boolean
-  regionBlockedMessage: string
-}) {
-  return useMemo(() => createAppKitContextValue({
-    instance,
-    hasAuthenticatedUser,
-    regionBlockedMessage,
-  }), [hasAuthenticatedUser, instance, regionBlockedMessage])
 }
 
 export default function AppKitProvider({ children }: { children: ReactNode }) {
   const t = useExtracted()
   const site = useSiteIdentity()
-  const { reownAppKitProjectId, siteUrl } = usePublicRuntimeConfig()
+  const { dynamicEnvId, siteUrl } = usePublicRuntimeConfig()
   const hasHydrated = useHasHydrated()
   const currentUser = useUser()
-  const resolvedTheme = useResolvedThemeMode()
-  const appKitThemeMode: 'light' | 'dark' = resolvedTheme === 'dark' ? 'dark' : 'light'
-  const wagmiAdapter = useMemo(
-    () => createAppKitWagmiAdapter(reownAppKitProjectId),
-    [reownAppKitProjectId],
-  )
-  const wagmiConfig = wagmiAdapter.wagmiConfig
+  const { resolvedTheme } = useTheme()
+  const themeMode: 'light' | 'dark' = resolvedTheme === 'dark' ? 'dark' : 'light'
+
   activeWagmiConfig = wagmiConfig
-  const instance = useAppKitInstance({
-    appKitThemeMode,
-    projectId: reownAppKitProjectId,
-    siteName: site.name,
-    siteDescription: site.description,
-    siteLogoUrl: site.logoUrl,
-    siteUrl,
-    wagmiAdapter,
-  })
-  const appKitValue = useAppKitContextValue({
-    instance,
-    hasAuthenticatedUser: Boolean(currentUser?.id),
-    regionBlockedMessage: t('This platform is not currently available in your region.'),
-  })
-  const canSyncTheme = Boolean(instance)
+
+  const dynamicSettings = useMemo(() => ({
+    environmentId: dynamicEnvId || 'placeholder',
+    walletConnectors: [EthereumWalletConnectors],
+    appName: site.name,
+    appLogoUrl: site.logoUrl,
+    initialAuthenticationMode: 'connect-and-sign' as const,
+    overrides: {
+      evmNetworks: [
+        {
+          blockExplorerUrls: [defaultNetwork.blockExplorers?.default.url ?? 'https://polygonscan.com'],
+          chainId: defaultNetwork.id,
+          iconUrls: [],
+          name: defaultNetwork.name,
+          nativeCurrency: defaultNetwork.nativeCurrency,
+          networkId: defaultNetwork.id,
+          rpcUrls: [...defaultNetwork.rpcUrls.default.http],
+          vanityName: defaultNetwork.name,
+        },
+      ],
+    },
+    events: {
+      onAuthSuccess: async ({ primaryWallet }: { primaryWallet: Wallet | null }) => {
+        if (!primaryWallet) {
+          return
+        }
+
+        await driveSIWEHandshake(primaryWallet, siteUrl)
+      },
+      onLogout: () => {
+        clearWalletState()
+        useUser.setState(null)
+        window.location.reload()
+      },
+    },
+  }), [dynamicEnvId, site.logoUrl, site.name, siteUrl])
 
   return (
-    <WagmiProvider config={wagmiConfig}>
-      <AppKitContext value={appKitValue}>
-        {children}
-        {hasHydrated && <SignaturePromptHost />}
-        {canSyncTheme && <AppKitThemeSynchronizer themeMode={appKitThemeMode} />}
-      </AppKitContext>
-    </WagmiProvider>
+    <DynamicContextProvider theme={themeMode} settings={dynamicSettings}>
+      <WagmiProvider config={wagmiConfig}>
+        <DynamicWagmiConnector>
+          <DynamicAppKitBridge
+            regionBlockedMessage={t('This platform is not currently available in your region.')}
+            hasAuthenticatedUser={Boolean(currentUser?.id)}
+          >
+            {children}
+            {hasHydrated && <SignaturePromptHost />}
+            <DynamicThemeSynchronizer />
+          </DynamicAppKitBridge>
+        </DynamicWagmiConnector>
+      </WagmiProvider>
+    </DynamicContextProvider>
   )
 }

@@ -3,7 +3,6 @@
 import type { ReactNode } from 'react'
 import type { FilterSettings, FilterSettingsRowProps } from '@/app/[locale]/(platform)/(home)/_components/filter-toolbar-settings'
 import type { FilterState } from '@/app/[locale]/(platform)/_providers/FilterProvider'
-import { useAppKitAccount } from '@reown/appkit/react'
 import { BookmarkIcon, Settings2Icon } from 'lucide-react'
 import { useExtracted } from 'next-intl'
 import dynamic from 'next/dynamic'
@@ -13,6 +12,7 @@ import FilterToolbarSearchInput from '@/app/[locale]/(platform)/(home)/_componen
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { useAppKit } from '@/hooks/useAppKit'
+import { useAppKitAccount } from '@/hooks/useAppKitAccount'
 import { cn } from '@/lib/utils'
 
 const FilterSettingsRow = dynamic<FilterSettingsRowProps>(
