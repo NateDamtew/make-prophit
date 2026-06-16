@@ -101,172 +101,194 @@ export default function ClassicHero({ community, memberRole, currentUserId }: Pr
 
   return (
     <>
-      <section className="relative overflow-hidden rounded-2xl border bg-card">
-        {/* Banner */}
-        <div className="relative h-44 overflow-hidden sm:h-56">
+      <section className="relative isolate overflow-hidden rounded-2xl border border-border/60 bg-background">
+        {/* Banner background — spans the whole panel, content overlays it */}
+        <div className="absolute inset-0">
           {community.banner_url
             ? (
                 <img src={community.banner_url} alt="" className="size-full object-cover" />
               )
             : (
-                <div className="absolute inset-0 bg-linear-to-br from-primary/25 via-primary/10 to-background">
-                  {/* Subtle circuit-style pattern using SVG so it inherits the accent */}
-                  <svg
-                    className="absolute inset-0 size-full text-primary/15"
-                    viewBox="0 0 400 200"
-                    preserveAspectRatio="xMaxYMid slice"
-                    aria-hidden
-                  >
-                    <defs>
-                      <pattern id="classic-hero-grid" width="40" height="40" patternUnits="userSpaceOnUse">
-                        <path d="M40 0H0V40" fill="none" stroke="currentColor" strokeWidth="0.5" />
-                      </pattern>
-                    </defs>
-                    <rect width="100%" height="100%" fill="url(#classic-hero-grid)" />
-                    <g stroke="currentColor" strokeWidth="1.5" fill="none" opacity="0.7">
-                      <path d="M180 40 L260 40 L260 90 L320 90" />
-                      <path d="M220 130 L300 130 L300 170 L380 170" />
-                      <circle cx="260" cy="40" r="3" fill="currentColor" />
-                      <circle cx="320" cy="90" r="3" fill="currentColor" />
-                      <circle cx="300" cy="130" r="3" fill="currentColor" />
-                    </g>
-                  </svg>
-                </div>
+                <svg
+                  className="absolute inset-0 size-full text-primary"
+                  viewBox="0 0 1200 400"
+                  preserveAspectRatio="xMidYMid slice"
+                  aria-hidden
+                >
+                  <defs>
+                    <radialGradient id="classic-hero-glow" cx="78%" cy="28%" r="55%">
+                      <stop offset="0%" stopColor="currentColor" stopOpacity="0.35" />
+                      <stop offset="100%" stopColor="currentColor" stopOpacity="0" />
+                    </radialGradient>
+                  </defs>
+                  <rect width="100%" height="100%" fill="url(#classic-hero-glow)" />
+                  {/* Faint trace network biased to the right */}
+                  <g stroke="currentColor" fill="none" strokeOpacity="0.25" strokeWidth="1.5">
+                    <path d="M620 120 H820 V60 H1000" />
+                    <path d="M700 200 H900 V150 H1120" />
+                    <path d="M760 300 H980 V250 H1160" />
+                    <path d="M640 60 H720 V20" />
+                    <path d="M860 360 H1020 V320 H1200" />
+                  </g>
+                  {/* Bright accent trace */}
+                  <g stroke="currentColor" fill="none" strokeOpacity="0.9" strokeWidth="2.5">
+                    <path d="M560 160 H840 V90 H1080 V40 H1200" />
+                  </g>
+                  {/* Nodes */}
+                  <g fill="currentColor">
+                    <circle cx="820" cy="60" r="4" fillOpacity="0.5" />
+                    <circle cx="900" cy="150" r="4" fillOpacity="0.5" />
+                    <circle cx="980" cy="250" r="4" fillOpacity="0.5" />
+                    <circle cx="840" cy="90" r="5" fillOpacity="0.95" />
+                    <circle cx="1080" cy="40" r="5" fillOpacity="0.95" />
+                  </g>
+                </svg>
               )}
-          {/* Top-right type chip */}
-          <div className="absolute top-4 right-4">
-            <span className="
-              inline-flex items-center gap-1.5 rounded-full bg-background/80 px-3 py-1 text-2xs font-semibold
-              tracking-wider text-foreground uppercase shadow-sm backdrop-blur-sm
-            "
-            >
-              {community.type === 'private' ? <Lock className="size-3" /> : <Globe className="size-3" />}
-              {community.type}
-            </span>
-          </div>
+          {/* Darkening gradients so the left-aligned content stays legible */}
+          <div className="absolute inset-0 bg-linear-to-r from-background via-background/85 to-background/30" />
+          <div className="absolute inset-0 bg-linear-to-t from-background via-background/30 to-transparent" />
         </div>
 
-        {/* Body */}
-        <div className="px-5 pt-0 pb-5 sm:px-7 sm:pb-7">
-          <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
-            {/* Avatar + identity */}
-            <div className="flex items-start gap-4">
-              <div className="
-                relative -mt-12 flex size-24 shrink-0 items-center justify-center overflow-hidden rounded-2xl border-l-4
-                border-primary bg-card text-3xl shadow-lg ring-4 ring-background
-                sm:-mt-14 sm:size-28 sm:text-4xl
-              "
-              >
-                {community.icon_url
-                  ? <img src={community.icon_url} alt="" className="size-full object-cover" />
-                  : <span>🏛️</span>}
-              </div>
-              <div className="min-w-0 flex-1 pt-2">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h1 className="flex items-center gap-1.5 text-2xl/tight font-bold tracking-tight sm:text-3xl">
-                    <span>{community.name}</span>
-                    <VerifiedBadge isVerified={community.is_verified} />
-                  </h1>
-                  {roleLabel && (
-                    <span className={cn(
-                      'rounded-full px-2 py-0.5 text-2xs font-semibold tracking-wider uppercase',
-                      roleLabel === 'Admin' && 'bg-primary/15 text-primary',
-                      roleLabel === 'Juror' && 'bg-amber-500/15 text-amber-600',
-                      roleLabel === 'Member' && 'bg-muted text-muted-foreground',
-                    )}
-                    >
-                      {roleLabel}
-                    </span>
-                  )}
-                </div>
-                {community.description && (
-                  <p className="mt-1.5 max-w-2xl text-sm/relaxed text-muted-foreground">
-                    {community.description}
-                  </p>
-                )}
-              </div>
+        {/* Top-right type chip */}
+        <div className="absolute top-4 right-4 z-10">
+          <span className="
+            inline-flex items-center gap-1.5 rounded-full bg-background/70 px-3 py-1 text-2xs font-semibold
+            tracking-wider text-foreground uppercase shadow-sm ring-1 ring-border/60 backdrop-blur-sm
+          "
+          >
+            {community.type === 'private' ? <Lock className="size-3" /> : <Globe className="size-3" />}
+            {community.type}
+          </span>
+        </div>
+
+        {/* Content overlay */}
+        <div className="
+          relative z-10 flex flex-col gap-5 px-5 pt-24 pb-5
+          sm:flex-row sm:items-end sm:justify-between sm:gap-6 sm:px-8 sm:pt-32 sm:pb-7
+        "
+        >
+          {/* Avatar + identity */}
+          <div className="flex items-end gap-4 sm:gap-5">
+            <div className="
+              relative flex size-24 shrink-0 items-center justify-center overflow-hidden rounded-2xl border-r-4
+              border-primary bg-card text-3xl shadow-xl ring-1 ring-border/60
+              sm:size-28 sm:text-4xl
+            "
+            >
+              {community.icon_url
+                ? <img src={community.icon_url} alt="" className="size-full object-cover" />
+                : <span>🏛️</span>}
             </div>
 
-            {/* Action cluster */}
-            <div className="flex shrink-0 items-center gap-2">
-              {isAdmin && (
-                <>
-                  <Button size="sm" asChild>
-                    <Link href={`/community/${community.slug}/markets/new` as any}>
-                      <Plus className="mr-1.5 size-3.5" />
-                      Add Market
-                    </Link>
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={handleGenerateInvite}>
-                    <Share2 className="mr-1.5 size-3.5" />
-                    Invite
-                  </Button>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="icon" aria-label="More">
-                        <MoreHorizontal className="size-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-56">
-                      <DropdownMenuItem asChild>
-                        <Link href={`/community/${community.slug}/theme` as any}>
-                          <Paintbrush className="size-3.5" />
-                          Theme & layout
-                        </Link>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem asChild>
-                        <Link href={`/community/${community.slug}/insights` as any}>
-                          <ActivityIcon className="size-3.5" />
-                          Insights
-                        </Link>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem asChild>
-                        <Link href={`/community/${community.slug}/embed-settings` as any}>
-                          <Code2Icon className="size-3.5" />
-                          Embed settings
-                        </Link>
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="flex items-center gap-1.5 text-2xl/tight font-bold tracking-tight sm:text-3xl">
+                  <span>{community.name}</span>
+                  <VerifiedBadge isVerified={community.is_verified} />
+                </h1>
+                {roleLabel && (
+                  <span className={cn(
+                    'rounded-md px-2 py-0.5 text-2xs font-bold tracking-wider uppercase',
+                    roleLabel === 'Admin' && 'bg-primary text-primary-foreground',
+                    roleLabel === 'Juror' && 'bg-amber-500/20 text-amber-500',
+                    roleLabel === 'Member' && 'bg-muted text-muted-foreground',
+                  )}
+                  >
+                    {roleLabel}
+                  </span>
+                )}
+              </div>
+              {community.description && (
+                <p className="mt-2 max-w-2xl text-sm/relaxed text-muted-foreground">
+                  {community.description}
+                </p>
               )}
-              {!isAdmin && !isMember && community.type === 'public' && (
-                <Button size="sm" onClick={handleJoin} disabled={isPending}>
-                  {isPending ? 'Joining…' : 'Join Community'}
-                </Button>
-              )}
-              {isMember && !isAdmin && (
-                <Button variant="outline" size="sm" onClick={handleLeave} disabled={isPending}>
-                  {isPending ? 'Leaving…' : 'Leave'}
-                </Button>
-              )}
+
+              {/* Stats row with vertical dividers */}
+              <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-3 sm:gap-x-6">
+                <Stat label="Members" value={`${formatCompact(community.member_count)}/${formatCompact(community.max_members)}`} />
+                <StatDivider />
+                <Stat label="Markets" value={formatCompact(community.market_count)} />
+                <StatDivider />
+                <Stat
+                  label="Rating"
+                  value={community.review_count > 0 ? rating.toFixed(1) : '—'}
+                  valueClassName={community.review_count > 0 ? 'text-primary' : undefined}
+                  icon={community.review_count > 0
+                    ? (
+                        <span className="flex">
+                          {[1, 2, 3, 4, 5].map(i => (
+                            <Star
+                              key={i}
+                              className={cn(
+                                'size-3',
+                                i <= Math.round(rating) ? 'fill-primary text-primary' : 'text-muted-foreground/40',
+                              )}
+                            />
+                          ))}
+                        </span>
+                      )
+                    : undefined}
+                />
+                <StatDivider />
+                <Stat label={community.jury_size === 1 ? 'Juror' : 'Jurors'} value={formatCompact(community.jury_size)} />
+              </div>
             </div>
           </div>
 
-          {/* Stats strip */}
-          <div className="mt-6 grid grid-cols-2 gap-x-6 gap-y-3 border-t pt-5 sm:grid-cols-4">
-            <Stat label="Members" value={`${formatCompact(community.member_count)}/${formatCompact(community.max_members)}`} />
-            <Stat label="Markets" value={formatCompact(community.market_count)} />
-            <Stat
-              label="Rating"
-              value={community.review_count > 0 ? rating.toFixed(1) : '—'}
-              icon={(
-                <span className="flex">
-                  {[1, 2, 3, 4, 5].map(i => (
-                    <Star
-                      key={i}
-                      className={cn(
-                        'size-3',
-                        community.review_count > 0 && i <= Math.round(rating)
-                          ? 'fill-primary text-primary'
-                          : 'text-muted-foreground/40',
-                      )}
-                    />
-                  ))}
-                </span>
-              )}
-            />
-            <Stat label={community.jury_size === 1 ? 'Juror' : 'Jurors'} value={formatCompact(community.jury_size)} />
+          {/* Action cluster — aligned to the bottom-right */}
+          <div className="flex shrink-0 items-center gap-2 self-start sm:self-end">
+            {isAdmin && (
+              <>
+                <Button size="sm" asChild>
+                  <Link href={`/community/${community.slug}/markets/new` as any}>
+                    <Plus className="mr-1.5 size-3.5" />
+                    Add Market
+                  </Link>
+                </Button>
+                <Button variant="outline" size="sm" onClick={handleGenerateInvite}>
+                  <Share2 className="mr-1.5 size-3.5" />
+                  Invite
+                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="icon" aria-label="More">
+                      <MoreHorizontal className="size-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56">
+                    <DropdownMenuItem asChild>
+                      <Link href={`/community/${community.slug}/theme` as any}>
+                        <Paintbrush className="size-3.5" />
+                        Theme & layout
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href={`/community/${community.slug}/insights` as any}>
+                        <ActivityIcon className="size-3.5" />
+                        Insights
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href={`/community/${community.slug}/embed-settings` as any}>
+                        <Code2Icon className="size-3.5" />
+                        Embed settings
+                      </Link>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </>
+            )}
+            {!isAdmin && !isMember && community.type === 'public' && (
+              <Button size="sm" onClick={handleJoin} disabled={isPending}>
+                {isPending ? 'Joining…' : 'Join Community'}
+              </Button>
+            )}
+            {isMember && !isAdmin && (
+              <Button variant="outline" size="sm" onClick={handleLeave} disabled={isPending}>
+                {isPending ? 'Leaving…' : 'Leave'}
+              </Button>
+            )}
           </div>
         </div>
       </section>
@@ -295,14 +317,18 @@ export default function ClassicHero({ community, memberRole, currentUserId }: Pr
   )
 }
 
-function Stat({ label, value, icon }: { label: string, value: string, icon?: React.ReactNode }) {
+function Stat({ label, value, icon, valueClassName }: { label: string, value: string, icon?: React.ReactNode, valueClassName?: string }) {
   return (
     <div className="min-w-0">
       <p className="text-2xs font-semibold tracking-wider text-muted-foreground uppercase">{label}</p>
-      <div className="mt-1 flex items-center gap-2">
-        <p className="truncate text-lg leading-none font-bold">{value}</p>
+      <div className="mt-1 flex items-center gap-1.5">
+        <p className={cn('truncate text-base leading-none font-bold', valueClassName)}>{value}</p>
         {icon}
       </div>
     </div>
   )
+}
+
+function StatDivider() {
+  return <span aria-hidden className="h-8 w-px shrink-0 bg-border/70" />
 }
