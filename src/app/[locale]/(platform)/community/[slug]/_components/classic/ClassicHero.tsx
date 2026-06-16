@@ -1,6 +1,6 @@
 'use client'
 
-import { ActivityIcon, Check, Code2 as Code2Icon, Copy, Globe, Lock, MoreHorizontal, Paintbrush, Plus, Share2, Star } from 'lucide-react'
+import { ActivityIcon, Check, Code2 as Code2Icon, Copy, Globe, Lock, MoreHorizontal, Paintbrush, Plus, Settings as SettingsIcon, Share2, Star } from 'lucide-react'
 import Link from 'next/link'
 import { useState, useTransition } from 'react'
 import { toast } from 'sonner'
@@ -257,6 +257,12 @@ export default function ClassicHero({ community, memberRole, currentUserId }: Pr
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-56">
+                    <DropdownMenuItem asChild>
+                      <Link href={`/community/${community.slug}/settings` as any}>
+                        <SettingsIcon className="size-3.5" />
+                        Settings
+                      </Link>
+                    </DropdownMenuItem>
                     <DropdownMenuItem asChild>
                       <Link href={`/community/${community.slug}/theme` as any}>
                         <Paintbrush className="size-3.5" />

@@ -247,6 +247,8 @@ export const CommunityRepository = {
     terms?: string
     icon_url?: string
     banner_url?: string
+    type?: 'public' | 'private'
+    jury_size?: number
   }) {
     return await runQuery(async () => {
       const [updated] = await db
