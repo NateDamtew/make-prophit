@@ -2,6 +2,7 @@ import resolveSiteUrl from '@/lib/site-url'
 
 export interface PublicRuntimeConfig {
   reownAppKitProjectId: string
+  dynamicEnvId: string
   siteUrl: string
 }
 
@@ -13,6 +14,7 @@ function normalizePublicEnvValue(value: string | undefined) {
 export function getPublicRuntimeConfig(env: NodeJS.ProcessEnv = process.env): PublicRuntimeConfig {
   return {
     reownAppKitProjectId: normalizePublicEnvValue(env.REOWN_APPKIT_PROJECT_ID),
+    dynamicEnvId: normalizePublicEnvValue(env.NEXT_PUBLIC_DYNAMIC_ENV_ID),
     siteUrl: resolveSiteUrl(env),
   }
 }

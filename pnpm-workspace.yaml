@@ -9,15 +9,23 @@ trustPolicyExclude:
   - slow-redact@0.3.2
   # tinyexec is required by Vitest/lint-staged/Fumadocs tooling.
   - tinyexec@1.2.2
+  # @noble/curves 1.8.0 + @noble/hashes 1.7.0 (via @dynamic-labs embedded-wallet ->
+  # @turnkey/viem) shipped on 2025-01-03 without provenance attestation; the same
+  # maintainer (paulmillr) re-added attestation in 1.8.1 / 1.7.1 on 2025-01-18.
+  # Verified legitimate releases, not a takeover.
+  - '@noble/curves@1.8.0'
+  - '@noble/hashes@1.7.0'
 
 allowBuilds:
   '@parcel/watcher': false
   '@reown/appkit': false
   '@sentry/cli': true
   '@swc/core': true
+  bigint-buffer: true
   bufferutil: false
   esbuild: true
   keccak: false
+  protobufjs: true
   sharp: false
   utf-8-validate: false
 

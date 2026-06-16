@@ -17,7 +17,7 @@ vi.mock('next-intl', () => ({
   useExtracted: () => (value: string) => value,
 }))
 
-vi.mock('@reown/appkit/react', () => ({
+vi.mock('@/hooks/useAppKitAccount', () => ({
   useAppKitAccount: () => mocks.useAppKitAccount(),
 }))
 

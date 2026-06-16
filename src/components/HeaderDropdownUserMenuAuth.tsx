@@ -1,6 +1,6 @@
 'use client'
 
-import { useDisconnect } from '@reown/appkit/react'
+import { useDynamicContext } from '@dynamic-labs/sdk-react-core'
 import { BadgePercentIcon, ChevronDownIcon, DownloadIcon, SettingsIcon, ShieldIcon, TrophyIcon, UnplugIcon, UsersIcon } from 'lucide-react'
 import { useExtracted } from 'next-intl'
 import Image from 'next/image'
@@ -101,7 +101,7 @@ function useHoverMenu(enableHoverOpen: boolean) {
 export default function HeaderDropdownUserMenuAuth() {
   const t = useExtracted()
   const { isReady } = useAppKit()
-  const { disconnect } = useDisconnect()
+  const { handleLogOut } = useDynamicContext()
   const user = useUser()
   const themeMode = useThemeMode()
   const { canShowInstallUi, isIos, isPrompting, requestInstall } = usePwaInstall()
@@ -154,7 +154,7 @@ export default function HeaderDropdownUserMenuAuth() {
     }
 
     try {
-      await disconnect()
+      await handleLogOut()
       return
     }
     catch {

@@ -21,7 +21,7 @@ vi.mock('@tanstack/react-query', () => ({
   useInfiniteQuery: (options: any) => mocks.useInfiniteQuery(options),
 }))
 
-vi.mock('@reown/appkit/react', () => ({
+vi.mock('@/hooks/useAppKitAccount', () => ({
   useAppKitAccount: () => ({ isConnected: true }),
 }))
 

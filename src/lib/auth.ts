@@ -1,7 +1,6 @@
 import { createHmac } from 'node:crypto'
 import { drizzleAdapter } from '@better-auth/drizzle-adapter'
 import { createHMAC } from '@better-auth/utils/hmac'
-import { getChainIdFromMessage } from '@reown/appkit-siwe'
 import { betterAuth } from 'better-auth'
 import { APIError, createAuthEndpoint, createAuthMiddleware } from 'better-auth/api'
 import { deleteSessionCookie, setSessionCookie } from 'better-auth/cookies'
@@ -22,6 +21,11 @@ import { ensureUserTradingAuthSecretFingerprint } from '@/lib/trading-auth/serve
 import { sanitizeTradingAuthSettings } from '@/lib/trading-auth/utils'
 import { isWalletPlaceholderEmail } from '@/lib/user-email'
 import * as schema from './db/schema'
+
+function getChainIdFromMessage(message: string): string {
+  const match = message.match(/^Chain ID: (\d+)$/m)
+  return match?.[1] ?? '137'
+}
 
 const TWO_FACTOR_COOKIE_NAME = 'two_factor'
 const TRUST_DEVICE_COOKIE_NAME = 'trust_device'

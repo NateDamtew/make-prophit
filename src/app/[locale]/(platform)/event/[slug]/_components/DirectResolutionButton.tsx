@@ -4,7 +4,6 @@ import type { MouseEvent } from 'react'
 import type { Address, Hex } from 'viem'
 import type { DirectResolutionOutcome } from '@/lib/direct-resolution'
 import type { Event } from '@/types'
-import { useAppKitAccount } from '@reown/appkit/react'
 import { useExtracted } from 'next-intl'
 import { useId, useMemo, useState } from 'react'
 import { toast } from 'sonner'
@@ -21,6 +20,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
+import { useAppKitAccount } from '@/hooks/useAppKitAccount'
 import { useSignaturePromptRunner } from '@/hooks/useSignaturePromptRunner'
 import { OUTCOME_INDEX } from '@/lib/constants'
 import {
