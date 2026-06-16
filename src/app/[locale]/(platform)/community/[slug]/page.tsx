@@ -11,7 +11,7 @@ import { CommunityMonetizationRepository } from '@/lib/db/queries/community-mone
 import { CommunityThemeRepository } from '@/lib/db/queries/community-theme'
 import { UserRepository } from '@/lib/db/queries/user'
 import { STATIC_PARAMS_PLACEHOLDER } from '@/lib/static-params'
-import CommunityHeader from './_components/CommunityHeader'
+import ClassicHero from './_components/classic/ClassicHero'
 import { CommunityPresetSwitch } from './_components/presets/PresetDispatcher'
 
 export async function generateStaticParams() {
@@ -108,7 +108,7 @@ async function CommunityContent({ slug }: { slug: string }) {
           />
         </div>
       )}
-      <CommunityHeader
+      <ClassicHero
         community={communityWithVerified}
         memberRole={memberRole}
         currentUserId={user?.id ?? null}

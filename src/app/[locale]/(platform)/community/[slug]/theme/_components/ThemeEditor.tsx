@@ -28,13 +28,14 @@ interface PresetOption {
   label: string
   description: string
   icon: LucideIcon
+  comingSoon?: boolean
 }
 
 const PRESETS: PresetOption[] = [
   {
     value: 'classic',
     label: 'Classic',
-    description: 'The current 5-tab layout: markets, members, jury, reviews, about. Safe default.',
+    description: 'Wide market grid + activity rail + community stats. Works for any community.',
     icon: GavelIcon,
   },
   {
@@ -42,18 +43,21 @@ const PRESETS: PresetOption[] = [
     label: 'Newsroom',
     description: 'Editorial layout for journalists and news brands. Featured market + topics + comments.',
     icon: NewspaperIcon,
+    comingSoon: true,
   },
   {
     value: 'sports',
     label: 'Sports',
     description: 'Live ticker, fixture grouping, leaderboard. For sports and live-event communities.',
     icon: TrophyIcon,
+    comingSoon: true,
   },
   {
     value: 'forum',
     label: 'Forum',
     description: 'Activity feed promoted, discussion-first. For interest groups and member-led communities.',
     icon: ActivityIcon,
+    comingSoon: true,
   },
 ]
 
@@ -93,10 +97,10 @@ export function ThemeEditor({ communityId, communitySlug, communityName, communi
       style['--community-accent'] = accent
     }
     if (fontHint === 'serif') {
-      style['fontFamily'] = 'Georgia, "Times New Roman", serif'
+      style.fontFamily = 'Georgia, "Times New Roman", serif'
     }
     else if (fontHint === 'mono') {
-      style['fontFamily'] = 'ui-monospace, SFMono-Regular, "SF Mono", monospace'
+      style.fontFamily = 'ui-monospace, SFMono-Regular, "SF Mono", monospace'
     }
     return style as React.CSSProperties
   }, [accent, fontHint])
@@ -173,27 +177,45 @@ export function ThemeEditor({ communityId, communitySlug, communityName, communi
             {PRESETS.map((opt) => {
               const Icon = opt.icon
               const isActive = preset === opt.value
+              const disabled = !!opt.comingSoon
               return (
                 <button
                   key={opt.value}
                   type="button"
-                  onClick={() => setPreset(opt.value)}
+                  onClick={() => {
+                    if (!disabled) {
+                      setPreset(opt.value)
+                    }
+                  }}
+                  disabled={disabled}
+                  aria-disabled={disabled}
                   className={cn(
                     'group flex flex-col gap-2 rounded-sm border p-3 text-left transition-colors',
-                    isActive ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/40',
+                    isActive && !disabled && 'border-primary bg-primary/5',
+                    !isActive && !disabled && 'border-border hover:border-primary/40',
+                    disabled && 'cursor-not-allowed border-border/60 bg-muted/30 opacity-60',
                   )}
                 >
                   <div className="flex items-center gap-2">
                     <div className={cn(
                       'flex size-7 items-center justify-center rounded-sm transition-colors',
-                      isActive ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground',
+                      isActive && !disabled ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground',
                     )}
                     >
                       <Icon className="size-3.5" />
                     </div>
                     <span className="text-sm font-medium">{opt.label}</span>
+                    {disabled && (
+                      <span className="
+                        ms-auto rounded-full bg-muted px-1.5 py-0.5 text-2xs font-medium tracking-wide
+                        text-muted-foreground uppercase
+                      "
+                      >
+                        Coming soon
+                      </span>
+                    )}
                   </div>
-                  <p className="text-xs leading-snug text-muted-foreground">{opt.description}</p>
+                  <p className="text-xs/snug text-muted-foreground">{opt.description}</p>
                 </button>
               )
             })}
@@ -302,7 +324,10 @@ export function ThemeEditor({ communityId, communitySlug, communityName, communi
               <select
                 value={featuredMarketId ?? ''}
                 onChange={e => setFeaturedMarketId(e.target.value || null)}
-                className="rounded-md border border-border/70 bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                className="
+                  rounded-md border border-border/70 bg-background px-3 py-2 text-sm outline-none
+                  focus:border-primary focus:ring-1 focus:ring-primary
+                "
               >
                 <option value="">— None —</option>
                 {markets
@@ -335,14 +360,18 @@ export function ThemeEditor({ communityId, communitySlug, communityName, communi
         </div>
         <div className="overflow-hidden rounded-sm border bg-card" style={previewStyle}>
           {/* Banner */}
-          <div className="relative h-20 bg-gradient-to-br from-primary/30 via-primary/10 to-background">
+          <div className="relative h-20 bg-linear-to-br from-primary/30 via-primary/10 to-background">
             {communityBannerUrl && (
               <img src={communityBannerUrl} alt="" className="size-full object-cover" />
             )}
           </div>
           <div className="-mt-8 px-5 pb-5">
             <div className="mb-3 flex items-end gap-3">
-              <div className="flex size-14 shrink-0 items-center justify-center rounded-sm border-4 border-background bg-card text-xl shadow-sm">
+              <div className="
+                flex size-14 shrink-0 items-center justify-center rounded-sm border-4 border-background bg-card text-xl
+                shadow-sm
+              "
+              >
                 {communityIconUrl
                   ? <img src={communityIconUrl} alt="" className="size-full rounded-sm object-cover" />
                   : '🏛️'}
