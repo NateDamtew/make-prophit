@@ -50,7 +50,11 @@ export default function ClassicPreset({ community, members, markets, reviews, me
         {/* Tab strip + sort */}
         <div className="relative overflow-hidden rounded-2xl border bg-card">
           <div className="flex items-center justify-between gap-3 px-4 pt-4 sm:px-5">
-            <div className="flex min-w-0 items-center gap-1 overflow-x-auto sm:gap-2">
+            <div className="
+              flex min-w-0 flex-1 items-center justify-between gap-1 overflow-x-auto
+              sm:justify-start sm:gap-8
+            "
+            >
               {TABS.map((tab, index) => {
                 const Icon = tab.icon
                 return (
