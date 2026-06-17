@@ -75,16 +75,20 @@ async function isCurrentRegionBlocked() {
  */
 async function driveSIWEHandshake(primaryWallet: Wallet, siteUrl: string) {
   const address = primaryWallet.address as `0x${string}` | undefined
+  console.info('[SIWE] 1/6 onAuthSuccess — address:', address, 'embedded:', isEmbeddedWallet(primaryWallet))
   if (!address) {
+    console.warn('[SIWE] abort — wallet has no address')
     return
   }
 
   const { chainId } = getConnectedAccount()
+  console.info('[SIWE] 2/6 chainId:', chainId, 'domain:', new URL(siteUrl).host)
 
   try {
     const session = await authClient.getSession()
     const sessionAddress = (session?.data?.user as any)?.address as string | undefined
     if (sessionAddress?.toLowerCase() === address.toLowerCase()) {
+      console.info('[SIWE] existing session matches — already signed in')
       const user = session.data?.user
       if (user) {
         useUser.setState(previous => mergeSessionUserState(previous, user as unknown as User))
@@ -97,8 +101,12 @@ async function driveSIWEHandshake(primaryWallet: Wallet, siteUrl: string) {
   }
 
   try {
-    const { data: nonceData } = await authClient.siwe.nonce({ walletAddress: address, chainId })
+    const { data: nonceData, error: nonceError } = await authClient.siwe.nonce({ walletAddress: address, chainId })
+    if (nonceError) {
+      console.warn('[SIWE] 3/6 nonce error:', nonceError)
+    }
     const nonce = nonceData?.nonce || generateRandomString(32)
+    console.info('[SIWE] 3/6 nonce acquired:', Boolean(nonceData?.nonce))
 
     const message = createSiweMessage({
       domain: new URL(siteUrl).host,
@@ -113,29 +121,36 @@ async function driveSIWEHandshake(primaryWallet: Wallet, siteUrl: string) {
     // Sign with the wallet itself (not the wagmi action) so this works for
     // embedded/social wallets too — at onAuthSuccess they aren't wired into
     // wagmi yet, but Dynamic's Wallet can always sign.
+    console.info('[SIWE] 4/6 requesting signature…')
     const signature = await primaryWallet.signMessage(message)
+    console.info('[SIWE] 4/6 signature:', signature ? `${signature.slice(0, 14)}…` : 'NONE')
     if (!signature) {
-      console.warn('[SIWE] Wallet returned no signature')
+      console.warn('[SIWE] abort — wallet returned no signature')
       return
     }
 
-    const { data: verifyData } = await authClient.siwe.verify({
+    const { data: verifyData, error: verifyError } = await authClient.siwe.verify({
       message,
       signature,
       walletAddress: address,
       chainId,
     })
+    console.info('[SIWE] 5/6 verify success:', verifyData?.success, 'error:', verifyError)
 
     if (verifyData?.success) {
       const session = await authClient.getSession()
       const user = session?.data?.user
+      console.info('[SIWE] 6/6 logged in as:', (user as any)?.address ?? '(no user in session!)')
       if (user) {
         useUser.setState(previous => mergeSessionUserState(previous, user as unknown as User))
       }
     }
+    else {
+      console.warn('[SIWE] verify did not return success')
+    }
   }
   catch (error) {
-    console.warn('[SIWE] Handshake failed', error)
+    console.error('[SIWE] handshake threw:', error)
   }
 }
 
