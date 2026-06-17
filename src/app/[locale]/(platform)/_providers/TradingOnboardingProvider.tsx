@@ -1056,6 +1056,14 @@ function TradingOnboardingProviderContent({
       return
     }
 
+    // The deposit-wallet contract must actually be on-chain before approvals
+    // can apply. If it isn't, surface a clear "still being set up" state rather
+    // than letting the user sign into a dead loop.
+    if (user.deposit_wallet_status !== 'deployed') {
+      setTokenApprovalError(t('Your trading wallet is still being set up on-chain. This can take a few minutes — close this and check back shortly.'))
+      return
+    }
+
     setApprovalsStep('signing')
     setTokenApprovalError(null)
 
@@ -1086,6 +1094,14 @@ function TradingOnboardingProviderContent({
           setApprovalsStep('idle')
           setTokenApprovalError(null)
           openNextRequirement({ forceTradingAuth: true })
+          return
+        }
+        if (result.code === 'deposit_wallet_not_deployed') {
+          // Relayer says the wallet isn't on-chain yet — re-sync status so the
+          // poller resumes, and show a wait message instead of a retry loop.
+          useUser.setState(previous => (previous ? { ...previous, deposit_wallet_status: 'deploying' } : previous))
+          setApprovalsStep('idle')
+          setTokenApprovalError(t('Your trading wallet is still being set up on-chain. This can take a few minutes — close this and check back shortly.'))
           return
         }
         if (result.code === 'deadline_expired') {
