@@ -1,7 +1,7 @@
 minimumReleaseAge: 1440
-# TEMPORARY: Dynamic 4.89.0 (published <24h ago) ships a fix we need now for the
-# Turbopack production bundle. Excluded from the release-age guard so it installs
-# locally and on Vercel. REVERT once 4.89.0 clears the 24h window.
+# TEMPORARY: Dynamic 4.89.0 (published 2026-06-16 ~21:43 UTC) is still inside the
+# 24h release-age window. Excluded so it installs locally and on Vercel.
+# REVERT this block after ~2026-06-17 22:00 UTC once it clears the window.
 minimumReleaseAgeExclude:
   - '@dynamic-labs/*'
 shellEmulator: true
@@ -23,7 +23,6 @@ trustPolicyExclude:
 
 allowBuilds:
   '@parcel/watcher': false
-  '@reown/appkit': false
   '@sentry/cli': true
   '@swc/core': true
   bigint-buffer: true
