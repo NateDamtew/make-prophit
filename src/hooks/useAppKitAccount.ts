@@ -1,16 +1,12 @@
 'use client'
 
-import { useDynamicContext } from '@dynamic-labs/sdk-react-core'
 import { useAccount, useChainId } from 'wagmi'
+import { useAppKit } from '@/hooks/useAppKit'
 
 export function useAppKitAccount(_options?: { namespace?: string }) {
-  const { primaryWallet } = useDynamicContext()
+  const { isEmbedded } = useAppKit()
   const { address, isConnected } = useAccount()
   const chainId = useChainId()
-
-  const isEmbedded = Boolean(
-    (primaryWallet?.connector as { isEmbeddedWallet?: boolean } | undefined)?.isEmbeddedWallet,
-  )
 
   return {
     address,
