@@ -1,26 +1,28 @@
 'use client'
 
 import type { Wallet } from '@dynamic-labs/sdk-react-core'
-import type { ReactNode } from 'react'
 import type { Config } from 'wagmi'
+import type { ReactNode } from 'react'
+import type { AppKitValue } from '@/hooks/useAppKit'
 import type { User } from '@/types'
 import { EthereumWalletConnectors } from '@dynamic-labs/ethereum'
 import { DynamicContextProvider, useDynamicContext } from '@dynamic-labs/sdk-react-core'
 import { DynamicWagmiConnector } from '@dynamic-labs/wagmi-connector'
 import { generateRandomString } from 'better-auth/crypto'
 import { useExtracted } from 'next-intl'
-import { Component, useEffect, useMemo } from 'react'
+import { Component, useMemo } from 'react'
 import { toast } from 'sonner'
 import { createSiweMessage } from 'viem/siwe'
 import { WagmiProvider } from 'wagmi'
 import { signMessage } from 'wagmi/actions'
 import { SignaturePromptHost } from '@/components/SignaturePromptHost'
-import { AppKitContext } from '@/hooks/useAppKit'
+import { AppKitContext, defaultAppKitValue } from '@/hooks/useAppKit'
 import { useHasHydrated } from '@/hooks/useHasHydrated'
 import { usePublicRuntimeConfig } from '@/hooks/usePublicRuntimeConfig'
 import { createDynamicWagmiConfig, defaultNetwork } from '@/lib/appkit'
 import { authClient } from '@/lib/auth-client'
 import { IS_BROWSER } from '@/lib/constants'
+import { signOutAndRedirect } from '@/lib/logout'
 import { clearBrowserStorage, clearNonHttpOnlyCookies } from '@/lib/utils'
 import { mergeSessionUserState, useUser } from '@/stores/useUser'
 
@@ -35,6 +37,10 @@ function getConnectedAccount(): { address: `0x${string}` | undefined, chainId: n
   const address = connection?.accounts?.[0]
   const chainId = connection?.chainId ?? state?.chainId ?? defaultNetwork.id
   return { address, chainId }
+}
+
+function isEmbeddedWallet(wallet: Wallet | null): boolean {
+  return Boolean((wallet?.connector as { isEmbeddedWallet?: boolean } | undefined)?.isEmbeddedWallet)
 }
 
 function clearWalletState() {
@@ -129,8 +135,7 @@ async function driveSIWEHandshake(primaryWallet: Wallet, siteUrl: string) {
 
 /**
  * Tags any error thrown inside the Dynamic provider subtree with a clear,
- * greppable prefix and re-throws so the root boundary still handles it. Makes
- * production wallet-stack failures identifiable in the console at a glance.
+ * greppable prefix so production wallet-stack failures are identifiable.
  */
 class DynamicErrorBoundary extends Component<{ children: ReactNode }> {
   componentDidCatch(error: Error, info: { componentStack?: string | null }) {
@@ -142,6 +147,13 @@ class DynamicErrorBoundary extends Component<{ children: ReactNode }> {
   }
 }
 
+/**
+ * The single place that touches Dynamic hooks. Reads Dynamic + wagmi state and
+ * publishes it through our own AppKitContext, so every other consumer in the
+ * app reads a stable context (with safe SSR defaults) and never calls Dynamic
+ * hooks directly. This lets us mount Dynamic client-only without consumers
+ * throwing during SSR / first paint.
+ */
 function AppKitBridge({
   children,
   regionBlockedMessage,
@@ -151,9 +163,9 @@ function AppKitBridge({
   regionBlockedMessage: string
   hasAuthenticatedUser: boolean
 }) {
-  const { setShowAuthFlow } = useDynamicContext()
+  const { setShowAuthFlow, handleLogOut, primaryWallet } = useDynamicContext()
 
-  const value = useMemo(() => ({
+  const value = useMemo<AppKitValue>(() => ({
     open: async () => {
       if (!hasAuthenticatedUser && await isCurrentRegionBlocked()) {
         toast.warning(regionBlockedMessage)
@@ -165,9 +177,23 @@ function AppKitBridge({
       setShowAuthFlow(false)
     },
     isReady: true,
-  }), [hasAuthenticatedUser, regionBlockedMessage, setShowAuthFlow])
+    isEmbedded: isEmbeddedWallet(primaryWallet),
+    walletName: primaryWallet?.connector?.name ?? undefined,
+    logout: handleLogOut,
+  }), [hasAuthenticatedUser, regionBlockedMessage, setShowAuthFlow, handleLogOut, primaryWallet])
 
   return <AppKitContext value={value}>{children}</AppKitContext>
+}
+
+/**
+ * Pre-hydration context: wallet stack is inert, logout still works via
+ * better-auth. Lets the page render server-side without mounting Dynamic.
+ */
+const ssrAppKitValue: AppKitValue = {
+  ...defaultAppKitValue,
+  logout: async () => {
+    await signOutAndRedirect({ currentPathname: IS_BROWSER ? window.location.pathname : '/' })
+  },
 }
 
 export default function AppKitProvider({ children }: { children: ReactNode }) {
@@ -175,12 +201,6 @@ export default function AppKitProvider({ children }: { children: ReactNode }) {
   const { dynamicEnvId, siteUrl } = usePublicRuntimeConfig()
   const hasHydrated = useHasHydrated()
   const currentUser = useUser()
-
-  // Diagnostics: runs above the Dynamic subtree, so it logs even when that
-  // subtree crashes. Confirms the env id actually reached the client bundle.
-  useEffect(() => {
-    console.info('[AppKitProvider] init — dynamicEnvId:', dynamicEnvId || '(MISSING)')
-  }, [dynamicEnvId])
 
   const settings = useMemo(() => ({
     environmentId: dynamicEnvId,
@@ -199,6 +219,19 @@ export default function AppKitProvider({ children }: { children: ReactNode }) {
     },
   }), [dynamicEnvId, siteUrl])
 
+  // Dynamic's internal widgets are not compatible with cacheComponents'
+  // streaming hydration, so we only mount Dynamic on the client after hydration.
+  // Before that, the app renders normally against inert wallet defaults.
+  if (!hasHydrated) {
+    return (
+      <WagmiProvider config={wagmiConfig}>
+        <AppKitContext value={ssrAppKitValue}>
+          {children}
+        </AppKitContext>
+      </WagmiProvider>
+    )
+  }
+
   return (
     <DynamicErrorBoundary>
       <DynamicContextProvider settings={settings}>
@@ -209,7 +242,7 @@ export default function AppKitProvider({ children }: { children: ReactNode }) {
               hasAuthenticatedUser={Boolean(currentUser?.id)}
             >
               {children}
-              {hasHydrated && <SignaturePromptHost />}
+              <SignaturePromptHost />
             </AppKitBridge>
           </DynamicWagmiConnector>
         </WagmiProvider>

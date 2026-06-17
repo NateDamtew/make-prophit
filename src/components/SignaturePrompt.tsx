@@ -1,6 +1,5 @@
 'use client'
 
-import { useDynamicContext } from '@dynamic-labs/sdk-react-core'
 import { Loader2Icon, WalletIcon, XIcon } from 'lucide-react'
 import { useExtracted } from 'next-intl'
 import Image from 'next/image'
@@ -142,8 +141,7 @@ export function SignaturePrompt() {
 }
 
 function useWalletIcon() {
-  const { primaryWallet } = useDynamicContext()
-  const walletName = primaryWallet?.connector?.name ?? undefined
+  const { walletName } = useAppKit()
   const walletIconUrl = ''
 
   return { walletName, walletIconUrl }
