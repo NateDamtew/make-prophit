@@ -48,7 +48,8 @@ export async function runHealthChecks(): Promise<HealthReport> {
   checks.push(envCheck('CLOB', 'CLOB_URL', true))
   checks.push(envCheck('Platform keys', 'KUEST_API_KEY', false))
   checks.push(envCheck('Email (Resend)', 'RESEND_API_KEY', false))
-  checks.push(envCheck('Reown AppKit', 'REOWN_APPKIT_PROJECT_ID', true))
+  checks.push(envCheck('Dynamic auth', 'NEXT_PUBLIC_DYNAMIC_ENV_ID', true))
+  checks.push(envCheck('WalletConnect RPC (EIP-1271 fallback)', 'REOWN_APPKIT_PROJECT_ID', false))
   checks.push(envCheck('Telegram bot', 'TELEGRAM_BOT_TOKEN', false))
 
   return {

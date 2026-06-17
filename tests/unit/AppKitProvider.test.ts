@@ -63,6 +63,19 @@ vi.mock('next-intl', () => ({
   useExtracted: () => (value: string) => value,
 }))
 
+// Dynamic mounts client-only after hydration — force the hydrated branch.
+vi.mock('@/hooks/useHasHydrated', () => ({
+  useHasHydrated: () => true,
+}))
+
+vi.mock('@/components/SignaturePromptHost', () => ({
+  SignaturePromptHost: () => null,
+}))
+
+vi.mock('@/lib/logout', () => ({
+  signOutAndRedirect: vi.fn(),
+}))
+
 vi.mock('@/lib/auth-client', () => ({
   authClient: {
     getSession: vi.fn().mockResolvedValue({ data: { user: null } }),
