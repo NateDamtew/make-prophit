@@ -169,7 +169,7 @@ function AppKitBridge({
   regionBlockedMessage: string
   hasAuthenticatedUser: boolean
 }) {
-  const { setShowAuthFlow, handleLogOut, primaryWallet } = useDynamicContext()
+  const { setShowAuthFlow, handleLogOut, primaryWallet, user: dynamicUser } = useDynamicContext()
 
   const value = useMemo<AppKitValue>(() => ({
     open: async () => {
@@ -185,6 +185,7 @@ function AppKitBridge({
     isReady: true,
     isEmbedded: isEmbeddedWallet(primaryWallet),
     walletName: primaryWallet?.connector?.name ?? undefined,
+    walletEmail: typeof dynamicUser?.email === 'string' ? dynamicUser.email : undefined,
     // Log out of BOTH layers: Dynamic (wallet) and better-auth (our session).
     // Dynamic's handleLogOut alone leaves the better-auth cookie alive, so the
     // user stays logged in after reload — signOutAndRedirect kills it + redirects.
@@ -197,7 +198,7 @@ function AppKitBridge({
       }
       await signOutAndRedirect({ currentPathname: IS_BROWSER ? window.location.pathname : '/' })
     },
-  }), [hasAuthenticatedUser, regionBlockedMessage, setShowAuthFlow, handleLogOut, primaryWallet])
+  }), [hasAuthenticatedUser, regionBlockedMessage, setShowAuthFlow, handleLogOut, primaryWallet, dynamicUser?.email])
 
   return <AppKitContext value={value}>{children}</AppKitContext>
 }

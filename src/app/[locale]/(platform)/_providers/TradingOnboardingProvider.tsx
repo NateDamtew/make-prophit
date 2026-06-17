@@ -6,7 +6,7 @@ import type { CommunityProfile } from '@/lib/community-profile'
 import type { User } from '@/types'
 import { useExtracted } from 'next-intl'
 import { usePathname } from 'next/navigation'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPublicClient, erc20Abi, erc1155Abi, http, UserRejectedRequestError } from 'viem'
 import { useSignMessage, useSignTypedData } from 'wagmi'
 import { markApprovalStateWithoutTransactionAction } from '@/app/[locale]/(platform)/_actions/approve-tokens'
@@ -373,7 +373,8 @@ function TradingOnboardingProviderContent({
   const t = useExtracted()
   const pathname = usePathname()
   const affiliateMetadata = useAffiliateOrderMetadata()
-  const { open: openAppKit } = useAppKit()
+  const { open: openAppKit, walletEmail } = useAppKit()
+  const autoEmailRef = useRef<string | null>(null)
   const refreshSessionUserState = useSessionRefresher()
   const communityApiUrl = process.env.COMMUNITY_URL!
 
@@ -444,6 +445,40 @@ function TradingOnboardingProviderContent({
     ...status,
     allowTradingAuthPrompt: isEventRoute,
   })
+
+  // Social/email logins (Google etc.) already provide an email via the wallet
+  // provider. Auto-complete the email step from it instead of re-asking — the
+  // SIWE-created better-auth user only has a placeholder email otherwise.
+  useEffect(function autoCompleteEmailFromWallet() {
+    if (!user || !status.needsEmail) {
+      return
+    }
+    const email = walletEmail?.trim()
+    if (!email || !email.includes('@') || autoEmailRef.current === email) {
+      return
+    }
+    autoEmailRef.current = email
+
+    void (async () => {
+      const result = await updateOnboardingEmailAction({ email })
+      if (result.error || !result.data) {
+        autoEmailRef.current = null // let the user enter it manually / retry
+        return
+      }
+      const data = result.data
+      useUser.setState((previous) => {
+        if (!previous) {
+          return previous
+        }
+        return {
+          ...previous,
+          email: data.email,
+          settings: mergeUserSettings(previous, data.settings),
+        }
+      })
+      void refreshSessionUserState()
+    })()
+  }, [user, status.needsEmail, walletEmail, refreshSessionUserState])
 
   useEffect(function syncNextOnboardingModal() {
     openNextModalWhenAvailable({
