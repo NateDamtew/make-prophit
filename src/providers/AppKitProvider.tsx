@@ -9,7 +9,7 @@ import { DynamicContextProvider, useDynamicContext } from '@dynamic-labs/sdk-rea
 import { DynamicWagmiConnector } from '@dynamic-labs/wagmi-connector'
 import { generateRandomString } from 'better-auth/crypto'
 import { useExtracted } from 'next-intl'
-import { useMemo } from 'react'
+import { Component, useEffect, useMemo } from 'react'
 import { toast } from 'sonner'
 import { createSiweMessage } from 'viem/siwe'
 import { WagmiProvider } from 'wagmi'
@@ -127,6 +127,21 @@ async function driveSIWEHandshake(primaryWallet: Wallet, siteUrl: string) {
   }
 }
 
+/**
+ * Tags any error thrown inside the Dynamic provider subtree with a clear,
+ * greppable prefix and re-throws so the root boundary still handles it. Makes
+ * production wallet-stack failures identifiable in the console at a glance.
+ */
+class DynamicErrorBoundary extends Component<{ children: ReactNode }> {
+  componentDidCatch(error: Error, info: { componentStack?: string | null }) {
+    console.error('[AppKitProvider] Dynamic provider crashed:', error.message, info.componentStack)
+  }
+
+  render() {
+    return this.props.children
+  }
+}
+
 function AppKitBridge({
   children,
   regionBlockedMessage,
@@ -161,6 +176,12 @@ export default function AppKitProvider({ children }: { children: ReactNode }) {
   const hasHydrated = useHasHydrated()
   const currentUser = useUser()
 
+  // Diagnostics: runs above the Dynamic subtree, so it logs even when that
+  // subtree crashes. Confirms the env id actually reached the client bundle.
+  useEffect(() => {
+    console.info('[AppKitProvider] init — dynamicEnvId:', dynamicEnvId || '(MISSING)')
+  }, [dynamicEnvId])
+
   const settings = useMemo(() => ({
     environmentId: dynamicEnvId,
     walletConnectors: [EthereumWalletConnectors],
@@ -179,18 +200,20 @@ export default function AppKitProvider({ children }: { children: ReactNode }) {
   }), [dynamicEnvId, siteUrl])
 
   return (
-    <DynamicContextProvider settings={settings}>
-      <WagmiProvider config={wagmiConfig}>
-        <DynamicWagmiConnector>
-          <AppKitBridge
-            regionBlockedMessage={t('This platform is not currently available in your region.')}
-            hasAuthenticatedUser={Boolean(currentUser?.id)}
-          >
-            {children}
-            {hasHydrated && <SignaturePromptHost />}
-          </AppKitBridge>
-        </DynamicWagmiConnector>
-      </WagmiProvider>
-    </DynamicContextProvider>
+    <DynamicErrorBoundary>
+      <DynamicContextProvider settings={settings}>
+        <WagmiProvider config={wagmiConfig}>
+          <DynamicWagmiConnector>
+            <AppKitBridge
+              regionBlockedMessage={t('This platform is not currently available in your region.')}
+              hasAuthenticatedUser={Boolean(currentUser?.id)}
+            >
+              {children}
+              {hasHydrated && <SignaturePromptHost />}
+            </AppKitBridge>
+          </DynamicWagmiConnector>
+        </WagmiProvider>
+      </DynamicContextProvider>
+    </DynamicErrorBoundary>
   )
 }
