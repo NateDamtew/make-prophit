@@ -14,7 +14,6 @@ import { Component, useMemo } from 'react'
 import { toast } from 'sonner'
 import { createSiweMessage } from 'viem/siwe'
 import { WagmiProvider } from 'wagmi'
-import { signMessage } from 'wagmi/actions'
 import { SignaturePromptHost } from '@/components/SignaturePromptHost'
 import { AppKitContext, defaultAppKitValue } from '@/hooks/useAppKit'
 import { useHasHydrated } from '@/hooks/useHasHydrated'
@@ -111,7 +110,14 @@ async function driveSIWEHandshake(primaryWallet: Wallet, siteUrl: string) {
       nonce,
     })
 
-    const signature = await signMessage(activeWagmiConfig, { message })
+    // Sign with the wallet itself (not the wagmi action) so this works for
+    // embedded/social wallets too — at onAuthSuccess they aren't wired into
+    // wagmi yet, but Dynamic's Wallet can always sign.
+    const signature = await primaryWallet.signMessage(message)
+    if (!signature) {
+      console.warn('[SIWE] Wallet returned no signature')
+      return
+    }
 
     const { data: verifyData } = await authClient.siwe.verify({
       message,
@@ -179,7 +185,18 @@ function AppKitBridge({
     isReady: true,
     isEmbedded: isEmbeddedWallet(primaryWallet),
     walletName: primaryWallet?.connector?.name ?? undefined,
-    logout: handleLogOut,
+    // Log out of BOTH layers: Dynamic (wallet) and better-auth (our session).
+    // Dynamic's handleLogOut alone leaves the better-auth cookie alive, so the
+    // user stays logged in after reload — signOutAndRedirect kills it + redirects.
+    logout: async () => {
+      try {
+        await handleLogOut()
+      }
+      catch {
+        // ignore — still clear better-auth below
+      }
+      await signOutAndRedirect({ currentPathname: IS_BROWSER ? window.location.pathname : '/' })
+    },
   }), [hasAuthenticatedUser, regionBlockedMessage, setShowAuthFlow, handleLogOut, primaryWallet])
 
   return <AppKitContext value={value}>{children}</AppKitContext>
@@ -211,10 +228,12 @@ export default function AppKitProvider({ children }: { children: ReactNode }) {
           await driveSIWEHandshake(primaryWallet, siteUrl)
         }
       },
+      // Fires for any Dynamic logout (explicit or session-expiry). Just clear
+      // local state reactively — the explicit logout() handles better-auth +
+      // navigation, so reloading here would race ahead of that signOut.
       onLogout: () => {
         clearWalletState()
         useUser.setState(null)
-        window.location.reload()
       },
     },
   }), [dynamicEnvId, siteUrl])
