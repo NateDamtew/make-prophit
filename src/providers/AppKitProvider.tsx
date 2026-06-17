@@ -9,8 +9,7 @@ import { DynamicContextProvider, useDynamicContext } from '@dynamic-labs/sdk-rea
 import { DynamicWagmiConnector } from '@dynamic-labs/wagmi-connector'
 import { generateRandomString } from 'better-auth/crypto'
 import { useExtracted } from 'next-intl'
-import { useTheme } from 'next-themes'
-import { useEffect, useMemo } from 'react'
+import { useMemo } from 'react'
 import { toast } from 'sonner'
 import { createSiweMessage } from 'viem/siwe'
 import { WagmiProvider } from 'wagmi'
@@ -19,18 +18,15 @@ import { SignaturePromptHost } from '@/components/SignaturePromptHost'
 import { AppKitContext } from '@/hooks/useAppKit'
 import { useHasHydrated } from '@/hooks/useHasHydrated'
 import { usePublicRuntimeConfig } from '@/hooks/usePublicRuntimeConfig'
-import { useSiteIdentity } from '@/hooks/useSiteIdentity'
 import { createDynamicWagmiConfig, defaultNetwork } from '@/lib/appkit'
 import { authClient } from '@/lib/auth-client'
 import { IS_BROWSER } from '@/lib/constants'
 import { clearBrowserStorage, clearNonHttpOnlyCookies } from '@/lib/utils'
 import { mergeSessionUserState, useUser } from '@/stores/useUser'
 
-// Stable wagmi config — created once per module load
+// Stable wagmi config — created once per module load.
 const wagmiConfig = createDynamicWagmiConfig()
-
-// Module-level reference so SIWE callbacks can read wagmi state outside React
-let activeWagmiConfig: Config = wagmiConfig
+const activeWagmiConfig: Config = wagmiConfig
 
 function getConnectedAccount(): { address: `0x${string}` | undefined, chainId: number } {
   const state = activeWagmiConfig?.state
@@ -45,7 +41,6 @@ function clearWalletState() {
   if (!IS_BROWSER) {
     return
   }
-
   clearBrowserStorage()
   clearNonHttpOnlyCookies()
 }
@@ -59,7 +54,6 @@ async function isCurrentRegionBlocked() {
     if (!response.ok) {
       return false
     }
-
     const payload = await response.json() as { blocked?: boolean }
     return payload?.blocked === true
   }
@@ -68,6 +62,12 @@ async function isCurrentRegionBlocked() {
   }
 }
 
+/**
+ * Drives the better-auth SIWE handshake after Dynamic reports a connected
+ * wallet. Uses the wallet's actual connected chainId for both nonce and verify
+ * so the server-side nonce key matches (see CLAUDE.md — never force a chain
+ * switch for sign-in).
+ */
 async function driveSIWEHandshake(primaryWallet: Wallet, siteUrl: string) {
   const address = primaryWallet.address as `0x${string}` | undefined
   if (!address) {
@@ -76,7 +76,6 @@ async function driveSIWEHandshake(primaryWallet: Wallet, siteUrl: string) {
 
   const { chainId } = getConnectedAccount()
 
-  // Skip if better-auth session already exists for this address
   try {
     const session = await authClient.getSession()
     const sessionAddress = (session?.data?.user as any)?.address as string | undefined
@@ -89,17 +88,15 @@ async function driveSIWEHandshake(primaryWallet: Wallet, siteUrl: string) {
     }
   }
   catch {
-    // continue — no session yet
+    // no session yet — continue
   }
 
   try {
-    // Get nonce keyed by address + chainId so verify can find the same key
     const { data: nonceData } = await authClient.siwe.nonce({ walletAddress: address, chainId })
     const nonce = nonceData?.nonce || generateRandomString(32)
 
-    const domain = new URL(siteUrl).host
     const message = createSiweMessage({
-      domain,
+      domain: new URL(siteUrl).host,
       address,
       statement: 'Please sign with your account',
       uri: typeof window !== 'undefined' ? window.location.origin : siteUrl,
@@ -108,7 +105,6 @@ async function driveSIWEHandshake(primaryWallet: Wallet, siteUrl: string) {
       nonce,
     })
 
-    // Sign using wagmi action (works outside React, no hook needed)
     const signature = await signMessage(activeWagmiConfig, { message })
 
     const { data: verifyData } = await authClient.siwe.verify({
@@ -131,21 +127,7 @@ async function driveSIWEHandshake(primaryWallet: Wallet, siteUrl: string) {
   }
 }
 
-function DynamicThemeSynchronizer() {
-  const { resolvedTheme } = useTheme()
-
-  useEffect(() => {
-    if (!IS_BROWSER) {
-      return
-    }
-    const root = document.documentElement
-    root.setAttribute('data-dynamic-theme', resolvedTheme === 'dark' ? 'dark' : 'light')
-  }, [resolvedTheme])
-
-  return null
-}
-
-function DynamicAppKitBridge({
+function AppKitBridge({
   children,
   regionBlockedMessage,
   hasAuthenticatedUser,
@@ -156,13 +138,12 @@ function DynamicAppKitBridge({
 }) {
   const { setShowAuthFlow } = useDynamicContext()
 
-  const appKitValue = useMemo(() => ({
-    open: async (_options?: { view?: string }) => {
+  const value = useMemo(() => ({
+    open: async () => {
       if (!hasAuthenticatedUser && await isCurrentRegionBlocked()) {
         toast.warning(regionBlockedMessage)
         return
       }
-
       setShowAuthFlow(true)
     },
     close: async () => {
@@ -171,51 +152,23 @@ function DynamicAppKitBridge({
     isReady: true,
   }), [hasAuthenticatedUser, regionBlockedMessage, setShowAuthFlow])
 
-  return (
-    <AppKitContext value={appKitValue}>
-      {children}
-    </AppKitContext>
-  )
+  return <AppKitContext value={value}>{children}</AppKitContext>
 }
 
 export default function AppKitProvider({ children }: { children: ReactNode }) {
   const t = useExtracted()
-  const site = useSiteIdentity()
   const { dynamicEnvId, siteUrl } = usePublicRuntimeConfig()
   const hasHydrated = useHasHydrated()
   const currentUser = useUser()
-  const { resolvedTheme } = useTheme()
-  const themeMode: 'light' | 'dark' = resolvedTheme === 'dark' ? 'dark' : 'light'
 
-  activeWagmiConfig = wagmiConfig
-
-  const dynamicSettings = useMemo(() => ({
-    environmentId: dynamicEnvId || 'placeholder',
+  const settings = useMemo(() => ({
+    environmentId: dynamicEnvId,
     walletConnectors: [EthereumWalletConnectors],
-    appName: site.name,
-    appLogoUrl: site.logoUrl,
-    initialAuthenticationMode: 'connect-and-sign' as const,
-    overrides: {
-      evmNetworks: [
-        {
-          blockExplorerUrls: [defaultNetwork.blockExplorers?.default.url ?? 'https://polygonscan.com'],
-          chainId: defaultNetwork.id,
-          iconUrls: [],
-          name: defaultNetwork.name,
-          nativeCurrency: defaultNetwork.nativeCurrency,
-          networkId: defaultNetwork.id,
-          rpcUrls: [...defaultNetwork.rpcUrls.default.http],
-          vanityName: defaultNetwork.name,
-        },
-      ],
-    },
     events: {
       onAuthSuccess: async ({ primaryWallet }: { primaryWallet: Wallet | null }) => {
-        if (!primaryWallet) {
-          return
+        if (primaryWallet) {
+          await driveSIWEHandshake(primaryWallet, siteUrl)
         }
-
-        await driveSIWEHandshake(primaryWallet, siteUrl)
       },
       onLogout: () => {
         clearWalletState()
@@ -223,20 +176,19 @@ export default function AppKitProvider({ children }: { children: ReactNode }) {
         window.location.reload()
       },
     },
-  }), [dynamicEnvId, site.logoUrl, site.name, siteUrl])
+  }), [dynamicEnvId, siteUrl])
 
   return (
-    <DynamicContextProvider theme={themeMode} settings={dynamicSettings}>
+    <DynamicContextProvider settings={settings}>
       <WagmiProvider config={wagmiConfig}>
         <DynamicWagmiConnector>
-          <DynamicAppKitBridge
+          <AppKitBridge
             regionBlockedMessage={t('This platform is not currently available in your region.')}
             hasAuthenticatedUser={Boolean(currentUser?.id)}
           >
             {children}
             {hasHydrated && <SignaturePromptHost />}
-            <DynamicThemeSynchronizer />
-          </DynamicAppKitBridge>
+          </AppKitBridge>
         </DynamicWagmiConnector>
       </WagmiProvider>
     </DynamicContextProvider>

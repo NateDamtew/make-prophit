@@ -14,6 +14,17 @@ const config: NextConfig = {
   output: process.env.VERCEL_ENV ? undefined : 'standalone',
   cacheComponents: true,
   typedRoutes: true,
+  // Force the Dynamic SDK packages through the app's bundling pipeline so their
+  // internal React contexts (e.g. DynamicWidgetContext) are a single shared
+  // instance. Without this, production-only barrel/scope-hoist optimization can
+  // instantiate the context twice, so a provider sets one instance while a
+  // consumer reads another → "Hook must be used within <DynamicWidgetContextProvider>".
+  transpilePackages: [
+    '@dynamic-labs/sdk-react-core',
+    '@dynamic-labs/ethereum',
+    '@dynamic-labs/wagmi-connector',
+    '@dynamic-labs/wallet-connector-core',
+  ],
   reactStrictMode: false,
   reactCompiler: true,
   staticPageGenerationTimeout: 180,
