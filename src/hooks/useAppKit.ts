@@ -9,6 +9,8 @@ export interface AppKitValue {
   /** Wallet state, surfaced here so consumers never call Dynamic hooks directly. */
   isEmbedded: boolean
   walletName?: string
+  /** Email from the wallet provider (e.g. Google/social login), if any. */
+  walletEmail?: string
   logout: () => Promise<void>
 }
 
@@ -18,6 +20,7 @@ export const defaultAppKitValue: AppKitValue = {
   isReady: false,
   isEmbedded: false,
   walletName: undefined,
+  walletEmail: undefined,
   logout: async () => {},
 }
 
