@@ -1,4 +1,9 @@
 minimumReleaseAge: 1440
+# TEMPORARY: Dynamic 4.89.0 (published <24h ago) ships a fix we need now for the
+# Turbopack production bundle. Excluded from the release-age guard so it installs
+# locally and on Vercel. REVERT once 4.89.0 clears the 24h window.
+minimumReleaseAgeExclude:
+  - '@dynamic-labs/*'
 shellEmulator: true
 blockExoticSubdeps: true
 trustPolicy: no-downgrade
