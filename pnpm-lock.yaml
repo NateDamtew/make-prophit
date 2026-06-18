@@ -77,6 +77,9 @@ importers:
       '@tanstack/react-table':
         specifier: 8.21.3
         version: 8.21.3(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      '@ton/core':
+        specifier: 0.62.0
+        version: 0.62.0(@ton/crypto@3.3.0)
       '@vercel/speed-insights':
         specifier: 2.0.0
         version: 2.0.0(next@16.2.7(@babel/core@7.29.0)(@opentelemetry/api@1.9.1)(@playwright/test@1.60.0)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(react@19.2.6)
