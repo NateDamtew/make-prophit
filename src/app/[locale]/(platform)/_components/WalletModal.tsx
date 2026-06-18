@@ -2,6 +2,7 @@
 
 import type { WalletDepositModalProps, WalletWithdrawModalProps } from '@/app/[locale]/(platform)/_components/wallet-modal/utils'
 import { ChevronLeftIcon } from 'lucide-react'
+import dynamic from 'next/dynamic'
 import { useState } from 'react'
 import CountdownBadge from '@/app/[locale]/(platform)/_components/wallet-modal/CountdownBadge'
 import { getSelectedWalletTokenId } from '@/app/[locale]/(platform)/_components/wallet-modal/utils'
@@ -18,6 +19,13 @@ import { useLiFiQuote } from '@/hooks/useLiFiQuote'
 import { useLiFiWalletTokens } from '@/hooks/useLiFiWalletTokens'
 import { useSiteIdentity } from '@/hooks/useSiteIdentity'
 import { cn } from '@/lib/utils'
+
+// TON funding (Telegram Mini App only) is loaded client-side on demand so the
+// TON SDK (@ton/core) never ships in the web bundle.
+const TonDepositPanel = dynamic(
+  () => import('@/app/[locale]/(platform)/_components/wallet-modal/TonDepositPanel'),
+  { ssr: false },
+)
 
 export type { WalletDepositModalProps, WalletWithdrawModalProps }
 
@@ -38,6 +46,7 @@ export function WalletDepositModal(props: WalletDepositModalProps) {
     isDepositWalletBalanceLoading = false,
     walletBalance,
     isBalanceLoading = false,
+    showTon = false,
   } = props
 
   const [copied, setCopied] = useState(false)
@@ -82,6 +91,8 @@ export function WalletDepositModal(props: WalletDepositModalProps) {
           }}
           onReceive={() => onViewChange('receive')}
           onWallet={() => onViewChange('wallets')}
+          onTon={() => onViewChange('ton')}
+          showTon={showTon}
           disabledBuy={!meldUrl}
           disabledReceive={!hasDeployedDepositWallet}
           meldUrl={meldUrl}
@@ -90,59 +101,61 @@ export function WalletDepositModal(props: WalletDepositModalProps) {
           isBalanceLoading={isBalanceLoading}
         />
       )
-    : view === 'receive'
-      ? (
-          <WalletReceiveView
-            walletAddress={walletAddress}
-            onCopy={handleCopy}
-            copied={copied}
-          />
-        )
-      : view === 'wallets'
+    : view === 'ton'
+      ? <TonDepositPanel onDone={() => onOpenChange(false)} />
+      : view === 'receive'
         ? (
-            <WalletTokenList
-              onContinue={() => onViewChange('amount')}
-              items={walletTokenItems}
-              isLoadingTokens={isLoadingTokens}
-              selectedId={selectedTokenId}
-              onSelect={setPreferredSelectedTokenId}
+            <WalletReceiveView
+              walletAddress={walletAddress}
+              onCopy={handleCopy}
+              copied={copied}
             />
           )
-        : view === 'amount'
+        : view === 'wallets'
           ? (
-              <WalletAmountStep
-                onContinue={() => onViewChange('confirm')}
-                selectedTokenSymbol={selectedToken?.symbol ?? null}
-                availableTokenAmount={selectedToken?.balanceRaw ?? null}
-                amountValue={amountValue}
-                onAmountChange={setAmountValue}
+              <WalletTokenList
+                onContinue={() => onViewChange('amount')}
+                items={walletTokenItems}
+                isLoadingTokens={isLoadingTokens}
+                selectedId={selectedTokenId}
+                onSelect={setPreferredSelectedTokenId}
               />
             )
-          : view === 'confirm'
+          : view === 'amount'
             ? (
-                <WalletConfirmStep
-                  walletEoaAddress={walletEoaAddress}
-                  walletAddress={walletAddress}
-                  siteLabel={siteLabel}
-                  onComplete={() => onViewChange('success')}
+                <WalletAmountStep
+                  onContinue={() => onViewChange('confirm')}
+                  selectedTokenSymbol={selectedToken?.symbol ?? null}
+                  availableTokenAmount={selectedToken?.balanceRaw ?? null}
                   amountValue={amountValue}
-                  selectedToken={selectedToken}
-                  quote={quote}
-                  refreshIndex={confirmRefreshIndex}
+                  onAmountChange={setAmountValue}
                 />
               )
-            : (
-                <WalletSuccessStep
-                  walletEoaAddress={walletEoaAddress}
-                  walletAddress={walletAddress}
-                  siteLabel={siteLabel}
-                  amountValue={amountValue}
-                  selectedToken={selectedToken}
-                  quote={quote}
-                  onClose={() => onOpenChange(false)}
-                  onNewDeposit={() => onViewChange('fund')}
-                />
-              )
+            : view === 'confirm'
+              ? (
+                  <WalletConfirmStep
+                    walletEoaAddress={walletEoaAddress}
+                    walletAddress={walletAddress}
+                    siteLabel={siteLabel}
+                    onComplete={() => onViewChange('success')}
+                    amountValue={amountValue}
+                    selectedToken={selectedToken}
+                    quote={quote}
+                    refreshIndex={confirmRefreshIndex}
+                  />
+                )
+              : (
+                  <WalletSuccessStep
+                    walletEoaAddress={walletEoaAddress}
+                    walletAddress={walletAddress}
+                    siteLabel={siteLabel}
+                    amountValue={amountValue}
+                    selectedToken={selectedToken}
+                    quote={quote}
+                    onClose={() => onOpenChange(false)}
+                    onNewDeposit={() => onViewChange('fund')}
+                  />
+                )
 
   async function handleCopy() {
     if (!walletAddress) {

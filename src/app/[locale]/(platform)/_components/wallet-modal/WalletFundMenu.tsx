@@ -5,6 +5,7 @@ import {
   CreditCardIcon,
   ExternalLinkIcon,
   InfoIcon,
+  SendIcon,
   WalletIcon,
 } from 'lucide-react'
 import { useTheme } from 'next-themes'
@@ -19,6 +20,8 @@ function WalletFundMenu({
   onBuy,
   onReceive,
   onWallet,
+  onTon,
+  showTon = false,
   disabledBuy,
   disabledReceive,
   meldUrl,
@@ -29,6 +32,8 @@ function WalletFundMenu({
   onBuy: (url: string) => void
   onReceive: () => void
   onWallet: () => void
+  onTon?: () => void
+  showTon?: boolean
   disabledBuy: boolean
   disabledReceive: boolean
   meldUrl: string | null
@@ -148,6 +153,32 @@ function WalletFundMenu({
           </div>
         </div>
       </button>
+
+      {showTon && onTon && (
+        <button
+          type="button"
+          className={cn(`
+            group flex w-full items-center justify-between gap-4 rounded-lg border border-border px-4 py-2 text-left
+            transition
+            hover:bg-muted/50
+          `)}
+          onClick={onTon}
+        >
+          <div className="flex items-center gap-3">
+            <div className="flex size-12 items-center justify-center text-foreground">
+              <SendIcon className="size-6" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold">Deposit from TON</p>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span>USDT on TON</span>
+                <span className="size-1 rounded-full bg-muted-foreground" />
+                <span>bridged to USDC</span>
+              </div>
+            </div>
+          </div>
+        </button>
+      )}
 
       <div className="mx-auto flex w-full items-center gap-3 text-xs text-muted-foreground">
         <div className="h-px flex-1 bg-border/70" />

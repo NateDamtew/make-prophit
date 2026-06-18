@@ -10,6 +10,7 @@ import { WalletDepositModal, WalletWithdrawModal } from '@/app/[locale]/(platfor
 import { useTradingOnboarding } from '@/app/[locale]/(platform)/_providers/TradingOnboardingProvider'
 import { useBalance } from '@/hooks/useBalance'
 import { useIsMobile } from '@/hooks/useIsMobile'
+import { useIsTma } from '@/hooks/useIsTma'
 import { useLiFiWalletUsdBalance } from '@/hooks/useLiFiWalletUsdBalance'
 import { useSignaturePromptRunner } from '@/hooks/useSignaturePromptRunner'
 import { useSiteIdentity } from '@/hooks/useSiteIdentity'
@@ -21,7 +22,7 @@ import { isTradingAuthRequiredError } from '@/lib/trading-auth/errors'
 import { signAndSubmitDepositWalletCalls } from '@/lib/wallet/client'
 import { buildSendErc20Call } from '@/lib/wallet/transactions'
 
-type DepositView = 'fund' | 'receive' | 'wallets' | 'amount' | 'confirm' | 'success'
+type DepositView = 'fund' | 'receive' | 'wallets' | 'amount' | 'confirm' | 'success' | 'ton'
 
 interface PendingWithdrawal {
   id: string
@@ -303,6 +304,7 @@ export function WalletFlow({
   meldUrl,
 }: WalletFlowProps) {
   const isMobile = useIsMobile()
+  const isTma = useIsTma()
   const t = useExtracted()
   const { signTypedDataAsync } = useSignTypedData()
   const { runWithSignaturePrompt } = useSignaturePromptRunner()
@@ -373,6 +375,7 @@ export function WalletFlow({
         isDepositWalletBalanceLoading={isLoadingBalance}
         walletBalance={formattedConnectedWalletUsdBalance}
         isBalanceLoading={isLoadingConnectedWalletUsdBalance}
+        showTon={isTma}
       />
       <WalletWithdrawModal
         open={withdrawOpen}

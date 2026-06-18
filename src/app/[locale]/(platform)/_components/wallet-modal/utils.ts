@@ -58,7 +58,7 @@ export function getSelectedWalletTokenId(items: LiFiWalletTokenItem[], preferred
   return firstEnabledItem?.id ?? ''
 }
 
-type WalletDepositView = 'fund' | 'receive' | 'wallets' | 'amount' | 'confirm' | 'success'
+type WalletDepositView = 'fund' | 'receive' | 'wallets' | 'amount' | 'confirm' | 'success' | 'ton'
 
 export interface PendingWithdrawalItem {
   id: string
@@ -79,6 +79,8 @@ export interface WalletDepositModalProps {
   view: WalletDepositView
   onViewChange: (view: WalletDepositView) => void
   onBuy: (url: string) => void
+  /** Show the TON funding rail (Telegram Mini App only). */
+  showTon?: boolean
   depositWalletBalance?: string | null
   isDepositWalletBalanceLoading?: boolean
   walletBalance?: string | null
