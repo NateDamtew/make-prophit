@@ -3,10 +3,10 @@
 import type { Wallet } from '@dynamic-labs/sdk-react-core'
 import type { ReactNode } from 'react'
 import type { Config } from 'wagmi'
-import type { AppKitValue } from '@/hooks/useAppKit'
+import type { AppKitValue, TonTxMessage } from '@/hooks/useAppKit'
 import type { User } from '@/types'
 import { EthereumWalletConnectors } from '@dynamic-labs/ethereum'
-import { DynamicContextProvider, useDynamicContext } from '@dynamic-labs/sdk-react-core'
+import { DynamicContextProvider, useDynamicContext, useDynamicModals, useUserWallets } from '@dynamic-labs/sdk-react-core'
 import { DynamicWagmiConnector } from '@dynamic-labs/wagmi-connector'
 import { generateRandomString } from 'better-auth/crypto'
 import { useExtracted } from 'next-intl'
@@ -41,6 +41,18 @@ function getConnectedAccount(): { address: `0x${string}` | undefined, chainId: n
 
 function isEmbeddedWallet(wallet: Wallet | null): boolean {
   return Boolean((wallet?.connector as { isEmbeddedWallet?: boolean } | undefined)?.isEmbeddedWallet)
+}
+
+// TON wallets are detected by their chain literal (from Dynamic's Chains union)
+// so this provider stays web-safe and never imports the heavy `@dynamic-labs/ton`.
+const TON_CHAIN = 'TON'
+
+interface TonCapableConnector {
+  sendTransaction?: (request: { validUntil: number, messages: TonTxMessage[] }) => Promise<string>
+}
+
+function findTonWallet(wallets: readonly Wallet[]): Wallet | null {
+  return wallets.find(wallet => wallet.chain === TON_CHAIN) ?? null
 }
 
 function clearWalletState() {
@@ -171,6 +183,9 @@ function AppKitBridge({
   hasAuthenticatedUser: boolean
 }) {
   const { setShowAuthFlow, handleLogOut, primaryWallet, user: dynamicUser } = useDynamicContext()
+  const { setShowLinkNewWalletModal } = useDynamicModals()
+  const userWallets = useUserWallets()
+  const tonWallet = useMemo(() => findTonWallet(userWallets), [userWallets])
 
   const value = useMemo<AppKitValue>(() => ({
     open: async () => {
@@ -199,7 +214,33 @@ function AppKitBridge({
       }
       await signOutAndRedirect({ currentPathname: IS_BROWSER ? window.location.pathname : '/' })
     },
-  }), [hasAuthenticatedUser, regionBlockedMessage, setShowAuthFlow, handleLogOut, primaryWallet, dynamicUser?.email])
+    tonWalletAddress: tonWallet?.address,
+    connectTonWallet: () => {
+      setShowLinkNewWalletModal(true)
+    },
+    sendTonTransaction: async (messages: TonTxMessage[], validUntilSeconds = 600) => {
+      if (!tonWallet) {
+        throw new Error('No TON wallet connected')
+      }
+      const connector = tonWallet.connector as unknown as TonCapableConnector
+      if (typeof connector.sendTransaction !== 'function') {
+        throw new TypeError('Connected TON wallet cannot send transactions')
+      }
+      return connector.sendTransaction({
+        validUntil: Math.floor(Date.now() / 1000) + validUntilSeconds,
+        messages,
+      })
+    },
+  }), [
+    hasAuthenticatedUser,
+    regionBlockedMessage,
+    setShowAuthFlow,
+    handleLogOut,
+    primaryWallet,
+    dynamicUser?.email,
+    tonWallet,
+    setShowLinkNewWalletModal,
+  ])
 
   return <AppKitContext value={value}>{children}</AppKitContext>
 }

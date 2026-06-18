@@ -5,6 +5,11 @@ import { UserRepository } from '@/lib/db/queries/user'
 import { getDepositWalletAddress } from '@/lib/deposit-wallet'
 import { commitQuote, getPublicQuote, getRhinoConfig, getUserQuote, RhinoApiError } from '@/lib/rhino/client'
 import { RHINO_CHAIN, RHINO_TOKEN, TON_DEPOSIT_ROUTE } from '@/lib/rhino/constants'
+import { resolveJettonWalletAddress } from '@/lib/ton/jetton-wallet'
+import { toBaseUnits } from '@/lib/ton/units'
+
+/** USDT on TON has 6 decimals. */
+const TON_USDT_DECIMALS = 6
 
 const DEFAULT_QUOTE_ERROR = 'Could not get a TON deposit quote. Please try again.'
 
@@ -55,14 +60,22 @@ export async function createTonDepositAction(
       recipient,
     })
 
-    await commitQuote(quote.quoteId)
-
     const config = await getRhinoConfig()
     const tonChain = config[RHINO_CHAIN.ton]
     const jettonMaster = tonChain?.tokens?.[RHINO_TOKEN.usdt]?.address
     if (!tonChain?.contractAddress || !jettonMaster) {
       return { error: DEFAULT_QUOTE_ERROR, payment: null }
     }
+
+    // Resolve everything the client needs to build + send the jetton transfer
+    // server-side, so the client only signs. Resolve the jetton wallet BEFORE
+    // committing — if the chain lookup fails we haven't locked a commitment.
+    const senderJettonWallet = await resolveJettonWalletAddress({
+      jettonMaster,
+      owner: depositorTonAddress,
+    })
+
+    await commitQuote(quote.quoteId)
 
     return {
       error: null,
@@ -72,7 +85,8 @@ export async function createTonDepositAction(
         receiveAmount: quote.receiveAmount,
         estimatedDurationMs: quote.estimatedDuration ?? null,
         bridgeContract: tonChain.contractAddress,
-        jettonMaster,
+        senderJettonWallet,
+        jettonAmountBaseUnits: toBaseUnits(quote.payAmount, TON_USDT_DECIMALS).toString(),
         recipient,
       },
     }
