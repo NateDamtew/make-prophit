@@ -31,6 +31,7 @@
     "@daypicker/react": "10.0.1",
     "@dynamic-labs/ethereum": "^4.89.0",
     "@dynamic-labs/sdk-react-core": "^4.89.0",
+    "@dynamic-labs/ton": "^4.89.0",
     "@dynamic-labs/wagmi-connector": "^4.89.0",
     "@fullcalendar/core": "6.1.20",
     "@fullcalendar/daygrid": "6.1.20",

@@ -10,13 +10,14 @@ import { DynamicContextProvider, useDynamicContext } from '@dynamic-labs/sdk-rea
 import { DynamicWagmiConnector } from '@dynamic-labs/wagmi-connector'
 import { generateRandomString } from 'better-auth/crypto'
 import { useExtracted } from 'next-intl'
-import { Component, useMemo } from 'react'
+import { Component, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { createSiweMessage } from 'viem/siwe'
 import { WagmiProvider } from 'wagmi'
 import { SignaturePromptHost } from '@/components/SignaturePromptHost'
 import { AppKitContext, defaultAppKitValue } from '@/hooks/useAppKit'
 import { useHasHydrated } from '@/hooks/useHasHydrated'
+import { useIsTma } from '@/hooks/useIsTma'
 import { usePublicRuntimeConfig } from '@/hooks/usePublicRuntimeConfig'
 import { createDynamicWagmiConfig, defaultNetwork } from '@/lib/appkit'
 import { authClient } from '@/lib/auth-client'
@@ -218,11 +219,31 @@ export default function AppKitProvider({ children }: { children: ReactNode }) {
   const t = useExtracted()
   const { dynamicEnvId, siteUrl } = usePublicRuntimeConfig()
   const hasHydrated = useHasHydrated()
+  const isTma = useIsTma()
   const currentUser = useUser()
+
+  // TON wallet connect is a Telegram-Mini-App-only feature. We load the (large)
+  // TON SDK via a dynamic import gated on `isTma`, so it never ships in the web
+  // bundle — web users keep the exact same synchronous mount path.
+  const [tonConnectors, setTonConnectors] = useState<readonly (typeof EthereumWalletConnectors)[]>([])
+  useEffect(() => {
+    if (!isTma) {
+      return
+    }
+    let cancelled = false
+    void import('@dynamic-labs/ton').then((mod) => {
+      if (!cancelled) {
+        setTonConnectors([mod.TonWalletConnectors as unknown as typeof EthereumWalletConnectors])
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [isTma])
 
   const settings = useMemo(() => ({
     environmentId: dynamicEnvId,
-    walletConnectors: [EthereumWalletConnectors],
+    walletConnectors: [EthereumWalletConnectors, ...tonConnectors],
     events: {
       onAuthSuccess: async ({ primaryWallet }: { primaryWallet: Wallet | null }) => {
         if (primaryWallet) {
@@ -237,12 +258,14 @@ export default function AppKitProvider({ children }: { children: ReactNode }) {
         useUser.setState(null)
       },
     },
-  }), [dynamicEnvId, siteUrl])
+  }), [dynamicEnvId, siteUrl, tonConnectors])
 
   // Dynamic's internal widgets are not compatible with cacheComponents'
   // streaming hydration, so we only mount Dynamic on the client after hydration.
   // Before that, the app renders normally against inert wallet defaults.
-  if (!hasHydrated) {
+  // Inside the TMA we also wait for the TON connectors to load, so Dynamic
+  // initializes once with the full connector set rather than re-initializing.
+  if (!hasHydrated || (isTma && tonConnectors.length === 0)) {
     return (
       <WagmiProvider config={wagmiConfig}>
         <AppKitContext value={ssrAppKitValue}>

@@ -1,7 +1,7 @@
 minimumReleaseAge: 1440
 # TEMPORARY: Dynamic 4.89.0 (published 2026-06-16 ~21:43 UTC) is still inside the
 # 24h release-age window. Excluded so it installs locally and on Vercel.
-# REVERT this block after ~2026-06-17 22:00 UTC once it clears the window.
+# REVERT this block once it clears (~2026-06-17 21:45 UTC).
 minimumReleaseAgeExclude:
   - '@dynamic-labs/*'
 shellEmulator: true
@@ -20,6 +20,13 @@ trustPolicyExclude:
   # Verified legitimate releases, not a takeover.
   - '@noble/curves@1.8.0'
   - '@noble/hashes@1.7.0'
+  # @tonconnect/ui 2.4.0 (via @dynamic-labs/ton) shipped without provenance
+  # attestation; it's the official TON Connect UI library (ton-connect org).
+  # Verified legitimate release, not a takeover.
+  - '@tonconnect/ui@2.4.0'
+  # ua-parser-js 1.0.41 (transitive via @tonconnect/ui) — provenance gap only.
+  # The 2021 compromise was 0.7.29/0.8.0/1.0.0; 1.0.41 is a current clean release.
+  - 'ua-parser-js@1.0.41'
 
 allowBuilds:
   '@parcel/watcher': false
