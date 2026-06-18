@@ -33,3 +33,14 @@ export const TON_DEPOSIT_ROUTE = {
   tokenIn: RHINO_TOKEN.usdt,
   tokenOut: RHINO_TOKEN.usdc,
 } as const
+
+/**
+ * The reverse rail: pay native USDC on Polygon (our trading collateral) →
+ * receive USDT on TON at the user's connected TON wallet.
+ */
+export const TON_WITHDRAWAL_ROUTE = {
+  chainIn: RHINO_CHAIN.polygon,
+  chainOut: RHINO_CHAIN.ton,
+  tokenIn: RHINO_TOKEN.usdc,
+  tokenOut: RHINO_TOKEN.usdt,
+} as const

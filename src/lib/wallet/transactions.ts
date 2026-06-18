@@ -180,6 +180,22 @@ const conditionalTokensAbi = [
   },
 ] as const
 
+// rhino.fi EVM bridge: deposit USDC with the committed quoteId so rhino bridges
+// it out to TON. Verified against rhino's docs ABI (token, amount, commitmentId).
+const rhinoBridgeAbi = [
+  {
+    name: 'depositWithId',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'token', type: 'address' },
+      { name: 'amount', type: 'uint256' },
+      { name: 'commitmentId', type: 'uint256' },
+    ],
+    outputs: [],
+  },
+] as const
+
 const exchangeReferralAbi = [
   {
     name: 'setReferral',
@@ -356,6 +372,39 @@ export function buildSendErc20Call(params: {
     functionName: 'transfer',
     args: [params.to, value],
   }))
+}
+
+const COMMITMENT_ID_HEX = /^[0-9a-f]{24}$/i
+
+/**
+ * Builds the deposit-wallet calls for a rhino.fi withdrawal (USDC on Polygon →
+ * USDT on TON): approve the bridge for `amount`, then `depositWithId` with the
+ * committed quoteId. Submit via `signAndSubmitDepositWalletCalls`.
+ */
+export function buildRhinoWithdrawCalls(params: {
+  token: `0x${string}`
+  bridgeContract: `0x${string}`
+  amount: bigint
+  /** rhino commitment id (`quoteId`) — a 24-hex-char ObjectId (96 bits). */
+  commitmentId: string
+}): WalletCall[] {
+  if (!COMMITMENT_ID_HEX.test(params.commitmentId)) {
+    throw new Error(`Invalid rhino commitment id: ${params.commitmentId}`)
+  }
+
+  const approve = createWalletCall(params.token, encodeFunctionData({
+    abi: erc20Abi,
+    functionName: 'approve',
+    args: [params.bridgeContract, params.amount],
+  }))
+
+  const deposit = createWalletCall(params.bridgeContract, encodeFunctionData({
+    abi: rhinoBridgeAbi,
+    functionName: 'depositWithId',
+    args: [params.token, params.amount, BigInt(`0x${params.commitmentId}`)],
+  }))
+
+  return [approve, deposit]
 }
 
 export function buildNegRiskSplitPositionCall(args: NegRiskSplitArgs): WalletCall {

@@ -22,8 +22,8 @@ import { cn } from '@/lib/utils'
 
 // TON funding (Telegram Mini App only) is loaded client-side on demand so the
 // TON SDK (@ton/core) never ships in the web bundle.
-const TonDepositPanel = dynamic(
-  () => import('@/app/[locale]/(platform)/_components/wallet-modal/TonDepositPanel'),
+const TonRailPanel = dynamic(
+  () => import('@/app/[locale]/(platform)/_components/wallet-modal/TonRailPanel'),
   { ssr: false },
 )
 
@@ -102,7 +102,12 @@ export function WalletDepositModal(props: WalletDepositModalProps) {
         />
       )
     : view === 'ton'
-      ? <TonDepositPanel onDone={() => onOpenChange(false)} />
+      ? (
+          <TonRailPanel
+            user={walletEoaAddress ? { address: walletEoaAddress, deposit_wallet_address: walletAddress } : null}
+            onDone={() => onOpenChange(false)}
+          />
+        )
       : view === 'receive'
         ? (
             <WalletReceiveView

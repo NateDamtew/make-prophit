@@ -169,11 +169,11 @@ function WalletFundMenu({
               <SendIcon className="size-6" />
             </div>
             <div>
-              <p className="text-sm font-semibold">Deposit from TON</p>
+              <p className="text-sm font-semibold">TON</p>
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <span>USDT on TON</span>
+                <span>deposit or withdraw</span>
                 <span className="size-1 rounded-full bg-muted-foreground" />
-                <span>bridged to USDC</span>
+                <span>USDT ↔ USDC</span>
               </div>
             </div>
           </div>
