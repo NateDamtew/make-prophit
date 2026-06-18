@@ -122,6 +122,12 @@ export async function commitQuote(quoteId: string): Promise<unknown> {
   })
 }
 
+/**
+ * NB: `/history/bridge` requires a SECRET API key — a PUBLIC key returns 403.
+ * For delivery tracking we instead poll the recipient deposit wallet's on-chain
+ * USDC balance on Polygon (we control that and need no extra key). This is kept
+ * for when/if a secret key is configured.
+ */
 export async function getBridgeStatus(bridgeId: string): Promise<RhinoBridgeStatus> {
   return await authedFetch(`${RHINO_BRIDGE_BASE}/history/bridge/${encodeURIComponent(bridgeId)}`) as RhinoBridgeStatus
 }

@@ -84,6 +84,8 @@ export interface UserQuoteParams extends PublicQuoteParams {
 export interface RhinoUserQuote extends RhinoPublicQuote {
   quoteId: string
   expiresAt?: string
+  /** Estimated bridge duration in milliseconds (≈21.5s for TON→Polygon). */
+  estimatedDuration?: number
   depositor: string
   recipient: string
 }
