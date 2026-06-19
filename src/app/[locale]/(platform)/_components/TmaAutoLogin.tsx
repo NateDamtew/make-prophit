@@ -16,7 +16,7 @@ type AuthStatus = 'idle' | 'authenticating' | 'done'
 type Screen = 'none' | 'telegram-login' | 'wallet-onboarding'
 
 export default function TmaAutoLogin() {
-  const { open, isReady, signInWithTelegram } = useAppKit()
+  const { open } = useAppKit()
   const { data: session, isPending } = useSession()
   const hasHydrated = useHasHydrated()
   const triggered = useRef(false)
@@ -24,10 +24,14 @@ export default function TmaAutoLogin() {
   const [authStatus, setAuthStatus] = useState<AuthStatus>('idle')
   const [authError, setAuthError] = useState<string | null>(null)
 
-  // Fallback: the original HMAC session-only flow. Logs the user in to browse,
-  // but creates no wallet (address stays null). Used only if the Dynamic
-  // embedded-wallet flow is unavailable, so sign-in never fully breaks.
-  const attemptHmacAuth = useCallback(async (initData: string): Promise<boolean> => {
+  const attemptTelegramAuth = useCallback(async (): Promise<boolean> => {
+    const initData = getTelegramInitData()
+    if (!initData) {
+      // Inside Telegram but no initData (opened from bot profile without deep link)
+      // Can't do server-side validation — fall through to show login screen
+      return false
+    }
+    setAuthStatus('authenticating')
     try {
       const res = await fetch('/api/auth/telegram/verify-tma', {
         method: 'POST',
@@ -54,47 +58,6 @@ export default function TmaAutoLogin() {
     }
   }, [])
 
-  const attemptTelegramAuth = useCallback(async (): Promise<boolean> => {
-    const initData = getTelegramInitData()
-    if (!initData) {
-      // Inside Telegram but no initData (opened from bot profile without deep link)
-      // Can't do server-side validation — fall through to show login screen
-      return false
-    }
-    setAuthStatus('authenticating')
-
-    // Primary: Dynamic flow — mint a telegramAuthToken from the validated
-    // initData, then sign in with Dynamic, which auto-creates an embedded EVM
-    // wallet. onAuthSuccess then drives SIWE, giving a better-auth session WITH
-    // a Polygon address (so deposit + trading work). Session updates reactively
-    // via the SIWE handshake — no reload needed.
-    try {
-      const tokenRes = await fetch('/api/tma/dynamic-token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ initData }),
-        signal: AbortSignal.timeout(15_000),
-      })
-      if (tokenRes.ok) {
-        const { telegramAuthToken } = await tokenRes.json() as { telegramAuthToken?: string }
-        if (telegramAuthToken) {
-          await signInWithTelegram(telegramAuthToken)
-          setAuthStatus('done')
-          return true
-        }
-      }
-      else {
-        console.warn('TMA dynamic-token failed, falling back:', tokenRes.status)
-      }
-    }
-    catch (err) {
-      console.error('TMA Dynamic auth error, falling back:', err)
-    }
-
-    // Fallback: session-only HMAC auth.
-    return attemptHmacAuth(initData)
-  }, [attemptHmacAuth, signInWithTelegram])
-
   useEffect(() => {
     if (!hasHydrated || isPending || triggered.current) {
       return
@@ -104,11 +67,12 @@ export default function TmaAutoLogin() {
       return
     }
 
+    triggered.current = true
+
     // Already logged in — show wallet onboarding only for users WITHOUT a
     // connected wallet (i.e. Telegram/social sign-ups). Wallet users already
     // have an address, so they should never see "Connect Your Wallet".
     if (session?.user) {
-      triggered.current = true
       const hasWallet = Boolean((session.user as { address?: string | null }).address)
       const skipped = localStorage.getItem(WALLET_SKIPPED_KEY) === 'true'
       if (!hasWallet && !skipped) {
@@ -120,29 +84,23 @@ export default function TmaAutoLogin() {
     // Inside Telegram WebView — auto-auth silently if initData available
     if (isInsideTelegram()) {
       const initData = getTelegramInitData()
-      if (!initData) {
-        // No initData (e.g. Desktop Telegram bot profile) — let them browse
-        // and use the normal Log In button in the header.
-        triggered.current = true
-        return
+      if (initData) {
+        attemptTelegramAuth().then((success) => {
+          if (!success) {
+            // Auth failed even with initData — let them browse normally
+          }
+        })
       }
-      // The primary (Dynamic embedded-wallet) flow needs the SDK ready; wait
-      // for it so we don't fall back to the wallet-less path unnecessarily.
-      // The effect re-runs when isReady flips.
-      if (!isReady) {
-        return
-      }
-      triggered.current = true
-      void attemptTelegramAuth()
+      // No initData (e.g. Desktop Telegram bot profile) — let them browse
+      // and use the normal Log In button in the header
       return
     }
 
     // On tma.* in a regular browser (not Telegram) — show Telegram login screen
     if (isTmaHost()) {
-      triggered.current = true
       setScreen('telegram-login')
     }
-  }, [hasHydrated, isPending, session, isReady, attemptTelegramAuth])
+  }, [hasHydrated, isPending, session, attemptTelegramAuth])
 
   function handleOpenTelegram() {
     window.open(`https://t.me/${BOT_USERNAME}/Prophit`, '_blank')
