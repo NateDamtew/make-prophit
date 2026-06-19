@@ -25,6 +25,7 @@ import {
 import { useAffiliateOrderMetadata } from '@/hooks/useAffiliateOrderMetadata'
 import { useAppKit } from '@/hooks/useAppKit'
 import { useDepositWalletPolling } from '@/hooks/useDepositWalletPolling'
+import { useIsTma } from '@/hooks/useIsTma'
 import { useSignaturePromptRunner } from '@/hooks/useSignaturePromptRunner'
 import { authClient } from '@/lib/auth-client'
 import {
@@ -379,6 +380,7 @@ function TradingOnboardingProviderContent({
   const communityApiUrl = process.env.COMMUNITY_URL!
 
   const status = useOnboardingStatus(user, requiresTradingAuthRefresh)
+  const isTma = useIsTma()
   const normalizedUserAddress = user?.address?.trim().toLowerCase() ?? ''
   const hasMatchingCommunityUsernameHint = Boolean(
     communityUsernameHint
@@ -1338,6 +1340,24 @@ function TradingOnboardingProviderContent({
       return
     }
 
+    // Session-only users without a connected wallet (e.g. Telegram auto-login,
+    // address === null) used to hit a dead end here: the onboarding resolver
+    // returns null for them, so the Deposit button silently did nothing. Open
+    // the wallet-connect flow instead so they can get an address.
+    if (!status.hasValidWalletAddress) {
+      void openAppKit()
+      return
+    }
+
+    // On the Telegram Mini App, funding (TON rail, Buy, Transfer) doesn't
+    // require the deposit wallet to be deployed on-chain — USDC lands at the
+    // deterministic address. Open the fund modal directly so the "Deposit from
+    // TON" tab is reachable without going through the deploy-gated onboarding.
+    if (isTma) {
+      setDepositModalOpen(true)
+      return
+    }
+
     if (status.hasDeployedDepositWallet) {
       setDepositModalOpen(true)
       return
@@ -1345,7 +1365,7 @@ function TradingOnboardingProviderContent({
 
     setShouldShowFundAfterTradingReady(true)
     openNextRequirement()
-  }, [openAppKit, openNextRequirement, status.hasDeployedDepositWallet, user])
+  }, [isTma, openAppKit, openNextRequirement, status.hasDeployedDepositWallet, status.hasValidWalletAddress, user])
 
   const startWithdrawFlow = useCallback(() => {
     if (!user) {
