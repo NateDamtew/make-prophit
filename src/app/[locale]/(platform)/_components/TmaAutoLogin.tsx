@@ -5,52 +5,12 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useAppKit } from '@/hooks/useAppKit'
 import { useHasHydrated } from '@/hooks/useHasHydrated'
 import { authClient } from '@/lib/auth-client'
+import { getTelegramInitData, isInsideTelegram, isTmaHost } from '@/lib/tma'
 
 const { useSession } = authClient
 
 const WALLET_SKIPPED_KEY = 'tma_wallet_skipped'
 const BOT_USERNAME = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME ?? 'makeprophit_bot'
-
-function isTmaHost() {
-  if (typeof window === 'undefined') {
-    return false
-  }
-  const host = window.location.hostname
-  return host.startsWith('tma.') || host.includes('tma')
-}
-
-function isInsideTelegram() {
-  if (typeof window === 'undefined') {
-    return false
-  }
-  const webApp = (window as any).Telegram?.WebApp
-  if (!webApp) {
-    return false
-  }
-  // A real Telegram launch always provides initData.
-  if (webApp.initData) {
-    return true
-  }
-  // When telegram-web-app.js is loaded in a NORMAL browser (not launched from
-  // Telegram) it still creates a stub WebApp with version/colorScheme set and
-  // platform === 'unknown'. Real Telegram clients report a concrete platform
-  // (android, ios, tdesktop, macos, weba, webk, …). So only treat a known,
-  // non-'unknown' platform as "inside Telegram" — version/colorScheme alone
-  // are NOT reliable signals and cause false positives on the public site.
-  if (
-    typeof webApp.platform === 'string'
-    && webApp.platform !== ''
-    && webApp.platform !== 'unknown'
-  ) {
-    return true
-  }
-  return false
-}
-
-function getTelegramInitData(): string {
-  const webApp = (window as any).Telegram?.WebApp
-  return webApp?.initData ?? ''
-}
 
 type AuthStatus = 'idle' | 'authenticating' | 'done'
 type Screen = 'none' | 'telegram-login' | 'wallet-onboarding'

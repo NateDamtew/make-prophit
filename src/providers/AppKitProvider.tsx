@@ -3,20 +3,21 @@
 import type { Wallet } from '@dynamic-labs/sdk-react-core'
 import type { ReactNode } from 'react'
 import type { Config } from 'wagmi'
-import type { AppKitValue } from '@/hooks/useAppKit'
+import type { AppKitValue, TonTxMessage } from '@/hooks/useAppKit'
 import type { User } from '@/types'
 import { EthereumWalletConnectors } from '@dynamic-labs/ethereum'
-import { DynamicContextProvider, useDynamicContext } from '@dynamic-labs/sdk-react-core'
+import { DynamicContextProvider, useDynamicContext, useDynamicModals, useUserWallets } from '@dynamic-labs/sdk-react-core'
 import { DynamicWagmiConnector } from '@dynamic-labs/wagmi-connector'
 import { generateRandomString } from 'better-auth/crypto'
 import { useExtracted } from 'next-intl'
-import { Component, useMemo } from 'react'
+import { Component, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { createSiweMessage } from 'viem/siwe'
 import { WagmiProvider } from 'wagmi'
 import { SignaturePromptHost } from '@/components/SignaturePromptHost'
 import { AppKitContext, defaultAppKitValue } from '@/hooks/useAppKit'
 import { useHasHydrated } from '@/hooks/useHasHydrated'
+import { useIsTma } from '@/hooks/useIsTma'
 import { usePublicRuntimeConfig } from '@/hooks/usePublicRuntimeConfig'
 import { createDynamicWagmiConfig, defaultNetwork } from '@/lib/appkit'
 import { authClient } from '@/lib/auth-client'
@@ -40,6 +41,18 @@ function getConnectedAccount(): { address: `0x${string}` | undefined, chainId: n
 
 function isEmbeddedWallet(wallet: Wallet | null): boolean {
   return Boolean((wallet?.connector as { isEmbeddedWallet?: boolean } | undefined)?.isEmbeddedWallet)
+}
+
+// TON wallets are detected by their chain literal (from Dynamic's Chains union)
+// so this provider stays web-safe and never imports the heavy `@dynamic-labs/ton`.
+const TON_CHAIN = 'TON'
+
+interface TonCapableConnector {
+  sendTransaction?: (request: { validUntil: number, messages: TonTxMessage[] }) => Promise<string>
+}
+
+function findTonWallet(wallets: readonly Wallet[]): Wallet | null {
+  return wallets.find(wallet => wallet.chain === TON_CHAIN) ?? null
 }
 
 function clearWalletState() {
@@ -170,6 +183,9 @@ function AppKitBridge({
   hasAuthenticatedUser: boolean
 }) {
   const { setShowAuthFlow, handleLogOut, primaryWallet, user: dynamicUser } = useDynamicContext()
+  const { setShowLinkNewWalletModal } = useDynamicModals()
+  const userWallets = useUserWallets()
+  const tonWallet = useMemo(() => findTonWallet(userWallets), [userWallets])
 
   const value = useMemo<AppKitValue>(() => ({
     open: async () => {
@@ -198,7 +214,33 @@ function AppKitBridge({
       }
       await signOutAndRedirect({ currentPathname: IS_BROWSER ? window.location.pathname : '/' })
     },
-  }), [hasAuthenticatedUser, regionBlockedMessage, setShowAuthFlow, handleLogOut, primaryWallet, dynamicUser?.email])
+    tonWalletAddress: tonWallet?.address,
+    connectTonWallet: () => {
+      setShowLinkNewWalletModal(true)
+    },
+    sendTonTransaction: async (messages: TonTxMessage[], validUntilSeconds = 600) => {
+      if (!tonWallet) {
+        throw new Error('No TON wallet connected')
+      }
+      const connector = tonWallet.connector as unknown as TonCapableConnector
+      if (typeof connector.sendTransaction !== 'function') {
+        throw new TypeError('Connected TON wallet cannot send transactions')
+      }
+      return connector.sendTransaction({
+        validUntil: Math.floor(Date.now() / 1000) + validUntilSeconds,
+        messages,
+      })
+    },
+  }), [
+    hasAuthenticatedUser,
+    regionBlockedMessage,
+    setShowAuthFlow,
+    handleLogOut,
+    primaryWallet,
+    dynamicUser?.email,
+    tonWallet,
+    setShowLinkNewWalletModal,
+  ])
 
   return <AppKitContext value={value}>{children}</AppKitContext>
 }
@@ -218,11 +260,31 @@ export default function AppKitProvider({ children }: { children: ReactNode }) {
   const t = useExtracted()
   const { dynamicEnvId, siteUrl } = usePublicRuntimeConfig()
   const hasHydrated = useHasHydrated()
+  const isTma = useIsTma()
   const currentUser = useUser()
+
+  // TON wallet connect is a Telegram-Mini-App-only feature. We load the (large)
+  // TON SDK via a dynamic import gated on `isTma`, so it never ships in the web
+  // bundle — web users keep the exact same synchronous mount path.
+  const [tonConnectors, setTonConnectors] = useState<readonly (typeof EthereumWalletConnectors)[]>([])
+  useEffect(() => {
+    if (!isTma) {
+      return
+    }
+    let cancelled = false
+    void import('@dynamic-labs/ton').then((mod) => {
+      if (!cancelled) {
+        setTonConnectors([mod.TonWalletConnectors as unknown as typeof EthereumWalletConnectors])
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [isTma])
 
   const settings = useMemo(() => ({
     environmentId: dynamicEnvId,
-    walletConnectors: [EthereumWalletConnectors],
+    walletConnectors: [EthereumWalletConnectors, ...tonConnectors],
     events: {
       onAuthSuccess: async ({ primaryWallet }: { primaryWallet: Wallet | null }) => {
         if (primaryWallet) {
@@ -237,12 +299,14 @@ export default function AppKitProvider({ children }: { children: ReactNode }) {
         useUser.setState(null)
       },
     },
-  }), [dynamicEnvId, siteUrl])
+  }), [dynamicEnvId, siteUrl, tonConnectors])
 
   // Dynamic's internal widgets are not compatible with cacheComponents'
   // streaming hydration, so we only mount Dynamic on the client after hydration.
   // Before that, the app renders normally against inert wallet defaults.
-  if (!hasHydrated) {
+  // Inside the TMA we also wait for the TON connectors to load, so Dynamic
+  // initializes once with the full connector set rather than re-initializing.
+  if (!hasHydrated || (isTma && tonConnectors.length === 0)) {
     return (
       <WagmiProvider config={wagmiConfig}>
         <AppKitContext value={ssrAppKitValue}>

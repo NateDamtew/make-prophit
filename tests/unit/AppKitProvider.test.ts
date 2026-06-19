@@ -11,6 +11,7 @@ function ReadyConsumer({ ctx, onValue }: { ctx: React.Context<any>, onValue?: (v
 const mocks = vi.hoisted(() => ({
   setShowAuthFlow: vi.fn(),
   handleLogOut: vi.fn(),
+  setShowLinkNewWalletModal: vi.fn(),
 }))
 
 vi.mock('@dynamic-labs/sdk-react-core', () => ({
@@ -21,6 +22,10 @@ vi.mock('@dynamic-labs/sdk-react-core', () => ({
     primaryWallet: null,
     sdkHasLoaded: true,
   }),
+  useDynamicModals: () => ({
+    setShowLinkNewWalletModal: mocks.setShowLinkNewWalletModal,
+  }),
+  useUserWallets: () => [],
 }))
 
 vi.mock('@dynamic-labs/ethereum', () => ({
