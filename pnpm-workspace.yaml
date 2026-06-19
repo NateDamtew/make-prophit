@@ -1,9 +1,4 @@
 minimumReleaseAge: 1440
-# TEMPORARY: Dynamic 4.89.0 (published 2026-06-16 ~21:43 UTC) is still inside the
-# 24h release-age window. Excluded so it installs locally and on Vercel.
-# REVERT this block once it clears (~2026-06-17 21:45 UTC).
-minimumReleaseAgeExclude:
-  - '@dynamic-labs/*'
 shellEmulator: true
 blockExoticSubdeps: true
 trustPolicy: no-downgrade
