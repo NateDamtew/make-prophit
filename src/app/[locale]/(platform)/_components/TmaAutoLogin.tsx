@@ -26,6 +26,7 @@ export default function TmaAutoLogin() {
   const [screen, setScreen] = useState<Screen>('none')
   const [authStatus, setAuthStatus] = useState<AuthStatus>('idle')
   const [authError, setAuthError] = useState<string | null>(null)
+  const [statusMessage, setStatusMessage] = useState('Signing in with Telegram…')
 
   const attemptTelegramAuth = useCallback(async (): Promise<boolean> => {
     const initData = getTelegramInitData()
@@ -68,25 +69,35 @@ export default function TmaAutoLogin() {
   const provisionEmbeddedWallet = useCallback(async (initData: string) => {
     setAuthStatus('authenticating')
     try {
+      setStatusMessage('Setting up your wallet… (1/3 minting token)')
       const tokenRes = await fetch('/api/tma/dynamic-token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ initData }),
         signal: AbortSignal.timeout(15_000),
+      }).catch((error: unknown) => {
+        throw new Error(`token request error: ${error instanceof Error ? error.message : String(error)}`)
       })
       if (!tokenRes.ok) {
-        throw new Error(`dynamic-token ${tokenRes.status}`)
+        throw new Error(`token request failed (HTTP ${tokenRes.status})`)
       }
       const { telegramAuthToken } = await tokenRes.json() as { telegramAuthToken?: string }
       if (!telegramAuthToken) {
-        throw new Error('no telegramAuthToken')
+        throw new Error('server returned no token')
       }
 
       // Triggers Dynamic auth + embedded wallet, then onAuthSuccess drives SIWE.
-      // telegramSignIn can no-op silently, so we DON'T trust it — we verify the
-      // SIWE session actually gained an address before declaring success.
-      await signInWithTelegram(telegramAuthToken)
+      setStatusMessage('Setting up your wallet… (2/3 signing in)')
+      try {
+        await signInWithTelegram(telegramAuthToken)
+      }
+      catch (signinErr) {
+        throw new Error(`Dynamic sign-in rejected: ${signinErr instanceof Error ? signinErr.message : String(signinErr)}`)
+      }
 
+      // telegramSignIn can resolve without actually authenticating, so we VERIFY
+      // an address really appeared rather than trusting it.
+      setStatusMessage('Setting up your wallet… (3/3 waiting for wallet)')
       const deadline = Date.now() + 12_000
       while (Date.now() < deadline) {
         const current = await authClient.getSession()
@@ -98,12 +109,16 @@ export default function TmaAutoLogin() {
         }
         await new Promise(resolve => setTimeout(resolve, 1000))
       }
-      throw new Error('embedded wallet did not produce an address in time')
+      throw new Error('signed in, but no wallet address appeared after 12s')
     }
     catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
       console.error('TMA embedded-wallet provisioning failed:', err)
       setAuthStatus('idle')
-      setScreen('wallet-onboarding')
+      // TEMP (debug): surface the failure on-screen since there is no console in
+      // the Mini App. Once the flow is confirmed, replace with a silent fallback
+      // to the manual Connect Wallet screen.
+      setAuthError(`Wallet setup failed — ${message}`)
     }
   }, [signInWithTelegram])
 
@@ -197,7 +212,7 @@ export default function TmaAutoLogin() {
           {authStatus === 'authenticating' && !authError && (
             <>
               <div className="size-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-              <p className="text-sm text-muted-foreground">Signing in with Telegram...</p>
+              <p className="text-sm text-muted-foreground">{statusMessage}</p>
             </>
           )}
           {authError && (
