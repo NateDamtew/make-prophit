@@ -138,20 +138,19 @@ export default function TmaAutoLogin() {
         triggered.current = true
         return
       }
-      const skipped = localStorage.getItem(WALLET_SKIPPED_KEY) === 'true'
-      if (skipped) {
-        triggered.current = true
-        return
-      }
       // No wallet yet — auto-provision an embedded EVM wallet (TMA + initData)
       // so the user gets a Polygon address. Best-effort UPGRADE: the user is
-      // already logged in, so this can never block sign-in.
+      // already logged in, so this can never block sign-in. The `wallet_skipped`
+      // flag must NOT block this — it only suppresses the manual screen below.
       const initData = isInsideTelegram() ? getTelegramInitData() : null
       const alreadyAttempted = sessionStorage.getItem(EMBEDDED_ATTEMPT_KEY) === '1'
       if (initData && !alreadyAttempted) {
         // telegramSignIn needs Dynamic's SDK loaded; wait for it (the effect
-        // re-runs when sdkHasLoaded flips) so we don't no-op.
+        // re-runs when sdkHasLoaded flips) so we don't no-op. Show the spinner
+        // so this wait is visible rather than a silent dead-end.
         if (!sdkHasLoaded) {
+          setStatusMessage('Setting up your wallet… (loading)')
+          setAuthStatus('authenticating')
           return
         }
         triggered.current = true
@@ -159,10 +158,13 @@ export default function TmaAutoLogin() {
         void provisionEmbeddedWallet(initData)
         return
       }
-      // Can't auto-provision (no initData, or already tried this launch) →
-      // offer the manual "Connect Wallet" screen as a fallback.
+      // Couldn't auto-provision (no initData, or already tried this launch) →
+      // offer the manual "Connect Wallet" screen unless the user opted out.
       triggered.current = true
-      setScreen('wallet-onboarding')
+      const skipped = localStorage.getItem(WALLET_SKIPPED_KEY) === 'true'
+      if (!skipped) {
+        setScreen('wallet-onboarding')
+      }
       return
     }
 
