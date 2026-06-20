@@ -33,10 +33,13 @@ function TelegramLogo({ className }: { className?: string }) {
  * (embedded wallet) → SIWE → a session with a Polygon address.
  */
 export default function TmaAutoLogin() {
-  const { sdkHasLoaded, signInWithTelegram } = useAppKit()
+  const { sdkHasLoaded, dynamicWalletAddress, isTelegramEnabled, isDynamicAuthed, signInWithTelegram } = useAppKit()
   const { data: session, isPending } = useSession()
   const hasHydrated = useHasHydrated()
   const initialized = useRef(false)
+  // Latest Dynamic wallet address, readable from inside the async init closure.
+  const dynamicWalletRef = useRef<string | undefined>(undefined)
+  dynamicWalletRef.current = dynamicWalletAddress
   const [screen, setScreen] = useState<Screen>('none')
   const [status, setStatus] = useState<Status>('idle')
   const [statusMessage, setStatusMessage] = useState('Setting up your Prophit account…')
@@ -75,6 +78,15 @@ export default function TmaAutoLogin() {
 
     setError(null)
     setStatus('initializing')
+
+    // Fail fast with a clear reason if Dynamic would silently no-op
+    // telegramSignIn (the cause when nothing gets created in Dynamic).
+    if (!isTelegramEnabled) {
+      setStatus('error')
+      setError(`Telegram provider not enabled in Dynamic's loaded settings — check the dashboard env + redeploy. [dynamicAuthed=${isDynamicAuthed}]`)
+      return
+    }
+
     try {
       setStatusMessage('Creating your account… (1/3)')
       const tokenRes = await fetch('/api/tma/dynamic-token', {
@@ -114,14 +126,14 @@ export default function TmaAutoLogin() {
         }
         await new Promise(resolve => setTimeout(resolve, 1000))
       }
-      throw new Error('signed in, but no wallet was created in time')
+      throw new Error(`no wallet address in time (Dynamic wallet: ${dynamicWalletRef.current ?? 'none'}, telegramEnabled=${isTelegramEnabled}, dynamicAuthed=${isDynamicAuthed})`)
     }
     catch (caught) {
       console.error('TMA embedded-wallet init failed:', caught)
       setStatus('error')
       setError(errorMessage(caught))
     }
-  }, [signInWithTelegram])
+  }, [signInWithTelegram, isTelegramEnabled, isDynamicAuthed])
 
   function handleOpenTelegram() {
     window.open(`https://t.me/${BOT_USERNAME}/Prophit`, '_blank')

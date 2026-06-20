@@ -6,7 +6,7 @@ import type { Config } from 'wagmi'
 import type { AppKitValue, TonTxMessage } from '@/hooks/useAppKit'
 import type { User } from '@/types'
 import { EthereumWalletConnectors } from '@dynamic-labs/ethereum'
-import { DynamicContextProvider, useDynamicContext, useDynamicModals, useTelegramLogin, useUserWallets } from '@dynamic-labs/sdk-react-core'
+import { DynamicContextProvider, useDynamicContext, useDynamicModals, useProjectSettings, useTelegramLogin, useUserWallets } from '@dynamic-labs/sdk-react-core'
 import { DynamicWagmiConnector } from '@dynamic-labs/wagmi-connector'
 import { generateRandomString } from 'better-auth/crypto'
 import { useExtracted } from 'next-intl'
@@ -185,8 +185,16 @@ function AppKitBridge({
   const { setShowAuthFlow, handleLogOut, primaryWallet, user: dynamicUser, sdkHasLoaded } = useDynamicContext()
   const { setShowLinkNewWalletModal } = useDynamicModals()
   const { telegramSignIn } = useTelegramLogin()
+  const projectSettings = useProjectSettings()
   const userWallets = useUserWallets()
   const tonWallet = useMemo(() => findTonWallet(userWallets), [userWallets])
+
+  // Replicates Dynamic's internal isProviderEnabled(providers, Telegram) so we
+  // can see whether telegramSignIn will actually proceed (it silently no-ops if
+  // the provider isn't in the SDK's loaded settings).
+  const isTelegramEnabled = (projectSettings?.providers ?? []).some(
+    provider => provider.provider === 'telegram' && Boolean(provider.enabledAt),
+  )
 
   const value = useMemo<AppKitValue>(() => ({
     open: async () => {
@@ -233,6 +241,9 @@ function AppKitBridge({
       })
     },
     sdkHasLoaded,
+    dynamicWalletAddress: primaryWallet?.address ?? undefined,
+    isTelegramEnabled,
+    isDynamicAuthed: Boolean(dynamicUser),
     signInWithTelegram: async (telegramAuthToken: string) => {
       await telegramSignIn({ authToken: telegramAuthToken })
     },
@@ -242,10 +253,11 @@ function AppKitBridge({
     setShowAuthFlow,
     handleLogOut,
     primaryWallet,
-    dynamicUser?.email,
+    dynamicUser,
     tonWallet,
     setShowLinkNewWalletModal,
     sdkHasLoaded,
+    isTelegramEnabled,
     telegramSignIn,
   ])
 
