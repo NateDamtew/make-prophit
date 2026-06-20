@@ -30,6 +30,14 @@ export interface AppKitValue {
   connectTonWallet: () => void
   /** Sends a TON Connect transaction via the connected TON wallet; returns the BOC. */
   sendTonTransaction: (messages: TonTxMessage[], validUntilSeconds?: number) => Promise<string>
+  /** Whether Dynamic's SDK has finished loading — gate Telegram sign-in on this. */
+  sdkHasLoaded: boolean
+  /**
+   * Authenticates a TMA user with Dynamic via a minted telegramAuthToken,
+   * auto-creating an embedded EVM wallet. Best-effort: callers must verify a
+   * wallet address actually appeared rather than assuming success.
+   */
+  signInWithTelegram: (telegramAuthToken: string) => Promise<void>
 }
 
 export const defaultAppKitValue: AppKitValue = {
@@ -45,6 +53,8 @@ export const defaultAppKitValue: AppKitValue = {
   sendTonTransaction: async () => {
     throw new Error('TON wallet is not available')
   },
+  sdkHasLoaded: false,
+  signInWithTelegram: async () => {},
 }
 
 export const AppKitContext = createContext<AppKitValue>(defaultAppKitValue)

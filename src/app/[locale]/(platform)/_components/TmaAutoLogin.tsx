@@ -10,13 +10,16 @@ import { getTelegramInitData, isInsideTelegram, isTmaHost } from '@/lib/tma'
 const { useSession } = authClient
 
 const WALLET_SKIPPED_KEY = 'tma_wallet_skipped'
+// Per-launch guard so we attempt embedded-wallet provisioning at most once per
+// Mini App session (sessionStorage resets each fresh launch → retries next time).
+const EMBEDDED_ATTEMPT_KEY = 'tma_embedded_attempted'
 const BOT_USERNAME = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME ?? 'makeprophit_bot'
 
 type AuthStatus = 'idle' | 'authenticating' | 'done'
 type Screen = 'none' | 'telegram-login' | 'wallet-onboarding'
 
 export default function TmaAutoLogin() {
-  const { open } = useAppKit()
+  const { open, sdkHasLoaded, signInWithTelegram } = useAppKit()
   const { data: session, isPending } = useSession()
   const hasHydrated = useHasHydrated()
   const triggered = useRef(false)
@@ -58,6 +61,52 @@ export default function TmaAutoLogin() {
     }
   }, [])
 
+  // Best-effort upgrade for logged-in TMA users WITHOUT a wallet: authenticate
+  // with Dynamic (which auto-creates an embedded EVM wallet) so they get a
+  // Polygon address. This NEVER blocks login — they're already signed in. If it
+  // fails for any reason, we fall back to the manual "Connect Wallet" screen.
+  const provisionEmbeddedWallet = useCallback(async (initData: string) => {
+    setAuthStatus('authenticating')
+    try {
+      const tokenRes = await fetch('/api/tma/dynamic-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ initData }),
+        signal: AbortSignal.timeout(15_000),
+      })
+      if (!tokenRes.ok) {
+        throw new Error(`dynamic-token ${tokenRes.status}`)
+      }
+      const { telegramAuthToken } = await tokenRes.json() as { telegramAuthToken?: string }
+      if (!telegramAuthToken) {
+        throw new Error('no telegramAuthToken')
+      }
+
+      // Triggers Dynamic auth + embedded wallet, then onAuthSuccess drives SIWE.
+      // telegramSignIn can no-op silently, so we DON'T trust it — we verify the
+      // SIWE session actually gained an address before declaring success.
+      await signInWithTelegram(telegramAuthToken)
+
+      const deadline = Date.now() + 12_000
+      while (Date.now() < deadline) {
+        const current = await authClient.getSession()
+        const address = (current?.data?.user as { address?: string | null } | undefined)?.address
+        if (address) {
+          // Land cleanly on the now-address-keyed session.
+          window.location.reload()
+          return
+        }
+        await new Promise(resolve => setTimeout(resolve, 1000))
+      }
+      throw new Error('embedded wallet did not produce an address in time')
+    }
+    catch (err) {
+      console.error('TMA embedded-wallet provisioning failed:', err)
+      setAuthStatus('idle')
+      setScreen('wallet-onboarding')
+    }
+  }, [signInWithTelegram])
+
   useEffect(() => {
     if (!hasHydrated || isPending || triggered.current) {
       return
@@ -67,19 +116,42 @@ export default function TmaAutoLogin() {
       return
     }
 
-    triggered.current = true
-
-    // Already logged in — show wallet onboarding only for users WITHOUT a
-    // connected wallet (i.e. Telegram/social sign-ups). Wallet users already
-    // have an address, so they should never see "Connect Your Wallet".
+    // Already logged in.
     if (session?.user) {
       const hasWallet = Boolean((session.user as { address?: string | null }).address)
-      const skipped = localStorage.getItem(WALLET_SKIPPED_KEY) === 'true'
-      if (!hasWallet && !skipped) {
-        setScreen('wallet-onboarding')
+      if (hasWallet) {
+        triggered.current = true
+        return
       }
+      const skipped = localStorage.getItem(WALLET_SKIPPED_KEY) === 'true'
+      if (skipped) {
+        triggered.current = true
+        return
+      }
+      // No wallet yet — auto-provision an embedded EVM wallet (TMA + initData)
+      // so the user gets a Polygon address. Best-effort UPGRADE: the user is
+      // already logged in, so this can never block sign-in.
+      const initData = isInsideTelegram() ? getTelegramInitData() : null
+      const alreadyAttempted = sessionStorage.getItem(EMBEDDED_ATTEMPT_KEY) === '1'
+      if (initData && !alreadyAttempted) {
+        // telegramSignIn needs Dynamic's SDK loaded; wait for it (the effect
+        // re-runs when sdkHasLoaded flips) so we don't no-op.
+        if (!sdkHasLoaded) {
+          return
+        }
+        triggered.current = true
+        sessionStorage.setItem(EMBEDDED_ATTEMPT_KEY, '1')
+        void provisionEmbeddedWallet(initData)
+        return
+      }
+      // Can't auto-provision (no initData, or already tried this launch) →
+      // offer the manual "Connect Wallet" screen as a fallback.
+      triggered.current = true
+      setScreen('wallet-onboarding')
       return
     }
+
+    triggered.current = true
 
     // Inside Telegram WebView — auto-auth silently if initData available
     if (isInsideTelegram()) {
@@ -100,7 +172,7 @@ export default function TmaAutoLogin() {
     if (isTmaHost()) {
       setScreen('telegram-login')
     }
-  }, [hasHydrated, isPending, session, attemptTelegramAuth])
+  }, [hasHydrated, isPending, session, sdkHasLoaded, attemptTelegramAuth, provisionEmbeddedWallet])
 
   function handleOpenTelegram() {
     window.open(`https://t.me/${BOT_USERNAME}/Prophit`, '_blank')

@@ -6,7 +6,7 @@ import type { Config } from 'wagmi'
 import type { AppKitValue, TonTxMessage } from '@/hooks/useAppKit'
 import type { User } from '@/types'
 import { EthereumWalletConnectors } from '@dynamic-labs/ethereum'
-import { DynamicContextProvider, useDynamicContext, useDynamicModals, useUserWallets } from '@dynamic-labs/sdk-react-core'
+import { DynamicContextProvider, useDynamicContext, useDynamicModals, useTelegramLogin, useUserWallets } from '@dynamic-labs/sdk-react-core'
 import { DynamicWagmiConnector } from '@dynamic-labs/wagmi-connector'
 import { generateRandomString } from 'better-auth/crypto'
 import { useExtracted } from 'next-intl'
@@ -182,8 +182,9 @@ function AppKitBridge({
   regionBlockedMessage: string
   hasAuthenticatedUser: boolean
 }) {
-  const { setShowAuthFlow, handleLogOut, primaryWallet, user: dynamicUser } = useDynamicContext()
+  const { setShowAuthFlow, handleLogOut, primaryWallet, user: dynamicUser, sdkHasLoaded } = useDynamicContext()
   const { setShowLinkNewWalletModal } = useDynamicModals()
+  const { telegramSignIn } = useTelegramLogin()
   const userWallets = useUserWallets()
   const tonWallet = useMemo(() => findTonWallet(userWallets), [userWallets])
 
@@ -231,6 +232,10 @@ function AppKitBridge({
         messages,
       })
     },
+    sdkHasLoaded,
+    signInWithTelegram: async (telegramAuthToken: string) => {
+      await telegramSignIn({ authToken: telegramAuthToken })
+    },
   }), [
     hasAuthenticatedUser,
     regionBlockedMessage,
@@ -240,6 +245,8 @@ function AppKitBridge({
     dynamicUser?.email,
     tonWallet,
     setShowLinkNewWalletModal,
+    sdkHasLoaded,
+    telegramSignIn,
   ])
 
   return <AppKitContext value={value}>{children}</AppKitContext>
