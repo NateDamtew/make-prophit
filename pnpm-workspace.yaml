@@ -28,8 +28,18 @@ trustPolicyExclude:
   # The 2021 compromise was 0.7.29/0.8.0/1.0.0; 1.0.41 is a current clean release.
   - 'ua-parser-js@1.0.41'
 
+overrides:
+  '@wagmi/connectors': 6.2.0
+  '@wagmi/core': 2.22.1
+  '@walletconnect/relay-auth>@noble/curves': 1.8.1
+  '@walletconnect/relay-auth>@noble/hashes': 1.7.1
+
+# Every dependency with a build/postinstall script must be listed here
+# (true = run it, false = skip) so a fresh CI environment (e.g. a new Vercel
+# account, with no cached approvals) doesn't fail with ERR_PNPM_IGNORED_BUILDS.
 allowBuilds:
   '@parcel/watcher': false
+  '@reown/appkit': false
   '@sentry/cli': true
   '@swc/core': true
   bigint-buffer: true
@@ -39,9 +49,3 @@ allowBuilds:
   protobufjs: true
   sharp: false
   utf-8-validate: false
-
-overrides:
-  '@wagmi/connectors': 6.2.0
-  '@wagmi/core': 2.22.1
-  '@walletconnect/relay-auth>@noble/curves': 1.8.1
-  '@walletconnect/relay-auth>@noble/hashes': 1.7.1
