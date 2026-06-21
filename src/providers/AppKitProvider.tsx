@@ -22,6 +22,7 @@ import { usePublicRuntimeConfig } from '@/hooks/usePublicRuntimeConfig'
 import { createDynamicWagmiConfig, defaultNetwork } from '@/lib/appkit'
 import { authClient } from '@/lib/auth-client'
 import { IS_BROWSER } from '@/lib/constants'
+import { describeAuthError, lastDynamicAuthError } from '@/lib/dynamic-auth-error'
 import { signOutAndRedirect } from '@/lib/logout'
 import { clearBrowserStorage, clearNonHttpOnlyCookies } from '@/lib/utils'
 import { mergeSessionUserState, useUser } from '@/stores/useUser'
@@ -316,6 +317,13 @@ export default function AppKitProvider({ children }: { children: ReactNode }) {
       onLogout: () => {
         clearWalletState()
         useUser.setState(null)
+      },
+      // Capture WHY a Dynamic auth attempt failed (e.g. a rejected Telegram
+      // token) so the TMA init flow can surface it instead of timing out blind.
+      onAuthFailure: (_data: unknown, reason: 'user-cancelled' | { error: unknown }) => {
+        const message = reason === 'user-cancelled' ? 'user-cancelled' : describeAuthError(reason.error)
+        console.error('[AppKitProvider] Dynamic auth failure:', message)
+        lastDynamicAuthError.message = message
       },
     },
   }), [dynamicEnvId, siteUrl, tonConnectors])

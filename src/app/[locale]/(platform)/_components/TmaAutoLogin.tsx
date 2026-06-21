@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useAppKit } from '@/hooks/useAppKit'
 import { useHasHydrated } from '@/hooks/useHasHydrated'
 import { authClient } from '@/lib/auth-client'
+import { lastDynamicAuthError } from '@/lib/dynamic-auth-error'
 import { getTelegramInitData, isInsideTelegram, isTmaHost } from '@/lib/tma'
 
 const { useSession } = authClient
@@ -78,6 +79,7 @@ export default function TmaAutoLogin() {
 
     setError(null)
     setStatus('initializing')
+    lastDynamicAuthError.message = null // reset so we capture only this attempt
 
     // Fail fast with a clear reason if Dynamic would silently no-op
     // telegramSignIn (the cause when nothing gets created in Dynamic).
@@ -126,7 +128,7 @@ export default function TmaAutoLogin() {
         }
         await new Promise(resolve => setTimeout(resolve, 1000))
       }
-      throw new Error(`no wallet address in time (Dynamic wallet: ${dynamicWalletRef.current ?? 'none'}, telegramEnabled=${isTelegramEnabled}, dynamicAuthed=${isDynamicAuthed})`)
+      throw new Error(`no wallet address in time (Dynamic wallet: ${dynamicWalletRef.current ?? 'none'}, telegramEnabled=${isTelegramEnabled}, dynamicAuthed=${isDynamicAuthed}, authError: ${lastDynamicAuthError.message ?? 'none'})`)
     }
     catch (caught) {
       console.error('TMA embedded-wallet init failed:', caught)
