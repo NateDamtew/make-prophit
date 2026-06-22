@@ -234,8 +234,13 @@ function AppKitBridge({
     },
     sdkHasLoaded,
     signInWithTelegram: async () => {
-      // Dynamic's standard Telegram social sign-in (the modal's Telegram button).
-      await signInWithSocialAccount('telegram' as Parameters<typeof signInWithSocialAccount>[0])
+      // Dynamic's standard Telegram social sign-in. Use REDIRECT mode (not a
+      // popup): inside the Telegram Mini App webview a popup opens an external
+      // browser ("Open Link" → Chrome) and can't return its result, so we
+      // navigate in-place and the SDK reads the OAuth result when it lands back.
+      await signInWithSocialAccount('telegram' as Parameters<typeof signInWithSocialAccount>[0], {
+        redirectUrl: IS_BROWSER ? window.location.href : undefined,
+      })
     },
   }), [
     hasAuthenticatedUser,
