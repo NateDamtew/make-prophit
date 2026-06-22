@@ -46,12 +46,16 @@ function generateTelegramHash(useData: Record<string, string>, botToken: string)
 export function mintDynamicTelegramToken(params: {
   user: DynamicTelegramUser
   botToken: string
-  /** Overridable for deterministic tests; bot.ts uses `new Date().getTime()` (ms). */
-  authDateMs?: number
+  /**
+   * Telegram auth_date as Unix SECONDS (the Telegram standard). Dynamic's
+   * reference bot.ts uses ms, but that trips a not-in-the-future check on the
+   * backend; seconds is the standard Login-Widget format. Overridable for tests.
+   */
+  authDateSec?: number
   /** Overridable for deterministic tests. */
   issuedAtSec?: number
 }): string {
-  const authDate = params.authDateMs ?? Math.floor(Date.now())
+  const authDate = params.authDateSec ?? Math.floor(Date.now() / 1000)
   const userData = {
     authDate,
     firstName: params.user.first_name ?? '',

@@ -5,7 +5,7 @@ import { mintDynamicTelegramToken } from '@/lib/tma/dynamic-token'
 
 const BOT_TOKEN = '123456:TEST-bot-token-abcdef'
 const USER = { id: 987654321, first_name: 'Ada', last_name: 'Lovelace', username: 'ada', photo_url: '' }
-const AUTH_DATE_MS = 1_750_000_000_000
+const AUTH_DATE_SEC = 1_750_000_000
 const IAT = 1_750_000_000
 
 function decode(part: string) {
@@ -15,7 +15,7 @@ function decode(part: string) {
 // Independent re-implementation of Dynamic's bot.ts hash, to pin the format.
 function expectedHash() {
   const useData: Record<string, string> = {
-    auth_date: String(AUTH_DATE_MS),
+    auth_date: String(AUTH_DATE_SEC),
     first_name: 'Ada',
     id: String(USER.id),
     last_name: 'Lovelace',
@@ -30,7 +30,7 @@ function expectedHash() {
 }
 
 describe('mintDynamicTelegramToken', () => {
-  const token = mintDynamicTelegramToken({ user: USER, botToken: BOT_TOKEN, authDateMs: AUTH_DATE_MS, issuedAtSec: IAT })
+  const token = mintDynamicTelegramToken({ user: USER, botToken: BOT_TOKEN, authDateSec: AUTH_DATE_SEC, issuedAtSec: IAT })
   const [headerB64, payloadB64, sigB64] = token.split('.')
 
   it('produces a 3-part HS256 JWT', () => {
@@ -41,7 +41,7 @@ describe('mintDynamicTelegramToken', () => {
   it('carries the camelCase user payload + computed hash', () => {
     const payload = decode(payloadB64)
     expect(payload).toMatchObject({
-      authDate: AUTH_DATE_MS,
+      authDate: AUTH_DATE_SEC,
       firstName: 'Ada',
       lastName: 'Lovelace',
       username: 'ada',
