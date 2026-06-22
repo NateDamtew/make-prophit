@@ -102,7 +102,17 @@ export default function TmaAutoLogin() {
       if (!tokenRes.ok) {
         throw new Error(`token request failed (HTTP ${tokenRes.status})`)
       }
-      const { telegramAuthToken } = await tokenRes.json() as { telegramAuthToken?: string }
+      const { telegramAuthToken, probe } = await tokenRes.json() as {
+        telegramAuthToken?: string
+        probe?: { status: number, body: string } | null
+      }
+      // DIAGNOSTIC: our backend called Dynamic's /telegram/auth directly — if it
+      // rejected, show Dynamic's REAL error instead of the SDK's generic one.
+      if (probe && (probe.status === 0 || probe.status >= 400)) {
+        setStatus('error')
+        setError(`Dynamic /telegram/auth → ${probe.status}: ${probe.body}`)
+        return
+      }
       if (!telegramAuthToken) {
         throw new Error('server returned no token')
       }

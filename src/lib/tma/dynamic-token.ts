@@ -81,3 +81,59 @@ export function mintDynamicTelegramToken(params: {
   const signature = createHmac('sha256', params.botToken).update(signingInput).digest()
   return `${signingInput}.${base64url(signature)}`
 }
+
+export interface DynamicTelegramUserPayload {
+  id: number
+  firstName: string
+  lastName: string
+  username: string
+  photoURL: string
+  authDate: string
+  hash: string
+}
+
+/**
+ * Builds the `telegramUser` object Dynamic's POST /telegram/auth expects (the
+ * SDK decodes our JWT into exactly this shape), with a valid Login-Widget hash.
+ */
+export function buildTelegramUser(params: {
+  user: DynamicTelegramUser
+  botToken: string
+  authDateSec?: number
+}): DynamicTelegramUserPayload {
+  const authDate = String(params.authDateSec ?? Math.floor(Date.now() / 1000))
+  const firstName = params.user.first_name ?? ''
+  const lastName = params.user.last_name ?? ''
+  const username = params.user.username ?? ''
+  const photoURL = params.user.photo_url ?? ''
+
+  const hash = generateTelegramHash({
+    auth_date: authDate,
+    first_name: firstName,
+    id: String(params.user.id),
+    last_name: lastName,
+    photo_url: photoURL,
+    username,
+  }, params.botToken)
+
+  return { id: params.user.id, firstName, lastName, username, photoURL, authDate, hash }
+}
+
+/**
+ * Calls Dynamic's telegram/auth signin endpoint directly (the same one the SDK
+ * uses) so we can capture Dynamic's FULL error response instead of the SDK's
+ * opaque "signin_error". Diagnostic only.
+ */
+export async function probeDynamicTelegramAuth(params: {
+  environmentId: string
+  telegramUser: DynamicTelegramUserPayload
+}): Promise<{ status: number, body: string }> {
+  const url = `https://app.dynamicauth.com/api/v0/sdk/${params.environmentId}/telegram/auth`
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ state: '', telegramUser: params.telegramUser }),
+  })
+  const body = await res.text()
+  return { status: res.status, body: body.slice(0, 600) }
+}
