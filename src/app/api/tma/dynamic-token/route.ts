@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { buildTelegramUser, mintDynamicTelegramToken, probeDynamicTelegramAuth } from '@/lib/tma/dynamic-token'
+import { mintDynamicTelegramToken, probeDynamicTelegramSignin } from '@/lib/tma/dynamic-token'
 import { validateTelegramInitData } from '@/lib/tma/validate'
 
 /**
@@ -26,13 +26,13 @@ export async function POST(request: Request) {
 
     const telegramAuthToken = mintDynamicTelegramToken({ user: data.user, botToken })
 
-    // Diagnostic: call Dynamic's telegram/auth endpoint directly to capture its
-    // real validation error (the SDK only surfaces a generic "signin_error").
+    // Diagnostic: call Dynamic's /telegram/signin endpoint directly with the JWT
+    // — the exact call the SDK makes — to capture its real validation error
+    // (the SDK only surfaces a generic "signin_error").
     let probe: { status: number, body: string } | null = null
     const environmentId = process.env.NEXT_PUBLIC_DYNAMIC_ENV_ID
     if (environmentId) {
-      const telegramUser = buildTelegramUser({ user: data.user, botToken })
-      probe = await probeDynamicTelegramAuth({ environmentId, telegramUser })
+      probe = await probeDynamicTelegramSignin({ environmentId, telegramAuthToken })
         .catch((caught: unknown): { status: number, body: string } => ({ status: 0, body: String(caught) }))
     }
 

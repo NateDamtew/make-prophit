@@ -120,19 +120,21 @@ export function buildTelegramUser(params: {
 }
 
 /**
- * Calls Dynamic's telegram/auth signin endpoint directly (the same one the SDK
- * uses) so we can capture Dynamic's FULL error response instead of the SDK's
- * opaque "signin_error". Diagnostic only.
+ * Calls Dynamic's `/telegram/signin` endpoint directly with the JWT — the EXACT
+ * call the SDK's telegramSignIn makes (OauthResultRequest with telegramAuthToken)
+ * — so we capture Dynamic's full error instead of the SDK's opaque
+ * "signin_error". (Note: `/telegram/auth` takes the decoded user and is a
+ * different path.) Diagnostic only.
  */
-export async function probeDynamicTelegramAuth(params: {
+export async function probeDynamicTelegramSignin(params: {
   environmentId: string
-  telegramUser: DynamicTelegramUserPayload
+  telegramAuthToken: string
 }): Promise<{ status: number, body: string }> {
-  const url = `https://app.dynamicauth.com/api/v0/sdk/${params.environmentId}/telegram/auth`
+  const url = `https://app.dynamicauth.com/api/v0/sdk/${params.environmentId}/telegram/signin`
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ state: '', telegramUser: params.telegramUser }),
+    body: JSON.stringify({ telegramAuthToken: params.telegramAuthToken, forceCreateUser: false }),
   })
   const body = await res.text()
   return { status: res.status, body: body.slice(0, 600) }
