@@ -106,9 +106,11 @@ export default function TmaAutoLogin() {
         telegramAuthToken?: string
         probe?: { status: number, body: string } | null
       }
-      // DIAGNOSTIC: our backend called Dynamic's /telegram/auth directly — if it
-      // rejected, show Dynamic's REAL error instead of the SDK's generic one.
-      if (probe && (probe.status === 0 || probe.status >= 400)) {
+      // DIAGNOSTIC: our backend called Dynamic's /telegram/auth directly. When
+      // we have its response, surface it (success or failure) so we see exactly
+      // what Dynamic's backend says to our token, not the SDK's generic error.
+      // (Falls through to the real SDK flow only if the probe was skipped.)
+      if (probe) {
         setStatus('error')
         setError(`Dynamic /telegram/auth → ${probe.status}: ${probe.body}`)
         return
