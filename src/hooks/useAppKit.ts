@@ -30,20 +30,14 @@ export interface AppKitValue {
   connectTonWallet: () => void
   /** Sends a TON Connect transaction via the connected TON wallet; returns the BOC. */
   sendTonTransaction: (messages: TonTxMessage[], validUntilSeconds?: number) => Promise<string>
-  /** Whether Dynamic's SDK has finished loading — gate Telegram sign-in on this. */
+  /** Whether Dynamic's SDK has finished loading — gate sign-in actions on this. */
   sdkHasLoaded: boolean
-  /** Dynamic's connected/embedded wallet address, if any (diagnostic for the TMA flow). */
-  dynamicWalletAddress?: string
-  /** Whether the Telegram provider is enabled in Dynamic's LOADED project settings. */
-  isTelegramEnabled: boolean
-  /** Whether a Dynamic user is already authenticated (blocks a fresh telegramSignIn). */
-  isDynamicAuthed: boolean
   /**
-   * Authenticates a TMA user with Dynamic via a minted telegramAuthToken,
-   * auto-creating an embedded EVM wallet. Best-effort: callers must verify a
-   * wallet address actually appeared rather than assuming success.
+   * Runs Dynamic's standard Telegram social sign-in (the same flow as the
+   * modal's Telegram button) — proper OAuth + state handshake, which on success
+   * creates an embedded EVM wallet and drives SIWE.
    */
-  signInWithTelegram: (telegramAuthToken: string) => Promise<void>
+  signInWithTelegram: () => Promise<void>
 }
 
 export const defaultAppKitValue: AppKitValue = {
@@ -60,9 +54,6 @@ export const defaultAppKitValue: AppKitValue = {
     throw new Error('TON wallet is not available')
   },
   sdkHasLoaded: false,
-  dynamicWalletAddress: undefined,
-  isTelegramEnabled: false,
-  isDynamicAuthed: false,
   signInWithTelegram: async () => {},
 }
 

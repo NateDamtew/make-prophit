@@ -6,7 +6,7 @@ import type { Config } from 'wagmi'
 import type { AppKitValue, TonTxMessage } from '@/hooks/useAppKit'
 import type { User } from '@/types'
 import { EthereumWalletConnectors } from '@dynamic-labs/ethereum'
-import { DynamicContextProvider, useDynamicContext, useDynamicModals, useProjectSettings, useTelegramLogin, useUserWallets } from '@dynamic-labs/sdk-react-core'
+import { DynamicContextProvider, useDynamicContext, useDynamicModals, useSocialAccounts, useUserWallets } from '@dynamic-labs/sdk-react-core'
 import { DynamicWagmiConnector } from '@dynamic-labs/wagmi-connector'
 import { generateRandomString } from 'better-auth/crypto'
 import { useExtracted } from 'next-intl'
@@ -22,7 +22,6 @@ import { usePublicRuntimeConfig } from '@/hooks/usePublicRuntimeConfig'
 import { createDynamicWagmiConfig, defaultNetwork } from '@/lib/appkit'
 import { authClient } from '@/lib/auth-client'
 import { IS_BROWSER } from '@/lib/constants'
-import { describeAuthError, lastDynamicAuthError } from '@/lib/dynamic-auth-error'
 import { signOutAndRedirect } from '@/lib/logout'
 import { clearBrowserStorage, clearNonHttpOnlyCookies } from '@/lib/utils'
 import { mergeSessionUserState, useUser } from '@/stores/useUser'
@@ -185,17 +184,9 @@ function AppKitBridge({
 }) {
   const { setShowAuthFlow, handleLogOut, primaryWallet, user: dynamicUser, sdkHasLoaded } = useDynamicContext()
   const { setShowLinkNewWalletModal } = useDynamicModals()
-  const { telegramSignIn } = useTelegramLogin()
-  const projectSettings = useProjectSettings()
+  const { signInWithSocialAccount } = useSocialAccounts()
   const userWallets = useUserWallets()
   const tonWallet = useMemo(() => findTonWallet(userWallets), [userWallets])
-
-  // Replicates Dynamic's internal isProviderEnabled(providers, Telegram) so we
-  // can see whether telegramSignIn will actually proceed (it silently no-ops if
-  // the provider isn't in the SDK's loaded settings).
-  const isTelegramEnabled = (projectSettings?.providers ?? []).some(
-    provider => provider.provider === 'telegram' && Boolean(provider.enabledAt),
-  )
 
   const value = useMemo<AppKitValue>(() => ({
     open: async () => {
@@ -242,11 +233,9 @@ function AppKitBridge({
       })
     },
     sdkHasLoaded,
-    dynamicWalletAddress: primaryWallet?.address ?? undefined,
-    isTelegramEnabled,
-    isDynamicAuthed: Boolean(dynamicUser),
-    signInWithTelegram: async (telegramAuthToken: string) => {
-      await telegramSignIn({ authToken: telegramAuthToken })
+    signInWithTelegram: async () => {
+      // Dynamic's standard Telegram social sign-in (the modal's Telegram button).
+      await signInWithSocialAccount('telegram' as Parameters<typeof signInWithSocialAccount>[0])
     },
   }), [
     hasAuthenticatedUser,
@@ -258,8 +247,7 @@ function AppKitBridge({
     tonWallet,
     setShowLinkNewWalletModal,
     sdkHasLoaded,
-    isTelegramEnabled,
-    telegramSignIn,
+    signInWithSocialAccount,
   ])
 
   return <AppKitContext value={value}>{children}</AppKitContext>
@@ -317,13 +305,6 @@ export default function AppKitProvider({ children }: { children: ReactNode }) {
       onLogout: () => {
         clearWalletState()
         useUser.setState(null)
-      },
-      // Capture WHY a Dynamic auth attempt failed (e.g. a rejected Telegram
-      // token) so the TMA init flow can surface it instead of timing out blind.
-      onAuthFailure: (_data: unknown, reason: 'user-cancelled' | { error: unknown }) => {
-        const message = reason === 'user-cancelled' ? 'user-cancelled' : describeAuthError(reason.error)
-        console.error('[AppKitProvider] Dynamic auth failure:', message)
-        lastDynamicAuthError.message = message
       },
     },
   }), [dynamicEnvId, siteUrl, tonConnectors])
