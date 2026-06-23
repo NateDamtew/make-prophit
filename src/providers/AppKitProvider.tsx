@@ -1,7 +1,7 @@
 'use client'
 
 import type { Wallet } from '@dynamic-labs/sdk-react-core'
-import type { ReactNode } from 'react'
+import type { ComponentProps, ReactNode } from 'react'
 import type { Config } from 'wagmi'
 import type { AppKitValue, TonTxMessage } from '@/hooks/useAppKit'
 import type { User } from '@/types'
@@ -54,6 +54,23 @@ interface TonCapableConnector {
 function findTonWallet(wallets: readonly Wallet[]): Wallet | null {
   return wallets.find(wallet => wallet.chain === TON_CHAIN) ?? null
 }
+
+// In the Telegram Mini App, hide the wallet list from the LOGIN modal: TON
+// wallets belong in the Deposit-from-TON flow, and EVM extension wallets don't
+// exist in the webview — so sign-in stays email + social only. The TON
+// connectors remain available for deposits (the link-wallet modal is a separate
+// view, unaffected by this login-view override).
+type DynamicSettingsOverrides = NonNullable<ComponentProps<typeof DynamicContextProvider>['settings']>['overrides']
+const TMA_LOGIN_ONLY_OVERRIDES = {
+  views: [{
+    type: 'login',
+    sections: [
+      { type: 'social' },
+      { type: 'separator' },
+      { type: 'email' },
+    ],
+  }],
+} as DynamicSettingsOverrides
 
 function clearWalletState() {
   if (!IS_BROWSER) {
@@ -298,6 +315,7 @@ export default function AppKitProvider({ children }: { children: ReactNode }) {
   const settings = useMemo(() => ({
     environmentId: dynamicEnvId,
     walletConnectors: [EthereumWalletConnectors, ...tonConnectors],
+    ...(isTma ? { overrides: TMA_LOGIN_ONLY_OVERRIDES } : {}),
     events: {
       onAuthSuccess: async ({ primaryWallet }: { primaryWallet: Wallet | null }) => {
         if (primaryWallet) {
@@ -312,7 +330,7 @@ export default function AppKitProvider({ children }: { children: ReactNode }) {
         useUser.setState(null)
       },
     },
-  }), [dynamicEnvId, siteUrl, tonConnectors])
+  }), [dynamicEnvId, siteUrl, tonConnectors, isTma])
 
   // Dynamic's internal widgets are not compatible with cacheComponents'
   // streaming hydration, so we only mount Dynamic on the client after hydration.
