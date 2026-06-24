@@ -9,20 +9,24 @@ import { getTelegramInitData, isInsideTelegram, isTmaHost } from '@/lib/tma'
 
 const { useSession } = authClient
 
-const WALLET_SKIPPED_KEY = 'tma_wallet_skipped'
 const BOT_USERNAME = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME ?? 'makeprophit_bot'
 
 type AuthStatus = 'idle' | 'authenticating' | 'done'
 type Screen = 'none' | 'telegram-login' | 'wallet-onboarding'
 
 export default function TmaAutoLogin() {
-  const { open } = useAppKit()
+  const { open, sendEmailOtp, verifyEmailOtp, connectTonWallet } = useAppKit()
   const { data: session, isPending } = useSession()
   const hasHydrated = useHasHydrated()
   const triggered = useRef(false)
   const [screen, setScreen] = useState<Screen>('none')
   const [authStatus, setAuthStatus] = useState<AuthStatus>('idle')
   const [authError, setAuthError] = useState<string | null>(null)
+  const [wizardStep, setWizardStep] = useState<'email' | 'otp' | 'ton'>('email')
+  const [email, setEmail] = useState('')
+  const [otpCode, setOtpCode] = useState('')
+  const [wizardBusy, setWizardBusy] = useState(false)
+  const [wizardError, setWizardError] = useState<string | null>(null)
 
   const attemptTelegramAuth = useCallback(async (): Promise<boolean> => {
     const initData = getTelegramInitData()
@@ -74,8 +78,7 @@ export default function TmaAutoLogin() {
     // have an address, so they should never see "Connect Your Wallet".
     if (session?.user) {
       const hasWallet = Boolean((session.user as { address?: string | null }).address)
-      const skipped = localStorage.getItem(WALLET_SKIPPED_KEY) === 'true'
-      if (!hasWallet && !skipped) {
+      if (!hasWallet) {
         setScreen('wallet-onboarding')
       }
       return
@@ -106,16 +109,55 @@ export default function TmaAutoLogin() {
     window.open(`https://t.me/${BOT_USERNAME}/Prophit`, '_blank')
   }
 
-  function handleConnectWallet() {
-    localStorage.setItem(WALLET_SKIPPED_KEY, 'true')
+  function handleCloseOnboarding() {
     setScreen('none')
-    // Default login view (email + social) — these create an embedded EVM wallet,
-    // which is what we need for the deposit wallet + trading + the TON deposit.
+  }
+
+  // Browser (on tma.* but outside Telegram) fallback — open Dynamic's modal.
+  function handleConnectWallet() {
+    setScreen('none')
     open()
   }
 
-  function handleSkipWallet() {
-    localStorage.setItem(WALLET_SKIPPED_KEY, 'true')
+  async function handleSendEmail() {
+    if (!email.trim() || wizardBusy) {
+      return
+    }
+    setWizardError(null)
+    setWizardBusy(true)
+    try {
+      await sendEmailOtp(email.trim())
+      setWizardStep('otp')
+    }
+    catch (err) {
+      setWizardError(err instanceof Error ? err.message : 'Could not send the code. Please try again.')
+    }
+    finally {
+      setWizardBusy(false)
+    }
+  }
+
+  async function handleVerifyOtp() {
+    if (!otpCode.trim() || wizardBusy) {
+      return
+    }
+    setWizardError(null)
+    setWizardBusy(true)
+    try {
+      await verifyEmailOtp(otpCode.trim())
+      // Embedded wallet created + SIWE running — move to the optional TON step.
+      setWizardStep('ton')
+    }
+    catch (err) {
+      setWizardError(err instanceof Error ? err.message : 'Invalid code. Please try again.')
+    }
+    finally {
+      setWizardBusy(false)
+    }
+  }
+
+  function handleConnectTon() {
+    connectTonWallet()
     setScreen('none')
   }
 
@@ -209,18 +251,27 @@ export default function TmaAutoLogin() {
 
   // Wallet onboarding (after Telegram auth)
   if (screen === 'wallet-onboarding') {
+    const primaryButton = `
+      mb-3 w-full rounded-xl bg-primary py-3.5 text-sm font-semibold text-primary-foreground transition-opacity
+      active:opacity-80
+      disabled:cursor-not-allowed disabled:opacity-50
+    `
+    const inputClass = `
+      mb-3 w-full rounded-xl border border-border bg-transparent px-4 py-3 text-sm outline-none
+      focus:border-primary
+    `
     return (
       <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
-        <div className="absolute inset-0 bg-black/60" onClick={handleSkipWallet} />
+        <div className="absolute inset-0 bg-black/60" onClick={handleCloseOnboarding} />
         <div className="
           relative w-full rounded-t-2xl bg-background p-6 pb-10 shadow-xl
           sm:max-w-sm sm:rounded-2xl sm:pb-6
         "
         >
           <button
-            onClick={handleSkipWallet}
+            onClick={handleCloseOnboarding}
             className="absolute top-4 right-4 text-muted-foreground"
-            aria-label="Skip"
+            aria-label="Close"
           >
             <X className="size-5" />
           </button>
@@ -231,26 +282,71 @@ export default function TmaAutoLogin() {
             </div>
           </div>
 
-          <h2 className="mb-1 text-center text-lg font-semibold">Set up your wallet</h2>
-          <p className="mb-6 text-center text-sm text-muted-foreground">
-            Add your email to create your Prophit wallet — then you can deposit with TON and start trading. You can skip and browse first.
-          </p>
+          {wizardStep === 'email' && (
+            <>
+              <h2 className="mb-1 text-center text-lg font-semibold">Set up your wallet</h2>
+              <p className="mb-5 text-center text-sm text-muted-foreground">
+                Enter your email and we'll create your Prophit wallet.
+              </p>
+              <input
+                type="email"
+                inputMode="email"
+                autoComplete="email"
+                value={email}
+                onChange={event => setEmail(event.target.value)}
+                placeholder="you@email.com"
+                className={inputClass}
+              />
+              {wizardError && <p className="mb-3 text-center text-sm text-destructive">{wizardError}</p>}
+              <button type="button" onClick={handleSendEmail} disabled={wizardBusy || !email.trim()} className={primaryButton}>
+                {wizardBusy ? 'Sending…' : 'Continue'}
+              </button>
+            </>
+          )}
 
-          <button
-            onClick={handleConnectWallet}
-            className="
-              mb-3 w-full rounded-xl bg-primary py-3.5 text-sm font-semibold text-primary-foreground transition-opacity
-              active:opacity-80
-            "
-          >
-            Continue with email
-          </button>
-          <button
-            onClick={handleSkipWallet}
-            className="w-full rounded-xl py-3 text-sm text-muted-foreground"
-          >
-            Skip for now
-          </button>
+          {wizardStep === 'otp' && (
+            <>
+              <h2 className="mb-1 text-center text-lg font-semibold">Enter the code</h2>
+              <p className="mb-5 text-center text-sm text-muted-foreground">
+                We sent a 6-digit code to
+                {' '}
+                {email}
+                .
+              </p>
+              <input
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                value={otpCode}
+                onChange={event => setOtpCode(event.target.value)}
+                placeholder="123456"
+                className={`${inputClass} text-center text-lg tracking-[0.4em]`}
+              />
+              {wizardError && <p className="mb-3 text-center text-sm text-destructive">{wizardError}</p>}
+              <button type="button" onClick={handleVerifyOtp} disabled={wizardBusy || !otpCode.trim()} className={primaryButton}>
+                {wizardBusy ? 'Verifying…' : 'Verify'}
+              </button>
+            </>
+          )}
+
+          {wizardStep === 'ton' && (
+            <>
+              <h2 className="mb-1 text-center text-lg font-semibold">Fund with TON</h2>
+              <p className="mb-5 text-center text-sm text-muted-foreground">
+                Your wallet is ready. Connect your TON wallet to deposit — or skip and do it later when you want to trade.
+              </p>
+              <button type="button" onClick={handleConnectTon} className={primaryButton}>
+                Connect TON wallet
+              </button>
+              <button
+                type="button"
+                onClick={handleCloseOnboarding}
+                className="w-full rounded-xl py-3 text-sm text-muted-foreground"
+              >
+                I'll do it later
+              </button>
+            </>
+          )}
         </div>
       </div>
     )

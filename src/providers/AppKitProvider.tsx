@@ -6,7 +6,7 @@ import type { Config } from 'wagmi'
 import type { AppKitValue, TonTxMessage } from '@/hooks/useAppKit'
 import type { User } from '@/types'
 import { EthereumWalletConnectors } from '@dynamic-labs/ethereum'
-import { DynamicContextProvider, useDynamicContext, useDynamicModals, useUserWallets } from '@dynamic-labs/sdk-react-core'
+import { DynamicContextProvider, useConnectWithOtp, useDynamicContext, useDynamicModals, useUserWallets } from '@dynamic-labs/sdk-react-core'
 import { DynamicWagmiConnector } from '@dynamic-labs/wagmi-connector'
 import { generateRandomString } from 'better-auth/crypto'
 import { useExtracted } from 'next-intl'
@@ -184,6 +184,7 @@ function AppKitBridge({
 }) {
   const { setShowAuthFlow, handleLogOut, primaryWallet, user: dynamicUser } = useDynamicContext()
   const { setShowLinkNewWalletModal } = useDynamicModals()
+  const { connectWithEmail, verifyOneTimePassword } = useConnectWithOtp()
   const userWallets = useUserWallets()
   const tonWallet = useMemo(() => findTonWallet(userWallets), [userWallets])
 
@@ -231,6 +232,12 @@ function AppKitBridge({
         messages,
       })
     },
+    sendEmailOtp: async (email: string) => {
+      await connectWithEmail(email)
+    },
+    verifyEmailOtp: async (code: string) => {
+      await verifyOneTimePassword(code)
+    },
   }), [
     hasAuthenticatedUser,
     regionBlockedMessage,
@@ -240,6 +247,8 @@ function AppKitBridge({
     dynamicUser?.email,
     tonWallet,
     setShowLinkNewWalletModal,
+    connectWithEmail,
+    verifyOneTimePassword,
   ])
 
   return <AppKitContext value={value}>{children}</AppKitContext>

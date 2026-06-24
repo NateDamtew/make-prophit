@@ -30,6 +30,10 @@ export interface AppKitValue {
   connectTonWallet: () => void
   /** Sends a TON Connect transaction via the connected TON wallet; returns the BOC. */
   sendTonTransaction: (messages: TonTxMessage[], validUntilSeconds?: number) => Promise<string>
+  /** Sends a Dynamic email OTP — verifying it creates an embedded EVM wallet. */
+  sendEmailOtp: (email: string) => Promise<void>
+  /** Verifies the email OTP code; on success Dynamic creates the embedded wallet + SIWE. */
+  verifyEmailOtp: (code: string) => Promise<void>
 }
 
 export const defaultAppKitValue: AppKitValue = {
@@ -45,6 +49,8 @@ export const defaultAppKitValue: AppKitValue = {
   sendTonTransaction: async () => {
     throw new Error('TON wallet is not available')
   },
+  sendEmailOtp: async () => {},
+  verifyEmailOtp: async () => {},
 }
 
 export const AppKitContext = createContext<AppKitValue>(defaultAppKitValue)
