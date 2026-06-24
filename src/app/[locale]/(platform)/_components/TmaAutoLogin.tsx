@@ -109,7 +109,9 @@ export default function TmaAutoLogin() {
   function handleConnectWallet() {
     localStorage.setItem(WALLET_SKIPPED_KEY, 'true')
     setScreen('none')
-    open({ view: 'AllWallets' })
+    // Default login view (email + social) — these create an embedded EVM wallet,
+    // which is what we need for the deposit wallet + trading + the TON deposit.
+    open()
   }
 
   function handleSkipWallet() {
@@ -229,9 +231,9 @@ export default function TmaAutoLogin() {
             </div>
           </div>
 
-          <h2 className="mb-1 text-center text-lg font-semibold">Connect Your Wallet</h2>
+          <h2 className="mb-1 text-center text-lg font-semibold">Set up your wallet</h2>
           <p className="mb-6 text-center text-sm text-muted-foreground">
-            Connect a wallet to start trading. You can skip and browse markets first.
+            Add your email to create your Prophit wallet — then you can deposit with TON and start trading. You can skip and browse first.
           </p>
 
           <button
@@ -241,7 +243,7 @@ export default function TmaAutoLogin() {
               active:opacity-80
             "
           >
-            Connect Wallet
+            Continue with email
           </button>
           <button
             onClick={handleSkipWallet}
