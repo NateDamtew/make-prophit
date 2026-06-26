@@ -546,8 +546,12 @@ function EnableTradingDialog({
 }) {
   const t = useExtracted()
   const site = useSiteIdentity()
-  const isLoading = step === 'enabling' || step === 'deploying'
-  const dismissible = Boolean(error)
+  const isDeploying = step === 'deploying'
+  const isLoading = step === 'enabling' || isDeploying
+  // While the wallet is deploying on-chain (which can be slow, or stall on the
+  // relayer), let the user close the modal and check back instead of trapping
+  // them behind a perpetual spinner with no exit.
+  const dismissible = Boolean(error) || isDeploying
 
   return (
     <OnboardingDialogShell
@@ -564,6 +568,11 @@ function EnableTradingDialog({
     >
       <div className="mt-6 space-y-4">
         {error && <InputError message={error} />}
+        {isDeploying && !error && (
+          <p className="text-center text-sm text-muted-foreground">
+            {t('Your trading wallet is still being set up on-chain. This can take a few minutes — close this and check back shortly.')}
+          </p>
+        )}
         <Button
           className="h-12 w-full text-base"
           disabled={isLoading || step === 'completed'}
@@ -604,7 +613,9 @@ function EnableTradingStatusDialog({
 }) {
   const t = useExtracted()
   const isSigning = step === 'enabling'
-  const dismissible = Boolean(error)
+  // Allow closing while the wallet is deploying on-chain (relayer can stall) so
+  // the user isn't trapped — same escape hatch as EnableTradingDialog.
+  const dismissible = Boolean(error) || step === 'deploying'
 
   const timeline = (
     <div className="mt-5 space-y-0">

@@ -579,7 +579,14 @@ function TradingOnboardingProviderContent({
       setActiveModal('email')
       return
     }
-    if ((modal === 'enable' || modal === 'enable-status') && !enableTradingError) {
+    // Keep the enable modals pinned while there's active work to do — UNLESS the
+    // deposit wallet is stuck deploying on-chain (relayer can stall for minutes).
+    // In that case honor the close so the user isn't trapped behind a spinner.
+    if (
+      (modal === 'enable' || modal === 'enable-status')
+      && !enableTradingError
+      && !status.isDepositWalletDeploying
+    ) {
       setDismissedModal(null)
       setActiveModal(modal)
       return
@@ -603,6 +610,7 @@ function TradingOnboardingProviderContent({
   }, [
     enableTradingError,
     openFundModalIfBalanceEmpty,
+    status.isDepositWalletDeploying,
     status.needsEmail,
     status.needsUsername,
     tokenApprovalError,
