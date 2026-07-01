@@ -1,21 +1,43 @@
 'use client'
 
+import type { User } from '@/types'
 import { useExtracted } from 'next-intl'
-import { useState, useTransition } from 'react'
+import { useCallback, useEffect, useState, useTransition } from 'react'
 import { toast } from 'sonner'
-import { deleteAccountAction } from '@/app/[locale]/(platform)/settings/_actions/delete-account'
+import { useAccount, useSignMessage, useSignTypedData } from 'wagmi'
+import { deleteAccountAction, deleteRelayerUserDataAction } from '@/app/[locale]/(platform)/settings/_actions/delete-account'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Drawer, DrawerContent, DrawerDescription, DrawerFooter, DrawerHeader, DrawerTitle } from '@/components/ui/drawer'
 import { Input } from '@/components/ui/input'
 import { InputError } from '@/components/ui/input-error'
+import { useAppKit } from '@/hooks/useAppKit'
 import { useIsMobile } from '@/hooks/useIsMobile'
+import { usePublicRuntimeConfig } from '@/hooks/usePublicRuntimeConfig'
+import { useSignaturePromptRunner } from '@/hooks/useSignaturePromptRunner'
+import {
+  clearCommunityAuth,
+  ensureCommunityToken,
+  parseCommunityError,
+} from '@/lib/community-auth'
+import {
+  deleteCommunityProfileData,
+  requestCommunityProfileDeleteNonce,
+} from '@/lib/community-profile'
 import { signOutAndRedirect } from '@/lib/logout'
+import {
+  buildTradingAuthMessage,
+  getTradingAuthDomain,
+  TRADING_AUTH_PRIMARY_TYPE,
+  TRADING_AUTH_TYPES,
+} from '@/lib/trading-auth/client'
+import { isUserRejectedRequestError, normalizeAddress } from '@/lib/wallet'
 
 function useDeleteAccountState() {
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [deleteConfirmation, setDeleteConfirmation] = useState('')
+  const [shouldResumeDeleteAfterWalletConnection, setShouldResumeDeleteAfterWalletConnection] = useState(false)
   const [isPending, startTransition] = useTransition()
   return {
     isDialogOpen,
@@ -24,14 +46,22 @@ function useDeleteAccountState() {
     setError,
     deleteConfirmation,
     setDeleteConfirmation,
+    shouldResumeDeleteAfterWalletConnection,
+    setShouldResumeDeleteAfterWalletConnection,
     isPending,
     startTransition,
   }
 }
 
-export default function SettingsDeleteAccountContent() {
+export default function SettingsDeleteAccountContent({ user }: { user: User }) {
   const t = useExtracted()
   const isMobile = useIsMobile()
+  const account = useAccount()
+  const { open: openAppKit, isReady: isAppKitReady } = useAppKit()
+  const { signMessageAsync } = useSignMessage()
+  const { signTypedDataAsync } = useSignTypedData()
+  const { runWithSignaturePrompt } = useSignaturePromptRunner()
+  const { communityUrl } = usePublicRuntimeConfig()
   const {
     isDialogOpen,
     setIsDialogOpen,
@@ -39,10 +69,17 @@ export default function SettingsDeleteAccountContent() {
     setError,
     deleteConfirmation,
     setDeleteConfirmation,
+    shouldResumeDeleteAfterWalletConnection,
+    setShouldResumeDeleteAfterWalletConnection,
     isPending,
     startTransition,
   } = useDeleteAccountState()
   const isDeleteConfirmed = deleteConfirmation === 'DELETE'
+  const normalizedConnectedAddress = normalizeAddress(account.address)
+  const normalizedUserAddress = normalizeAddress(user.address)
+  const linkedWalletAddress = normalizedConnectedAddress && normalizedUserAddress && normalizedConnectedAddress.toLowerCase() === normalizedUserAddress.toLowerCase()
+    ? normalizedConnectedAddress
+    : null
 
   function handleDialogOpenChange(nextOpen: boolean) {
     if (isPending) {
@@ -51,14 +88,104 @@ export default function SettingsDeleteAccountContent() {
     setIsDialogOpen(nextOpen)
     if (!nextOpen) {
       setDeleteConfirmation('')
+      setShouldResumeDeleteAfterWalletConnection(false)
     }
   }
 
-  function handleDeleteAccount() {
-    setError(null)
+  const requestLinkedWallet = useCallback(() => {
+    if (isAppKitReady) {
+      setShouldResumeDeleteAfterWalletConnection(true)
+      void openAppKit().catch(() => {
+        setShouldResumeDeleteAfterWalletConnection(false)
+        toast.error(t('Wallet connection is not ready. Please try again.'))
+      })
+    }
+    else {
+      toast.error(t('Wallet connection is not ready. Please try again.'))
+    }
+  }, [isAppKitReady, openAppKit, setShouldResumeDeleteAfterWalletConnection, t])
 
+  const deleteCommunityData = useCallback(async (address: `0x${string}`) => {
+    const token = await ensureCommunityToken({
+      address,
+      signMessageAsync: args => runWithSignaturePrompt(
+        () => signMessageAsync(args),
+        {
+          title: t('Delete account'),
+          description: t('Open your wallet and approve the signature to continue.'),
+        },
+      ),
+      communityApiUrl: communityUrl,
+      depositWalletAddress: user.deposit_wallet_address ?? null,
+      forceRefresh: true,
+    })
+
+    const noncePayload = await requestCommunityProfileDeleteNonce({
+      communityApiUrl: communityUrl,
+      token,
+    })
+    const signature = await runWithSignaturePrompt(
+      () => signMessageAsync({ message: noncePayload.message }),
+      {
+        title: t('Delete account'),
+        description: t('Open your wallet and approve the signature to continue.'),
+      },
+    )
+    const response = await deleteCommunityProfileData({
+      communityApiUrl: communityUrl,
+      token,
+      signature,
+    })
+
+    if (response.status === 401) {
+      clearCommunityAuth()
+    }
+    if (!response.ok) {
+      throw new Error(await parseCommunityError(response, t('Failed to delete account. Please try again.')))
+    }
+
+    clearCommunityAuth()
+  }, [communityUrl, runWithSignaturePrompt, signMessageAsync, t, user.deposit_wallet_address])
+
+  const deleteRelayerData = useCallback(async (address: `0x${string}`) => {
+    const timestamp = Math.floor(Date.now() / 1000).toString()
+    const nonce = Date.now().toString()
+    const message = buildTradingAuthMessage({
+      address,
+      timestamp,
+      nonce,
+    })
+    const signature = await runWithSignaturePrompt(
+      () => signTypedDataAsync({
+        domain: getTradingAuthDomain(),
+        types: TRADING_AUTH_TYPES,
+        primaryType: TRADING_AUTH_PRIMARY_TYPE,
+        message,
+      }),
+      {
+        title: t('Delete account'),
+        description: t('Open your wallet and approve the signature to continue.'),
+      },
+    )
+    const result = await deleteRelayerUserDataAction({
+      address,
+      signature,
+      timestamp,
+      nonce,
+    })
+
+    if (result.error) {
+      throw new Error(result.error)
+    }
+  }, [runWithSignaturePrompt, signTypedDataAsync, t])
+
+  const runDeleteAccount = useCallback((address: `0x${string}`) => {
+    setShouldResumeDeleteAfterWalletConnection(false)
     startTransition(async () => {
       try {
+        await deleteCommunityData(address)
+        await deleteRelayerData(address)
+
         const result = await deleteAccountAction()
 
         if (result.error) {
@@ -71,12 +198,32 @@ export default function SettingsDeleteAccountContent() {
           currentPathname: window.location.pathname,
         })
       }
-      catch {
-        const errorMessage = t('Failed to delete account. Please try again.')
+      catch (caughtError) {
+        const errorMessage = isUserRejectedRequestError(caughtError)
+          ? t('Signature was rejected in your wallet.')
+          : t('Failed to delete account. Please try again.')
         setError(errorMessage)
         toast.error(errorMessage)
       }
     })
+  }, [deleteCommunityData, deleteRelayerData, setError, setShouldResumeDeleteAfterWalletConnection, startTransition, t])
+
+  useEffect(function resumeDeleteAfterWalletConnection() {
+    const resumedWalletAddress = shouldResumeDeleteAfterWalletConnection && isDialogOpen && isDeleteConfirmed && !isPending
+      ? linkedWalletAddress
+      : null
+    void (resumedWalletAddress && runDeleteAccount(resumedWalletAddress))
+  }, [isDeleteConfirmed, isDialogOpen, isPending, linkedWalletAddress, runDeleteAccount, shouldResumeDeleteAfterWalletConnection])
+
+  function handleDeleteAccount() {
+    setError(null)
+
+    if (!linkedWalletAddress) {
+      requestLinkedWallet()
+      return
+    }
+
+    runDeleteAccount(linkedWalletAddress)
   }
 
   return (
@@ -98,6 +245,7 @@ export default function SettingsDeleteAccountContent() {
             className="bg-destructive hover:bg-destructive"
             onClick={() => {
               setDeleteConfirmation('')
+              setShouldResumeDeleteAfterWalletConnection(false)
               setIsDialogOpen(true)
             }}
             disabled={isPending}

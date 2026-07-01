@@ -3,6 +3,7 @@
 import type { MouseEvent } from 'react'
 import type { Address, Hex } from 'viem'
 import type { DirectResolutionOutcome } from '@/lib/direct-resolution'
+import type { FeeOverrides } from '@/lib/transaction-fees'
 import type { Event } from '@/types'
 import { useExtracted } from 'next-intl'
 import { useId, useMemo, useState } from 'react'
@@ -21,6 +22,7 @@ import {
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { useAppKitAccount } from '@/hooks/useAppKitAccount'
+import { usePublicRuntimeConfig } from '@/hooks/usePublicRuntimeConfig'
 import { useSignaturePromptRunner } from '@/hooks/useSignaturePromptRunner'
 import { OUTCOME_INDEX } from '@/lib/constants'
 import {
@@ -33,10 +35,14 @@ import {
   getDirectResolutionPrice,
   getDirectResolutionQuestionIds,
   isDirectResolutionMarket,
+  readDirectResolutionError,
   YES_OR_NO_IDENTIFIER,
 } from '@/lib/direct-resolution'
+import { DEFAULT_CHAIN_ID } from '@/lib/network'
 import { readCreatorProposerWhitelistStatus } from '@/lib/proposer-whitelist'
+import { sendWithEstimatedFeeRetry } from '@/lib/transaction-fees'
 import { cn } from '@/lib/utils'
+import { resolveViemRpcUrl } from '@/lib/viem-network'
 
 interface DirectResolutionButtonProps {
   market: Event['markets'][number]
@@ -54,6 +60,17 @@ interface AdapterQuestionData {
 }
 
 type DirectResolutionState = 'idle' | 'checking' | 'not_whitelisted' | 'missing_request' | 'pending' | 'submitted' | 'resolved' | 'error'
+
+const WALLET_TRANSACTION_GAS_BUFFER_NUMERATOR = 3n
+const WALLET_TRANSACTION_GAS_BUFFER_DENOMINATOR = 2n
+
+function addWalletTransactionGasBuffer(gas: bigint) {
+  return (
+    (gas * WALLET_TRANSACTION_GAS_BUFFER_NUMERATOR)
+    + WALLET_TRANSACTION_GAS_BUFFER_DENOMINATOR
+    - 1n
+  ) / WALLET_TRANSACTION_GAS_BUFFER_DENOMINATOR
+}
 
 function normalizeQuestionData(value: unknown): AdapterQuestionData | null {
   if (Array.isArray(value)) {
@@ -110,7 +127,9 @@ export default function DirectResolutionButton({
   const { address } = useAppKitAccount({ namespace: 'eip155' })
   const publicClient = usePublicClient()
   const { data: walletClient } = useWalletClient()
+  const { polygonRpcUrl } = usePublicRuntimeConfig()
   const { runWithSignaturePrompt } = useSignaturePromptRunner()
+  const viemRpcUrl = useMemo(() => resolveViemRpcUrl(polygonRpcUrl), [polygonRpcUrl])
   const rulesCheckboxId = useId()
   const sourceCheckboxId = useId()
   const [open, setOpen] = useState(false)
@@ -150,6 +169,30 @@ export default function DirectResolutionButton({
       : [...base, { value: 'unknown', label: t('Unknown') }]
   }, [market, t])
 
+  function getUserFacingResolutionError(error: unknown) {
+    const message = readDirectResolutionError(error)
+
+    if (message === 'Connected proposer wallet needs POL for gas before resolving this market.') {
+      return t({
+        id: 'directResolutionNeedsPolForGas',
+        message: 'Connected proposer wallet needs POL for gas before resolving this market.',
+      })
+    }
+    if (message === 'Transaction could not be sent because the gas fee is below the current network minimum.') {
+      return t('Transaction could not be sent because the gas fee is below the current network minimum.')
+    }
+    if (message === 'Wallet signature was rejected.') {
+      return t('Wallet signature was rejected.')
+    }
+    if (message === 'You are not allowed to propose a result for this market.') {
+      return t('You are not allowed to propose a result for this market.')
+    }
+    if (message === 'This market is already resolved.') {
+      return t('This market is already resolved.')
+    }
+    return t('Could not submit resolution.')
+  }
+
   async function checkWhitelist() {
     if (!connectedAddress) {
       setState('not_whitelisted')
@@ -167,6 +210,7 @@ export default function DirectResolutionButton({
     try {
       const status = await readCreatorProposerWhitelistStatus({
         creator: getAddress(event.creator) as Address,
+        rpcUrl: viemRpcUrl,
       })
       const isAllowed = status.proposers.some(proposer => proposer.toLowerCase() === connectedAddress.toLowerCase())
       if (!status.whitelistAddress || !isAllowed) {
@@ -244,37 +288,30 @@ export default function DirectResolutionButton({
       }
 
       const proposedPrice = getDirectResolutionPrice(selectedOutcome)
-      const hash = await runWithSignaturePrompt(() => market.neg_risk
-        ? walletClient.writeContract({
-            account: connectedAddress,
-            address: getDirectResolutionOracleAddress(),
-            abi: DIRECT_RESOLUTION_ORACLE_ABI,
-            functionName: 'proposeAndResolveNegRisk',
-            args: [
-              adapterAddress,
-              getDirectResolutionNegRiskOperatorAddress(),
-              adapterQuestionId,
-              negRiskOperatorQuestionId as Hex,
-              YES_OR_NO_IDENTIFIER,
-              question.requestTimestamp,
-              question.ancillaryData,
-              proposedPrice,
-            ],
-          })
-        : walletClient.writeContract({
-            account: connectedAddress,
-            address: getDirectResolutionOracleAddress(),
-            abi: DIRECT_RESOLUTION_ORACLE_ABI,
-            functionName: 'proposeAndResolve',
-            args: [
-              adapterAddress,
-              adapterQuestionId,
-              YES_OR_NO_IDENTIFIER,
-              question.requestTimestamp,
-              question.ancillaryData,
-              proposedPrice,
-            ],
-          }), {
+      const gas = await estimateResolutionGas({
+        adapterAddress,
+        adapterQuestionId,
+        ancillaryData: question.ancillaryData,
+        connectedAddress,
+        negRiskOperatorQuestionId,
+        proposedPrice,
+        requestTimestamp: question.requestTimestamp,
+      })
+      const hash = await runWithSignaturePrompt(() => sendWithEstimatedFeeRetry({
+        chainId: walletClient.chain?.id ?? DEFAULT_CHAIN_ID,
+        client: publicClient,
+        send: overrides => writeResolutionTransaction({
+          adapterAddress,
+          adapterQuestionId,
+          ancillaryData: question.ancillaryData,
+          connectedAddress,
+          gas,
+          negRiskOperatorQuestionId,
+          overrides,
+          proposedPrice,
+          requestTimestamp: question.requestTimestamp,
+        }),
+      }), {
         title: t('Submit final result'),
         description: t('Open your wallet and approve the final result transaction.'),
       })
@@ -288,10 +325,106 @@ export default function DirectResolutionButton({
     catch (error) {
       console.error('Direct resolution failed:', error)
       setState('error')
-      setMessage(error instanceof Error
-        ? error.message
-        : t('Could not submit resolution.'))
+      setMessage(getUserFacingResolutionError(error))
     }
+  }
+
+  async function estimateResolutionGas(input: {
+    adapterAddress: Address
+    adapterQuestionId: Hex
+    ancillaryData: Hex
+    connectedAddress: Address
+    negRiskOperatorQuestionId: Hex | null
+    proposedPrice: bigint
+    requestTimestamp: bigint
+  }) {
+    try {
+      const estimatedGas = market.neg_risk
+        ? await publicClient?.estimateContractGas({
+            account: input.connectedAddress,
+            address: getDirectResolutionOracleAddress(),
+            abi: DIRECT_RESOLUTION_ORACLE_ABI,
+            functionName: 'proposeAndResolveNegRisk',
+            args: [
+              input.adapterAddress,
+              getDirectResolutionNegRiskOperatorAddress(),
+              input.adapterQuestionId,
+              input.negRiskOperatorQuestionId as Hex,
+              YES_OR_NO_IDENTIFIER,
+              input.requestTimestamp,
+              input.ancillaryData,
+              input.proposedPrice,
+            ],
+          })
+        : await publicClient?.estimateContractGas({
+            account: input.connectedAddress,
+            address: getDirectResolutionOracleAddress(),
+            abi: DIRECT_RESOLUTION_ORACLE_ABI,
+            functionName: 'proposeAndResolve',
+            args: [
+              input.adapterAddress,
+              input.adapterQuestionId,
+              YES_OR_NO_IDENTIFIER,
+              input.requestTimestamp,
+              input.ancillaryData,
+              input.proposedPrice,
+            ],
+          })
+
+      return estimatedGas ? addWalletTransactionGasBuffer(estimatedGas) : undefined
+    }
+    catch (error) {
+      console.warn('Could not estimate direct resolution gas:', error)
+      return undefined
+    }
+  }
+
+  function writeResolutionTransaction(input: {
+    adapterAddress: Address
+    adapterQuestionId: Hex
+    ancillaryData: Hex
+    connectedAddress: Address
+    gas: bigint | undefined
+    negRiskOperatorQuestionId: Hex | null
+    overrides?: FeeOverrides
+    proposedPrice: bigint
+    requestTimestamp: bigint
+  }) {
+    return market.neg_risk
+      ? walletClient!.writeContract({
+          account: input.connectedAddress,
+          address: getDirectResolutionOracleAddress(),
+          abi: DIRECT_RESOLUTION_ORACLE_ABI,
+          functionName: 'proposeAndResolveNegRisk',
+          args: [
+            input.adapterAddress,
+            getDirectResolutionNegRiskOperatorAddress(),
+            input.adapterQuestionId,
+            input.negRiskOperatorQuestionId as Hex,
+            YES_OR_NO_IDENTIFIER,
+            input.requestTimestamp,
+            input.ancillaryData,
+            input.proposedPrice,
+          ],
+          gas: input.gas,
+          ...(input.overrides ?? {}),
+        })
+      : walletClient!.writeContract({
+          account: input.connectedAddress,
+          address: getDirectResolutionOracleAddress(),
+          abi: DIRECT_RESOLUTION_ORACLE_ABI,
+          functionName: 'proposeAndResolve',
+          args: [
+            input.adapterAddress,
+            input.adapterQuestionId,
+            YES_OR_NO_IDENTIFIER,
+            input.requestTimestamp,
+            input.ancillaryData,
+            input.proposedPrice,
+          ],
+          gas: input.gas,
+          ...(input.overrides ?? {}),
+        })
   }
 
   if (!isDirect) {

@@ -2,9 +2,10 @@ import type { PublicPosition } from '@/app/[locale]/(platform)/profile/_componen
 import type { SortDirection, SortOption } from '@/app/[locale]/(platform)/profile/_types/PublicPositionsTypes'
 import { useInfiniteQuery } from '@tanstack/react-query'
 import { isClientOnlySort, mapDataApiPosition, resolvePositionsSearchParams, resolvePositionsSortParams } from '@/app/[locale]/(platform)/profile/_utils/PublicPositionsUtils'
+import { usePublicRuntimeConfig } from '@/hooks/usePublicRuntimeConfig'
 
-const DATA_API_URL = process.env.DATA_URL!
 const UNRESOLVED_STATUS_TTL_MS = 60_000
+const POSITIONS_PAGE_SIZE = 500
 const conditionResolutionCache = new Map<string, { isResolved: boolean, checkedAt: number }>()
 
 function normalizeConditionId(value: string | undefined) {
@@ -82,6 +83,7 @@ function shouldIncludeInActivePositions(position: PublicPosition) {
 }
 
 async function fetchUserPositions({
+  dataUrl,
   pageParam,
   userAddress,
   status,
@@ -91,6 +93,7 @@ async function fetchUserPositions({
   searchQuery,
   signal,
 }: {
+  dataUrl: string
   pageParam: number
   userAddress: string
   status: 'active' | 'closed'
@@ -106,7 +109,7 @@ async function fetchUserPositions({
   const shouldApplySort = status === 'active' && !isClientOnlySort(sortBy)
   const params = new URLSearchParams({
     user: userAddress,
-    limit: '50',
+    limit: String(POSITIONS_PAGE_SIZE),
     offset: pageParam.toString(),
   })
 
@@ -142,7 +145,7 @@ async function fetchUserPositions({
   }
 
   async function requestPositions(requestParams: URLSearchParams) {
-    const response = await fetch(`${DATA_API_URL}${endpoint}?${requestParams.toString()}`, { signal })
+    const response = await fetch(`${dataUrl}${endpoint}?${requestParams.toString()}`, { signal })
 
     if (!response.ok) {
       const errorBody = await response.json().catch(() => null)
@@ -199,10 +202,13 @@ export function usePublicPositionsQuery({
   sortDirection: SortDirection
   searchQuery: string
 }) {
+  const { dataUrl } = usePublicRuntimeConfig()
+
   return useInfiniteQuery<PublicPosition[]>({
-    queryKey: ['user-positions', userAddress, status, minAmountFilter, searchQuery, sortBy, sortDirection],
+    queryKey: ['user-positions', dataUrl, userAddress, status, minAmountFilter, searchQuery, sortBy, sortDirection],
     queryFn: ({ pageParam = 0, signal }) =>
       fetchUserPositions({
+        dataUrl,
         pageParam: pageParam as unknown as number,
         userAddress,
         status,
@@ -213,7 +219,7 @@ export function usePublicPositionsQuery({
         signal,
       }),
     getNextPageParam: (lastPage, allPages) => {
-      if (lastPage.length === 50) {
+      if (lastPage.length === POSITIONS_PAGE_SIZE) {
         return allPages.reduce((total, page) => total + page.length, 0)
       }
       return undefined

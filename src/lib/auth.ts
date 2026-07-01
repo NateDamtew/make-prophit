@@ -1,6 +1,5 @@
 import { createHmac } from 'node:crypto'
 import { drizzleAdapter } from '@better-auth/drizzle-adapter'
-import { createHMAC } from '@better-auth/utils/hmac'
 import { betterAuth } from 'better-auth'
 import { APIError, createAuthEndpoint, createAuthMiddleware } from 'better-auth/api'
 import { deleteSessionCookie, setSessionCookie } from 'better-auth/cookies'
@@ -13,7 +12,7 @@ import { z } from 'zod'
 import { isAdminWallet } from '@/lib/admin'
 import { AffiliateRepository } from '@/lib/db/queries/affiliate'
 import { db } from '@/lib/drizzle'
-import { reownProjectId } from '@/lib/reown-project-id'
+import { resolvePublicRuntimeEnv } from '@/lib/public-runtime-config.shared'
 import resolveSiteUrl from '@/lib/site-url'
 import { getPublicAssetUrl } from '@/lib/storage'
 import { DEFAULT_THEME_SITE_NAME } from '@/lib/theme-site-identity'
@@ -28,8 +27,6 @@ function getChainIdFromMessage(message: string): string {
 }
 
 const TWO_FACTOR_COOKIE_NAME = 'two_factor'
-const TRUST_DEVICE_COOKIE_NAME = 'trust_device'
-const TRUST_DEVICE_COOKIE_MAX_AGE = 720 * 60 * 60
 const TWO_FACTOR_PENDING_MAX_AGE = 3 * 60
 const AFFILIATE_COOKIE_NAME = 'platform_affiliate'
 const AFFILIATE_COOKIE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000
@@ -104,37 +101,6 @@ function siweTwoFactorRedirect() {
             if (sessionToken) {
               const existingSession = await ctx.context.internalAdapter.findSession(sessionToken)
               if (existingSession?.session?.userId === data.user.id) {
-                return
-              }
-            }
-
-            const trustDeviceCookieAttrs = ctx.context.createAuthCookie(TRUST_DEVICE_COOKIE_NAME, {
-              maxAge: TRUST_DEVICE_COOKIE_MAX_AGE,
-            })
-            const trustDeviceCookie = await ctx.getSignedCookie(trustDeviceCookieAttrs.name, ctx.context.secret)
-
-            if (trustDeviceCookie) {
-              const [token, sessionToken] = trustDeviceCookie.split('!')
-              const expected = await createHMAC('SHA-256', 'base64urlnopad').sign(
-                ctx.context.secret,
-                `${data.user.id}!${sessionToken}`,
-              )
-
-              if (token === expected) {
-                const newTrustDeviceCookie = ctx.context.createAuthCookie(TRUST_DEVICE_COOKIE_NAME, {
-                  maxAge: TRUST_DEVICE_COOKIE_MAX_AGE,
-                })
-                const newToken = await createHMAC('SHA-256', 'base64urlnopad').sign(
-                  ctx.context.secret,
-                  `${data.user.id}!${data.session.token}`,
-                )
-
-                await ctx.setSignedCookie(
-                  newTrustDeviceCookie.name,
-                  `${newToken}!${data.session.token}`,
-                  ctx.context.secret,
-                  trustDeviceCookieAttrs.attributes,
-                )
                 return
               }
             }
@@ -487,9 +453,10 @@ export const auth = betterAuth({
         catch {
           // Fallback: RPC-based EIP-1271 check for smart contract wallets
           const chainId = getChainIdFromMessage(message)
+          const { reownAppKitProjectId } = resolvePublicRuntimeEnv(process.env)
           const publicClient = createPublicClient({
             transport: http(
-              `https://rpc.walletconnect.org/v1/?chainId=${chainId}&projectId=${reownProjectId}`,
+              `https://rpc.walletconnect.org/v1/?chainId=${chainId}&projectId=${reownAppKitProjectId}`,
             ),
           })
           return await publicClient.verifyMessage({

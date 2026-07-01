@@ -109,6 +109,10 @@ interface CurrencyFormatOptions {
   includeSymbol?: boolean
 }
 
+interface DollarValueFormatOptions extends CurrencyFormatOptions {
+  fallback?: string
+}
+
 export function formatCurrency(
   value: number | null | undefined,
   options: CurrencyFormatOptions = {},
@@ -129,6 +133,37 @@ export function formatCurrency(
     .map(part => part.value)
     .join('')
     .trim()
+}
+
+export function formatDollarValueLabel(
+  value: number | string | null | undefined,
+  options: DollarValueFormatOptions = {},
+) {
+  const fallback = options.fallback ?? '—'
+  if (value === null || value === undefined) {
+    return fallback
+  }
+
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) {
+    return fallback
+  }
+
+  if (Math.abs(numeric) < 1) {
+    const cents = toCents(Math.abs(numeric))
+    if (cents === null) {
+      return fallback
+    }
+    const prefix = numeric < 0 && cents > 0 ? '-' : ''
+    return `${prefix}${priceFormatter.format(cents)}¢`
+  }
+
+  const digits = options.maximumFractionDigits ?? options.minimumFractionDigits ?? 2
+  return formatCurrency(numeric, {
+    minimumFractionDigits: options.minimumFractionDigits ?? digits,
+    maximumFractionDigits: digits,
+    includeSymbol: options.includeSymbol,
+  })
 }
 
 interface PercentFormatOptions {
@@ -298,6 +333,24 @@ export function formatCentsLabel(
   return `${priceFormatter.format(cents)}¢`
 }
 
+export function formatCentsValueLabel(
+  value: number | string | null | undefined,
+  options: CentsFormatOptions = {},
+) {
+  const fallback = options.fallback ?? '—'
+  if (value === null || value === undefined) {
+    return fallback
+  }
+
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) {
+    return fallback
+  }
+
+  const cents = Math.max(0, Number(numeric.toFixed(1)))
+  return `${priceFormatter.format(cents)}¢`
+}
+
 interface SharePriceFormatOptions extends CentsFormatOptions {
   currencyDigits?: number
 }
@@ -317,12 +370,14 @@ export function formatSharePriceLabel(
     return fallback
   }
 
-  if (numeric < 1) {
-    return formatCentsLabel(toCents(numeric), { fallback })
+  const normalizedPrice = Math.max(0, numeric)
+
+  if (normalizedPrice < 1) {
+    return formatDollarValueLabel(normalizedPrice, { fallback })
   }
 
   const digits = options.currencyDigits ?? 2
-  return formatCurrency(numeric, {
+  return formatCurrency(normalizedPrice, {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
   })

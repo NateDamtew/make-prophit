@@ -2,12 +2,11 @@ import type { InfiniteData, QueryClient } from '@tanstack/react-query'
 import type { SharesByCondition } from '@/app/[locale]/(platform)/event/[slug]/_hooks/useUserShareBalances'
 import type { MergeableMarket } from '@/app/[locale]/(platform)/profile/_components/MergePositionsDialog'
 import type { PublicPosition } from '@/app/[locale]/(platform)/profile/_components/PublicPositionItem'
-import type { ConditionShares } from '@/app/[locale]/(platform)/profile/_types/PublicPositionsTypes'
 import type { User } from '@/types'
 import { useCallback, useState } from 'react'
 import { toast } from 'sonner'
 import { useSignTypedData } from 'wagmi'
-import { fetchLockedSharesByCondition } from '@/app/[locale]/(platform)/profile/_utils/PublicPositionsUtils'
+import { fetchLockedSharesByCondition, fetchOnchainSharesByCondition } from '@/app/[locale]/(platform)/profile/_utils/PublicPositionsUtils'
 import { DEPOSIT_WALLET_BALANCE_QUERY_KEY } from '@/hooks/useBalance'
 import { useSignaturePromptRunner } from '@/hooks/useSignaturePromptRunner'
 import { DEFAULT_CONDITION_PARTITION } from '@/lib/constants'
@@ -22,23 +21,23 @@ import { useNotifications } from '@/stores/useNotifications'
 
 interface UseMergePositionsActionOptions {
   mergeableMarkets: MergeableMarket[]
-  positionsByCondition: Record<string, ConditionShares>
   hasMergeableMarkets: boolean
   user: User | null
   ensureTradingReady: () => boolean
   openTradeRequirements: (options?: { forceTradingAuth?: boolean }) => void
   queryClient: QueryClient
+  viemRpcUrl: string
   onSuccess?: () => void
 }
 
 export function useMergePositionsAction({
   mergeableMarkets,
-  positionsByCondition,
   hasMergeableMarkets,
   user,
   ensureTradingReady,
   openTradeRequirements,
   queryClient,
+  viemRpcUrl,
   onSuccess,
 }: UseMergePositionsActionOptions) {
   const [isMergeProcessing, setIsMergeProcessing] = useState(false)
@@ -68,7 +67,10 @@ export function useMergePositionsAction({
     try {
       setIsMergeProcessing(true)
 
-      const availabilityByCondition = await fetchLockedSharesByCondition(mergeableMarkets)
+      const [availabilityByCondition, onchainSharesByCondition] = await Promise.all([
+        fetchLockedSharesByCondition(mergeableMarkets),
+        fetchOnchainSharesByCondition(mergeableMarkets, user.deposit_wallet_address as `0x${string}`, viemRpcUrl),
+      ])
 
       const preparedMerges = mergeableMarkets
         .filter(market =>
@@ -79,8 +81,8 @@ export function useMergePositionsAction({
         )
         .map((market) => {
           const conditionId = market.conditionId as string
-          const positionShares = positionsByCondition[conditionId]
-          if (!positionShares) {
+          const onchainShares = onchainSharesByCondition[conditionId]
+          if (!onchainShares) {
             return null
           }
 
@@ -88,11 +90,11 @@ export function useMergePositionsAction({
           const locked = availabilityByCondition[conditionId]?.lockedShares ?? {}
           const availableFirst = Math.max(
             0,
-            (positionShares[firstOutcome] ?? 0) - (locked[firstOutcome] ?? 0),
+            (onchainShares[firstOutcome] ?? 0) - (locked[firstOutcome] ?? 0),
           )
           const availableSecond = Math.max(
             0,
-            (positionShares[secondOutcome] ?? 0) - (locked[secondOutcome] ?? 0),
+            (onchainShares[secondOutcome] ?? 0) - (locked[secondOutcome] ?? 0),
           )
           const safeMergeAmount = Math.min(market.mergeAmount, availableFirst, availableSecond)
           const normalizedMergeAmount = Math.floor(safeMergeAmount * 100 + 1e-8) / 100
@@ -230,12 +232,12 @@ export function useMergePositionsAction({
     mergeableMarkets,
     onSuccess,
     openTradeRequirements,
-    positionsByCondition,
     queryClient,
     runWithSignaturePrompt,
     signTypedDataAsync,
     addLocalOrderFillNotification,
     user,
+    viemRpcUrl,
   ])
 
   return {

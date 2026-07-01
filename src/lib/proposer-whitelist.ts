@@ -5,7 +5,8 @@ import {
   CREATOR_PROPOSER_WHITELIST_ABI,
   CREATOR_PROPOSER_WHITELIST_REGISTRY_ABI,
 } from '@/lib/proposer-whitelist-contracts'
-import { defaultViemNetwork, defaultViemRpcUrl } from '@/lib/viem-network'
+import { isGasFeeTooLowError } from '@/lib/transaction-fees'
+import { defaultViemNetwork, resolveRuntimeViemRpcUrl } from '@/lib/viem-network'
 
 export interface ProposerWhitelistCreatorOption {
   address: Address
@@ -32,14 +33,6 @@ export interface ProposerWhitelistMutationResponse {
   status: ProposerWhitelistStatus
   txHashes: Hash[]
 }
-
-const GAS_FEE_TOO_LOW_PATTERNS = [
-  'gas price below minimum',
-  'transaction underpriced',
-  'replacement transaction underpriced',
-  'max fee per gas less than block base fee',
-  'fee cap less than block base fee',
-]
 
 function getClientCreatorProposerWhitelistRegistryAddress() {
   return CREATOR_PROPOSER_WHITELIST_REGISTRY_ADDRESS
@@ -141,11 +134,15 @@ export function readProposerWhitelistError(error: unknown) {
     return 'Creator wallet needs POL for gas before updating proposer whitelist.'
   }
 
-  if (
-    GAS_FEE_TOO_LOW_PATTERNS.some(pattern => lower.includes(pattern))
-    || (lower.includes('gas tip cap') && lower.includes('minimum needed'))
-  ) {
+  if (isGasFeeTooLowError(message)) {
     return 'Transaction could not be sent because the gas fee is below the current network minimum.'
+  }
+
+  if (
+    lower.includes('code storage out of gas')
+    || (lower.includes('contract creation') && lower.includes('out of gas'))
+  ) {
+    return 'Whitelist deployment ran out of gas. Please try again.'
   }
 
   if (lower.includes('user rejected') || lower.includes('user denied') || lower.includes('rejected the request')) {
@@ -183,11 +180,13 @@ export async function readCreatorProposerWhitelistStatus(input: {
   creator: Address
   registryAddress?: Address
   hasServerSigner?: boolean
+  rpcUrl?: string
 }): Promise<ProposerWhitelistStatus> {
   const registryAddress = input.registryAddress ?? getClientCreatorProposerWhitelistRegistryAddress()
+  const rpcUrl = input.rpcUrl ?? resolveRuntimeViemRpcUrl()
   const client = createPublicClient({
     chain: defaultViemNetwork,
-    transport: http(defaultViemRpcUrl),
+    transport: http(rpcUrl),
   })
 
   const whitelist = await client.readContract({

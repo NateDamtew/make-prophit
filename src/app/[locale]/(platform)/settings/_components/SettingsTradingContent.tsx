@@ -3,20 +3,20 @@
 import type { MarketOrderType, User } from '@/types'
 import { useExtracted } from 'next-intl'
 import Form from 'next/form'
-import { startTransition, useEffect, useOptimistic, useRef, useState } from 'react'
+import { startTransition, useEffect, useOptimistic, useState } from 'react'
 import { toast } from 'sonner'
 import { useTradingOnboarding } from '@/app/[locale]/(platform)/_providers/TradingOnboardingContext'
 import { updateTradingSettingsAction } from '@/app/[locale]/(platform)/settings/_actions/update-trading-settings'
 import { Button } from '@/components/ui/button'
 import { InputError } from '@/components/ui/input-error'
+import { Switch } from '@/components/ui/switch'
 import { CLOB_ORDER_TYPE } from '@/lib/constants'
 import { cn } from '@/lib/utils'
 import { mergeSessionUserState, useUser } from '@/stores/useUser'
 
 function useTradingFormState() {
   const [error, setError] = useState<string | null>(null)
-  const formRef = useRef<HTMLFormElement>(null)
-  return { error, setError, formRef }
+  return { error, setError }
 }
 
 export default function SettingsTradingContent({ user }: { user: User }) {
@@ -24,8 +24,9 @@ export default function SettingsTradingContent({ user }: { user: User }) {
   const sessionUser = useUser()
   const currentUser = sessionUser ?? user
   const { promptAutoRedeem } = useTradingOnboarding()
-  const { error, setError, formRef } = useTradingFormState()
+  const { error, setError } = useTradingFormState()
   const initialOrderType = (user.settings?.trading?.market_order_type as MarketOrderType) ?? CLOB_ORDER_TYPE.FAK
+  const initialShowSlippageWarning = Boolean(user.settings?.trading?.show_slippage_warning)
   const autoRedeemEnabled = Boolean(currentUser.settings?.tradingAuth?.autoRedeem?.enabled)
   const canPromptAutoRedeem = Boolean(sessionUser) && !autoRedeemEnabled
   const orderTypeOptions = [
@@ -51,8 +52,15 @@ export default function SettingsTradingContent({ user }: { user: User }) {
     initialOrderType,
     (_, nextValue) => nextValue,
   )
+  const [optimisticShowSlippageWarning, setOptimisticShowSlippageWarning] = useOptimistic<boolean, boolean>(
+    initialShowSlippageWarning,
+    (_, nextValue) => nextValue,
+  )
 
-  function updateGlobalUser(value: MarketOrderType) {
+  function updateGlobalUser(nextSettings: {
+    marketOrderType?: MarketOrderType
+    showSlippageWarning?: boolean
+  }) {
     useUser.setState((prev) => {
       if (!prev) {
         return prev
@@ -64,7 +72,12 @@ export default function SettingsTradingContent({ user }: { user: User }) {
           ...prev.settings,
           trading: {
             ...prev.settings?.trading,
-            market_order_type: value,
+            ...(nextSettings.marketOrderType === undefined
+              ? {}
+              : { market_order_type: nextSettings.marketOrderType }),
+            ...(nextSettings.showSlippageWarning === undefined
+              ? {}
+              : { show_slippage_warning: nextSettings.showSlippageWarning }),
           },
         },
       }
@@ -83,7 +96,7 @@ export default function SettingsTradingContent({ user }: { user: User }) {
     })
 
     queueMicrotask(async () => {
-      const formData = new FormData(formRef.current ?? undefined)
+      const formData = new FormData()
       formData.set('market_order_type', value)
 
       const { error } = await updateTradingSettingsAction(formData)
@@ -97,7 +110,42 @@ export default function SettingsTradingContent({ user }: { user: User }) {
       else {
         setError(error)
         toast.success(t('Trading settings updated.'))
-        updateGlobalUser(value)
+        updateGlobalUser({
+          marketOrderType: value,
+        })
+      }
+    })
+  }
+
+  function handleSlippageWarningChange(value: boolean) {
+    if (value === optimisticShowSlippageWarning) {
+      return
+    }
+
+    const previousValue = optimisticShowSlippageWarning
+
+    startTransition(() => {
+      setOptimisticShowSlippageWarning(value)
+    })
+
+    queueMicrotask(async () => {
+      const formData = new FormData()
+      formData.set('show_slippage_warning', String(value))
+
+      const { error } = await updateTradingSettingsAction(formData)
+
+      if (error) {
+        startTransition(() => {
+          setOptimisticShowSlippageWarning(previousValue)
+        })
+        setError(error)
+      }
+      else {
+        setError(error)
+        toast.success(t('Trading settings updated.'))
+        updateGlobalUser({
+          showSlippageWarning: value,
+        })
       }
     })
   }
@@ -106,9 +154,7 @@ export default function SettingsTradingContent({ user }: { user: User }) {
     <div className="grid gap-8">
       {error && <InputError message={error} />}
 
-      <Form ref={formRef} action={() => {}} className="grid gap-6">
-        <input type="hidden" name="market_order_type" value={optimisticOrderType} />
-
+      <Form action={() => {}} className="grid gap-6">
         <div className="grid gap-3">
           {orderTypeOptions.map((option) => {
             const isSelected = optimisticOrderType === option.value
@@ -182,6 +228,32 @@ export default function SettingsTradingContent({ user }: { user: User }) {
           >
             {autoRedeemEnabled ? t('Enabled') : t('Enable')}
           </Button>
+        </div>
+      </section>
+
+      <section className="grid gap-3">
+        <h2 className="text-xl font-semibold tracking-tight">{t('Display')}</h2>
+
+        <div className={cn(`
+          flex flex-col gap-4 rounded-md border border-border p-4
+          sm:flex-row sm:items-center sm:justify-between
+        `)}
+        >
+          <div className="grid gap-1.5">
+            <label htmlFor="show-slippage-warning" className="text-sm font-medium">
+              {t('Show Slippage Warning')}
+            </label>
+            <p className="text-sm text-muted-foreground">
+              {t('Show a warning when a market order may execute more than 10% away from the best available price.')}
+            </p>
+          </div>
+
+          <Switch
+            id="show-slippage-warning"
+            checked={optimisticShowSlippageWarning}
+            onCheckedChange={handleSlippageWarningChange}
+            className="self-start sm:self-center"
+          />
         </div>
       </section>
     </div>

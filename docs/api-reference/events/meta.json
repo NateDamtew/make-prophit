@@ -5,6 +5,9 @@
   "pages": [
     "list-events",
     "get-event-by-id",
-    "get-event-by-slug"
+    "get-event-by-slug",
+    "list-event-creators",
+    "get-event-creator",
+    "get-event-comment-count"
   ]
 }

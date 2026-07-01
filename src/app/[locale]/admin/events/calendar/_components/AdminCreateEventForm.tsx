@@ -93,6 +93,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useAppKitAccount } from '@/hooks/useAppKitAccount'
 import { useAppKitNetworkCore, useAppKitProvider } from '@/hooks/useAppKitCompat'
+import { usePublicRuntimeConfig } from '@/hooks/usePublicRuntimeConfig'
 import { useSignaturePromptRunner } from '@/hooks/useSignaturePromptRunner'
 import { useRouter } from '@/i18n/navigation'
 import {
@@ -126,7 +127,7 @@ import {
 } from '@/lib/proposer-whitelist'
 import { sendWithEstimatedFeeRetry } from '@/lib/transaction-fees'
 import { cn } from '@/lib/utils'
-import { defaultViemNetwork, defaultViemRpcUrl, resolveViemNetworkByChainId } from '@/lib/viem-network'
+import { defaultViemNetwork, resolveViemNetworkByChainId, resolveViemRpcUrl } from '@/lib/viem-network'
 import { useUser } from '@/stores/useUser'
 import {
   APPROVE_GAS_UNITS_ESTIMATE,
@@ -228,15 +229,29 @@ function buildSignatureExecutionTxs(
   })
 }
 
+function buildMetadataUpdatePreparedPlan(
+  pending: PendingRequestItem,
+): PrepareResponse | null {
+  if (!pending.prepared || pending.status !== 'metadata_update_pending' || !pending.metadataUpdateTxPlan?.length) {
+    return pending.prepared
+  }
+
+  return {
+    ...pending.prepared,
+    txPlan: pending.metadataUpdateTxPlan,
+  }
+}
+
 function buildLoadedSignaturePlan(pending: PendingRequestItem): LoadedSignaturePlan | null {
-  if (!pending.prepared) {
+  const prepared = buildMetadataUpdatePreparedPlan(pending)
+  if (!prepared) {
     return null
   }
 
   return {
     pending,
-    prepared: pending.prepared,
-    signatureTxs: buildSignatureExecutionTxs(pending.prepared, pending.txs),
+    prepared,
+    signatureTxs: buildSignatureExecutionTxs(prepared, pending.txs),
   }
 }
 
@@ -366,6 +381,8 @@ function useAdminCreateEventForm({
   const { data: walletClient } = useWalletClient()
   const publicClient = usePublicClient()
   const { runWithSignaturePrompt } = useSignaturePromptRunner()
+  const { createMarketUrl, polygonRpcUrl } = usePublicRuntimeConfig()
+  const viemRpcUrl = useMemo(() => resolveViemRpcUrl(polygonRpcUrl), [polygonRpcUrl])
   const t = useExtracted()
   const user = useUser()
   const normalizedInitialTitle = initialTitle.trim()
@@ -3022,7 +3039,7 @@ function useAdminCreateEventForm({
     setFundingCheckError('')
 
     try {
-      const response = await fetch(`${process.env.CREATE_MARKET_URL}/market-config`, {
+      const response = await fetch(`${createMarketUrl}/market-config`, {
         method: 'GET',
         cache: 'no-store',
       })
@@ -3089,7 +3106,7 @@ function useAdminCreateEventForm({
 
       const client = createPublicClient({
         chain: defaultViemNetwork,
-        transport: http(defaultViemRpcUrl),
+        transport: http(viemRpcUrl),
       })
 
       const balanceRaw = await client.readContract({
@@ -3113,7 +3130,7 @@ function useAdminCreateEventForm({
       setFundingCheckError('Could not validate USDC balance right now.')
       return false
     }
-  }, [eoaAddress, form.marketMode, marketCount])
+  }, [createMarketUrl, eoaAddress, form.marketMode, marketCount, viemRpcUrl])
 
   const runNativeGasCheck = useCallback(async () => {
     setNativeGasCheckState('checking')
@@ -3129,7 +3146,7 @@ function useAdminCreateEventForm({
 
       const client = publicClient ?? createPublicClient({
         chain: defaultViemNetwork,
-        transport: http(defaultViemRpcUrl),
+        transport: http(viemRpcUrl),
       })
 
       const [balanceRaw, feeEstimate] = await Promise.all([
@@ -3167,7 +3184,7 @@ function useAdminCreateEventForm({
       setNativeGasCheckError('Could not validate POL gas balance right now.')
       return false
     }
-  }, [eoaAddress, marketCount, publicClient])
+  }, [eoaAddress, marketCount, publicClient, viemRpcUrl])
 
   const runAllPreSignChecks = useCallback(async (options?: { force?: boolean }) => {
     const shouldForce = Boolean(options?.force)
@@ -3245,7 +3262,7 @@ function useAdminCreateEventForm({
       query.set('requestId', options.requestId)
     }
 
-    const response = await fetch(`${process.env.CREATE_MARKET_URL}/pending?${query.toString()}`, {
+    const response = await fetch(`${createMarketUrl}/pending?${query.toString()}`, {
       method: 'GET',
       cache: 'no-store',
     })
@@ -3257,7 +3274,7 @@ function useAdminCreateEventForm({
     }
 
     return payload.request
-  }, [eoaAddress])
+  }, [createMarketUrl, eoaAddress])
 
   const pollPendingPreparation = useCallback(async (input: {
     requestId: string
@@ -3320,12 +3337,19 @@ function useAdminCreateEventForm({
         setPendingWorkflowRequestId(pending.requestId)
         setPendingWorkflowStatus(pending.status)
 
-        if (pending.prepared) {
+        const loadedSignaturePlan = buildLoadedSignaturePlan(pending)
+        if (loadedSignaturePlan) {
           applyPreparedSignatureState({
-            prepared: pending.prepared,
+            prepared: loadedSignaturePlan.prepared,
             confirmedTxs: pending.txs,
             errorMessage: pending.errorMessage,
           })
+        }
+
+        if (pending.status === 'metadata_update_pending' && loadedSignaturePlan) {
+          setPendingWorkflowRequestId(null)
+          setPendingWorkflowStatus(null)
+          return pending
         }
 
         if (pending.status === 'finalized') {
@@ -3387,21 +3411,22 @@ function useAdminCreateEventForm({
       setPendingWorkflowRequestId(pending.requestId)
       setPendingWorkflowStatus(pending.status)
 
-      if (pending.prepared) {
-        if (!isAddress(pending.prepared.creator) || getAddress(pending.prepared.creator) !== eoaAddress) {
+      const loadedSignaturePlan = buildLoadedSignaturePlan(pending)
+      if (loadedSignaturePlan) {
+        if (!isAddress(loadedSignaturePlan.prepared.creator) || getAddress(loadedSignaturePlan.prepared.creator) !== eoaAddress) {
           setPendingWorkflowRequestId(null)
           setPendingWorkflowStatus(null)
           return null
         }
 
         const loadedSignatureTxs = applyPreparedSignatureState({
-          prepared: pending.prepared,
+          prepared: loadedSignaturePlan.prepared,
           confirmedTxs: pending.txs,
           errorMessage: pending.errorMessage,
         })
         loadedPlan = {
           pending,
-          prepared: pending.prepared,
+          prepared: loadedSignaturePlan.prepared,
           signatureTxs: loadedSignatureTxs,
         }
         if (pending.status === 'finalized') {
@@ -3468,7 +3493,7 @@ function useAdminCreateEventForm({
       return
     }
 
-    const response = await fetch(`${process.env.CREATE_MARKET_URL}/tx-confirm`, {
+    const response = await fetch(`${createMarketUrl}/tx-confirm`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -3485,7 +3510,7 @@ function useAdminCreateEventForm({
     if (!response.ok || apiError) {
       throw new Error(apiError || `Could not persist confirmed tx hashes (${response.status})`)
     }
-  }, [eoaAddress])
+  }, [createMarketUrl, eoaAddress])
 
   const getConnectedWalletConnection = useCallback(() => {
     if (!eoaAddress) {
@@ -3588,7 +3613,7 @@ function useAdminCreateEventForm({
       currentPayloadHash = payloadHash
       currentPayloadChainId = payload.chainId
 
-      const authResponse = await fetch(`${process.env.CREATE_MARKET_URL}/prepare-auth`, {
+      const authResponse = await fetch(`${createMarketUrl}/prepare-auth`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -3694,7 +3719,7 @@ function useAdminCreateEventForm({
         }
       }
 
-      const response = await fetch(`${process.env.CREATE_MARKET_URL}/prepare`, {
+      const response = await fetch(`${createMarketUrl}/prepare`, {
         method: 'POST',
         body,
       })
@@ -3756,6 +3781,7 @@ function useAdminCreateEventForm({
     }
   }, [
     buildPreparePayload,
+    createMarketUrl,
     eoaAddress,
     eventImageFile,
     form.options,
@@ -3797,7 +3823,7 @@ function useAdminCreateEventForm({
 
     try {
       for (let attempt = 1; attempt <= FINALIZE_MAX_ATTEMPTS; attempt += 1) {
-        const response = await fetch(`${process.env.CREATE_MARKET_URL}/finalize`, {
+        const response = await fetch(`${createMarketUrl}/finalize`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -3836,6 +3862,26 @@ function useAdminCreateEventForm({
             return
           }
 
+          if (responsePayload.status === 'metadata_update_pending') {
+            setPendingWorkflowRequestId(null)
+            setPendingWorkflowStatus(null)
+            if (responsePayload.metadataUpdateTxPlan?.length) {
+              applyPreparedSignatureState({
+                prepared: {
+                  ...activePreparedSignaturePlan,
+                  txPlan: responsePayload.metadataUpdateTxPlan,
+                },
+                confirmedTxs: completedTxs,
+              })
+              return
+            }
+            await pollPendingFinalization({
+              requestId: responsePayload.requestId,
+              chainId: activePreparedSignaturePlan.chainId,
+            })
+            return
+          }
+
           throw new Error(`Unexpected finalize status: ${responsePayload.status}`)
         }
 
@@ -3851,7 +3897,7 @@ function useAdminCreateEventForm({
     finally {
       setIsFinalizingSignatureFlow(false)
     }
-  }, [eoaAddress, pollPendingFinalization, preparedSignaturePlan, signatureTxs])
+  }, [applyPreparedSignatureState, createMarketUrl, eoaAddress, pollPendingFinalization, preparedSignaturePlan, signatureTxs])
 
   const executeSignatureFlow = useCallback(async (input?: {
     prepared: PrepareResponse
@@ -3942,6 +3988,12 @@ function useAdminCreateEventForm({
             return {
               title: t('Initialize market'),
               description: t('Open your wallet to create the market onchain.'),
+            }
+          }
+          if (tx.id.startsWith('update-metadata-')) {
+            return {
+              title: t('Start market'),
+              description: t('Open your wallet to activate trading for this market.'),
             }
           }
 

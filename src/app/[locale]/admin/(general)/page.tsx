@@ -1,9 +1,8 @@
-'use cache'
-
 import type { AdminThemeSiteSettingsInitialState } from '@/app/[locale]/admin/theme/_types/theme-form-state'
 import { getExtracted, setRequestLocale } from 'next-intl/server'
+import { connection } from 'next/server'
+import { Suspense } from 'react'
 import AdminGeneralSettingsForm from '@/app/[locale]/admin/(general)/_components/AdminGeneralSettingsForm'
-import { PageHeader } from '@/components/admin-ui/PageHeader'
 import { parseMarketContextSettings } from '@/lib/ai/market-context-config'
 import { fetchOpenRouterModels } from '@/lib/ai/openrouter'
 import { SettingsRepository } from '@/lib/db/queries/settings'
@@ -18,9 +17,12 @@ interface AdminGeneralSettingsPageProps {
   params: Promise<{ locale: string }>
 }
 
-export default async function AdminGeneralSettingsPage({ params }: AdminGeneralSettingsPageProps) {
-  const { locale } = await params
-  setRequestLocale(locale)
+function AdminGeneralSettingsFallback() {
+  return <div className="min-h-96 rounded-lg border bg-background" />
+}
+
+async function AdminGeneralSettingsContent() {
+  await connection()
   const t = await getExtracted()
 
   const { data: allSettings } = await SettingsRepository.getSettings()
@@ -72,26 +74,40 @@ export default async function AdminGeneralSettingsPage({ params }: AdminGeneralS
   }
 
   return (
-    <section className="grid gap-6">
-      <PageHeader
-        title={t('General Settings')}
-        description={t('Configure company identity, analytics, support links, and AI provider settings.')}
-      />
+    <AdminGeneralSettingsForm
+      initialThemeSiteSettings={initialThemeSiteSettingsWithImage}
+      initialGlobalAnnouncement={initialGlobalAnnouncement}
+      initialBlockedCountries={initialBlockedCountries}
+      initialTermsOfServicePdfPath={initialTermsOfServicePdfPath}
+      initialTermsOfServicePdfUrl={initialTermsOfServicePdfUrl}
+      openRouterSettings={{
+        defaultModel: defaultOpenRouterModel,
+        isApiKeyConfigured: isOpenRouterApiKeyConfigured,
+        isModelSelectEnabled: isOpenRouterModelSelectEnabled,
+        modelOptions: openRouterModelOptions,
+        modelsError: openRouterModelsError,
+      }}
+    />
+  )
+}
 
-      <AdminGeneralSettingsForm
-        initialThemeSiteSettings={initialThemeSiteSettingsWithImage}
-        initialGlobalAnnouncement={initialGlobalAnnouncement}
-        initialBlockedCountries={initialBlockedCountries}
-        initialTermsOfServicePdfPath={initialTermsOfServicePdfPath}
-        initialTermsOfServicePdfUrl={initialTermsOfServicePdfUrl}
-        openRouterSettings={{
-          defaultModel: defaultOpenRouterModel,
-          isApiKeyConfigured: isOpenRouterApiKeyConfigured,
-          isModelSelectEnabled: isOpenRouterModelSelectEnabled,
-          modelOptions: openRouterModelOptions,
-          modelsError: openRouterModelsError,
-        }}
-      />
+export default async function AdminGeneralSettingsPage({ params }: AdminGeneralSettingsPageProps) {
+  const { locale } = await params
+  setRequestLocale(locale)
+  const t = await getExtracted()
+
+  return (
+    <section className="grid gap-4">
+      <div className="grid gap-2">
+        <h1 className="text-2xl font-semibold">{t('General Settings')}</h1>
+        <p className="text-sm text-muted-foreground">
+          {t('Configure company identity, analytics, support links, and AI provider settings.')}
+        </p>
+      </div>
+
+      <Suspense fallback={<AdminGeneralSettingsFallback />}>
+        <AdminGeneralSettingsContent />
+      </Suspense>
     </section>
   )
 }

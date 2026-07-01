@@ -8,10 +8,13 @@ import {
   conditions as conditionsTable,
   events as eventsTable,
   markets as marketsTable,
-  outcomes as outcomesTable,
   subgraph_syncs,
 } from '@/lib/db/schema'
 import { db } from '@/lib/drizzle'
+import {
+  syncMissingOnChainResolvedPayouts,
+  updateOutcomePayoutsFromResolutionPrice,
+} from '@/lib/resolution-payout-sync'
 
 export const maxDuration = 300
 
@@ -711,7 +714,10 @@ async function processResolution(
   let payoutsChanged = false
 
   if (isResolved && resolutionPrice != null) {
-    payoutsChanged = await updateOutcomePayouts(conditionId, resolutionPrice)
+    payoutsChanged = await updateOutcomePayoutsFromResolutionPrice(conditionId, resolutionPrice)
+  }
+  else if (isResolved) {
+    payoutsChanged = await syncMissingOnChainResolvedPayouts(conditionId)
   }
 
   return {
@@ -788,44 +794,6 @@ function normalizeResolutionPrice(rawValue: string | null): number | null {
   catch {
     return null
   }
-}
-
-async function updateOutcomePayouts(conditionId: string, price: number): Promise<boolean> {
-  const payoutYes = price >= 1 ? 1 : price <= 0 ? 0 : price
-  const payoutNo = price <= 0 ? 1 : price >= 1 ? 0 : price
-
-  const updates = [
-    { index: 0, payout: payoutYes },
-    { index: 1, payout: payoutNo },
-  ]
-  let didChange = false
-
-  for (const update of updates) {
-    const isWinningOutcome = update.payout > 0
-    const changedRows = await db
-      .update(outcomesTable)
-      .set({
-        is_winning_outcome: isWinningOutcome,
-        payout_value: String(update.payout),
-      })
-      .where(and(
-        eq(outcomesTable.condition_id, conditionId),
-        eq(outcomesTable.outcome_index, update.index),
-        or(
-          ne(outcomesTable.is_winning_outcome, isWinningOutcome),
-          isNull(outcomesTable.is_winning_outcome),
-          isNull(outcomesTable.payout_value),
-          ne(outcomesTable.payout_value, String(update.payout)),
-        ),
-      ))
-      .returning({ condition_id: outcomesTable.condition_id })
-
-    if (changedRows.length > 0) {
-      didChange = true
-    }
-  }
-
-  return didChange
 }
 
 async function updateEventStatusesFromMarketsBatch(eventIds: string[]) {

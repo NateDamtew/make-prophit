@@ -51,7 +51,100 @@ async function loadHomeEventCandidates({
   cacheTag(cacheTags.eventsList)
 
   const targetOffset = Math.max(0, offset)
-  const targetVisibleCount = targetOffset + HOME_EVENTS_PAGE_SIZE
+  const hasHomeVisibilityFilters = hideSports || hideCrypto || hideEarnings
+
+  if (status === 'resolved' && !hasHomeVisibilityFilters) {
+    const { data, error } = await EventRepository.listEvents({
+      tag,
+      mainTag,
+      search,
+      sortBy,
+      userId,
+      bookmarked,
+      frequency,
+      status,
+      offset: targetOffset,
+      limit: HOME_EVENTS_PAGE_SIZE,
+      locale,
+      sportsSportSlug,
+      sportsSection,
+      hideSports,
+      hideCrypto,
+      hideEarnings,
+      excludeSportsAuxiliary: true,
+      preferResolvedDateOrder: true,
+      skipLivePricing: true,
+    })
+
+    return {
+      data: data ?? [],
+      error,
+    }
+  }
+
+  if (status === 'resolved') {
+    let rawOffset = 0
+    const accumulatedEvents: Event[] = []
+    let visibleEventsCount = 0
+
+    while (true) {
+      const { data: rawEvents, error } = await EventRepository.listEvents({
+        tag,
+        mainTag,
+        search,
+        sortBy,
+        userId,
+        bookmarked,
+        frequency,
+        status,
+        offset: rawOffset,
+        limit: HOME_EVENTS_QUERY_BATCH_SIZE,
+        locale,
+        sportsSportSlug,
+        sportsSection,
+        hideSports,
+        hideCrypto,
+        hideEarnings,
+        excludeSportsAuxiliary: true,
+        preferResolvedDateOrder: true,
+        skipLivePricing: true,
+      })
+
+      if (error) {
+        return { data: [], error }
+      }
+
+      const batch = rawEvents ?? []
+      if (batch.length === 0) {
+        break
+      }
+
+      accumulatedEvents.push(...batch)
+
+      const visibleBatch = filterHomeEvents(batch, {
+        hideSports,
+        hideCrypto,
+        hideEarnings,
+        status,
+      })
+      visibleEventsCount += visibleBatch.length
+      if (visibleEventsCount >= targetOffset + HOME_EVENTS_PAGE_SIZE) {
+        break
+      }
+
+      if (batch.length < HOME_EVENTS_QUERY_BATCH_SIZE) {
+        break
+      }
+
+      rawOffset += HOME_EVENTS_QUERY_BATCH_SIZE
+    }
+
+    return {
+      data: accumulatedEvents,
+      error: null,
+    }
+  }
+
   let rawOffset = 0
   const accumulatedEvents: Event[] = []
 
@@ -83,20 +176,6 @@ async function loadHomeEventCandidates({
 
     accumulatedEvents.push(...batch)
 
-    if (status === 'resolved') {
-      const visibleResolvedEvents = filterHomeEvents(accumulatedEvents, {
-        currentTimestamp: null,
-        hideSports,
-        hideCrypto,
-        hideEarnings,
-        status,
-      })
-
-      if (visibleResolvedEvents.length >= targetVisibleCount) {
-        break
-      }
-    }
-
     if (batch.length < HOME_EVENTS_QUERY_BATCH_SIZE) {
       break
     }
@@ -121,6 +200,7 @@ export async function listHomeEventsPage({
 }: ListHomeEventsPageOptions) {
   const targetOffset = Math.max(0, offset)
   const resolvedCurrentTimestamp = currentTimestamp ?? null
+  const hasHomeVisibilityFilters = hideSports || hideCrypto || hideEarnings
 
   const { data: rawEvents, error } = await loadHomeEventCandidates({
     ...options,
@@ -135,18 +215,23 @@ export async function listHomeEventsPage({
     return { data: [], error, currentTimestamp: resolvedCurrentTimestamp ?? null }
   }
 
-  const visibleEvents = (rawEvents?.length ?? 0) > 0
-    ? filterHomeEvents(rawEvents ?? [], {
-        currentTimestamp: resolvedCurrentTimestamp,
-        hideSports,
-        hideCrypto,
-        hideEarnings,
-        status,
-      })
-    : []
+  let visibleEvents: Event[] = rawEvents ?? []
+
+  if (status !== 'resolved' || hasHomeVisibilityFilters) {
+    visibleEvents = visibleEvents.length > 0
+      ? filterHomeEvents(visibleEvents, {
+          currentTimestamp: resolvedCurrentTimestamp,
+          hideSports,
+          hideCrypto,
+          hideEarnings,
+          status,
+        })
+      : []
+  }
+  const pageStart = status === 'resolved' && !hasHomeVisibilityFilters ? 0 : targetOffset
 
   return {
-    data: visibleEvents.slice(targetOffset, targetOffset + HOME_EVENTS_PAGE_SIZE),
+    data: visibleEvents.slice(pageStart, pageStart + HOME_EVENTS_PAGE_SIZE),
     error: null,
     currentTimestamp: resolvedCurrentTimestamp ?? null,
   }

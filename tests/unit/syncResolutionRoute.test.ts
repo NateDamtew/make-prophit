@@ -63,7 +63,7 @@ describe('sync resolution route', () => {
 
   it('hits the resolution subgraph and exits cleanly when no tracked authors are returned', async () => {
     mocks.isCronAuthorized.mockReturnValue(true)
-    mocks.execute.mockResolvedValue([
+    mocks.execute.mockResolvedValueOnce([
       {
         creator: '0xABCDEF0000000000000000000000000000000001',
       },

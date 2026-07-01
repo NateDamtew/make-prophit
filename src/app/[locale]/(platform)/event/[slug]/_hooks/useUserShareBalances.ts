@@ -2,10 +2,12 @@ import type { PublicClient } from 'viem'
 import type { Event } from '@/types'
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, useRef } from 'react'
-import { createPublicClient, erc1155Abi, http } from 'viem'
-import { MICRO_UNIT, OUTCOME_INDEX } from '@/lib/constants'
+import { erc1155Abi } from 'viem'
+import { usePublicRuntimeConfig } from '@/hooks/usePublicRuntimeConfig'
+import { createConditionalTokenBalanceClient, normalizeSharesFromBalance } from '@/lib/conditional-token-balances'
+import { OUTCOME_INDEX } from '@/lib/constants'
 import { CONDITIONAL_TOKENS_CONTRACT } from '@/lib/contracts'
-import { defaultViemNetwork, defaultViemRpcUrl } from '@/lib/viem-network'
+import { resolveViemRpcUrl } from '@/lib/viem-network'
 
 export interface SharesByCondition {
   [conditionId: string]: {
@@ -19,26 +21,18 @@ interface UseUserShareBalancesOptions {
   ownerAddress?: `0x${string}` | null
 }
 
-function createBrowserPublicClient(): PublicClient {
-  return createPublicClient({
-    chain: defaultViemNetwork,
-    transport: http(defaultViemRpcUrl),
-  })
-}
-
-function normalizeSharesFromBalance(balance: bigint): number {
-  if (balance <= 0n) {
-    return 0
-  }
-
-  const decimalValue = Number(balance) / MICRO_UNIT
-  return Math.max(0, Math.floor(decimalValue * MICRO_UNIT) / MICRO_UNIT)
-}
-
 export function useUserShareBalances({ event, ownerAddress }: UseUserShareBalancesOptions) {
+  const { polygonRpcUrl } = usePublicRuntimeConfig()
+  const rpcUrl = useMemo(() => resolveViemRpcUrl(polygonRpcUrl), [polygonRpcUrl])
   const clientRef = useRef<PublicClient | null>(null)
+  const clientRpcUrlRef = useRef<string | null>(null)
   if (clientRef.current === null && typeof window !== 'undefined') {
-    clientRef.current = createBrowserPublicClient()
+    clientRef.current = createConditionalTokenBalanceClient(rpcUrl)
+    clientRpcUrlRef.current = rpcUrl
+  }
+  if (clientRef.current && clientRpcUrlRef.current !== rpcUrl) {
+    clientRef.current = createConditionalTokenBalanceClient(rpcUrl)
+    clientRpcUrlRef.current = rpcUrl
   }
   const client = clientRef.current
 
@@ -59,7 +53,7 @@ export function useUserShareBalances({ event, ownerAddress }: UseUserShareBalanc
   const descriptorKey = useMemo(() => outcomeDescriptors.map(descriptor => `${descriptor.conditionId}:${descriptor.tokenId}`).join('|'), [outcomeDescriptors])
 
   const query = useQuery({
-    queryKey: ['user-conditional-shares', ownerAddress, event?.slug, descriptorKey],
+    queryKey: ['user-conditional-shares', ownerAddress, event?.slug, descriptorKey, rpcUrl],
     enabled: Boolean(client && ownerAddress && outcomeDescriptors.length),
     staleTime: 10_000,
     gcTime: 5 * 60 * 1000,

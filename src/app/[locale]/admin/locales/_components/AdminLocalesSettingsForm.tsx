@@ -7,6 +7,7 @@ import { useActionState, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { updateLocalesSettingsAction } from '@/app/[locale]/admin/locales/_actions/update-locales-settings'
 import AppLink from '@/components/AppLink'
+import LocaleFlag from '@/components/LocaleFlag'
 import { Button } from '@/components/ui/button'
 import { InputError } from '@/components/ui/input-error'
 import { Label } from '@/components/ui/label'
@@ -120,7 +121,10 @@ function AdminLocalesSettingsFormInner({
           return (
             <div key={locale} className="flex items-center justify-between gap-4">
               <div className="grid gap-1">
-                <Label htmlFor={switchId} className="text-sm font-medium">{LOCALE_LABELS[locale]}</Label>
+                <Label htmlFor={switchId} className="flex items-center gap-2 text-sm font-medium">
+                  <LocaleFlag locale={locale} />
+                  <span>{LOCALE_LABELS[locale]}</span>
+                </Label>
                 <span className="text-xs text-muted-foreground">
                   {isDefault ? t('Default locale') : locale.toUpperCase()}
                 </span>

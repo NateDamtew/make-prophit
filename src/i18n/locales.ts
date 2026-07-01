@@ -1,4 +1,4 @@
-export const SUPPORTED_LOCALES = ['en', 'de', 'es', 'pt', 'fr', 'zh'] as const
+export const SUPPORTED_LOCALES = ['en', 'de', 'es', 'pt', 'fr', 'zh', 'ja', 'ar', 'ru', 'it', 'pl'] as const
 
 export type SupportedLocale = (typeof SUPPORTED_LOCALES)[number]
 
@@ -11,10 +11,19 @@ export const NON_DEFAULT_LOCALES = SUPPORTED_LOCALES.filter(
 export const LOCALE_LABELS: Record<SupportedLocale, string> = {
   en: 'English',
   de: 'Deutsch',
-  es: 'Spanish',
+  es: 'Español',
   pt: 'Português',
-  fr: 'French',
+  fr: 'Français',
   zh: '中文',
+  ja: '日本語',
+  ar: 'العربية',
+  ru: 'Русский',
+  it: 'Italiano',
+  pl: 'Polski',
+}
+
+export function getLocaleFlagSrc(locale: SupportedLocale) {
+  return `/images/flags/${locale}.svg`
 }
 
 export const LOOP_LABELS: Record<SupportedLocale, string> = {
@@ -24,6 +33,11 @@ export const LOOP_LABELS: Record<SupportedLocale, string> = {
   pt: 'Língua',
   fr: 'Langue',
   zh: '语言',
+  ja: '言語',
+  ar: 'اللغة',
+  ru: 'Язык',
+  it: 'Lingua',
+  pl: 'Język',
 }
 
 export function normalizeEnabledLocales(locales: string[]): SupportedLocale[] {

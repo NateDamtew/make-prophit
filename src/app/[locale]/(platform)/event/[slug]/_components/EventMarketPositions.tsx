@@ -9,6 +9,7 @@ import { PositionShareDialog } from '@/app/[locale]/(platform)/_components/Posit
 import EventConvertPositionsDialog from '@/app/[locale]/(platform)/event/[slug]/_components/EventConvertPositionsDialog'
 import AlertBanner from '@/components/AlertBanner'
 import EventIconImage from '@/components/EventIconImage'
+import { PositionReturnSummary, PositionValueCell } from '@/components/positions/PositionValueReturnCells'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { Drawer, DrawerContent } from '@/components/ui/drawer'
@@ -20,12 +21,11 @@ import { fetchUserPositionsForMarket } from '@/lib/data-api/user'
 import {
   formatAmountInputValue,
   formatCentsLabel,
-  formatCurrency,
+  formatDollarValueLabel,
   formatPercent,
   formatSharesLabel,
   fromMicro,
 } from '@/lib/formatters'
-import { applyPositionDeltasToUserPositions } from '@/lib/optimistic-trading'
 import { buildShareCardPayload } from '@/lib/share-card'
 import { getUserPublicAddress } from '@/lib/user-address'
 import { cn } from '@/lib/utils'
@@ -77,16 +77,22 @@ function resolvePositionCost(position: UserPosition) {
   const quantity = resolvePositionShares(position)
   const avgPrice = normalizePositionPrice(position.avgPrice)
     ?? normalizePositionPrice(Number(fromMicro(String(position.average_position ?? 0), 6)))
+  const explicitCost = toNumber(position.totalBought)
+    ?? toNumber(position.initialValue)
+    ?? (typeof position.total_position_cost === 'number'
+      ? Number(fromMicro(String(position.total_position_cost), 6))
+      : null)
+
+  if (explicitCost != null && explicitCost > 0) {
+    return explicitCost
+  }
+
   const derivedCost = quantity > 0 && typeof avgPrice === 'number' ? quantity * avgPrice : null
   if (derivedCost != null && derivedCost > 0) {
     return derivedCost
   }
 
-  return toNumber(position.totalBought)
-    ?? toNumber(position.initialValue)
-    ?? (typeof position.total_position_cost === 'number'
-      ? Number(fromMicro(String(position.total_position_cost), 2))
-      : null)
+  return explicitCost
 }
 
 function resolvePositionValue(position: UserPosition, marketPrice: number | null = null) {
@@ -119,28 +125,6 @@ function resolvePositionOutcomeIndex(position: UserPosition) {
       : OUTCOME_INDEX.YES
   )
   return resolvedOutcomeIndex === OUTCOME_INDEX.NO ? OUTCOME_INDEX.NO : OUTCOME_INDEX.YES
-}
-
-function resolveMarketOutcomePrice(
-  market: Event['markets'][number],
-  outcomeIndex: typeof OUTCOME_INDEX.YES | typeof OUTCOME_INDEX.NO,
-) {
-  const outcome = market.outcomes.find(currentOutcome => currentOutcome.outcome_index === outcomeIndex)
-    ?? market.outcomes[outcomeIndex]
-  const explicitPrice = normalizePositionPrice(outcome?.buy_price)
-
-  if (typeof explicitPrice === 'number' && explicitPrice > 0) {
-    return explicitPrice
-  }
-
-  const marketPrice = normalizePositionPrice(market.price)
-  if (typeof marketPrice === 'number' && marketPrice > 0) {
-    return outcomeIndex === OUTCOME_INDEX.NO
-      ? Math.max(0, Math.min(1, 1 - marketPrice))
-      : marketPrice
-  }
-
-  return 0.5
 }
 
 function normalizePnlValue(value: number | null, baseCostValue: number | null) {
@@ -196,16 +180,12 @@ async function fetchAllUserPositions({
 function useMarketPositionsQuery({
   userAddress,
   market,
-  eventSlug,
   positionStatus,
 }: {
   userAddress: string
   market: Event['markets'][number]
-  eventSlug: string
   positionStatus: 'active' | 'closed'
 }) {
-  const orderUserShares = useOrder(state => state.userShares)
-
   const query = useQuery({
     queryKey: ['user-market-positions', userAddress, market.condition_id, positionStatus],
     queryFn: ({ signal }) =>
@@ -223,45 +203,7 @@ function useMarketPositionsQuery({
     gcTime: 1000 * 60 * 10,
   })
 
-  const rawPositions = useMemo(() => query.data ?? [], [query.data])
-  const positions = useMemo(() => {
-    const tokenShares = orderUserShares[market.condition_id]
-    if (!tokenShares) {
-      return rawPositions
-    }
-
-    const deltas = [OUTCOME_INDEX.YES, OUTCOME_INDEX.NO].flatMap((outcomeIndex) => {
-      const tokenBalance = tokenShares[outcomeIndex] ?? 0
-      const currentPositionShares = rawPositions.reduce((sum, positionItem) => {
-        if (resolvePositionOutcomeIndex(positionItem) !== outcomeIndex) {
-          return sum
-        }
-        return sum + resolvePositionShares(positionItem)
-      }, 0)
-      const missingShares = Number((tokenBalance - currentPositionShares).toFixed(6))
-
-      if (!(missingShares >= POSITION_VISIBILITY_THRESHOLD)) {
-        return []
-      }
-
-      return [{
-        conditionId: market.condition_id,
-        outcomeIndex,
-        sharesDelta: missingShares,
-        avgPrice: 0.5,
-        currentPrice: resolveMarketOutcomePrice(market, outcomeIndex),
-        title: market.short_title || market.title,
-        slug: market.slug,
-        eventSlug,
-        iconUrl: market.icon_url,
-        outcomeText: outcomeIndex === OUTCOME_INDEX.NO ? 'No' : 'Yes',
-        isActive: !market.is_resolved,
-        isResolved: market.is_resolved,
-      }]
-    })
-
-    return applyPositionDeltasToUserPositions(rawPositions, deltas) ?? rawPositions
-  }, [eventSlug, market, orderUserShares, rawPositions])
+  const positions = useMemo(() => query.data ?? [], [query.data])
 
   const visiblePositions = useMemo(
     () => positions.filter(position => resolvePositionShares(position) >= POSITION_VISIBILITY_THRESHOLD),
@@ -540,13 +482,10 @@ function MarketPositionRow({
     market.outcomes.find(outcome => outcome.outcome_index === resolvedOutcomeIndex)?.buy_price,
   )
   const totalValue = resolvePositionValue(position, outcomePrice)
-  const valueLabel = formatCurrency(Math.max(0, totalValue), {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })
+  const valueLabel = formatDollarValueLabel(Math.max(0, totalValue), { fallback: '0¢' })
   const baseCostValue = resolvePositionCost(position)
   const costLabel = baseCostValue != null
-    ? formatCurrency(baseCostValue, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    ? formatDollarValueLabel(baseCostValue, { fallback: '0¢' })
     : null
   const rawRealizedPnl = toNumber(position.realizedPnl)
     ?? toNumber(position.cashPnl)
@@ -570,10 +509,7 @@ function MarketPositionRow({
   const percentLabel = formatPercent(Math.abs(normalizedPercent), { digits: percentDigits })
   const isPositive = totalProfitLossValue >= 0
   const isNeutralReturn = Math.abs(totalProfitLossValue) < 0.005
-  const neutralReturnLabel = formatCurrency(Math.abs(totalProfitLossValue), {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })
+  const neutralReturnLabel = formatDollarValueLabel(Math.abs(totalProfitLossValue), { fallback: '0¢' })
   const displayedReturnValue = isNeutralReturn
     ? neutralReturnLabel
     : `${isPositive ? '+' : '-'}${neutralReturnLabel}`
@@ -584,7 +520,7 @@ function MarketPositionRow({
   const signedPercentLabel = `${isPositive ? '+' : '-'}${percentLabel}`
 
   function formatSignedCurrency(value: number) {
-    const abs = formatCurrency(Math.abs(value), { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    const abs = formatDollarValueLabel(Math.abs(value), { fallback: '0¢' })
     if (value > 0) {
       return `+${abs}`
     }
@@ -619,33 +555,22 @@ function MarketPositionRow({
         {averageLabel}
       </td>
       <td className="p-2 sm:px-3">
-        <div className="flex flex-col leading-tight">
-          <span className="text-2xs font-semibold sm:text-sm">{valueLabel}</span>
-          <span className="text-2xs font-medium tracking-wide text-muted-foreground uppercase">
-            {costLabel
-              ? t('Cost {amount}', { amount: costLabel })
-              : t('Cost —')}
-          </span>
-        </div>
+        <PositionValueCell
+          valueLabel={valueLabel}
+          costLabel={costLabel}
+          valueClassName="text-2xs font-semibold sm:text-sm"
+          costClassName="text-2xs font-medium tracking-wide"
+        />
       </td>
       <td className="p-2 pr-6 text-2xs font-semibold sm:px-3 sm:pr-6 sm:text-sm">
         <Tooltip delayDuration={0}>
           <TooltipTrigger asChild>
-            <span className="inline-flex flex-wrap items-center gap-1">
-              <span
-                className="inline-flex items-center"
-                style={{ borderBottom: '1px dotted currentColor', paddingBottom: '0.04rem' }}
-              >
-                {displayedReturnValue}
-              </span>
-              {!isNeutralReturn && (
-                <span className={cn('text-2xs font-semibold sm:text-sm', returnColorClass)}>
-                  (
-                  {signedPercentLabel}
-                  )
-                </span>
-              )}
-            </span>
+            <PositionReturnSummary
+              valueLabel={displayedReturnValue}
+              percentLabel={isNeutralReturn ? null : signedPercentLabel}
+              percentClassName={cn('text-2xs font-semibold sm:text-sm', returnColorClass)}
+              underlineValue
+            />
           </TooltipTrigger>
           <TooltipContent
             side="bottom"
@@ -761,8 +686,8 @@ function NetPositionsDialog({
         <div className="max-h-[60vh] divide-y divide-border overflow-y-auto pr-2">
           {rows.map((row) => {
             const isPositive = row.netValue >= 0
-            const netLabel = formatCurrency(Math.abs(row.netValue), { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-            const payoutLabel = formatCurrency(row.payout, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+            const netLabel = formatDollarValueLabel(Math.abs(row.netValue), { fallback: '0¢' })
+            const payoutLabel = formatDollarValueLabel(row.payout, { fallback: '0¢' })
             return (
               <div
                 key={row.id}
@@ -851,7 +776,6 @@ export default function EventMarketPositions({
   const { status, refetch, visiblePositions } = useMarketPositionsQuery({
     userAddress,
     market,
-    eventSlug,
     positionStatus,
   })
 

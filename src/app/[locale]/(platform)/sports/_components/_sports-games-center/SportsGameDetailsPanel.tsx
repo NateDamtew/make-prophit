@@ -13,11 +13,14 @@ import SellPositionModal from '@/app/[locale]/(platform)/_components/SellPositio
 import EventConvertPositionsDialog from '@/app/[locale]/(platform)/event/[slug]/_components/EventConvertPositionsDialog'
 import EventOrderBook, { useOrderBookSummaries } from '@/app/[locale]/(platform)/event/[slug]/_components/EventOrderBook'
 import SportsEventAboutPanel from '@/app/[locale]/(platform)/sports/_components/SportsEventAboutPanel'
+import { PositionReturnSummary, PositionValueCell } from '@/components/positions/PositionValueReturnCells'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { OUTCOME_INDEX } from '@/lib/constants'
 import {
   formatAmountInputValue,
   formatCurrency,
+  formatDollarValueLabel,
+  formatPercent,
   formatSharesLabel,
 } from '@/lib/formatters'
 import { cn } from '@/lib/utils'
@@ -53,7 +56,6 @@ export default function SportsGameDetailsPanel({
   showRedeemInPositions = false,
   onOpenRedeemForCondition = null,
   oddsFormat = 'price',
-  marketContextEnabled = true,
   onChangeTab,
   onSelectButton,
 }: SportsGameDetailsPanelProps) {
@@ -397,7 +399,6 @@ export default function SportsGameDetailsPanel({
               event={aboutEvent}
               rulesEvent={rulesEvent}
               market={selectedMarket}
-              marketContextEnabled={marketContextEnabled}
             />
           )}
         </>
@@ -512,9 +513,9 @@ export default function SportsGameDetailsPanel({
                         <th className="py-2 text-left">Type</th>
                         <th className="p-2 text-left">Outcome</th>
                         <th className="p-2 text-right">Avg</th>
-                        <th className="p-2 text-right">Cost</th>
+                        <th className="p-2 text-right">{t('Value')}</th>
                         <th className="p-2 text-right">To Win</th>
-                        <th className="p-2 text-right">Current</th>
+                        <th className="p-2 text-right">{t('Return')}</th>
                         <th className="py-2 text-right" />
                       </tr>
                       <tr>
@@ -531,16 +532,24 @@ export default function SportsGameDetailsPanel({
                               ? { className: 'bg-no/10 text-no', style: undefined }
                               : { className: 'bg-yes/10 text-yes', style: undefined })
                         const costLabel = typeof tag.totalCost === 'number'
-                          ? formatCurrency(tag.totalCost, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-                          : '—'
+                          ? formatDollarValueLabel(tag.totalCost, { fallback: '0¢' })
+                          : null
                         const toWinLabel = formatCurrency(tag.shares, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-                        const currentLabel = formatCurrency(tag.currentValue, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                        const currentLabel = formatDollarValueLabel(tag.currentValue, { fallback: '0¢' })
                         const pnlValue = typeof tag.totalCost === 'number'
                           ? tag.currentValue - tag.totalCost + tag.realizedPnl
                           : null
                         const pnlLabel = pnlValue == null
                           ? '—'
-                          : `${pnlValue >= 0 ? '+' : '-'}${formatCurrency(Math.abs(pnlValue), { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                          : `${pnlValue >= 0 ? '+' : '-'}${formatDollarValueLabel(Math.abs(pnlValue), { fallback: '0¢' })}`
+                        const pnlPercent = pnlValue != null && tag.totalCost && tag.totalCost > 0
+                          ? (pnlValue / tag.totalCost) * 100
+                          : null
+                        const pnlPercentLabel = pnlPercent != null
+                          ? `${pnlValue != null && pnlValue >= 0 ? '+' : '-'}${formatPercent(Math.abs(pnlPercent), {
+                            digits: Math.abs(pnlPercent) >= 10 ? 0 : 1,
+                          })}`
+                          : null
                         const pnlClass = pnlValue == null
                           ? (tag.currentValue >= 0 ? 'text-yes' : 'text-no')
                           : pnlValue >= 0
@@ -571,14 +580,21 @@ export default function SportsGameDetailsPanel({
                             <td className="p-2 text-right font-medium">
                               {formatAverageCellLabel(tag.avgPriceCents)}
                             </td>
-                            <td className="p-2 text-right font-medium">{costLabel}</td>
+                            <td className="p-2 text-right font-medium">
+                              <PositionValueCell
+                                valueLabel={currentLabel}
+                                costLabel={costLabel}
+                                align="end"
+                                costClassName="text-2xs font-semibold tracking-wide"
+                              />
+                            </td>
                             <td className="p-2 text-right font-medium">{toWinLabel}</td>
                             <td className={cn('p-2 text-right font-medium', pnlClass)}>
-                              {currentLabel}
-                              {' '}
-                              (
-                              {pnlLabel}
-                              )
+                              <PositionReturnSummary
+                                valueLabel={pnlLabel}
+                                percentLabel={pnlPercentLabel}
+                                className="justify-end"
+                              />
                             </td>
                             <td className="py-2 text-right">
                               <div className="flex items-center justify-end gap-1.5">

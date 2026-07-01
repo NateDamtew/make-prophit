@@ -91,7 +91,7 @@ function BrandIdentitySection({
           <div className="grid gap-3">
             <Label>{t('Logo icon')}</Label>
             <div className="grid gap-2">
-              <Input
+              <input
                 id="theme-logo-file"
                 type="file"
                 name="logo_image"
@@ -226,7 +226,7 @@ function BrandIdentitySection({
           <div className="grid gap-4 md:grid-cols-2">
             <div className="grid gap-2">
               <Label>{t('Icon 192x192')}</Label>
-              <Input
+              <input
                 id="theme-pwa-icon-192-file"
                 type="file"
                 name="pwa_icon_192"
@@ -291,7 +291,7 @@ function BrandIdentitySection({
 
             <div className="grid gap-2">
               <Label>{t('Icon 512x512')}</Label>
-              <Input
+              <input
                 id="theme-pwa-icon-512-file"
                 type="file"
                 name="pwa_icon_512"

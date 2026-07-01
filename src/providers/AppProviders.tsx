@@ -8,16 +8,15 @@ import { ThemeProvider } from 'next-themes'
 import { lazy, Suspense, useMemo } from 'react'
 import { Toaster } from '@/components/ui/sonner'
 import { useHasHydrated } from '@/hooks/useHasHydrated'
+import { usePublicRuntimeConfig } from '@/hooks/usePublicRuntimeConfig'
 import { useSiteIdentity } from '@/hooks/useSiteIdentity'
 import ProgressIndicatorProvider from '@/providers/ProgressIndicatorProvider'
 import ThemeModeProvider from '@/providers/ThemeModeProvider'
 
-const SpeedInsights = process.env.IS_VERCEL === 'true'
-  ? lazy(async () => {
-      const mod = await import('@vercel/speed-insights/next')
-      return { default: mod.SpeedInsights }
-    })
-  : null
+const SpeedInsights = lazy(async () => {
+  const mod = await import('@vercel/speed-insights/next')
+  return { default: mod.SpeedInsights }
+})
 
 const queryClient = new QueryClient()
 
@@ -28,9 +27,10 @@ interface AppProvidersProps {
 
 export function AppProviders({ children, themeMode = 'both' }: AppProvidersProps) {
   const site = useSiteIdentity()
+  const { isVercel } = usePublicRuntimeConfig()
   const hasHydrated = useHasHydrated()
   const gaId = site.googleAnalyticsId
-  const shouldRenderSpeedInsights = process.env.NODE_ENV === 'production' && hasHydrated
+  const shouldRenderSpeedInsights = process.env.NODE_ENV === 'production' && hasHydrated && isVercel === 'true'
 
   const forcedTheme = useMemo(() => {
     if (themeMode === 'dark') return 'dark'
@@ -42,7 +42,7 @@ export function AppProviders({ children, themeMode = 'both' }: AppProvidersProps
     <div className="min-h-screen bg-background">
       {children}
       <Toaster position="bottom-left" />
-      {shouldRenderSpeedInsights && SpeedInsights && (
+      {shouldRenderSpeedInsights && (
         <Suspense fallback={null}>
           <SpeedInsights />
         </Suspense>

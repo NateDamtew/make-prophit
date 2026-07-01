@@ -23,6 +23,7 @@ import { toast } from 'sonner'
 import SearchDiscoveryContent from '@/app/[locale]/(platform)/_components/SearchDiscoveryContent'
 import { MOBILE_BOTTOM_NAV_OFFSET } from '@/app/[locale]/(platform)/_lib/mobile-bottom-nav'
 import AppLink from '@/components/AppLink'
+import LocaleFlag from '@/components/LocaleFlag'
 import PwaInstallIosInstructions from '@/components/PwaInstallIosInstructions'
 import ThemeSelector from '@/components/ThemeSelector'
 import { Button } from '@/components/ui/button'
@@ -273,6 +274,7 @@ function MobileBottomNavContent({ pathname }: MobileBottomNavContentProps) {
                   <AppLink
                     intentPrefetch
                     href="/docs"
+                    target="_blank"
                     className="flex items-center gap-3 px-4 py-3 text-sm font-semibold"
                   >
                     <BookOpenIcon className="size-4 text-muted-foreground" />
@@ -510,8 +512,9 @@ function MobileLocaleSwitcher({ onLocaleChange }: MobileLocaleSwitcherProps) {
 
   return (
     <div className="rounded-2xl border border-border/70 px-4 py-3">
-      <div className="mb-3 text-sm font-semibold">
-        {LOOP_LABELS[locale] ?? 'Language'}
+      <div className="mb-3 flex items-center gap-2 text-sm font-semibold">
+        <LocaleFlag locale={locale} />
+        <span>{LOOP_LABELS[locale] ?? 'Language'}</span>
       </div>
       <div className="grid grid-cols-2 gap-2">
         {enabledLocales.map(option => (
@@ -524,7 +527,10 @@ function MobileLocaleSwitcher({ onLocaleChange }: MobileLocaleSwitcherProps) {
             onClick={() => handleLocaleChange(option)}
             disabled={isPending}
           >
-            <span>{LOCALE_LABELS[option] ?? option.toUpperCase()}</span>
+            <span className="flex min-w-0 items-center gap-2">
+              <LocaleFlag locale={option} />
+              <span className="truncate">{LOCALE_LABELS[option] ?? option.toUpperCase()}</span>
+            </span>
             {option === locale && <CheckIcon className="size-4" />}
           </Button>
         ))}

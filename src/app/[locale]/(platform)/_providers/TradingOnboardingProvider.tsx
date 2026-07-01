@@ -25,6 +25,7 @@ import {
 import { useAffiliateOrderMetadata } from '@/hooks/useAffiliateOrderMetadata'
 import { useAppKit } from '@/hooks/useAppKit'
 import { useDepositWalletPolling } from '@/hooks/useDepositWalletPolling'
+import { usePublicRuntimeConfig } from '@/hooks/usePublicRuntimeConfig'
 import { useSignaturePromptRunner } from '@/hooks/useSignaturePromptRunner'
 import { authClient } from '@/lib/auth-client'
 import {
@@ -55,7 +56,7 @@ import {
 } from '@/lib/trading-auth/client'
 import { isTradingAuthRequiredError } from '@/lib/trading-auth/errors'
 import { hasUsableUserEmail } from '@/lib/user-email'
-import { defaultViemNetwork, defaultViemRpcUrl } from '@/lib/viem-network'
+import { defaultViemNetwork, resolveViemRpcUrl } from '@/lib/viem-network'
 import { signAndSubmitDepositWalletCalls } from '@/lib/wallet/client'
 import {
   buildAutoRedeemAllowanceCalls,
@@ -124,6 +125,18 @@ function getUsernameDefaultValue(user: User | null) {
     return ''
   }
   return user.username
+}
+
+function syncDepositWalletDeployingState() {
+  useUser.setState((previous) => {
+    if (!previous) {
+      return previous
+    }
+    return {
+      ...previous,
+      deposit_wallet_status: 'deploying',
+    }
+  })
 }
 
 function useSessionRefresher() {
@@ -306,10 +319,10 @@ function completeDepositWalletDeployment({
   }
 }
 
-async function hasDepositWalletCollateralBalance(depositWalletAddress: `0x${string}`) {
+async function hasDepositWalletCollateralBalance(depositWalletAddress: `0x${string}`, viemRpcUrl: string) {
   const client = createPublicClient({
     chain: defaultViemNetwork,
-    transport: http(defaultViemRpcUrl),
+    transport: http(viemRpcUrl),
   })
 
   const balance = await client.readContract({
@@ -376,7 +389,9 @@ function TradingOnboardingProviderContent({
   const { open: openAppKit, walletEmail } = useAppKit()
   const autoEmailRef = useRef<string | null>(null)
   const refreshSessionUserState = useSessionRefresher()
-  const communityApiUrl = process.env.COMMUNITY_URL!
+  const { communityUrl, polygonRpcUrl } = usePublicRuntimeConfig()
+  const communityApiUrl = communityUrl
+  const viemRpcUrl = useMemo(() => resolveViemRpcUrl(polygonRpcUrl), [polygonRpcUrl])
 
   const status = useOnboardingStatus(user, requiresTradingAuthRefresh)
   const normalizedUserAddress = user?.address?.trim().toLowerCase() ?? ''
@@ -553,7 +568,7 @@ function TradingOnboardingProviderContent({
     }
 
     try {
-      const hasBalance = await hasDepositWalletCollateralBalance(user.deposit_wallet_address as `0x${string}`)
+      const hasBalance = await hasDepositWalletCollateralBalance(user.deposit_wallet_address as `0x${string}`, viemRpcUrl)
       if (!hasBalance) {
         setFundModalOpen(true)
       }
@@ -561,7 +576,7 @@ function TradingOnboardingProviderContent({
     catch {
       setFundModalOpen(true)
     }
-  }, [user?.deposit_wallet_address])
+  }, [user?.deposit_wallet_address, viemRpcUrl])
 
   const handleModalOpenChange = useCallback((modal: Exclude<OnboardingModal, null>, open: boolean) => {
     if (open) {
@@ -655,7 +670,7 @@ function TradingOnboardingProviderContent({
       const payload = await response.json() as CommunityProfile
       const communityUsername = payload.username?.trim()
       if (!communityUsername) {
-        setUsernameError(t('Community profile did not confirm the username.'))
+        setUsernameError(t('Profile verification did not confirm the username.'))
         return
       }
 
@@ -669,7 +684,7 @@ function TradingOnboardingProviderContent({
           result.code === 'username_taken'
             ? t('That username is already taken.')
             : result.code === 'community_profile_not_synced'
-              ? t('Community profile did not confirm the username.')
+              ? t('Profile verification did not confirm the username.')
               : result.error ?? DEFAULT_ERROR_MESSAGE,
         )
         return
@@ -965,18 +980,18 @@ function TradingOnboardingProviderContent({
       NEG_RISK_CTF_EXCHANGE_ADDRESS as `0x${string}`,
     ]
     const results = await Promise.all(
-      exchanges.map(exchange => fetchReferralLocked(exchange, depositWallet)),
+      exchanges.map(exchange => fetchReferralLocked(exchange, depositWallet, viemRpcUrl)),
     )
     if (results.includes(null)) {
       console.warn('Failed to read referral status; skipping locked/unknown exchanges.')
     }
     return exchanges.filter((_, index) => results[index] === false)
-  }, [])
+  }, [viemRpcUrl])
 
   const resolveMissingApprovalCalls = useCallback(async (depositWalletAddress: `0x${string}`) => {
     const client = createPublicClient({
       chain: defaultViemNetwork,
-      transport: http(defaultViemRpcUrl),
+      transport: http(viemRpcUrl),
     })
 
     const collateralSpenders = [
@@ -1018,12 +1033,12 @@ function TradingOnboardingProviderContent({
     )
 
     return [...approvalCalls, ...operatorCalls]
-  }, [])
+  }, [viemRpcUrl])
 
   const ensureAutoRedeemStatusFromChain = useCallback(async (depositWalletAddress: `0x${string}`) => {
     const client = createPublicClient({
       chain: defaultViemNetwork,
-      transport: http(defaultViemRpcUrl),
+      transport: http(viemRpcUrl),
     })
     const approved = await client.readContract({
       address: CONDITIONAL_TOKENS_CONTRACT,
@@ -1057,7 +1072,7 @@ function TradingOnboardingProviderContent({
     })
     void refreshSessionUserState()
     return true
-  }, [refreshSessionUserState])
+  }, [refreshSessionUserState, viemRpcUrl])
 
   const handleApproveTokens = useCallback(async () => {
     if (!user?.deposit_wallet_address || approvalsStep === 'signing') {
@@ -1068,7 +1083,7 @@ function TradingOnboardingProviderContent({
     // can apply. If it isn't, surface a clear "still being set up" state rather
     // than letting the user sign into a dead loop.
     if (user.deposit_wallet_status !== 'deployed') {
-      setTokenApprovalError(t('Your trading wallet is still being set up on-chain. This can take a few minutes — close this and check back shortly.'))
+      setTokenApprovalError(t('Your trading wallet is still being set up on-chain. Check back shortly.'))
       return
     }
 
@@ -1107,9 +1122,9 @@ function TradingOnboardingProviderContent({
         if (result.code === 'deposit_wallet_not_deployed') {
           // Relayer says the wallet isn't on-chain yet — re-sync status so the
           // poller resumes, and show a wait message instead of a retry loop.
-          useUser.setState(previous => (previous ? { ...previous, deposit_wallet_status: 'deploying' } : previous))
+          syncDepositWalletDeployingState()
           setApprovalsStep('idle')
-          setTokenApprovalError(t('Your trading wallet is still being set up on-chain. This can take a few minutes — close this and check back shortly.'))
+          setTokenApprovalError(t('Your trading wallet is still being set up on-chain. Check back shortly.'))
           return
         }
         if (result.code === 'deadline_expired') {
@@ -1185,6 +1200,11 @@ function TradingOnboardingProviderContent({
       return
     }
 
+    if (user.deposit_wallet_status !== 'deployed') {
+      setAutoRedeemError(t('Your trading wallet is still being set up on-chain. Check back shortly.'))
+      return
+    }
+
     setAutoRedeemStep('signing')
     setAutoRedeemError(null)
 
@@ -1202,6 +1222,12 @@ function TradingOnboardingProviderContent({
           setAutoRedeemStep('idle')
           setAutoRedeemError(null)
           openNextRequirement({ forceTradingAuth: true })
+          return
+        }
+        if (result.code === 'deposit_wallet_not_deployed') {
+          syncDepositWalletDeployingState()
+          setAutoRedeemStep('idle')
+          setAutoRedeemError(t('Your trading wallet is still being set up on-chain. Check back shortly.'))
           return
         }
         if (result.code === 'deadline_expired') {

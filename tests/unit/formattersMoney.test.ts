@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatAmountInputValue, formatCentsLabel, formatCurrency, formatDate, formatPercent, formatSharePriceLabel, formatTimeAgo, formatVolume, fromMicro, toCents, toMicro, truncateAddress } from '@/lib/formatters'
+import { formatAmountInputValue, formatCentsLabel, formatCentsValueLabel, formatCurrency, formatDate, formatDollarValueLabel, formatPercent, formatSharePriceLabel, formatTimeAgo, formatVolume, fromMicro, toCents, toMicro, truncateAddress } from '@/lib/formatters'
 
 describe('money/price formatters', () => {
   it('toMicro rounds to nearest micro', () => {
@@ -33,11 +33,30 @@ describe('money/price formatters', () => {
     expect(formatCentsLabel(55.56)).toBe('55.6¢')
   })
 
+  it('formatCentsValueLabel treats input as cents', () => {
+    expect(formatCentsValueLabel(null)).toBe('—')
+    expect(formatCentsValueLabel('nope')).toBe('—')
+    expect(formatCentsValueLabel(-1)).toBe('0¢')
+    expect(formatCentsValueLabel(0.1)).toBe('0.1¢')
+    expect(formatCentsValueLabel(1)).toBe('1¢')
+    expect(formatCentsValueLabel(100)).toBe('100¢')
+  })
+
   it('formatSharePriceLabel formats sub-dollar as cents and >=1 as currency', () => {
     expect(formatSharePriceLabel(null)).toBe('50.0¢')
+    expect(formatSharePriceLabel(-0.01)).toBe('0¢')
+    expect(formatSharePriceLabel(0.01)).toBe('1¢')
     expect(formatSharePriceLabel('0.5')).toBe('50¢')
     expect(formatSharePriceLabel(1)).toBe('$1.00')
     expect(formatSharePriceLabel(12.345, { currencyDigits: 1 })).toBe('$12.3')
+  })
+
+  it('formatDollarValueLabel formats sub-dollar totals as cents', () => {
+    expect(formatDollarValueLabel(null)).toBe('—')
+    expect(formatDollarValueLabel(0.001)).toBe('0.1¢')
+    expect(formatDollarValueLabel(0.01)).toBe('1¢')
+    expect(formatDollarValueLabel(1)).toBe('$1.00')
+    expect(formatDollarValueLabel(12.345)).toBe('$12.35')
   })
 
   it('formatAmountInputValue normalizes to 2 decimals and omits zeros', () => {

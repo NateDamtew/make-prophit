@@ -17,6 +17,7 @@ import {
   getL2AuthContextCookieName,
   L2_AUTH_CONTEXT_TTL_SECONDS,
 } from '@/lib/l2-auth-context'
+import { resolvePublicRuntimeEnv } from '@/lib/public-runtime-config.shared'
 import { TRADING_AUTH_REQUIRED_ERROR } from '@/lib/trading-auth/errors'
 import {
   getUserTradingAuthSecrets,
@@ -24,7 +25,6 @@ import {
   saveUserTradingAuthCredentials,
 } from '@/lib/trading-auth/server'
 import {
-  DEFAULT_DEPOSIT_WALLET_CREATE_ERROR_MESSAGE,
   getTradingFlowErrorPreview,
   mapDepositWalletCreateError,
   mapTradingAuthError,
@@ -139,7 +139,7 @@ function resolveUsernameAvailability(payload: unknown): boolean | null {
 }
 
 async function fetchUsernameAvailability(username: string): Promise<UsernameAvailabilityResult> {
-  const dataUrl = process.env.DATA_URL
+  const { dataUrl } = resolvePublicRuntimeEnv(process.env)
   if (!dataUrl) {
     return { available: null, code: 'availability_unavailable' }
   }
@@ -266,10 +266,7 @@ async function submitWalletCreate({
   depositWallet: string
   auth: NonNullable<TradingAuthSecrets['relayer']>
 }) {
-  const relayerUrl = process.env.RELAYER_URL
-  if (!relayerUrl) {
-    throw new Error(DEFAULT_DEPOSIT_WALLET_CREATE_ERROR_MESSAGE)
-  }
+  const { relayerUrl } = resolvePublicRuntimeEnv(process.env)
 
   const startedAt = Date.now()
 
@@ -372,10 +369,7 @@ async function submitWalletCreate({
 }
 
 async function fetchRelayerTransactionState(transactionId: string) {
-  const relayerUrl = process.env.RELAYER_URL
-  if (!relayerUrl) {
-    return null
-  }
+  const { relayerUrl } = resolvePublicRuntimeEnv(process.env)
 
   const query = `id=${encodeURIComponent(transactionId)}`
   const response = await fetch(`${relayerUrl}/transaction?${query}`, {
@@ -456,7 +450,7 @@ export async function updateOnboardingUsernameAction(input: {
 
   if (parsed.data.username !== parsed.data.communityUsername) {
     return {
-      error: 'Community profile did not confirm the username.',
+      error: 'Profile verification did not confirm the username.',
       code: 'community_profile_not_synced',
       data: null,
     }
@@ -574,10 +568,6 @@ export async function createDepositWalletAction(): Promise<EnableDepositWalletTr
     return { error: 'Unauthenticated.', data: null }
   }
 
-  if (!process.env.RELAYER_URL) {
-    return { error: DEFAULT_DEPOSIT_WALLET_CREATE_ERROR_MESSAGE, data: null }
-  }
-
   try {
     const depositWalletAddress = await getDepositWalletAddress(user.address as `0x${string}`)
     let status = user.deposit_wallet_status ?? 'not_started'
@@ -674,11 +664,7 @@ export async function enableTradingAuthAction(
     return { error: parsed.error.issues[0]?.message ?? 'Invalid signature.', data: null }
   }
 
-  const relayerUrl = process.env.RELAYER_URL
-  const clobUrl = process.env.CLOB_URL
-  if (!relayerUrl || !clobUrl) {
-    return { error: DEFAULT_ERROR_MESSAGE, data: null }
-  }
+  const { clobUrl, relayerUrl } = resolvePublicRuntimeEnv(process.env)
 
   const headers = {
     'Accept': 'application/json',

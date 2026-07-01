@@ -7,6 +7,7 @@ import {
   NEGRISK_DRO_CTF_ADAPTER_V4_ADDRESS,
   NEGRISK_OPERATOR_DRO_ADDRESS,
 } from '@/lib/contracts'
+import { isGasFeeTooLowError } from '@/lib/transaction-fees'
 import { normalizeAddress } from '@/lib/wallet'
 
 export type ResolutionType = 'dro_moov2' | 'uma_moov2' | 'legacy'
@@ -84,6 +85,13 @@ const DIRECT_RESOLUTION_ADDRESSES = new Set(
     NEGRISK_DRO_CTF_ADAPTER_V4_ADDRESS,
   ].map(address => address.toLowerCase()),
 )
+export type DirectResolutionErrorMessage
+  = | 'Connected proposer wallet needs POL for gas before resolving this market.'
+    | 'Transaction could not be sent because the gas fee is below the current network minimum.'
+    | 'Wallet signature was rejected.'
+    | 'You are not allowed to propose a result for this market.'
+    | 'This market is already resolved.'
+    | 'Could not submit resolution.'
 
 function parseMarketMetadata(market: Event['markets'][number]): Record<string, unknown> {
   const metadata = market.metadata
@@ -178,4 +186,41 @@ export function getDirectResolutionPrice(outcome: DirectResolutionOutcome): bigi
     return 500_000_000_000_000_000n
   }
   return 0n
+}
+
+export function readDirectResolutionError(error: unknown): DirectResolutionErrorMessage {
+  const message = error instanceof Error ? error.message : String(error)
+  const lower = message.toLowerCase()
+
+  if (
+    lower.includes('insufficient funds')
+    || lower.includes('exceeds the balance')
+    || lower.includes('not enough native')
+    || lower.includes('insufficient balance')
+  ) {
+    return 'Connected proposer wallet needs POL for gas before resolving this market.'
+  }
+
+  if (isGasFeeTooLowError(message)) {
+    return 'Transaction could not be sent because the gas fee is below the current network minimum.'
+  }
+
+  if (lower.includes('user rejected') || lower.includes('user denied') || lower.includes('rejected the request')) {
+    return 'Wallet signature was rejected.'
+  }
+
+  if (
+    lower.includes('not whitelisted')
+    || lower.includes('notwhitelisted')
+    || lower.includes('unauthorized proposer')
+    || lower.includes('proposer not authorized')
+  ) {
+    return 'You are not allowed to propose a result for this market.'
+  }
+
+  if (lower.includes('already resolved')) {
+    return 'This market is already resolved.'
+  }
+
+  return 'Could not submit resolution.'
 }

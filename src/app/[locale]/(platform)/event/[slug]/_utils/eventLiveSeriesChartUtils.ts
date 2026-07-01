@@ -381,6 +381,24 @@ export function keepWithinLiveWindow(points: DataPoint[], cutoffMs: number) {
   }]
 }
 
+export function resolveLiveSeriesDisplayPrice({
+  isEventClosed,
+  finalPrice,
+  renderedPrice,
+  fallbackCurrentPrice,
+}: {
+  isEventClosed: boolean
+  finalPrice: number | null
+  renderedPrice: number | null
+  fallbackCurrentPrice: number | null
+}) {
+  if (isEventClosed) {
+    return finalPrice ?? renderedPrice
+  }
+
+  return renderedPrice ?? fallbackCurrentPrice
+}
+
 export function formatUsd(value: number, digits = 2) {
   return formatCurrency(value, {
     minimumFractionDigits: digits,
@@ -464,6 +482,26 @@ export function parseUtcDate(value: string | null | undefined) {
 }
 
 export function resolveEventEndTimestamp(event: Event) {
+  const eventResolved = parseUtcDate(event.resolved_at)
+  if (eventResolved != null) {
+    return eventResolved
+  }
+
+  const resolvedMarkets = event.markets.filter(market => market.is_resolved || market.condition?.resolved)
+  const canUseResolvedMarketTimestamp = event.status === 'resolved'
+    || event.status === 'archived'
+    || event.total_markets_count <= 1
+    || resolvedMarkets.length === event.markets.length
+  const resolvedConditionTimestamps = canUseResolvedMarketTimestamp
+    ? resolvedMarkets
+        .map(market => parseUtcDate(market.condition?.resolved_at))
+        .filter((timestamp): timestamp is number => timestamp != null)
+    : []
+
+  if (resolvedConditionTimestamps.length > 0) {
+    return Math.max(...resolvedConditionTimestamps)
+  }
+
   const eventEnd = parseUtcDate(event.end_date)
   const marketEnd = parseUtcDate(event.markets[0]?.end_time)
 

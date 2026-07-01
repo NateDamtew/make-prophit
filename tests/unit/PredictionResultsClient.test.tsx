@@ -17,7 +17,6 @@ const mocks = vi.hoisted(() => {
 })
 
 vi.mock('@tanstack/react-query', () => ({
-  keepPreviousData: Symbol('keepPreviousData'),
   useInfiniteQuery: (options: any) => mocks.useInfiniteQuery(options),
 }))
 
@@ -73,14 +72,14 @@ describe('predictionResultsClient', () => {
     mocks.useInfiniteQuery.mockReset()
     mocks.useSearchParams.mockReset()
     mocks.setIntersectionCallback(null)
-    mocks.useSearchParams.mockReturnValue(new URLSearchParams('_status=resolved&_sort=competitive'))
+    mocks.useSearchParams.mockReturnValue(new URLSearchParams('_status=resolved&_sort=volume'))
     mocks.useInfiniteQuery.mockImplementation(() => ({
       data: {
         pages: [[
           {
             id: 'event-1',
-            slug: 'future-president',
-            title: 'Future president?',
+            slug: 'test-future-president',
+            title: 'Test future president?',
             icon_url: '/icon.png',
             status: 'active',
             volume: 120000,
@@ -129,7 +128,7 @@ describe('predictionResultsClient', () => {
         initialEvents={[]}
         initialInputValue="test"
         initialQuery="test"
-        initialSort="competitive"
+        initialSort="volume"
         initialStatus="resolved"
         routeMainTag="trending"
         routeTag="trending"
@@ -153,7 +152,7 @@ describe('predictionResultsClient', () => {
     const [href, options] = mocks.replace.mock.calls.at(-1) ?? []
     expect(href).toContain('/predictions/future-bets')
     expect(href).toContain('_status=resolved')
-    expect(href).toContain('_sort=competitive')
+    expect(href).toContain('_sort=volume')
     expect(options).toEqual({ scroll: false })
   })
 
@@ -165,7 +164,7 @@ describe('predictionResultsClient', () => {
         initialEvents={[]}
         initialInputValue="test"
         initialQuery="test"
-        initialSort="competitive"
+        initialSort="volume"
         initialStatus="resolved"
         routeMainTag="trending"
         routeTag="trending"
@@ -226,6 +225,35 @@ describe('predictionResultsClient', () => {
 
     const [href, options] = mocks.replace.mock.calls.at(-1) ?? []
     expect(href).toBe('/predictions/test?_status=all')
+    expect(options).toEqual({ scroll: false })
+  })
+
+  it('keeps an active status selection while the resolved url replacement is pending', async () => {
+    mocks.useSearchParams.mockReturnValue(new URLSearchParams('_status=resolved&_sort=volume'))
+
+    render(
+      <PredictionResultsClient
+        displayLabel="Test"
+        initialCurrentTimestamp={Date.parse('2026-03-25T12:00:00.000Z')}
+        initialEvents={[]}
+        initialInputValue="test"
+        initialQuery="test"
+        initialSort="volume"
+        initialStatus="resolved"
+        routeMainTag="trending"
+        routeTag="trending"
+      />,
+    )
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('prediction-status-active'))
+    })
+
+    expect(screen.getByTestId('prediction-status-active')).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByTestId('prediction-status-resolved')).toHaveAttribute('aria-pressed', 'false')
+
+    const [href, options] = mocks.replace.mock.calls.at(-1) ?? []
+    expect(href).toBe('/predictions/test?_sort=volume')
     expect(options).toEqual({ scroll: false })
   })
 
@@ -295,6 +323,261 @@ describe('predictionResultsClient', () => {
 
     expect(screen.queryByRole('heading', { name: 'Meta active event' })).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Meta resolved event' })).toBeInTheDocument()
+  })
+
+  it('filters stale resolved search rows by the prediction query before rendering', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [],
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    mocks.useSearchParams.mockReturnValue(new URLSearchParams('_status=resolved'))
+    mocks.useInfiniteQuery.mockImplementation((options: any) => ({
+      data: {
+        pages: [[
+          {
+            id: 'event-meta',
+            slug: 'meta-up-or-down',
+            title: 'Meta up or down?',
+            icon_url: '/icon.png',
+            status: 'resolved',
+            volume: 90000,
+            resolved_at: '2026-03-24T00:00:00.000Z',
+            end_date: '2026-03-24T00:00:00.000Z',
+            tags: [{ id: 1, name: 'Finance', slug: 'finance', isMainCategory: true }],
+            markets: [{
+              condition: { resolved: true },
+              condition_id: 'meta',
+              is_resolved: true,
+              probability: 100,
+              title: 'Yes',
+            }],
+          },
+          {
+            id: 'event-paulo',
+            slug: 'highest-temperature-in-sao-paulo-on-march-24-2026',
+            title: 'Highest temperature in Sao Paulo on March 24?',
+            icon_url: '/icon.png',
+            status: 'resolved',
+            volume: 70000,
+            resolved_at: '2026-03-24T00:00:00.000Z',
+            end_date: '2026-03-24T00:00:00.000Z',
+            tags: [{ id: 2, name: 'Weather', slug: 'weather', isMainCategory: true }],
+            markets: [{
+              condition: { resolved: true },
+              condition_id: 'paulo-temp',
+              is_resolved: true,
+              probability: 100,
+              title: 'Yes',
+            }],
+          },
+        ]],
+      },
+      error: null,
+      fetchNextPage: mocks.fetchNextPage,
+      hasNextPage: false,
+      isFetching: false,
+      isFetchingNextPage: false,
+      isPending: false,
+      queryFn: options.queryFn,
+    }))
+
+    try {
+      render(
+        <PredictionResultsClient
+          displayLabel="Paulo"
+          initialCurrentTimestamp={Date.parse('2026-03-25T12:00:00.000Z')}
+          initialEvents={[]}
+          initialInputValue="paulo"
+          initialQuery="paulo"
+          initialSort="trending"
+          initialStatus="resolved"
+          routeMainTag="trending"
+          routeTag="trending"
+        />,
+      )
+
+      expect(screen.queryByRole('heading', { name: 'Meta up or down?' })).not.toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Highest temperature in Sao Paulo on March 24?' })).toBeInTheDocument()
+
+      const queryOptions = mocks.useInfiniteQuery.mock.calls.at(-1)?.[0]
+      await queryOptions.queryFn({ pageParam: 0 })
+
+      const requestUrl = fetchMock.mock.calls[0]?.[0] as string
+      expect(requestUrl).toContain('/api/predictions/events?')
+      expect(requestUrl).toContain('search=paulo')
+      expect(requestUrl).toContain('status=resolved')
+      expect(requestUrl).not.toContain('homeFeed=')
+      expect(requestUrl).not.toContain('sort=')
+    }
+    finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('filters stale resolved search rows for non-Latin prediction queries', () => {
+    mocks.useSearchParams.mockReturnValue(new URLSearchParams('_status=resolved'))
+    mocks.useInfiniteQuery.mockImplementation(() => ({
+      data: {
+        pages: [[
+          {
+            id: 'event-meta',
+            slug: 'meta-up-or-down',
+            title: 'Meta up or down?',
+            icon_url: '/icon.png',
+            status: 'resolved',
+            volume: 90000,
+            resolved_at: '2026-03-24T00:00:00.000Z',
+            end_date: '2026-03-24T00:00:00.000Z',
+            tags: [{ id: 1, name: 'Finance', slug: 'finance', isMainCategory: true }],
+            markets: [{
+              condition: { resolved: true },
+              condition_id: 'meta',
+              is_resolved: true,
+              probability: 100,
+              title: 'Yes',
+            }],
+          },
+          {
+            id: 'event-tokyo',
+            slug: 'highest-temperature-in-tokyo-on-march-24-2026',
+            title: '東京の最高気温は?',
+            icon_url: '/icon.png',
+            status: 'resolved',
+            volume: 70000,
+            resolved_at: '2026-03-24T00:00:00.000Z',
+            end_date: '2026-03-24T00:00:00.000Z',
+            tags: [{ id: 2, name: 'Weather', slug: 'weather', isMainCategory: true }],
+            markets: [{
+              condition: { resolved: true },
+              condition_id: 'tokyo-temp',
+              is_resolved: true,
+              probability: 100,
+              title: 'Yes',
+            }],
+          },
+        ]],
+      },
+      error: null,
+      fetchNextPage: mocks.fetchNextPage,
+      hasNextPage: false,
+      isFetching: false,
+      isFetchingNextPage: false,
+      isPending: false,
+    }))
+
+    render(
+      <PredictionResultsClient
+        displayLabel="東京"
+        initialCurrentTimestamp={Date.parse('2026-03-25T12:00:00.000Z')}
+        initialEvents={[]}
+        initialInputValue="東京"
+        initialQuery="東京"
+        initialSort="trending"
+        initialStatus="resolved"
+        routeMainTag="trending"
+        routeTag="trending"
+      />,
+    )
+
+    expect(screen.queryByRole('heading', { name: 'Meta up or down?' })).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '東京の最高気温は?' })).toBeInTheDocument()
+  })
+
+  it('shows only bookmarked matching rows when the prediction bookmark filter is active', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [],
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    mocks.useSearchParams.mockReturnValue(new URLSearchParams('_status=resolved'))
+    mocks.useInfiniteQuery.mockImplementation((options: any) => ({
+      data: {
+        pages: [[
+          {
+            id: 'event-paulo-june-8',
+            slug: 'highest-temperature-in-sao-paulo-on-june-8-2026',
+            title: 'Highest temperature in Sao Paulo on June 8?',
+            icon_url: '/icon.png',
+            is_bookmarked: false,
+            status: 'resolved',
+            volume: 50000,
+            resolved_at: '2026-06-08T00:00:00.000Z',
+            end_date: '2026-06-08T00:00:00.000Z',
+            tags: [{ id: 2, name: 'Weather', slug: 'weather', isMainCategory: true }],
+            markets: [{
+              condition: { resolved: true },
+              condition_id: 'paulo-temp-june-8',
+              is_resolved: true,
+              probability: 100,
+              title: 'Yes',
+            }],
+          },
+          {
+            id: 'event-paulo-june-9',
+            slug: 'highest-temperature-in-sao-paulo-on-june-9-2026',
+            title: 'Highest temperature in Sao Paulo on June 9?',
+            icon_url: '/icon.png',
+            is_bookmarked: true,
+            status: 'resolved',
+            volume: 70000,
+            resolved_at: '2026-06-09T00:00:00.000Z',
+            end_date: '2026-06-09T00:00:00.000Z',
+            tags: [{ id: 2, name: 'Weather', slug: 'weather', isMainCategory: true }],
+            markets: [{
+              condition: { resolved: true },
+              condition_id: 'paulo-temp-june-9',
+              is_resolved: true,
+              probability: 100,
+              title: 'Yes',
+            }],
+          },
+        ]],
+      },
+      error: null,
+      fetchNextPage: mocks.fetchNextPage,
+      hasNextPage: false,
+      isFetching: false,
+      isFetchingNextPage: false,
+      isPending: false,
+      queryFn: options.queryFn,
+    }))
+
+    try {
+      render(
+        <PredictionResultsClient
+          displayLabel="Paulo"
+          initialCurrentTimestamp={Date.parse('2026-06-10T12:00:00.000Z')}
+          initialEvents={[]}
+          initialInputValue="paulo"
+          initialQuery="paulo"
+          initialSort="trending"
+          initialStatus="resolved"
+          routeMainTag="trending"
+          routeTag="trending"
+        />,
+      )
+
+      await act(async () => {
+        fireEvent.click(screen.getAllByTestId('prediction-bookmark-filter')[0])
+      })
+
+      expect(screen.queryByRole('heading', { name: 'Highest temperature in Sao Paulo on June 8?' })).not.toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Highest temperature in Sao Paulo on June 9?' })).toBeInTheDocument()
+
+      const queryOptions = mocks.useInfiniteQuery.mock.calls.at(-1)?.[0]
+      await queryOptions.queryFn({ pageParam: 0 })
+
+      const requestUrl = fetchMock.mock.calls[0]?.[0] as string
+      expect(requestUrl).toContain('/api/predictions/events?')
+      expect(requestUrl).toContain('bookmarked=true')
+      expect(requestUrl).toContain('search=paulo')
+      expect(requestUrl).toContain('status=resolved')
+      expect(requestUrl).not.toContain('homeFeed=')
+    }
+    finally {
+      vi.unstubAllGlobals()
+    }
   })
 
   it('shows the winning outcome label on resolved single-market rows', () => {
@@ -550,7 +833,7 @@ describe('predictionResultsClient', () => {
         initialEvents={[]}
         initialInputValue="test"
         initialQuery="test"
-        initialSort="competitive"
+        initialSort="volume"
         initialStatus="resolved"
         routeMainTag="trending"
         routeTag="trending"
@@ -578,9 +861,9 @@ describe('predictionResultsClient', () => {
       />,
     )
 
-    const titleLink = screen.getByRole('heading', { name: 'Future president?' }).closest('a')
+    const titleLink = screen.getByRole('heading', { name: 'Test future president?' }).closest('a')
     expect(titleLink).not.toBeNull()
-    expect(titleLink).toHaveAttribute('href', expect.stringContaining('/event/future-president'))
+    expect(titleLink).toHaveAttribute('href', expect.stringContaining('/event/test-future-president'))
   })
 
   it('fetches the next page when the infinite-scroll sentinel intersects', async () => {
@@ -591,7 +874,7 @@ describe('predictionResultsClient', () => {
         initialEvents={[]}
         initialInputValue="test"
         initialQuery="test"
-        initialSort="competitive"
+        initialSort="volume"
         initialStatus="resolved"
         routeMainTag="trending"
         routeTag="trending"

@@ -9,6 +9,7 @@ import Script from 'next/script'
 import { Suspense } from 'react'
 import CustomJavascriptCode from '@/components/CustomJavascriptCode'
 import GlobalAnnouncementBanner from '@/components/GlobalAnnouncementBanner'
+import PublicRuntimeConfigScript from '@/components/PublicRuntimeConfigScript'
 import PwaInstallStateSync from '@/components/PwaInstallStateSync'
 import PwaServiceWorker from '@/components/PwaServiceWorker'
 import SiteStructuredData from '@/components/seo/SiteStructuredData'
@@ -18,7 +19,7 @@ import { routing } from '@/i18n/routing'
 import { openSauceOne } from '@/lib/fonts'
 import { loadGlobalAnnouncementSettings } from '@/lib/global-announcement-settings'
 import { IS_TEST_MODE } from '@/lib/network'
-import { getPublicRuntimeConfig } from '@/lib/public-runtime-config'
+import { getPublicRuntimeConfig } from '@/lib/public-runtime-config.server'
 import { deferPublicShellPrerenderIfNeeded, shouldPrerenderPublicShell } from '@/lib/public-shell-rendering'
 import { resolvePwaThemeColors } from '@/lib/pwa-colors'
 import resolveSiteUrl from '@/lib/site-url'
@@ -164,6 +165,7 @@ function LocaleBody({
   return (
     <body className="flex min-h-screen flex-col font-sans">
       <Script src="https://telegram.org/js/telegram-web-app.js" strategy="beforeInteractive" />
+      <PublicRuntimeConfigScript config={publicRuntimeConfig} />
       <ThemeDocumentState runtimeTheme={runtimeTheme} syncRootPreset={syncRootPreset} />
       <SiteStructuredData locale={locale} site={runtimeTheme.site} />
       <PwaServiceWorker />
@@ -181,7 +183,7 @@ function LocaleBody({
                     />
                   )
                 : null}
-              {IS_TEST_MODE && <TestModeBannerDeferred />}
+              {IS_TEST_MODE && !globalAnnouncement.disableFaucetBanner && <TestModeBannerDeferred />}
               <PwaInstallStateSync />
               {children}
               <CustomJavascriptCode locale={locale} codes={runtimeTheme.site.customJavascriptCodes} />
@@ -199,6 +201,7 @@ async function PrerenderedLocaleDocument({ locale, children }: LocaleDocumentPro
   return (
     <html
       lang={locale}
+      dir={locale === 'ar' ? 'rtl' : 'ltr'}
       className={openSauceOne.variable}
       data-theme-preset={runtimeData.runtimeTheme.theme.presetId}
       suppressHydrationWarning
@@ -232,6 +235,7 @@ function RuntimeLocaleDocument({ locale, children }: LocaleDocumentProps) {
   return (
     <html
       lang={locale}
+      dir={locale === 'ar' ? 'rtl' : 'ltr'}
       className={openSauceOne.variable}
       suppressHydrationWarning
     >

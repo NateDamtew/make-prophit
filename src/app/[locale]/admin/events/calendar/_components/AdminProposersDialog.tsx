@@ -69,6 +69,8 @@ interface RpcWalletProvider {
 
 const SINGLETON_FACTORY_ADDRESS = '0xce0042B868300000d44A59004Da54A005ffdcf9f' as Address
 const SINGLETON_FACTORY_SALT = '0x184d69ab00000000000000000000000000000000000000000000000000000000' as Hex
+const WALLET_TRANSACTION_GAS_BUFFER_NUMERATOR = 3n
+const WALLET_TRANSACTION_GAS_BUFFER_DENOMINATOR = 2n
 
 const SINGLETON_FACTORY_ABI = [
   {
@@ -180,6 +182,14 @@ function buildRpcWalletTransactionRequest(params: {
   }
 
   return request
+}
+
+function addWalletTransactionGasBuffer(gas: bigint) {
+  return (
+    (gas * WALLET_TRANSACTION_GAS_BUFFER_NUMERATOR)
+    + WALLET_TRANSACTION_GAS_BUFFER_DENOMINATOR
+    - 1n
+  ) / WALLET_TRANSACTION_GAS_BUFFER_DENOMINATOR
 }
 
 function readApiError(payload: unknown) {
@@ -383,6 +393,9 @@ export default function AdminProposersDialog({
     if (message === 'Transaction could not be sent because the gas fee is below the current network minimum.') {
       return t('Transaction could not be sent because the gas fee is below the current network minimum.')
     }
+    if (message === 'Whitelist deployment ran out of gas. Please try again.') {
+      return t('Whitelist deployment ran out of gas. Please try again.')
+    }
     if (message === 'Wallet signature was rejected.') {
       return t('Wallet signature was rejected.')
     }
@@ -581,7 +594,7 @@ export default function AdminProposersDialog({
       connection.walletClient && (connection.walletClientMatchesCreator || isEmbeddedWallet),
     )
 
-    async function estimateEmbeddedGas() {
+    async function estimateWalletGas() {
       if (!publicClient || !input.to) {
         return undefined
       }
@@ -594,12 +607,14 @@ export default function AdminProposersDialog({
           value: input.value ?? 0n,
         })
 
-        return (estimatedGas * 12n) / 10n
+        return addWalletTransactionGasBuffer(estimatedGas)
       }
       catch {
         return undefined
       }
     }
+
+    const gas = await estimateWalletGas()
 
     function sendWithWalletClient(overrides?: {
       maxFeePerGas?: bigint
@@ -615,6 +630,7 @@ export default function AdminProposersDialog({
         to: input.to,
         data: input.data,
         value: input.value ?? 0n,
+        gas,
         ...(overrides ?? {}),
       })
     }
@@ -635,7 +651,6 @@ export default function AdminProposersDialog({
       })
 
       if (isEmbeddedWallet) {
-        const gas = await estimateEmbeddedGas()
         const txRequest = buildRpcWalletTransactionRequest({
           from: input.account,
           to: input.to,
@@ -667,6 +682,7 @@ export default function AdminProposersDialog({
           to: input.to,
           data: input.data,
           value: input.value ?? 0n,
+          gas,
           ...(overrides ?? {}),
         }),
         {
@@ -783,7 +799,7 @@ export default function AdminProposersDialog({
       if (whitelistAddress && publicClient) {
         const code = await publicClient.getCode({ address: whitelistAddress })
         if (!code || code === '0x') {
-          throw new Error(t('Could not update proposer whitelist.'))
+          throw new Error(t('Whitelist deployment ran out of gas. Please try again.'))
         }
       }
       if (!whitelistAddress) {

@@ -570,7 +570,7 @@ function EnableTradingDialog({
         {error && <InputError message={error} />}
         {isDeploying && !error && (
           <p className="text-center text-sm text-muted-foreground">
-            {t('Your trading wallet is still being set up on-chain. This can take a few minutes — close this and check back shortly.')}
+            {t('Your trading wallet is still being set up on-chain. Check back shortly.')}
           </p>
         )}
         <Button

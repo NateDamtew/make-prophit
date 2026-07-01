@@ -13,14 +13,15 @@ import ProfileLink from '@/components/ProfileLink'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useOutcomeLabel } from '@/hooks/useOutcomeLabel'
+import { usePublicRuntimeConfig } from '@/hooks/usePublicRuntimeConfig'
 import { useRouter } from '@/i18n/navigation'
 import { filterActivitiesByMinAmount } from '@/lib/activity/filter'
 import { PUBLIC_ALLOWED_MARKET_CREATORS_PATH } from '@/lib/allowed-market-creators'
 import { MICRO_UNIT } from '@/lib/constants'
 import { mapDataApiActivityToActivityOrder } from '@/lib/data-api/user'
-import { formatCurrency, formatSharePriceLabel, formatTimeAgo, toMicro } from '@/lib/formatters'
+import { formatDollarValueLabel, formatSharePriceLabel, formatTimeAgo, toMicro } from '@/lib/formatters'
 import { POLYGON_SCAN_BASE } from '@/lib/network'
-import { buildPublicProfilePath, isDynamicHomeCategorySlug } from '@/lib/platform-routing'
+import { buildPublicProfilePath, isPlatformMainCategorySlug } from '@/lib/platform-routing'
 import { cn } from '@/lib/utils'
 import { closeWebSocketWhenReady, createWebSocketReconnectController } from '@/lib/websocket-reconnect'
 
@@ -123,7 +124,7 @@ function normalizeCategoryValue(value: string | null | undefined, categoryValues
 }
 
 function isActivityCategorySlug(slug: string) {
-  return slug === 'sports' || isDynamicHomeCategorySlug(slug)
+  return isPlatformMainCategorySlug(slug)
 }
 
 function buildActivityCategoryValues(tags: Array<{ slug: string }>) {
@@ -581,7 +582,8 @@ export default function ActivityFeed() {
   const t = useExtracted()
   const normalizeOutcomeLabel = useOutcomeLabel()
   const { tags } = usePlatformNavigationData()
-  const wsUrl = process.env.WS_LIVE_DATA_URL
+  const { wsLiveDataUrl } = usePublicRuntimeConfig()
+  const wsUrl = wsLiveDataUrl
   const router = useRouter()
   const allLabel = t('All')
   const { categoryFilter, setCategoryFilter, minAmountFilter, setMinAmountFilter } = useActivityFilters()
@@ -694,7 +696,7 @@ export default function ActivityFeed() {
               ? Number(activity.total_value) / MICRO_UNIT
               : 0
             const totalValueLabel = totalValue > 0
-              ? formatCurrency(totalValue, { minimumFractionDigits: 0, maximumFractionDigits: 0 })
+              ? formatDollarValueLabel(totalValue, { minimumFractionDigits: 0, maximumFractionDigits: 0 })
               : null
             const timeAgoLabel = formatTimeAgo(activity.created_at)
             const txUrl = activity.tx_hash ? `${POLYGON_SCAN_BASE}/tx/${activity.tx_hash}` : null

@@ -22,6 +22,11 @@ export interface MarketContextResponse {
   expiresAt?: string | null
   updatedAt?: string | null
   cached?: boolean
+  status?: number
+}
+
+interface MarketContextRequestOptions {
+  beforeGenerate?: () => MarketContextResponse | null | Promise<MarketContextResponse | null>
 }
 
 function resolveSupportedLocale(locale: string | null | undefined): SupportedLocale {
@@ -36,7 +41,7 @@ function resolveSupportedLocale(locale: string | null | undefined): SupportedLoc
 
 export async function resolveMarketContextRequest(
   input: unknown,
-  fallbackLocale?: string | null,
+  options: MarketContextRequestOptions = {},
 ): Promise<MarketContextResponse> {
   const parsed = MarketContextRequestSchema.safeParse(input)
 
@@ -46,7 +51,7 @@ export async function resolveMarketContextRequest(
 
   try {
     const { slug, marketConditionId, readOnly = false, locale } = parsed.data
-    const resolvedLocale = resolveSupportedLocale(locale ?? fallbackLocale)
+    const resolvedLocale = resolveSupportedLocale(locale)
     const { data: event, error } = await EventRepository.getEventBySlug(slug, '', resolvedLocale)
 
     if (error || !event) {
@@ -86,6 +91,11 @@ export async function resolveMarketContextRequest(
     const settings = await loadMarketContextSettings()
     if (!settings.enabled || !settings.apiKey) {
       return { error: 'Market context generation is not configured.' }
+    }
+
+    const generationGate = await options.beforeGenerate?.()
+    if (generationGate) {
+      return generationGate
     }
 
     const context = await generateMarketContext(event, market, settings, resolvedLocale)

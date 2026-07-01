@@ -1,23 +1,19 @@
 'use client'
 
 import type { ReactNode } from 'react'
-import type { FilterSettings, FilterSettingsRowProps } from '@/app/[locale]/(platform)/(home)/_components/filter-toolbar-settings'
+import type { FilterSettings } from '@/app/[locale]/(platform)/(home)/_components/filter-toolbar-settings'
 import type { FilterState } from '@/app/[locale]/(platform)/_providers/FilterProvider'
 import { BookmarkIcon, Settings2Icon } from 'lucide-react'
 import { useExtracted } from 'next-intl'
-import dynamic from 'next/dynamic'
 import { useCallback, useMemo, useState } from 'react'
 import { BASE_FILTER_SETTINGS, createDefaultFilters } from '@/app/[locale]/(platform)/(home)/_components/filter-toolbar-settings'
+import FilterSettingsRow from '@/app/[locale]/(platform)/(home)/_components/FilterSettingsRow'
 import FilterToolbarSearchInput from '@/app/[locale]/(platform)/(home)/_components/FilterToolbarSearchInput'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { useAppKit } from '@/hooks/useAppKit'
 import { useAppKitAccount } from '@/hooks/useAppKitAccount'
 import { cn } from '@/lib/utils'
-
-const FilterSettingsRow = dynamic<FilterSettingsRowProps>(
-  () => import('@/app/[locale]/(platform)/(home)/_components/FilterSettingsRow'),
-)
 
 interface FilterToolbarProps {
   filters: FilterState
@@ -51,16 +47,15 @@ function useFilterToolbarState({
   const { open } = useAppKit()
   const { isConnected } = useAppKitAccount()
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
-  const [sortBy, setSortBy] = useState<FilterSettings['sortBy']>(BASE_FILTER_SETTINGS.sortBy)
 
   const filterSettings = useMemo(() => createDefaultFilters({
-    sortBy,
+    sortBy: filters.sortBy,
     frequency: filters.frequency,
     status: filters.status,
     hideSports: filters.hideSports,
     hideCrypto: filters.hideCrypto,
     hideEarnings: filters.hideEarnings,
-  }), [sortBy, filters.frequency, filters.status, filters.hideSports, filters.hideCrypto, filters.hideEarnings])
+  }), [filters.sortBy, filters.frequency, filters.status, filters.hideSports, filters.hideCrypto, filters.hideEarnings])
 
   const hasActiveFilters = useMemo(() => (
     filterSettings.sortBy !== BASE_FILTER_SETTINGS.sortBy
@@ -94,11 +89,11 @@ function useFilterToolbarState({
   }, [])
 
   const handleFilterChange = useCallback((updates: Partial<FilterSettings>) => {
-    if ('sortBy' in updates && updates.sortBy && updates.sortBy !== sortBy) {
-      setSortBy(updates.sortBy)
-    }
-
     const filterUpdates: Partial<FilterState> = {}
+
+    if ('sortBy' in updates && updates.sortBy && updates.sortBy !== filters.sortBy) {
+      filterUpdates.sortBy = updates.sortBy
+    }
 
     if ('hideSports' in updates && updates.hideSports !== undefined && updates.hideSports !== filters.hideSports) {
       filterUpdates.hideSports = updates.hideSports
@@ -119,15 +114,15 @@ function useFilterToolbarState({
     if (Object.keys(filterUpdates).length > 0) {
       onFiltersChange(filterUpdates)
     }
-  }, [filters.frequency, filters.hideSports, filters.hideCrypto, filters.hideEarnings, filters.status, onFiltersChange, sortBy])
+  }, [filters.frequency, filters.hideSports, filters.hideCrypto, filters.hideEarnings, filters.sortBy, filters.status, onFiltersChange])
 
   const handleClearFilters = useCallback(() => {
     const defaultFilters = createDefaultFilters()
-    setSortBy(defaultFilters.sortBy)
 
     onFiltersChange({
       search: '',
       bookmarked: false,
+      sortBy: defaultFilters.sortBy,
       frequency: defaultFilters.frequency,
       status: defaultFilters.status,
       hideSports: defaultFilters.hideSports,

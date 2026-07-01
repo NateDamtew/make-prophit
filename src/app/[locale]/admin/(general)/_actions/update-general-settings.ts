@@ -12,12 +12,14 @@ import {
   validateBlockedCountriesInput,
 } from '@/lib/geoblock-settings'
 import {
+  GLOBAL_ANNOUNCEMENT_DISABLE_FAUCET_BANNER_KEY,
   GLOBAL_ANNOUNCEMENT_DISABLED_ON_KEY,
   GLOBAL_ANNOUNCEMENT_LINK_URL_KEY,
   GLOBAL_ANNOUNCEMENT_MESSAGE_KEY,
   validateGlobalAnnouncementInput,
 } from '@/lib/global-announcement-settings'
 import { reportOperatorDomainSnapshot } from '@/lib/operator-domain-register'
+import { resolvePublicRuntimeEnv } from '@/lib/public-runtime-config.shared'
 import resolveSiteUrl from '@/lib/site-url'
 import { uploadPublicAsset } from '@/lib/storage'
 import { normalizeTermsOfServicePdfPath, TERMS_OF_SERVICE_PDF_PATH_KEY } from '@/lib/terms-of-service'
@@ -28,7 +30,6 @@ const ACCEPTED_LOGO_TYPES = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp
 const MAX_PWA_ICON_FILE_SIZE = 2 * 1024 * 1024
 const ACCEPTED_PWA_ICON_TYPES = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/svg+xml']
 const MAX_TERMS_OF_SERVICE_PDF_FILE_SIZE = 2 * 1024 * 1024
-const GEOBLOCK_SYNC_URL = process.env.GEOBLOCK_URL!
 
 export interface GeneralSettingsActionState {
   error: string | null
@@ -144,7 +145,8 @@ function revalidateGeneralSettingsPaths() {
 }
 
 async function syncGeoblockSettings() {
-  const response = await fetch(GEOBLOCK_SYNC_URL, {
+  const { geoblockUrl } = resolvePublicRuntimeEnv(process.env)
+  const response = await fetch(geoblockUrl, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -195,6 +197,7 @@ export async function updateGeneralSettingsAction(
   const globalAnnouncementMessageRaw = formData.get('global_announcement_message')
   const globalAnnouncementLinkUrlRaw = formData.get('global_announcement_link_url')
   const globalAnnouncementDisabledOnJsonRaw = formData.get('global_announcement_disabled_on_json')
+  const globalAnnouncementDisableFaucetBannerRaw = formData.get('global_announcement_disable_faucet_banner')
   const customJavascriptCodesJsonRaw = formData.get('custom_javascript_codes_json')
   const tosPdfPathRaw = formData.get('tos_pdf_path')
   const tosPdfFileRaw = formData.get('tos_pdf')
@@ -225,6 +228,9 @@ export async function updateGeneralSettingsAction(
   const globalAnnouncementDisabledOnJson = typeof globalAnnouncementDisabledOnJsonRaw === 'string'
     ? globalAnnouncementDisabledOnJsonRaw
     : ''
+  const globalAnnouncementDisableFaucetBanner = typeof globalAnnouncementDisableFaucetBannerRaw === 'string'
+    ? globalAnnouncementDisableFaucetBannerRaw
+    : ''
   const customJavascriptCodesJson = typeof customJavascriptCodesJsonRaw === 'string' ? customJavascriptCodesJsonRaw : ''
   let tosPdfPath = typeof tosPdfPathRaw === 'string' ? tosPdfPathRaw : ''
   const lifiIntegrator = typeof lifiIntegratorRaw === 'string' ? lifiIntegratorRaw : ''
@@ -245,6 +251,7 @@ export async function updateGeneralSettingsAction(
     message: globalAnnouncementMessage,
     linkUrl: globalAnnouncementLinkUrl,
     disabledOnJson: globalAnnouncementDisabledOnJson,
+    disableFaucetBanner: globalAnnouncementDisableFaucetBanner,
   })
   if (!validatedGlobalAnnouncement.data) {
     return { error: validatedGlobalAnnouncement.error ?? 'Invalid global announcement input.' }
@@ -373,6 +380,7 @@ export async function updateGeneralSettingsAction(
     { group: 'general', key: GLOBAL_ANNOUNCEMENT_MESSAGE_KEY, value: validatedGlobalAnnouncement.data.messageValue },
     { group: 'general', key: GLOBAL_ANNOUNCEMENT_LINK_URL_KEY, value: validatedGlobalAnnouncement.data.linkUrlValue },
     { group: 'general', key: GLOBAL_ANNOUNCEMENT_DISABLED_ON_KEY, value: validatedGlobalAnnouncement.data.disabledOnValue },
+    { group: 'general', key: GLOBAL_ANNOUNCEMENT_DISABLE_FAUCET_BANNER_KEY, value: validatedGlobalAnnouncement.data.disableFaucetBannerValue },
     { group: 'general', key: 'site_custom_javascript_codes', value: validated.data.customJavascriptCodesValue },
     { group: 'general', key: TERMS_OF_SERVICE_PDF_PATH_KEY, value: tosPdfPath },
     { group: 'general', key: 'lifi_integrator', value: validated.data.lifiIntegratorValue },

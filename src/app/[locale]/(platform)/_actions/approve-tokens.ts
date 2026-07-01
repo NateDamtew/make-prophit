@@ -6,6 +6,7 @@ import { DEPOSIT_WALLET_FACTORY_ADDRESS } from '@/lib/contracts'
 import { UserRepository } from '@/lib/db/queries/user'
 import { captureDepositWalletError, captureDepositWalletEvent } from '@/lib/deposit-wallet-observability'
 import { buildClobHmacSignature } from '@/lib/hmac'
+import { resolvePublicRuntimeEnv } from '@/lib/public-runtime-config.shared'
 import { TRADING_AUTH_REQUIRED_ERROR } from '@/lib/trading-auth/errors'
 import {
   getUserTradingAuthSecrets,
@@ -85,10 +86,7 @@ interface RelayerTransactionState {
 }
 
 async function fetchRelayerTransactionState(transactionId: string): Promise<RelayerTransactionState | null> {
-  const relayerUrl = process.env.RELAYER_URL
-  if (!relayerUrl) {
-    return null
-  }
+  const { relayerUrl } = resolvePublicRuntimeEnv(process.env)
 
   const query = `id=${encodeURIComponent(transactionId)}`
   const response = await fetch(`${relayerUrl}/transaction?${query}`, {
@@ -143,10 +141,7 @@ async function syncClobCollateralBalanceAllowanceSignatureType3(user: {
     return
   }
 
-  const clobUrl = process.env.CLOB_URL
-  if (!clobUrl) {
-    return
-  }
+  const { clobUrl } = resolvePublicRuntimeEnv(process.env)
 
   const query = 'asset_type=COLLATERAL&signature_type=3'
   const path = '/balance-allowance/update'
@@ -191,10 +186,7 @@ export async function getDepositWalletNonceAction(): Promise<RelayerNonceResult>
     return { error: 'Your Deposit Wallet is still being created. Try again in a moment.', code: 'deposit_wallet_not_deployed' }
   }
 
-  const relayerUrl = process.env.RELAYER_URL
-  if (!relayerUrl) {
-    return { error: DEFAULT_ERROR_MESSAGE }
-  }
+  const { relayerUrl } = resolvePublicRuntimeEnv(process.env)
 
   const query = `address=${encodeURIComponent(user.address)}&type=WALLET`
   const path = `/nonce?${query}`
@@ -283,10 +275,7 @@ export async function submitDepositWalletTransactionAction(
     return { error: 'Invalid Deposit Wallet target.' }
   }
 
-  const relayerUrl = process.env.RELAYER_URL
-  if (!relayerUrl) {
-    return { error: DEFAULT_ERROR_MESSAGE }
-  }
+  const { relayerUrl } = resolvePublicRuntimeEnv(process.env)
 
   const platformKey = process.env.KUEST_API_KEY
   const platformSecret = process.env.KUEST_API_SECRET

@@ -20,6 +20,7 @@ import {
   computeNextRecurringSchedule,
   truncateEventCreationError,
 } from '@/lib/event-creation-worker'
+import { resolvePublicRuntimeEnv } from '@/lib/public-runtime-config.shared'
 
 export const maxDuration = 300
 
@@ -29,6 +30,10 @@ const PREPARE_POLL_DELAY_MS = 1500
 const PREPARE_POLL_MAX_ATTEMPTS = 80
 const FINALIZE_POLL_DELAY_MS = 1500
 const FINALIZE_POLL_MAX_ATTEMPTS = 120
+
+function getCreateMarketUrl() {
+  return resolvePublicRuntimeEnv(process.env).createMarketUrl
+}
 
 interface JobRow {
   id: string
@@ -61,14 +66,16 @@ interface PendingRequestPrepared {
   requestId: string
   chainId: number
   creator: string
-  txPlan: Array<{
-    id: string
-    to: string
-    value: string
-    data: string
-    description: string
-    marketKey?: string
-  }>
+  txPlan: PendingRequestTxPlanItem[]
+}
+
+interface PendingRequestTxPlanItem {
+  id: string
+  to: string
+  value: string
+  data: string
+  description: string
+  marketKey?: string
 }
 
 interface PendingRequestItem {
@@ -82,6 +89,7 @@ interface PendingRequestItem {
   errorMessage: string | null
   prepared: PendingRequestPrepared | null
   txs: PendingRequestTx[]
+  metadataUpdateTxPlan?: PendingRequestTxPlanItem[]
 }
 
 function isPrepareAcceptedResponse(value: unknown): value is PrepareAcceptedResponse {
@@ -177,8 +185,16 @@ function normalizeConfirmedTxs(value: unknown) {
     .filter((item): item is PendingRequestTx => Boolean(item))
 }
 
+function resolvePendingRequestTxPlan(pending: PendingRequestItem) {
+  if (pending.status === 'metadata_update_pending' && pending.metadataUpdateTxPlan?.length) {
+    return pending.metadataUpdateTxPlan
+  }
+
+  return pending.prepared?.txPlan ?? []
+}
+
 async function fetchMarketConfig() {
-  const response = await fetch(`${process.env.CREATE_MARKET_URL}/market-config`, {
+  const response = await fetch(`${getCreateMarketUrl()}/market-config`, {
     method: 'GET',
     cache: 'no-store',
   })
@@ -199,7 +215,7 @@ async function fetchPendingRequest(creator: string, chainId: number, requestId?:
     query.set('requestId', requestId)
   }
 
-  const response = await fetch(`${process.env.CREATE_MARKET_URL}/pending?${query.toString()}`, {
+  const response = await fetch(`${getCreateMarketUrl()}/pending?${query.toString()}`, {
     method: 'GET',
     cache: 'no-store',
   })
@@ -242,11 +258,11 @@ async function pollPendingFinalization(creator: string, chainId: number, request
   for (let attempt = 1; attempt <= FINALIZE_POLL_MAX_ATTEMPTS; attempt += 1) {
     const pending = await fetchPendingRequest(creator, chainId, requestId)
     if (!pending) {
-      return
+      return null
     }
 
-    if (pending.status === 'finalized') {
-      return
+    if (pending.status === 'finalized' || pending.status === 'metadata_update_pending') {
+      return pending
     }
 
     if (pending.errorMessage) {
@@ -260,7 +276,7 @@ async function pollPendingFinalization(creator: string, chainId: number, request
 }
 
 async function persistConfirmedTxs(requestId: string, creator: string, txs: PendingRequestTx[]) {
-  const response = await fetch(`${process.env.CREATE_MARKET_URL}/tx-confirm`, {
+  const response = await fetch(`${getCreateMarketUrl()}/tx-confirm`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -307,7 +323,7 @@ async function prepareRequest(input: {
   assets: ReturnType<typeof normalizeEventCreationAssetPayload>
   recordId: string
 }) {
-  const authResponse = await fetch(`${process.env.CREATE_MARKET_URL}/prepare-auth`, {
+  const authResponse = await fetch(`${getCreateMarketUrl()}/prepare-auth`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -377,7 +393,7 @@ async function prepareRequest(input: {
     await appendStoredAsset(body, `teamLogo:${teamKey}`, asset, false)
   }
 
-  const response = await fetch(`${process.env.CREATE_MARKET_URL}/prepare`, {
+  const response = await fetch(`${getCreateMarketUrl()}/prepare`, {
     method: 'POST',
     body,
   })
@@ -544,16 +560,17 @@ async function processClaimedJob(job: JobRow, defaultChainId: number) {
   if (!pending?.prepared) {
     throw new Error('Prepared event creation request is missing tx plan.')
   }
+  const activePending = pending
 
   let confirmedTxs = normalizeConfirmedTxs(draft.pendingConfirmedTxs)
-  if (pending.txs.length > confirmedTxs.length) {
-    confirmedTxs = pending.txs
+  if (activePending.txs.length > confirmedTxs.length) {
+    confirmedTxs = activePending.txs
   }
 
   await EventCreationRepository.setExecutionState({
     draftId: draft.id,
     status: 'running',
-    pendingRequestId: pending.requestId,
+    pendingRequestId: activePending.requestId,
     pendingPayloadHash: payloadHash,
     pendingChainId: chain.id,
     pendingConfirmedTxs: confirmedTxs as unknown as Array<Record<string, unknown>>,
@@ -570,70 +587,108 @@ async function processClaimedJob(job: JobRow, defaultChainId: number) {
   })
   const confirmedMap = new Map(confirmedTxs.map(item => [item.id, item.hash] as const))
 
-  for (const tx of pending.prepared.txPlan) {
-    let hash = confirmedMap.get(tx.id) as `0x${string}` | undefined
+  async function executeTxPlan(txPlan: PendingRequestTxPlanItem[]) {
+    for (const tx of txPlan) {
+      let hash = confirmedMap.get(tx.id) as `0x${string}` | undefined
 
-    if (!hash) {
-      hash = await walletClient.sendTransaction({
-        account,
-        chain,
-        to: getAddress(tx.to),
-        data: tx.data as `0x${string}`,
-        value: BigInt(tx.value),
-      }) as `0x${string}`
+      if (!hash) {
+        hash = await walletClient.sendTransaction({
+          account,
+          chain,
+          to: getAddress(tx.to),
+          data: tx.data as `0x${string}`,
+          value: BigInt(tx.value),
+        }) as `0x${string}`
+
+        const receipt = await publicClient.waitForTransactionReceipt({
+          hash,
+        })
+        assertSuccessfulTransactionReceipt(receipt, hash)
+
+        confirmedTxs = [...confirmedTxs.filter(item => item.id !== tx.id), {
+          id: tx.id,
+          hash,
+        }]
+        confirmedMap.set(tx.id, hash)
+        await persistConfirmedTxs(activePending.requestId, creator, confirmedTxs)
+
+        await EventCreationRepository.setExecutionState({
+          draftId: draft.id,
+          status: 'running',
+          pendingRequestId: activePending.requestId,
+          pendingPayloadHash: payloadHash,
+          pendingChainId: chain.id,
+          pendingConfirmedTxs: confirmedTxs as unknown as Array<Record<string, unknown>>,
+        })
+        continue
+      }
 
       const receipt = await publicClient.waitForTransactionReceipt({
-        hash,
+        hash: hash as `0x${string}`,
       })
-      assertSuccessfulTransactionReceipt(receipt, hash)
+      assertSuccessfulTransactionReceipt(receipt, hash as `0x${string}`)
+    }
+  }
 
-      confirmedTxs = [...confirmedTxs.filter(item => item.id !== tx.id), {
-        id: tx.id,
-        hash,
-      }]
-      confirmedMap.set(tx.id, hash)
-      await persistConfirmedTxs(pending.requestId, creator, confirmedTxs)
+  async function finalizeRequest() {
+    const finalizeResponse = await fetch(`${getCreateMarketUrl()}/finalize`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        requestId: activePending.requestId,
+        creator,
+        txs: confirmedTxs,
+      }),
+    })
+    const finalizePayload = await finalizeResponse.json().catch(() => null) as {
+      requestId?: string
+      status?: string
+      metadataUpdateTxPlan?: PendingRequestTxPlanItem[]
+    } | null
+    if (!finalizeResponse.ok) {
+      throw new Error(readApiError(finalizePayload) || `Finalize failed (${finalizeResponse.status})`)
+    }
+    return finalizePayload
+  }
 
-      await EventCreationRepository.setExecutionState({
-        draftId: draft.id,
-        status: 'running',
-        pendingRequestId: pending.requestId,
-        pendingPayloadHash: payloadHash,
-        pendingChainId: chain.id,
-        pendingConfirmedTxs: confirmedTxs as unknown as Array<Record<string, unknown>>,
-      })
+  async function executeMetadataUpdateTxPlan(metadataUpdateTxPlan?: PendingRequestTxPlanItem[]) {
+    const resolvedTxPlan = metadataUpdateTxPlan?.length
+      ? metadataUpdateTxPlan
+      : (await fetchPendingRequest(creator, chain.id, activePending.requestId))?.metadataUpdateTxPlan ?? []
+    if (resolvedTxPlan.length === 0) {
+      throw new Error('Metadata update tx plan is missing.')
+    }
+    await executeTxPlan(resolvedTxPlan)
+  }
+
+  await executeTxPlan(resolvePendingRequestTxPlan(activePending))
+  let finalizePayload = await finalizeRequest()
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    if (finalizePayload?.status === 'metadata_update_pending') {
+      await executeMetadataUpdateTxPlan(finalizePayload.metadataUpdateTxPlan)
+      finalizePayload = await finalizeRequest()
       continue
     }
 
-    const receipt = await publicClient.waitForTransactionReceipt({
-      hash: hash as `0x${string}`,
-    })
-    assertSuccessfulTransactionReceipt(receipt, hash as `0x${string}`)
+    if (finalizePayload?.status === 'finalize_in_progress') {
+      const finalizePending = await pollPendingFinalization(creator, chain.id, activePending.requestId)
+      if (finalizePending?.status === 'metadata_update_pending') {
+        await executeMetadataUpdateTxPlan(finalizePending.metadataUpdateTxPlan)
+        finalizePayload = await finalizeRequest()
+        continue
+      }
+      if (finalizePending?.status === 'finalized') {
+        finalizePayload = { requestId: activePending.requestId, status: 'finalized' }
+      }
+    }
+
+    break
   }
 
-  const finalizeResponse = await fetch(`${process.env.CREATE_MARKET_URL}/finalize`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      requestId: pending.requestId,
-      creator,
-      txs: confirmedTxs,
-    }),
-  })
-  const finalizePayload = await finalizeResponse.json().catch(() => null) as {
-    requestId?: string
-    status?: string
-  } | null
-  if (!finalizeResponse.ok) {
-    throw new Error(readApiError(finalizePayload) || `Finalize failed (${finalizeResponse.status})`)
-  }
-
-  if (finalizePayload?.status === 'finalize_in_progress') {
-    await pollPendingFinalization(creator, chain.id, pending.requestId)
-  }
-  else if (finalizePayload?.status !== 'finalized') {
+  if (finalizePayload?.status !== 'finalized') {
     throw new Error(`Unexpected finalize status: ${finalizePayload?.status ?? 'unknown'}`)
   }
 
