@@ -13,7 +13,8 @@ const mocks = vi.hoisted(() => ({
   resolveMarket: vi.fn(),
   setMemberRole: vi.fn(),
   createInvite: vi.fn(),
-  useInvite: vi.fn(),
+  redeemInvite: vi.fn(),
+  getMarket: vi.fn(),
 }))
 
 vi.mock('@/lib/db/queries/user', () => ({
@@ -35,7 +36,8 @@ vi.mock('@/lib/db/queries/community', () => ({
     resolveMarket: mocks.resolveMarket,
     setMemberRole: mocks.setMemberRole,
     createInvite: mocks.createInvite,
-    useInvite: mocks.useInvite,
+    redeemInvite: mocks.redeemInvite,
+    getMarket: mocks.getMarket,
   },
 }))
 
@@ -149,18 +151,18 @@ describe('joinCommunityAction', () => {
 
   it('uses invite code if provided', async () => {
     mocks.getCurrentUser.mockResolvedValue({ id: 'u1' })
-    mocks.useInvite.mockResolvedValue({ data: { created_by: 'admin1' }, error: null })
+    mocks.redeemInvite.mockResolvedValue({ data: { created_by: 'admin1' }, error: null })
     mocks.join.mockResolvedValue({ data: { user_id: 'u1' }, error: null })
     const { joinCommunityAction } = await import('@/app/[locale]/(platform)/community/[slug]/_actions/community-actions')
     const result = await joinCommunityAction('C1', 'CODE123')
     expect(result.error).toBeNull()
-    expect(mocks.useInvite).toHaveBeenCalledWith('CODE123')
+    expect(mocks.redeemInvite).toHaveBeenCalledWith('CODE123')
     expect(mocks.join).toHaveBeenCalledWith('C1', 'u1', 'admin1')
   })
 
   it('rejects expired/invalid invite codes', async () => {
     mocks.getCurrentUser.mockResolvedValue({ id: 'u1' })
-    mocks.useInvite.mockResolvedValue({ data: null, error: 'Invite expired' })
+    mocks.redeemInvite.mockResolvedValue({ data: null, error: 'Invite expired' })
     const { joinCommunityAction } = await import('@/app/[locale]/(platform)/community/[slug]/_actions/community-actions')
     const result = await joinCommunityAction('C1', 'EXPIRED')
     expect(result.error).toMatch(/expired/i)
@@ -237,6 +239,7 @@ describe('castJuryVoteAction', () => {
     mocks.castVote.mockResolvedValue({ data: { id: 'V1' }, error: null })
     mocks.getById.mockResolvedValue({ data: { jury_size: 1 }, error: null })
     mocks.resolveMarket.mockResolvedValue({ outcome: 'yes', status: 'resolved', voteCount: 1, threshold: 1 })
+    mocks.getMarket.mockResolvedValue({ data: { title: 'Test Market' }, error: null })
     const { castJuryVoteAction } = await import('@/app/[locale]/(platform)/community/[slug]/_actions/community-actions')
     const result = await castJuryVoteAction('M1', 'C1', 'slug', {
       vote: 'no',

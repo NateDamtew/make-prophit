@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   addMarket: vi.fn(),
   updateMarket: vi.fn(),
   publishMarket: vi.fn(),
+  getMarket: vi.fn(),
   deleteMarket: vi.fn(),
   analyzeMarket: vi.fn(),
 }))
@@ -20,6 +21,7 @@ vi.mock('@/lib/db/queries/community', () => ({
     addMarket: mocks.addMarket,
     updateMarket: mocks.updateMarket,
     publishMarket: mocks.publishMarket,
+    getMarket: mocks.getMarket,
     deleteMarket: mocks.deleteMarket,
   },
 }))
@@ -144,6 +146,7 @@ describe('publishMarketAction', () => {
     mocks.getCurrentUser.mockResolvedValue({ id: 'u1' })
     mocks.getMemberRole.mockResolvedValue({ data: 'admin', error: null })
     mocks.publishMarket.mockResolvedValue({ data: { id: 'M1', status: 'active' }, error: null })
+    mocks.getMarket.mockResolvedValue({ data: { title: 'Test Market' }, error: null })
     const { publishMarketAction } = await import('@/app/[locale]/(platform)/community/[slug]/_actions/market-actions')
     const result = await publishMarketAction('M1', 'C1', 'slug')
     expect(result.error).toBeNull()

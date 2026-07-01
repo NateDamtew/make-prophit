@@ -25,6 +25,10 @@ vi.mock('@dynamic-labs/sdk-react-core', () => ({
   useDynamicModals: () => ({
     setShowLinkNewWalletModal: mocks.setShowLinkNewWalletModal,
   }),
+  useConnectWithOtp: () => ({
+    connectWithEmail: vi.fn(),
+    verifyOneTimePassword: vi.fn(),
+  }),
   useUserWallets: () => [],
 }))
 
