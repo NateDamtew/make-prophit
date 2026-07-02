@@ -75,8 +75,12 @@ sync they **match upstream/main** (exchange, `CTF_AUTO_REDEEM`, neg-risk adapter
 ## 5. Config / env that must be set (fork-specific)
 
 - `NEXT_PUBLIC_DYNAMIC_ENV_ID` — Dynamic environment (auth won't work without it).
-- `CHAIN_ID` — e.g. `137` for Polygon. Upstream's configurable-chain change
-  **defaults to Amoy testnet** if unset.
+- `CHAIN_ID` — e.g. `137`. Feeds the runtime-config `chainId` value. **Note:** the
+  wagmi/Dynamic network key (`DEFAULT_NETWORK_KEY` in `src/lib/network.ts`) is
+  **pinned to `'polygon'`** on this fork — do NOT re-adopt upstream's runtime
+  resolution of it. Resolving it at module-load raced to Amoy on the client
+  (where `process.env.CHAIN_ID` is undefined), which broke wallet sign-in with a
+  "network not available" prompt. Chain restriction is for trading, not auth.
 - `TMA_DOMAIN` — Telegram Mini App host (better-auth trustedOrigins).
 - `REOWN_APPKIT_PROJECT_ID` — still read as the SIWE smart-contract-wallet RPC
   fallback (see `src/lib/auth.ts`).
