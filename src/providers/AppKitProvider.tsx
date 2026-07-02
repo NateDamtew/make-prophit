@@ -139,19 +139,28 @@ async function driveSIWEHandshake(primaryWallet: Wallet, siteUrl: string) {
       return
     }
 
-    const { data: verifyData } = await authClient.siwe.verify({
+    const { data: verifyData, error: verifyError } = await authClient.siwe.verify({
       message,
       signature,
       walletAddress: address,
       chainId,
     })
 
-    if (verifyData?.success) {
-      const session = await authClient.getSession()
-      const user = session?.data?.user
-      if (user) {
-        useUser.setState(previous => mergeSessionUserState(previous, user as unknown as User))
-      }
+    if (!verifyData?.success) {
+      // Surface the server's rejection reason — a silent failure here leaves
+      // the user "connected" in Dynamic but with no Prophit session.
+      console.warn('[SIWE] verify rejected:', verifyError ?? verifyData ?? 'empty response')
+      return
+    }
+
+    const session = await authClient.getSession()
+    const user = session?.data?.user
+    if (user) {
+      useUser.setState(previous => mergeSessionUserState(previous, user as unknown as User))
+      console.warn('[SIWE] handshake complete — session created for', address)
+    }
+    else {
+      console.warn('[SIWE] verify succeeded but no session returned — check cookies/baseURL')
     }
   }
   catch (error) {
