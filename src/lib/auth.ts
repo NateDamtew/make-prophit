@@ -8,6 +8,7 @@ import { nextCookies } from 'better-auth/next-js'
 import { customSession, siwe, twoFactor } from 'better-auth/plugins'
 import { eq, sql } from 'drizzle-orm'
 import { createPublicClient, http, verifyMessage as viemVerifyMessage } from 'viem'
+import { generateSiweNonce } from 'viem/siwe'
 import { z } from 'zod'
 import { isAdminWallet } from '@/lib/admin'
 import { AffiliateRepository } from '@/lib/db/queries/affiliate'
@@ -442,7 +443,11 @@ export const auth = betterAuth({
       domain: SIWE_DOMAIN,
       emailDomainName: SIWE_EMAIL_DOMAIN,
       anonymous: true,
-      getNonce: async () => generateRandomString(32),
+      // viem's createSiweMessage requires an alphanumeric nonce; better-auth's
+      // generateRandomString draws from an alphabet that includes '-' and '_',
+      // which made ~2 of 3 sign-ins fail. Use viem's own generator so the
+      // nonce always passes viem's validation.
+      getNonce: async () => generateSiweNonce(),
       verifyMessage: async ({ message, signature, address }) => {
         // First try pure ECDSA recovery — works for all EOA wallets (Metamask,
         // Binance Wallet, Coinbase, etc.) without any RPC call. This avoids
