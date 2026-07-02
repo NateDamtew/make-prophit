@@ -27,6 +27,11 @@ These are new files/directories upstream doesn't have. Merges leave them untouch
 - **Telegram Mini App (TMA) auth** — `src/app/[locale]/(platform)/_components/TmaAutoLogin.tsx`,
   `src/lib/tma/**`, the `verify-tma` HMAC auth plugin/route, email-OTP →
   embedded-wallet onboarding wizard.
+  **⛔ SHELVED (2026-07-02):** no further TMA work happens in this repo. The
+  Telegram Mini App will be a separate native project consuming this app's
+  APIs. The in-repo TMA code stays dormant (gated on `isTma`/Telegram detection,
+  inert on web) — keep it merging cleanly but don't build on it. The TON rail
+  is TMA-gated, so it is dormant too (candidate for reuse by the new project).
 - **Dynamic compatibility shims** — `src/hooks/useAppKitAccount.ts`,
   `src/hooks/useAppKitCompat.ts`, `src/hooks/useAppKit.ts` (stable context so
   consumers never call Dynamic hooks directly).
