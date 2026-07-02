@@ -88,5 +88,31 @@ sync they **match upstream/main** (exchange, `CTF_AUTO_REDEEM`, neg-risk adapter
 - `REOWN_APPKIT_PROJECT_ID` — still read as the SIWE smart-contract-wallet RPC
   fallback (see `src/lib/auth.ts`).
 
+## 6. Mainnet launch runbook (the Amoy → Polygon flip)
+
+Do these IN ORDER when Kuest announces mainnet:
+
+1. **Sync upstream first.** Kuest ships final contract addresses right before
+   mainnet ("single new exchange contract"). Merge upstream (Section 4) so
+   `src/lib/contracts.ts` matches their deployed state — a stale exchange or
+   auto-redeem address means the relayer rejects everything.
+2. **Dynamic: Sandbox → Live.** Create/configure the Live environment
+   (embedded wallets + create-on-signup, social providers, EVM network =
+   Polygon only), allowlist the production domains in its CORS settings, and
+   set the new `NEXT_PUBLIC_DYNAMIC_ENV_ID` in Vercel. Sandbox users/wallets do
+   NOT carry over.
+3. **Vercel env:** `NEXT_PUBLIC_NETWORK_KEY` → `polygon` (or remove),
+   `CHAIN_ID` → `137`.
+4. **Dynamic dashboard networks:** Polygon ON, Amoy OFF (reverse of test phase).
+5. **Redeploy** — `NEXT_PUBLIC_*` values are inlined at build time; env changes
+   without a rebuild do nothing.
+6. **Reset test-phase user state.** Deposit wallets in the DB were deployed on
+   Amoy and do not exist on mainnet; approvals/balances are test-only. Wipe
+   test accounts or null `deposit_wallet_address`/`deposit_wallet_status` +
+   `settings.tradingAuth` so mainnet users onboard fresh.
+7. **Rotate secrets that were exposed during testing** (Telegram bot token).
+8. **Smoke test with real money, small:** MetaMask sign-in AND email sign-in →
+   deposit ~$5 USDC → one trade → one withdrawal. Only then announce.
+
 See `CLAUDE.md` for the deeper architecture notes and the hard rules (esp. the
 SIWE sign-in rules and the Dynamic client-only mount).
