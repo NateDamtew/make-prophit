@@ -9,26 +9,14 @@ export function parseNetworkChainId(value: string | number | null | undefined, f
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback
 }
 
-function getRuntimeChainId() {
-  if (typeof window !== 'undefined') {
-    const runtimeChainId = window.__PUBLIC_RUNTIME_CONFIG__?.chainId
-    if (runtimeChainId !== undefined) {
-      return runtimeChainId
-    }
-  }
-
-  if (typeof process !== 'undefined') {
-    return process.env.CHAIN_ID
-  }
-
-  return undefined
-}
-
-function resolveNetworkKeyByChainId(chainId: string | number | null | undefined): DefaultNetworkKey {
-  return parseNetworkChainId(chainId) === POLYGON_MAINNET_CHAIN_ID ? 'polygon' : 'amoy'
-}
-
-export const DEFAULT_NETWORK_KEY: DefaultNetworkKey = resolveNetworkKeyByChainId(getRuntimeChainId())
+// This fork is Polygon-mainnet only (see CLAUDE.md). Pin the network key to a
+// constant so the wagmi/Dynamic chain config can never race to Amoy at
+// module-load time. Resolving this from runtime config (as upstream does) meant
+// that if `window.__PUBLIC_RUNTIME_CONFIG__` wasn't set at the instant this
+// module first evaluated, it fell back to Amoy — and that wrong value locked
+// into the wallet config, so Dynamic blocked sign-in with a "network not
+// available" prompt. Chain restriction is for trading, not authentication.
+export const DEFAULT_NETWORK_KEY: DefaultNetworkKey = 'polygon'
 
 const NETWORK_CONFIG = {
   amoy: {
