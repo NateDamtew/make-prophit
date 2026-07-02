@@ -9,14 +9,19 @@ export function parseNetworkChainId(value: string | number | null | undefined, f
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback
 }
 
-// This fork is Polygon-mainnet only (see CLAUDE.md). Pin the network key to a
-// constant so the wagmi/Dynamic chain config can never race to Amoy at
-// module-load time. Resolving this from runtime config (as upstream does) meant
-// that if `window.__PUBLIC_RUNTIME_CONFIG__` wasn't set at the instant this
-// module first evaluated, it fell back to Amoy — and that wrong value locked
-// into the wallet config, so Dynamic blocked sign-in with a "network not
-// available" prompt. Chain restriction is for trading, not authentication.
-export const DEFAULT_NETWORK_KEY: DefaultNetworkKey = 'polygon'
+// The network key is resolved from NEXT_PUBLIC_NETWORK_KEY at BUILD time —
+// Next.js inlines NEXT_PUBLIC_* into the client bundle, so unlike upstream's
+// runtime `window.__PUBLIC_RUNTIME_CONFIG__` lookup there is no module-load
+// race (that race locked the wallet config to the wrong chain and broke
+// sign-in). Defaults to Polygon mainnet, the fork's launch target.
+//
+// While Kuest's shared infra (relayer/CLOB/exchanges) is in pre-mainnet
+// testing it runs on AMOY — set NEXT_PUBLIC_NETWORK_KEY=amoy (and
+// CHAIN_ID=80002) to match it, and remove both at mainnet launch. Everything
+// keys off this: chainId, IS_TEST_MODE, the collateral token (test USDC vs
+// native USDC), viem/wagmi networks, and the explorer base.
+export const DEFAULT_NETWORK_KEY: DefaultNetworkKey
+  = process.env.NEXT_PUBLIC_NETWORK_KEY === 'amoy' ? 'amoy' : 'polygon'
 
 const NETWORK_CONFIG = {
   amoy: {
