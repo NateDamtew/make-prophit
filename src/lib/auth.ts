@@ -145,6 +145,10 @@ export const auth = betterAuth({
   baseURL: SITE_URL,
   trustedOrigins: [
     SITE_URL,
+    // Trust every subdomain of the site host (beta., tma., …) so environments
+    // like beta.makeprophit.com don't 403 on /api/auth/* when SITE_URL points
+    // at the apex domain.
+    `https://*.${siteUrlObject.hostname}`,
     `https://tma.${siteUrlObject.hostname}`,
     ...(process.env.TMA_DOMAIN ? [`https://${process.env.TMA_DOMAIN}`] : []),
     ...(process.env.ADDITIONAL_TRUSTED_ORIGINS

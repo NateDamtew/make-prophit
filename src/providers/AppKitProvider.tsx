@@ -8,7 +8,6 @@ import type { User } from '@/types'
 import { EthereumWalletConnectors } from '@dynamic-labs/ethereum'
 import { DynamicContextProvider, useConnectWithOtp, useDynamicContext, useDynamicModals, useUserWallets } from '@dynamic-labs/sdk-react-core'
 import { DynamicWagmiConnector } from '@dynamic-labs/wagmi-connector'
-import { generateRandomString } from 'better-auth/crypto'
 import { useExtracted } from 'next-intl'
 import { Component, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
@@ -110,8 +109,16 @@ async function driveSIWEHandshake(primaryWallet: Wallet, siteUrl: string) {
   }
 
   try {
-    const { data: nonceData } = await authClient.siwe.nonce({ walletAddress: address, chainId })
-    const nonce = nonceData?.nonce || generateRandomString(32)
+    const { data: nonceData, error: nonceError } = await authClient.siwe.nonce({ walletAddress: address, chainId })
+    const nonce = nonceData?.nonce
+    if (!nonce) {
+      // Without a server-issued nonce, verification can never succeed (the
+      // server compares against its stored nonce) — abort loudly instead of
+      // signing a message that is guaranteed to fail. A 403 here usually means
+      // the current origin is missing from better-auth trustedOrigins.
+      console.warn('[SIWE] nonce request failed — aborting handshake:', nonceError ?? 'empty response')
+      return
+    }
 
     const message = createSiweMessage({
       domain: new URL(siteUrl).host,
