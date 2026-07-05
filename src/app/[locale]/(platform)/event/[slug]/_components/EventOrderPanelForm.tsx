@@ -70,7 +70,10 @@ import { calculateMarketFill, normalizeBookLevels } from '@/lib/order-panel-util
 import { buildOrderPayload, submitOrder } from '@/lib/orders'
 import { resolveOrderExpirationTimestamp } from '@/lib/orders/expiration'
 import { signOrderPayload } from '@/lib/orders/signing'
-import { MIN_LIMIT_ORDER_SHARES, validateOrder } from '@/lib/orders/validation'
+import {
+  MIN_LIMIT_ORDER_SHARES,
+  validateOrder,
+} from '@/lib/orders/validation'
 import { isTradingAuthRequiredError } from '@/lib/trading-auth/errors'
 import { cn } from '@/lib/utils'
 import { isUserRejectedRequestError, normalizeAddress } from '@/lib/wallet'
@@ -1073,7 +1076,7 @@ export default function EventOrderPanelForm({
   const shouldShowDepositCta = isInteractiveWalletReady
     && state.side === ORDER_SIDE.BUY
     && state.type === ORDER_TYPE.MARKET
-    && Math.max(effectiveMarketBuyCost, amountNumber) > balance.raw
+    && Math.max(effectiveMarketBuyCost, amountNumber) > availableBalanceForOrders
 
   const avgBuyPriceDollars = typeof currentBuyPriceCents === 'number' && Number.isFinite(currentBuyPriceCents)
     ? currentBuyPriceCents / 100

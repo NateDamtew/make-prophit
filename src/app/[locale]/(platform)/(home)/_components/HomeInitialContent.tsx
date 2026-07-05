@@ -1,11 +1,9 @@
 import type { SupportedLocale } from '@/i18n/locales'
-import { cacheLife } from 'next/cache'
 import HomeContent from '@/app/[locale]/(platform)/(home)/_components/HomeContent'
 import {
+  getCachedHomeInitialCurrentTimestamp,
   getHomeInitialCurrentTimestamp,
-  HOME_INITIAL_EVENTS_CACHE_LIFE,
 } from '@/app/[locale]/(platform)/(home)/_utils/homeInitialEventsCache'
-import { hasDatabaseEnv } from '@/lib/db/env'
 import { deferPublicShellPrerenderIfNeeded, shouldPrerenderPublicShell } from '@/lib/public-shell-rendering'
 
 interface HomeInitialContentProps {
@@ -15,13 +13,16 @@ interface HomeInitialContentProps {
   locale: SupportedLocale
 }
 
+interface HomeInitialContentBodyProps extends HomeInitialContentProps {
+  currentTimestamp?: number | null
+}
+
 async function HomeInitialContentBody({
+  currentTimestamp = null,
   initialMainTag,
   initialTag,
   locale,
-}: HomeInitialContentProps) {
-  const currentTimestamp = getHomeInitialCurrentTimestamp()
-
+}: HomeInitialContentBodyProps) {
   return (
     <HomeContent
       locale={locale}
@@ -32,29 +33,42 @@ async function HomeInitialContentBody({
   )
 }
 
-async function CachedHomeInitialContent(props: HomeInitialContentProps) {
-  'use cache'
-  cacheLife(HOME_INITIAL_EVENTS_CACHE_LIFE)
-
-  return <HomeInitialContentBody {...props} />
-}
-
 async function RuntimeHomeInitialContent(props: HomeInitialContentProps) {
   await deferPublicShellPrerenderIfNeeded()
+  const currentTimestamp = getHomeInitialCurrentTimestamp()
 
-  return hasDatabaseEnv()
-    ? <CachedHomeInitialContent {...props} />
-    : <HomeInitialContentBody {...props} />
+  return (
+    <HomeInitialContentBody
+      {...props}
+      currentTimestamp={currentTimestamp}
+    />
+  )
 }
 
-export default function HomeInitialContent({
+export default async function HomeInitialContent({
   deferRuntimePrerender = true,
   ...props
 }: HomeInitialContentProps) {
-  if (shouldPrerenderPublicShell() || !deferRuntimePrerender) {
-    return hasDatabaseEnv()
-      ? <CachedHomeInitialContent {...props} />
-      : <HomeInitialContentBody {...props} />
+  if (shouldPrerenderPublicShell()) {
+    const currentTimestamp = await getCachedHomeInitialCurrentTimestamp()
+
+    return (
+      <HomeInitialContentBody
+        {...props}
+        currentTimestamp={currentTimestamp}
+      />
+    )
+  }
+
+  if (!deferRuntimePrerender) {
+    const currentTimestamp = getHomeInitialCurrentTimestamp()
+
+    return (
+      <HomeInitialContentBody
+        {...props}
+        currentTimestamp={currentTimestamp}
+      />
+    )
   }
 
   return <RuntimeHomeInitialContent {...props} />

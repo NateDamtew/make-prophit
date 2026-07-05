@@ -126,6 +126,65 @@ describe('home-events', () => {
     )).toEqual([soonerActiveEvent, resolvedEvent])
   })
 
+  it('filters sports child market rows before choosing the newest series entry', () => {
+    const moneylineEvent = {
+      id: 'moneyline-event',
+      slug: 'fifwc-bra-nor-2026-07-05',
+      sports_event_slug: 'fifwc-bra-nor-2026-07-05',
+      sports_parent_event_id: null,
+      series_slug: 'soccer-fifwc',
+      status: 'active' as const,
+      end_date: '2026-07-05T20:00:00.000Z',
+      created_at: '2026-07-05T10:53:16.000Z',
+      updated_at: '2026-07-05T10:53:16.000Z',
+      markets: [{ is_resolved: false }],
+    }
+    const firstToScoreEvent = {
+      id: 'first-to-score-event',
+      slug: 'fifwc-bra-nor-2026-07-05-first-to-score',
+      sports_event_slug: 'fifwc-bra-nor-2026-07-05-first-to-score',
+      sports_parent_event_id: 654615,
+      series_slug: 'soccer-fifwc',
+      status: 'active' as const,
+      end_date: '2026-07-05T20:00:00.000Z',
+      created_at: '2026-07-05T12:44:24.000Z',
+      updated_at: '2026-07-05T12:44:24.000Z',
+      markets: [{ is_resolved: false }],
+    }
+    const totalCornersEvent = {
+      id: 'total-corners-event',
+      slug: 'fifwc-bra-nor-2026-07-05-total-corners',
+      sports_event_slug: 'fifwc-bra-nor-2026-07-05-total-corners',
+      sports_parent_event_id: null,
+      series_slug: 'soccer-fifwc',
+      status: 'active' as const,
+      end_date: '2026-07-05T20:00:00.000Z',
+      created_at: '2026-07-05T12:45:24.000Z',
+      updated_at: '2026-07-05T12:45:24.000Z',
+      markets: [{ is_resolved: false }],
+    }
+    const zeroParentEvent = {
+      id: 'zero-parent-event',
+      slug: 'nba-bos-nyk-2026-07-05',
+      sports_event_slug: 'nba-bos-nyk-2026-07-05',
+      sports_parent_event_id: 0,
+      series_slug: 'basketball-nba',
+      status: 'active' as const,
+      end_date: '2026-07-05T23:00:00.000Z',
+      created_at: '2026-07-05T12:45:24.000Z',
+      updated_at: '2026-07-05T12:45:24.000Z',
+      markets: [{ is_resolved: false }],
+    }
+
+    expect(filterHomeEvents(
+      [firstToScoreEvent, totalCornersEvent, zeroParentEvent, moneylineEvent],
+      {
+        currentTimestamp: Date.parse('2026-07-05T14:00:00.000Z'),
+        status: 'active',
+      },
+    )).toEqual([zeroParentEvent, moneylineEvent])
+  })
+
   it('prefers the current active series event over an overdue unresolved entry', () => {
     const overdueEvent = {
       id: 'overdue-event',

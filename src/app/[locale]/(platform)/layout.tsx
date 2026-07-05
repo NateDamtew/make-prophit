@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import type { SupportedLocale } from '@/i18n/locales'
 import { getExtracted, setRequestLocale } from 'next-intl/server'
 import AffiliateQueryHandler from '@/app/[locale]/(platform)/_components/AffiliateQueryHandler'
@@ -16,14 +17,16 @@ import { deferPublicShellPrerenderIfNeeded } from '@/lib/public-shell-rendering'
 import AppKitProvider from '@/providers/AppKitProvider'
 import Footer from '@/app/[locale]/(platform)/_components/Footer'
 
-export default async function PlatformLayout({ params, children }: LayoutProps<'/[locale]'>) {
-  await deferPublicShellPrerenderIfNeeded()
-
-  const { locale } = await params
-  const resolvedLocale = locale as SupportedLocale
-  setRequestLocale(resolvedLocale)
+async function PlatformLayoutContent({
+  children,
+  locale,
+}: {
+  children: ReactNode
+  locale: SupportedLocale
+}) {
+  setRequestLocale(locale)
   const t = await getExtracted()
-  const { data: mainTags, globalChilds = [] } = await loadPlatformMainTags(resolvedLocale)
+  const { data: mainTags, globalChilds = [] } = await loadPlatformMainTags(locale)
   const tags = buildPlatformNavigationTags({
     mainTags: mainTags ?? [],
     globalChilds,
@@ -52,5 +55,18 @@ export default async function PlatformLayout({ params, children }: LayoutProps<'
         </FilterProvider>
       </TradingOnboardingProvider>
     </AppKitProvider>
+  )
+}
+
+export default async function PlatformLayout({ params, children }: LayoutProps<'/[locale]'>) {
+  await deferPublicShellPrerenderIfNeeded()
+
+  const { locale } = await params
+  const resolvedLocale = locale as SupportedLocale
+
+  return (
+    <PlatformLayoutContent locale={resolvedLocale}>
+      {children}
+    </PlatformLayoutContent>
   )
 }

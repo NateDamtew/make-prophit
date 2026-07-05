@@ -185,6 +185,40 @@ describe('storeOrderAction', () => {
     })
   })
 
+  it('returns friendly error for CLOB collateral balance precheck failures', async () => {
+    process.env.CLOB_URL = 'https://clob.local'
+    const depositWallet = address('01')
+    mocks.getCurrentUser.mockResolvedValueOnce({
+      id: 'user-1',
+      address: address('aa'),
+      deposit_wallet_address: depositWallet,
+      settings: {},
+    })
+    mocks.getUserTradingAuthSecrets.mockResolvedValueOnce({
+      clob: { key: 'k', passphrase: 'p', secret: 's' },
+    })
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      status: 422,
+      statusText: 'Unprocessable Entity',
+      ok: false,
+      text: async () => JSON.stringify({
+        error: 'collateral balance 9980000 below required 10179600',
+      }),
+    })
+    globalThis.fetch = fetchMock as any
+
+    const { storeOrderAction } = await import('@/app/[locale]/(platform)/event/[slug]/_actions/store-order')
+    const result = await storeOrderAction(basePayload({
+      maker: depositWallet,
+      signer: depositWallet,
+      type: 'MARKET',
+    }))
+
+    expect(result).toEqual({
+      error: 'Insufficient available balance for this order.',
+    })
+  })
+
   it('submits to CLOB, updates tags, and schedules local order creation', async () => {
     process.env.CLOB_URL = 'https://clob.local'
     const depositWallet = address('01')

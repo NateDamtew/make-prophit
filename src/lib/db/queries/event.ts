@@ -597,6 +597,18 @@ function buildSportsVolumeGroupKeySql() {
   `
 }
 
+function buildExcludeSportsAuxiliaryCondition() {
+  return sql`
+    ${events.slug} !~* ${SPORTS_AUXILIARY_SLUG_SQL_REGEX}
+    AND NOT EXISTS (
+      SELECT 1
+      FROM ${event_sports} sports_aux
+      WHERE sports_aux.event_id = ${events.id}
+        AND sports_aux.sports_parent_event_id > 0
+    )
+  `
+}
+
 async function hydrateSportsAuxiliaryEventContext(
   eventResult: DrizzleEventResult,
 ): Promise<DrizzleEventResult> {
@@ -1326,7 +1338,7 @@ async function buildEventListQueryContext({
   whereConditions.push(buildEventVisibilityFilter(userId))
 
   if (excludeSportsAuxiliary) {
-    whereConditions.push(sql`${events.slug} !~* ${SPORTS_AUXILIARY_SLUG_SQL_REGEX}`)
+    whereConditions.push(buildExcludeSportsAuxiliaryCondition())
   }
 
   if (search) {
@@ -1584,7 +1596,7 @@ export const EventRepository = {
       whereConditions.push(buildEventVisibilityFilter(userId))
 
       if (excludeSportsAuxiliary) {
-        whereConditions.push(sql`${events.slug} !~* ${SPORTS_AUXILIARY_SLUG_SQL_REGEX}`)
+        whereConditions.push(buildExcludeSportsAuxiliaryCondition())
       }
 
       if (search) {

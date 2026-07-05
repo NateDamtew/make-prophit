@@ -2,11 +2,13 @@
 
 import type { Route } from 'next'
 import type { FilterState } from '@/app/[locale]/(platform)/_providers/FilterProvider'
-import type { Event } from '@/types'
+import type { Event, HomeFeaturedEventCard, HomeFeaturedHotTopic, HomeFeaturedSideCardSettings } from '@/types'
+import { useExtracted } from 'next-intl'
 import dynamic from 'next/dynamic'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import EventsGrid from '@/app/[locale]/(platform)/(home)/_components/EventsGrid'
 import FilterToolbar from '@/app/[locale]/(platform)/(home)/_components/FilterToolbar'
+import HomeFeaturedEventsCarousel from '@/app/[locale]/(platform)/(home)/_components/HomeFeaturedEventsCarousel'
 import HomeSecondaryNavigation from '@/app/[locale]/(platform)/(home)/_components/HomeSecondaryNavigation'
 import { DEFAULT_FILTERS, useFilters } from '@/app/[locale]/(platform)/_providers/FilterProvider'
 import { usePlatformNavigationData } from '@/app/[locale]/(platform)/_providers/PlatformNavigationProvider'
@@ -28,6 +30,9 @@ const HomeHero = dynamic(
 
 interface HomeClientProps {
   initialEvents: Event[]
+  initialFeaturedEvents: HomeFeaturedEventCard[]
+  initialFeaturedHotTopics: HomeFeaturedHotTopic[]
+  initialFeaturedSideCard: HomeFeaturedSideCardSettings
   initialCurrentTimestamp: number | null
   initialTag?: string
   initialMainTag?: string
@@ -97,6 +102,9 @@ function useHomeClientState({
 
 export default function HomeClient({
   initialEvents,
+  initialFeaturedEvents,
+  initialFeaturedHotTopics,
+  initialFeaturedSideCard,
   initialCurrentTimestamp,
   initialTag,
   initialMainTag,
@@ -124,6 +132,9 @@ export default function HomeClient({
       dynamicHomeCategorySlugSet={dynamicHomeCategorySlugSet}
       initialCurrentTimestamp={initialCurrentTimestamp}
       initialEvents={initialEvents}
+      initialFeaturedEvents={initialFeaturedEvents}
+      initialFeaturedHotTopics={initialFeaturedHotTopics}
+      initialFeaturedSideCard={initialFeaturedSideCard}
       pathname={pathname}
       pathState={pathState}
       serverTargetMainTag={serverTargetMainTag}
@@ -140,6 +151,9 @@ interface HomeClientContentProps {
   dynamicHomeCategorySlugSet: Set<string>
   initialCurrentTimestamp: number | null
   initialEvents: Event[]
+  initialFeaturedEvents: HomeFeaturedEventCard[]
+  initialFeaturedHotTopics: HomeFeaturedHotTopic[]
+  initialFeaturedSideCard: HomeFeaturedSideCardSettings
   pathname: ReturnType<typeof usePathname>
   pathState: ReturnType<typeof parsePlatformPathname>
   serverTargetMainTag: string
@@ -302,6 +316,9 @@ function HomeClientContent({
   dynamicHomeCategorySlugSet,
   initialCurrentTimestamp,
   initialEvents,
+  initialFeaturedEvents,
+  initialFeaturedHotTopics,
+  initialFeaturedSideCard,
   pathname,
   pathState,
   serverTargetMainTag,
@@ -310,6 +327,7 @@ function HomeClientContent({
   targetMainTag,
   targetTag,
 }: HomeClientContentProps) {
+  const t = useExtracted()
   const {
     homeFilters,
     canUseServerInitialEvents,
@@ -330,6 +348,7 @@ function HomeClientContent({
     targetMainTag,
     targetTag,
   })
+  const hasFeaturedEvents = pathState.isHomePage && initialFeaturedEvents.length > 0
 
   return (
     <div className="space-y-6">
@@ -349,14 +368,44 @@ function HomeClientContent({
         )}
 
         <div className="min-w-0 flex-1 space-y-4 lg:space-y-5">
-          <FilterToolbar
-            filters={homeFilters}
-            onFiltersChange={handleFiltersChange}
-            hideDesktopSecondaryNavigation={hasCategorySidebar}
-            desktopTitle={categorySidebar?.title}
-            secondaryNavigation={secondaryNavigation}
-            showFilterCheckboxes={pathState.isHomePage}
-          />
+          {hasFeaturedEvents && (
+            <HomeFeaturedEventsCarousel
+              hotTopics={initialFeaturedHotTopics}
+              items={initialFeaturedEvents}
+              sideCard={initialFeaturedSideCard}
+            />
+          )}
+
+          {hasFeaturedEvents
+            ? (
+                <div className="grid gap-3">
+                  <div className="flex min-w-0 flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                    <h1 className="shrink-0 text-2xl font-semibold tracking-tight">
+                      {t('All markets')}
+                    </h1>
+
+                    <div className="min-w-0 md:max-w-xl">
+                      <FilterToolbar
+                        filters={homeFilters}
+                        onFiltersChange={handleFiltersChange}
+                        showFilterCheckboxes={pathState.isHomePage}
+                      />
+                    </div>
+                  </div>
+
+                  {secondaryNavigation}
+                </div>
+              )
+            : (
+                <FilterToolbar
+                  filters={homeFilters}
+                  onFiltersChange={handleFiltersChange}
+                  hideDesktopSecondaryNavigation={hasCategorySidebar}
+                  desktopTitle={categorySidebar?.title}
+                  secondaryNavigation={secondaryNavigation}
+                  showFilterCheckboxes={pathState.isHomePage}
+                />
+              )}
 
           <EventsGrid
             filters={homeFilters}

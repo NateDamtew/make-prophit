@@ -25,6 +25,8 @@ interface TokenMapping {
 }
 
 const MarketChannelContext = createContext<MarketChannelContextValue | null>(null)
+const WEBSOCKET_PING_INTERVAL_MS = 10000
+const WEBSOCKET_STALE_TIMEOUT_MS = 70000
 
 function buildTokenMapping(markets: Market[]): TokenMapping {
   const tokenIds: string[] = []
@@ -96,30 +98,66 @@ function updateOrderBookCaches(
   })
 }
 
-function updateQuoteCaches(
+function parseMarketQuoteTokenSignature(tokenSignature: string, tokenId: string) {
+  return tokenSignature
+    .split(',')
+    .map((signaturePart) => {
+      const separatorIndex = signaturePart.lastIndexOf(':')
+      if (separatorIndex <= 0) {
+        return null
+      }
+
+      const signatureConditionId = signaturePart.slice(0, separatorIndex)
+      const signatureTokenId = signaturePart.slice(separatorIndex + 1)
+      if (signatureTokenId !== tokenId) {
+        return null
+      }
+
+      return signatureConditionId
+    })
+    .filter((conditionId): conditionId is string => Boolean(conditionId))
+}
+
+function updateMarketQuoteCachesForToken(
   queryClient: ReturnType<typeof useQueryClient>,
-  signature: string,
-  conditionId: string,
+  tokenId: string,
   quote: MarketQuote,
 ) {
   const queries = queryClient.getQueryCache().findAll({ queryKey: ['event-market-quotes'] })
   queries.forEach((query) => {
-    const tokenSignature = typeof query.queryKey[1] === 'string' ? query.queryKey[1] : ''
-    if (!tokenSignature || !tokenSignature.includes(signature)) {
+    const tokenSignature = typeof query.queryKey[2] === 'string'
+      ? query.queryKey[2]
+      : (typeof query.queryKey[1] === 'string' ? query.queryKey[1] : '')
+    if (!tokenSignature) {
       return
     }
+
+    const matchingConditionIds = parseMarketQuoteTokenSignature(tokenSignature, tokenId)
+    if (matchingConditionIds.length === 0) {
+      return
+    }
+
     queryClient.setQueryData<MarketQuotesByMarket>(query.queryKey, (current) => {
       const existing = current ?? {}
-      const currentQuote = existing[conditionId]
-      if (
-        currentQuote
-        && currentQuote.bid === quote.bid
-        && currentQuote.ask === quote.ask
-        && currentQuote.mid === quote.mid
-      ) {
-        return existing
+      let didChange = false
+      const next = { ...existing }
+
+      for (const conditionId of matchingConditionIds) {
+        const currentQuote = existing[conditionId]
+        if (
+          currentQuote
+          && currentQuote.bid === quote.bid
+          && currentQuote.ask === quote.ask
+          && currentQuote.mid === quote.mid
+        ) {
+          continue
+        }
+
+        next[conditionId] = quote
+        didChange = true
       }
-      return { ...existing, [conditionId]: quote }
+
+      return didChange ? next : existing
     })
   })
 }
@@ -180,8 +218,7 @@ function updateQuotesFromBestBidAsk(
     return
   }
   const quote = resolveQuote(bestBid, bestAsk)
-  const signature = `${conditionId}:${tokenId}`
-  updateQuoteCaches(queryClient, signature, conditionId, quote)
+  updateMarketQuoteCachesForToken(queryClient, tokenId, quote)
 }
 
 function coerceBookLevels(value: unknown): OrderbookLevelSummary[] {
@@ -265,13 +302,53 @@ function useMarketChannelConnection({
 
     let isActive = true
     let ws: WebSocket | null = null
+    let lastMessageAt = Date.now()
+    let heartbeatHandle: number | null = null
 
-    function handleOpen() {
-      if (!ws) {
+    function clearHeartbeat() {
+      if (heartbeatHandle != null) {
+        window.clearInterval(heartbeatHandle)
+        heartbeatHandle = null
+      }
+    }
+
+    function startHeartbeat() {
+      clearHeartbeat()
+      heartbeatHandle = window.setInterval(() => {
+        if (!isActive || !ws) {
+          return
+        }
+        if (Date.now() - lastMessageAt > WEBSOCKET_STALE_TIMEOUT_MS) {
+          const staleSocket = ws
+          ws = null
+          clearHeartbeat()
+          closeWebSocketWhenReady(staleSocket)
+          scheduleReconnect()
+          return
+        }
+        if (ws.readyState === WebSocket.OPEN) {
+          try {
+            ws.send('PING')
+          }
+          catch {
+            const staleSocket = ws
+            ws = null
+            clearHeartbeat()
+            closeWebSocketWhenReady(staleSocket)
+            scheduleReconnect()
+          }
+        }
+      }, WEBSOCKET_PING_INTERVAL_MS)
+    }
+
+    function handleOpen(socket: WebSocket) {
+      if (socket !== ws) {
         return
       }
+      lastMessageAt = Date.now()
+      startHeartbeat()
       setConnectionStatus('connecting')
-      ws.send(JSON.stringify({
+      socket.send(JSON.stringify({
         type: 'market',
         assets_ids: tokenIds,
         markets: [],
@@ -279,10 +356,11 @@ function useMarketChannelConnection({
       }))
     }
 
-    function handleMessage(eventMessage: MessageEvent<string>) {
-      if (!isActive) {
+    function handleMessage(socket: WebSocket, eventMessage: MessageEvent<string>) {
+      if (!isActive || socket !== ws) {
         return
       }
+      lastMessageAt = Date.now()
       setConnectionStatus('live')
       let payload: any
       try {
@@ -324,8 +402,8 @@ function useMarketChannelConnection({
       })
     }
 
-    function handleError() {
-      if (isActive) {
+    function handleError(socket: WebSocket) {
+      if (isActive && socket === ws) {
         setConnectionStatus('offline')
       }
     }
@@ -344,14 +422,20 @@ function useMarketChannelConnection({
       reconnectController?.scheduleReconnect()
     }
 
-    function handleClose() {
+    function handleClose(socket: WebSocket) {
+      if (socket !== ws) {
+        return
+      }
+      clearHeartbeat()
       if (isActive) {
         setConnectionStatus('offline')
+        ws = null
         scheduleReconnect()
       }
     }
 
     function disconnectSocket(socket: WebSocket) {
+      clearHeartbeat()
       socket.onopen = null
       socket.onmessage = null
       socket.onerror = null
@@ -365,10 +449,10 @@ function useMarketChannelConnection({
       }
       setConnectionStatus('connecting')
       const socket = new WebSocket(`${wsUrl}/ws/market`)
-      socket.onopen = handleOpen
-      socket.onmessage = handleMessage
-      socket.onerror = handleError
-      socket.onclose = handleClose
+      socket.onopen = () => handleOpen(socket)
+      socket.onmessage = eventMessage => handleMessage(socket, eventMessage)
+      socket.onerror = () => handleError(socket)
+      socket.onclose = () => handleClose(socket)
       ws = socket
     }
 
@@ -389,6 +473,7 @@ function useMarketChannelConnection({
     return function teardownMarketChannelConnection() {
       isActive = false
       clearReconnect()
+      clearHeartbeat()
       document.removeEventListener('visibilitychange', handleVisibilityChange)
       const socket = ws
       if (socket) {

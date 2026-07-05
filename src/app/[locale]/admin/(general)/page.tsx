@@ -5,9 +5,11 @@ import { Suspense } from 'react'
 import AdminGeneralSettingsForm from '@/app/[locale]/admin/(general)/_components/AdminGeneralSettingsForm'
 import { parseMarketContextSettings } from '@/lib/ai/market-context-config'
 import { fetchOpenRouterModels } from '@/lib/ai/openrouter'
+import { HomeFeaturedEventsRepository } from '@/lib/db/queries/home-featured-events'
 import { SettingsRepository } from '@/lib/db/queries/settings'
 import { getBlockedCountriesFromSettings } from '@/lib/geoblock-settings'
 import { getGlobalAnnouncementSettingsFromSettings } from '@/lib/global-announcement-settings'
+import { getHomeFeaturedSettingsFromSettings } from '@/lib/home-featured-settings'
 import { getPublicAssetUrl } from '@/lib/storage'
 import { getTermsOfServicePdfPath, getTermsOfServicePdfUrl } from '@/lib/terms-of-service'
 import { getThemeSiteSettingsFormState } from '@/lib/theme-settings'
@@ -21,7 +23,7 @@ function AdminGeneralSettingsFallback() {
   return <div className="min-h-96 rounded-lg border bg-background" />
 }
 
-async function AdminGeneralSettingsContent() {
+async function AdminGeneralSettingsContent({ locale }: { locale: string }) {
   await connection()
   const t = await getExtracted()
 
@@ -50,10 +52,6 @@ async function AdminGeneralSettingsContent() {
     }
   }
 
-  if (defaultOpenRouterModel && !openRouterModelOptions.some(option => option.id === defaultOpenRouterModel)) {
-    openRouterModelOptions = [{ id: defaultOpenRouterModel, label: defaultOpenRouterModel }, ...openRouterModelOptions]
-  }
-
   const initialThemeSiteSettings = getThemeSiteSettingsFormState(allSettings ?? undefined)
   const initialGlobalAnnouncement = getGlobalAnnouncementSettingsFromSettings(allSettings ?? undefined)
   const initialBlockedCountries = getBlockedCountriesFromSettings(allSettings ?? undefined)
@@ -66,6 +64,8 @@ async function AdminGeneralSettingsContent() {
     ?? DEFAULT_THEME_SITE_PWA_ICON_512_URL
   const initialTermsOfServicePdfPath = getTermsOfServicePdfPath(allSettings ?? undefined)
   const initialTermsOfServicePdfUrl = getTermsOfServicePdfUrl(allSettings ?? undefined) || null
+  const initialHomeFeaturedSettings = getHomeFeaturedSettingsFromSettings(allSettings ?? undefined)
+  const { data: initialHomeFeaturedEvents } = await HomeFeaturedEventsRepository.listAdminFeaturedEvents(locale)
   const initialThemeSiteSettingsWithImage: AdminThemeSiteSettingsInitialState = {
     ...initialThemeSiteSettings,
     logoImageUrl: initialThemeSiteImageUrl,
@@ -75,11 +75,14 @@ async function AdminGeneralSettingsContent() {
 
   return (
     <AdminGeneralSettingsForm
+      locale={locale}
       initialThemeSiteSettings={initialThemeSiteSettingsWithImage}
       initialGlobalAnnouncement={initialGlobalAnnouncement}
       initialBlockedCountries={initialBlockedCountries}
       initialTermsOfServicePdfPath={initialTermsOfServicePdfPath}
       initialTermsOfServicePdfUrl={initialTermsOfServicePdfUrl}
+      initialHomeFeaturedSettings={initialHomeFeaturedSettings}
+      initialHomeFeaturedEvents={initialHomeFeaturedEvents ?? []}
       openRouterSettings={{
         defaultModel: defaultOpenRouterModel,
         isApiKeyConfigured: isOpenRouterApiKeyConfigured,
@@ -97,8 +100,8 @@ export default async function AdminGeneralSettingsPage({ params }: AdminGeneralS
   const t = await getExtracted()
 
   return (
-    <section className="grid gap-4">
-      <div className="grid gap-2">
+    <section className="grid max-w-full min-w-0 gap-4">
+      <div className="grid min-w-0 gap-2">
         <h1 className="text-2xl font-semibold">{t('General Settings')}</h1>
         <p className="text-sm text-muted-foreground">
           {t('Configure company identity, analytics, support links, and AI provider settings.')}
@@ -106,7 +109,7 @@ export default async function AdminGeneralSettingsPage({ params }: AdminGeneralS
       </div>
 
       <Suspense fallback={<AdminGeneralSettingsFallback />}>
-        <AdminGeneralSettingsContent />
+        <AdminGeneralSettingsContent locale={locale} />
       </Suspense>
     </section>
   )

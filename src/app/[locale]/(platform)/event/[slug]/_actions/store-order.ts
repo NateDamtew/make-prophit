@@ -108,6 +108,10 @@ const CLOB_ERROR_PATTERNS: Array<{ pattern: RegExp, messageKey: ClobErrorMessage
     messageKey: 'insufficientBalance',
   },
   {
+    pattern: /\b(collateral|position) (balance|allowance) \d+ below required \d+\b/i,
+    messageKey: 'insufficientBalance',
+  },
+  {
     pattern: /\b(order .* expired|expiration must be in the future|expiration must be non-negative|expiration is required)\b/i,
     messageKey: 'invalidExpirationRefreshPrices',
   },

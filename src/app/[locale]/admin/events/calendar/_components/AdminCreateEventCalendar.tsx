@@ -1,15 +1,11 @@
 'use client'
 
-import type { EventClickArg, EventInput } from '@fullcalendar/core'
+import type { DateSelectArg, EventClickArg, EventInput } from '@fullcalendar/core'
 import type { DateClickArg } from '@fullcalendar/interaction'
 import type { Route } from 'next'
-import dayGridPlugin from '@fullcalendar/daygrid'
-import interactionPlugin from '@fullcalendar/interaction'
-import listPlugin from '@fullcalendar/list'
-import FullCalendar from '@fullcalendar/react'
-import timeGridPlugin from '@fullcalendar/timegrid'
 import { CalendarPlusIcon, ClipboardListIcon, CopyIcon, ImageIcon, SquarePenIcon, Trash2Icon, UserCheckIcon } from 'lucide-react'
 import { useExtracted } from 'next-intl'
+import dynamic from 'next/dynamic'
 import { useEffect, useReducer, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import EventIconImage from '@/components/EventIconImage'
@@ -37,9 +33,22 @@ import { useRouter } from '@/i18n/navigation'
 import { formatDateTimeLocalValue, normalizeDateTimeLocalValue } from '@/lib/datetime-local'
 import { expandEventCreationOccurrences } from '@/lib/event-creation'
 import { cn } from '@/lib/utils'
-import AdminProposersDialog from './AdminProposersDialog'
 
 const COPY_EVENT_FALLBACK_ICON_CLASS_NAME = 'flex size-14 items-center justify-center rounded-lg border text-muted-foreground'
+const AdminCreateEventCalendarView = dynamic(() => import('./AdminCreateEventCalendarView'), {
+  ssr: false,
+  loading: () => (
+    <div className="
+      flex min-h-[420px] items-center justify-center rounded-sm border border-dashed text-sm text-muted-foreground
+    "
+    >
+      Loading calendar...
+    </div>
+  ),
+})
+const AdminProposersDialog = dynamic(() => import('./AdminProposersDialog'), {
+  ssr: false,
+})
 
 type CreationMode = 'single' | 'recurring'
 
@@ -532,6 +541,10 @@ export default function AdminCreateEventCalendar() {
     openNewEventDialog(normalizeCalendarSelection(info.date, info.allDay))
   }
 
+  function handleDateSelect(selection: DateSelectArg) {
+    openNewEventDialog(normalizeCalendarSelection(selection.start, selection.allDay))
+  }
+
   function handleEventClick(info: EventClickArg) {
     const eventKind = info.event.extendedProps.kind
 
@@ -795,39 +808,11 @@ export default function AdminCreateEventCalendar() {
 
         <div className="min-w-0 rounded-sm border bg-transparent p-4 shadow-none">
           <div data-create-event-calendar className="overflow-hidden">
-            <FullCalendar
-              plugins={[dayGridPlugin, timeGridPlugin, listPlugin, interactionPlugin]}
-              initialView="dayGridMonth"
-              height="auto"
-              selectable
-              weekends
-              headerToolbar={{
-                left: 'prev,next today',
-                center: 'title',
-                right: 'dayGridMonth,timeGridWeek,listMonth',
-              }}
-              buttonText={{
-                today: 'Today',
-                month: 'Month',
-                week: 'Week',
-                list: 'Agenda',
-              }}
+            <AdminCreateEventCalendarView
               events={events}
-              dateClick={handleDateClick}
-              select={selection => openNewEventDialog(normalizeCalendarSelection(selection.start, selection.allDay))}
-              eventClick={handleEventClick}
-              eventDidMount={(info) => {
-                const fullLabel = info.timeText
-                  ? `${info.timeText} ${info.event.title}`
-                  : info.event.title
-                info.el.setAttribute('title', fullLabel)
-              }}
-              dayMaxEventRows={3}
-              eventTimeFormat={{
-                hour: 'numeric',
-                minute: '2-digit',
-                meridiem: 'short',
-              }}
+              onDateClick={handleDateClick}
+              onSelect={handleDateSelect}
+              onEventClick={handleEventClick}
             />
           </div>
         </div>

@@ -289,8 +289,7 @@ export default function EventOrderPanelInput({
               onAmountChange(formatAmountInputValue(availableShares, { roundingMode: 'floor' }))
             }
             else {
-              const maxBalance = balance.raw
-              const limitedBalance = Math.min(maxBalance, MAX_AMOUNT_INPUT)
+              const limitedBalance = Math.min(balance.raw, MAX_AMOUNT_INPUT)
               onAmountChange(formatAmountInputValue(limitedBalance, { roundingMode: 'floor' }))
             }
             focusInput()

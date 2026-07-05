@@ -9,7 +9,7 @@ Public market stream for order book snapshots and price updates.
 
 ## Endpoint
 
-- Production: <code>{process.env.WS_CLOB_URL}/ws/market</code>
+- Production: <code><PublicRuntimeServiceUrl service="wsClob" path="/ws/market" /></code>
 
 ## Subscription payload
 
@@ -32,12 +32,15 @@ Public market stream for order book snapshots and price updates.
 
 - Numeric values are returned as strings.
 - `book.hash` is a summary hash of the order book payload.
+- Live events include `sequence`, `stream_id`, and `server_ts_ms`; refetch a
+  snapshot if you reconnect or detect a missed event.
 - Use one connection for multiple token subscriptions when possible.
 
 ## WebSocket Playground
 
-<WebSocketPlayground
-  endpoint={`${process.env.WS_CLOB_URL}/ws/market`}
+<PublicRuntimeWebSocketPlayground
+  service="wsClob"
+  path="/ws/market"
   defaultMessage={`{
   "type": "market",
   "assets_ids": ["<asset_id>"],

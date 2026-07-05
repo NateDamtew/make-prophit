@@ -9,7 +9,7 @@ Authenticated stream for order and trade updates scoped to your API credentials.
 
 ## Endpoint
 
-- Production: <code>{process.env.WS_CLOB_URL}/ws/user</code>
+- Production: <code><PublicRuntimeServiceUrl service="wsClob" path="/ws/user" /></code>
 
 ## Required auth object
 
@@ -28,12 +28,15 @@ Authenticated stream for order and trade updates scoped to your API credentials.
 
 - Numeric fields are strings.
 - `owner`, `trade_owner`, and `order_owner` are normalized to the caller API key.
+- Live events include `sequence`, `stream_id`, and `server_ts_ms`; refetch your
+  active orders if you reconnect or detect a missed event.
 - Reuse the same L2 credentials used for private REST endpoints.
 
 ## WebSocket Playground
 
-<WebSocketPlayground
-  endpoint={`${process.env.WS_CLOB_URL}/ws/user`}
+<PublicRuntimeWebSocketPlayground
+  service="wsClob"
+  path="/ws/user"
   defaultMessage={`{
   "type": "user",
   "markets": ["<condition_id>"],
