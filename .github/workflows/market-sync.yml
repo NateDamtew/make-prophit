@@ -1,0 +1,75 @@
+name: Market Sync
+
+# Keeps the mirrored market catalog live: ingests new markets from allowed
+# creators and refreshes resolutions + volume. Runs on a schedule from the
+# DEFAULT branch (GitHub only fires scheduled workflows from the default
+# branch). It only makes authenticated HTTPS calls to the live site — it does
+# not run app code — so it is intentionally independent of the deploy branch.
+#
+# Setup: add a repository secret CRON_SECRET (Settings -> Secrets and variables
+# -> Actions) matching the CRON_SECRET env in Vercel. Optionally set a repo
+# variable SYNC_BASE_URL to override the target origin.
+
+on:
+  workflow_dispatch:
+  schedule:
+    # every 15 minutes (GitHub's scheduler is best-effort, not exact)
+    - cron: '*/15 * * * *'
+
+concurrency:
+  group: market-sync
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    # never run on the upstream repo, only on forks
+    if: github.repository != 'kuestcom/prediction-market'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      BASE_URL: ${{ vars.SYNC_BASE_URL || 'https://beta.makeprophit.com' }}
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
+    steps:
+      - name: Require CRON_SECRET
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::error::CRON_SECRET repo secret is not set. Add it in Settings -> Secrets and variables -> Actions."
+            exit 1
+          fi
+
+      - name: Sync events (drain backlog)
+        run: |
+          total=0
+          for i in $(seq 1 8); do
+            code=$(curl -sS -m 90 -o resp.json -w '%{http_code}' \
+              -H "Authorization: Bearer $CRON_SECRET" \
+              "$BASE_URL/api/sync/events") || true
+            echo "events run $i (HTTP $code): $(cat resp.json)"
+            if [ "$code" = "401" ] || [ "$code" = "403" ]; then
+              echo "::error::Auth failed ($code) — CRON_SECRET is wrong or missing in Vercel."
+              exit 1
+            fi
+            processed=$(grep -oE '"processed":[0-9]+' resp.json | head -1 | cut -d: -f2)
+            more=$(grep -oE '"timeLimitReached":(true|false)' resp.json | head -1 | cut -d: -f2)
+            total=$((total + ${processed:-0}))
+            [ "$more" = "true" ] || break
+            sleep 2
+          done
+          echo "events: processed $total row(s) this run"
+
+      - name: Sync resolutions
+        run: |
+          code=$(curl -sS -m 90 -o resp.json -w '%{http_code}' \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$BASE_URL/api/sync/resolution") || true
+          echo "resolution (HTTP $code): $(cat resp.json)"
+
+      - name: Sync volume
+        run: |
+          code=$(curl -sS -m 90 -o resp.json -w '%{http_code}' \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$BASE_URL/api/sync/volume") || true
+          echo "volume (HTTP $code): $(cat resp.json)"
