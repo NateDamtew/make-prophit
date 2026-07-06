@@ -16,6 +16,15 @@ const config: KnipConfig = {
     // Kept in-tree so it can be wired into the agents hub later without
     // re-pulling the upstream commit.
     'src/app/[locale]/(platform)/settings/_components/SettingsSdkApiKeysContent.tsx',
+    // Sibling of the above — the SDK market-maker downloads panel, unrendered
+    // for the same reason (SDK settings routed to the agents hub).
+    'src/app/[locale]/(platform)/settings/_components/SettingsSdkMarketMakerDownloadsContent.tsx',
+    // Rhino TON-rail bridge modules. getRhinoConfig/commitQuote/RHINO_CHAIN etc.
+    // are live (ton-deposit/ton-withdrawal actions), but getBridgeStatus +
+    // RHINO_API_BASE are parked exports for the dormant TON bridge-status
+    // feature — kept for the future native-TMA project.
+    'src/lib/rhino/client.ts',
+    'src/lib/rhino/constants.ts',
     // Community layout pieces that are temporarily unrendered while only the
     // Classic preset is active. Classic now ships its own hero/cards/tabs
     // (the `classic/` dir + self-contained ClassicPreset), so the generic

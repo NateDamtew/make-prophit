@@ -5,7 +5,10 @@ import {
 } from '@/lib/public-shell-env'
 
 describe('public shell env detection', () => {
-  it('enables prerendering when build-time public shell env is complete', () => {
+  // FORK OVERRIDE: env detection stays truthful, but the fork defaults the mode
+  // OFF (our client-only Dynamic tree can't be statically prerendered). Complete
+  // env alone no longer auto-enables it — an explicit opt-in is required.
+  it('detects complete build-time public shell env but keeps the fork mode off', () => {
     const env: NodeJS.ProcessEnv = {
       NODE_ENV: 'test',
       POSTGRES_URL: 'postgres://user:pass@localhost:5432/app',
@@ -14,7 +17,7 @@ describe('public shell env detection', () => {
     }
 
     expect(hasPublicShellPrerenderEnv(env)).toBe(true)
-    expect(resolvePublicShellPrerenderMode(env)).toBe(true)
+    expect(resolvePublicShellPrerenderMode(env)).toBe(false)
   })
 
   it('accepts VERCEL_PROJECT_PRODUCTION_URL instead of SITE_URL', () => {
@@ -26,7 +29,7 @@ describe('public shell env detection', () => {
     }
 
     expect(hasPublicShellPrerenderEnv(env)).toBe(true)
-    expect(resolvePublicShellPrerenderMode(env)).toBe(true)
+    expect(resolvePublicShellPrerenderMode(env)).toBe(false)
   })
 
   it('disables prerendering when the database is unavailable at build time', () => {
