@@ -48,9 +48,12 @@ export default function GlobalAnnouncementBanner({
   const hasMessage = message.trim().length > 0
   const isEnabled = isCustomJavascriptCodeEnabledOnPathname({ disabledOn }, localizedPathname)
 
-  const isLandingPage = localizedPathname === '/' || localizedPathname?.startsWith('/landing')
+  // The marketing landing (/landing) never shows the app announcement bar. The
+  // home page ('/') is governed by the admin "Disable on → Home" checkbox
+  // (disabledOn), so it is intentionally NOT hard-hidden here.
+  const isMarketingLanding = localizedPathname?.startsWith('/landing') ?? false
 
-  if (!hasMessage || !isEnabled || isLandingPage) {
+  if (!hasMessage || !isEnabled || isMarketingLanding) {
     return null
   }
 
