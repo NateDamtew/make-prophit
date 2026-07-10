@@ -10,10 +10,11 @@ import { requireTmaUser } from '../_lib'
  * deposit wallet address/status, and whether trading auth looks provisioned.
  */
 export async function GET() {
-  const { user, unauthorized } = await requireTmaUser()
-  if (!user) {
-    return unauthorized
+  const guard = await requireTmaUser()
+  if (guard.unauthorized) {
+    return guard.unauthorized
   }
+  const user = guard.user
 
   const address = user.address ? normalizeAddress(user.address) : null
 

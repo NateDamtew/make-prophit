@@ -12,12 +12,21 @@ import { ZERO_BYTES32 } from '@/lib/contracts'
 import { UserRepository } from '@/lib/db/queries/user'
 import { DEFAULT_CHAIN_ID } from '@/lib/network'
 
+type TmaUser = NonNullable<Awaited<ReturnType<typeof UserRepository.getCurrentUser>>>
+
+type TmaUserGuard
+  = | { user: TmaUser, unauthorized: null }
+    | { user: null, unauthorized: NextResponse }
+
 /**
  * Session guard for the TMA bridge routes. The TMA backend calls these with
  * the better-auth session cookie it captured during the headless SIWE
- * handshake — same auth as the web app, no new scheme.
+ * handshake — same auth as the web app, no new scheme. Returned as a
+ * discriminated union — check `guard.user` WITHOUT destructuring so narrowing
+ * proves `unauthorized` is a Response on the null branch (destructuring
+ * decorrelates the fields and `next build` rejects the route types).
  */
-export async function requireTmaUser() {
+export async function requireTmaUser(): Promise<TmaUserGuard> {
   const user = await UserRepository.getCurrentUser({ disableCookieCache: true })
   if (!user) {
     return {

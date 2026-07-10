@@ -25,10 +25,11 @@ interface PrepareBody {
  * plus the serialized order to echo back on submit. No signing, no state.
  */
 export async function POST(request: Request) {
-  const { user, unauthorized } = await requireTmaUser()
-  if (!user) {
-    return unauthorized
+  const guard = await requireTmaUser()
+  if (guard.unauthorized) {
+    return guard.unauthorized
   }
+  const user = guard.user
 
   let body: PrepareBody
   try {

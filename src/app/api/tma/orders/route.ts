@@ -26,9 +26,9 @@ interface SubmitBody {
  * auth, HMAC, submission, DB, error mapping).
  */
 export async function POST(request: Request) {
-  const { user, unauthorized } = await requireTmaUser()
-  if (!user) {
-    return unauthorized
+  const guard = await requireTmaUser()
+  if (guard.unauthorized) {
+    return guard.unauthorized
   }
 
   let body: SubmitBody
