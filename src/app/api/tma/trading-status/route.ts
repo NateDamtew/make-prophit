@@ -49,7 +49,7 @@ export async function GET() {
     tradingAuth: {
       hasClobCredentials: Boolean(tradingAuthSettings.clob),
       hasRelayerCredentials: Boolean(tradingAuthSettings.relayer),
-      approvalsCompleted: Boolean(tradingAuthSettings.approvals?.completed),
+      approvalsCompleted: Boolean(tradingAuthSettings.approvals?.enabled ?? tradingAuthSettings.approvals?.completed),
     },
   })
 }

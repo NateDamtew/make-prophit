@@ -4,7 +4,7 @@ import { getExchangeEip712Domain, ORDER_SIDE, ORDER_TYPE } from '@/lib/constants
 import { getDepositWalletAddress } from '@/lib/deposit-wallet'
 import { buildOrderPayload } from '@/lib/orders'
 import { normalizeAddress } from '@/lib/wallet'
-import { badRequest, buildSignableEnvelope, requireTmaUser, serializeOrder } from '../../_lib'
+import { badRequest, buildSignableEnvelope, findMarketByTokenId, requireTmaUser, serializeOrder } from '../../_lib'
 
 interface PrepareBody {
   tokenId?: string
@@ -14,7 +14,6 @@ interface PrepareBody {
   limitPrice?: string
   limitShares?: string
   marketPriceCents?: number
-  negRisk?: boolean
 }
 
 /**
@@ -67,6 +66,18 @@ export async function POST(request: Request) {
     )
   }
 
+  // Derive market facts server-side — the TMA client only knows the token id.
+  const market = await findMarketByTokenId(body.tokenId)
+  if (!market) {
+    return NextResponse.json({ error: 'Unknown market token.' }, { status: 404 })
+  }
+  if (!market.isActive || market.isResolved) {
+    return NextResponse.json(
+      { error: 'This market is not accepting orders.', code: 'MARKET_NOT_ACTIVE' },
+      { status: 409 },
+    )
+  }
+
   const payload = buildOrderPayload({
     outcome: { token_id: body.tokenId } as unknown as Outcome,
     makerAddress: depositWalletAddress as `0x${string}`,
@@ -78,11 +89,13 @@ export async function POST(request: Request) {
     marketPriceCents: body.marketPriceCents,
   })
 
-  const domain = getExchangeEip712Domain(Boolean(body.negRisk))
+  const domain = getExchangeEip712Domain(market.negRisk)
 
   return NextResponse.json({
     order: serializeOrder(payload),
     typedData: buildSignableEnvelope(payload, domain as Record<string, unknown>),
-    negRisk: Boolean(body.negRisk),
+    negRisk: market.negRisk,
+    conditionId: market.conditionId,
+    marketSlug: market.slug,
   })
 }

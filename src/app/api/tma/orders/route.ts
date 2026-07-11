@@ -5,16 +5,13 @@ import { NextResponse } from 'next/server'
 import { wrapTypedDataSignature } from 'viem/experimental/erc7739'
 import { EIP712_TYPES, getExchangeEip712Domain, ORDER_TYPE } from '@/lib/constants'
 import { submitOrder } from '@/lib/orders'
-import { badRequest, buildOrderMessage, deserializeOrder, requireTmaUser } from '../_lib'
+import { badRequest, buildOrderMessage, deserializeOrder, findMarketByTokenId, requireTmaUser } from '../_lib'
 
 interface SubmitBody {
   order?: SerializedOrder
   signature?: string
-  negRisk?: boolean
   orderType?: 'market' | 'limit'
   clobOrderType?: keyof typeof CLOB_ORDER_TYPE
-  conditionId?: string
-  slug?: string
 }
 
 /**
@@ -39,12 +36,19 @@ export async function POST(request: Request) {
     return badRequest('Invalid JSON body.')
   }
 
-  if (!body.order || !body.signature || !body.conditionId || !body.slug) {
-    return badRequest('order, signature, conditionId and slug are required.')
+  if (!body.order || !body.signature) {
+    return badRequest('order and signature are required.')
   }
 
   const order = deserializeOrder(body.order)
-  const domain = getExchangeEip712Domain(Boolean(body.negRisk))
+
+  // Market facts come from the DB via the order's own token — the client
+  // can't submit for a market that doesn't match what it signed.
+  const market = await findMarketByTokenId(order.token_id.toString())
+  if (!market) {
+    return NextResponse.json({ error: 'Unknown market token.' }, { status: 404 })
+  }
+  const domain = getExchangeEip712Domain(market.negRisk)
 
   let wrappedSignature: `0x${string}`
   try {
@@ -66,8 +70,8 @@ export async function POST(request: Request) {
     signature: wrappedSignature,
     orderType: (body.orderType === 'limit' ? ORDER_TYPE.LIMIT : ORDER_TYPE.MARKET) as OrderType,
     clobOrderType: body.clobOrderType,
-    conditionId: body.conditionId,
-    slug: body.slug,
+    conditionId: market.conditionId,
+    slug: market.slug,
   })
 
   if (result.error) {

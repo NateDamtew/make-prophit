@@ -1,5 +1,5 @@
 import type { BlockchainOrder } from '@/types'
-import { NextResponse } from 'next/server'
+import { eq } from 'drizzle-orm'
 
 // --- order payload (de)serialization + ERC-7739 envelope -------------------
 // Orders are signature_type 3 (DepositWallet): the deposit wallet is
@@ -7,6 +7,7 @@ import { NextResponse } from 'next/server'
 // Order struct (see src/lib/orders/signing.ts — this mirrors it server-side so
 // the TMA client only raw-signs typed data and never needs viem).
 
+import { NextResponse } from 'next/server'
 import { EIP712_TYPES } from '@/lib/constants'
 import {
   CONDITIONAL_TOKENS_CONTRACT,
@@ -16,6 +17,8 @@ import {
   ZERO_BYTES32,
 } from '@/lib/contracts'
 import { UserRepository } from '@/lib/db/queries/user'
+import { markets, outcomes } from '@/lib/db/schema/events/tables'
+import { db } from '@/lib/drizzle'
 import { DEFAULT_CHAIN_ID } from '@/lib/network'
 import {
   buildCollateralApproveCall,
@@ -73,6 +76,26 @@ export function buildStandardApprovalCalls() {
     ...collateralSpenders.map(spender => buildCollateralApproveCall(spender)),
     ...conditionalOperators.map(operator => buildConditionalSetApprovalForAllCall(operator)),
   ]
+}
+
+/**
+ * Resolves the market a CLOB outcome token belongs to — so TMA clients only
+ *  ever send a tokenId and the bridge derives conditionId/negRisk/slug.
+ */
+export async function findMarketByTokenId(tokenId: string) {
+  const rows = await db
+    .select({
+      conditionId: markets.condition_id,
+      slug: markets.slug,
+      negRisk: markets.neg_risk,
+      isActive: markets.is_active,
+      isResolved: markets.is_resolved,
+    })
+    .from(outcomes)
+    .innerJoin(markets, eq(markets.condition_id, outcomes.condition_id))
+    .where(eq(outcomes.token_id, tokenId))
+    .limit(1)
+  return rows[0] ?? null
 }
 
 export interface SerializedOrder {
