@@ -1,7 +1,7 @@
 import type { Outcome } from '@/types'
 import { NextResponse } from 'next/server'
 import { getExchangeEip712Domain, ORDER_SIDE, ORDER_TYPE } from '@/lib/constants'
-import { getDepositWalletAddress, isDepositWalletDeployed } from '@/lib/deposit-wallet'
+import { getDepositWalletAddress } from '@/lib/deposit-wallet'
 import { buildOrderPayload } from '@/lib/orders'
 import { normalizeAddress } from '@/lib/wallet'
 import { badRequest, buildSignableEnvelope, requireTmaUser, serializeOrder } from '../../_lib'
@@ -52,11 +52,17 @@ export async function POST(request: Request) {
     return badRequest('User has no wallet address.')
   }
 
-  const depositWalletAddress = await getDepositWalletAddress(address as `0x${string}`)
-  const deployed = await isDepositWalletDeployed(depositWalletAddress as `0x${string}`)
-  if (!deployed) {
+  // Gate on the relayer-reported DB status, like the web app does — NOT live
+  // public-chain bytecode: KUEST's test relayer reports WALLET-CREATE as
+  // mined while nothing lands on public Amoy (their test stack settles on a
+  // chain we can't see), so a bytecode check would 409 forever.
+  const depositWalletAddress
+    = (user as { deposit_wallet_address?: string | null }).deposit_wallet_address
+      ?? await getDepositWalletAddress(address as `0x${string}`)
+  const dbStatus = (user as { deposit_wallet_status?: string | null }).deposit_wallet_status
+  if (dbStatus !== 'deployed') {
     return NextResponse.json(
-      { error: 'Deposit wallet is not deployed yet.', code: 'DEPOSIT_WALLET_NOT_DEPLOYED' },
+      { error: 'Deposit wallet is not ready yet.', code: 'DEPOSIT_WALLET_NOT_DEPLOYED' },
       { status: 409 },
     )
   }
