@@ -8,9 +8,19 @@ import { NextResponse } from 'next/server'
 // the TMA client only raw-signs typed data and never needs viem).
 
 import { EIP712_TYPES } from '@/lib/constants'
-import { ZERO_BYTES32 } from '@/lib/contracts'
+import {
+  CONDITIONAL_TOKENS_CONTRACT,
+  CTF_EXCHANGE_ADDRESS,
+  NEG_RISK_CTF_EXCHANGE_ADDRESS,
+  UMA_NEG_RISK_ADAPTER_ADDRESS,
+  ZERO_BYTES32,
+} from '@/lib/contracts'
 import { UserRepository } from '@/lib/db/queries/user'
 import { DEFAULT_CHAIN_ID } from '@/lib/network'
+import {
+  buildCollateralApproveCall,
+  buildConditionalSetApprovalForAllCall,
+} from '@/lib/wallet/transactions'
 
 type TmaUser = NonNullable<Awaited<ReturnType<typeof UserRepository.getCurrentUser>>>
 
@@ -39,6 +49,30 @@ export async function requireTmaUser(): Promise<TmaUserGuard> {
 
 export function badRequest(message: string) {
   return NextResponse.json({ error: message }, { status: 400 })
+}
+
+/**
+ * The standard onboarding approval set (see TradingOnboardingProvider's
+ *  resolveMissingApprovalCalls — for a fresh wallet everything is missing):
+ *  collateral approve for CTF + both exchanges + the UMA neg-risk adapter,
+ *  and CTF setApprovalForAll for the exchanges + adapter.
+ */
+export function buildStandardApprovalCalls() {
+  const collateralSpenders = [
+    CONDITIONAL_TOKENS_CONTRACT,
+    CTF_EXCHANGE_ADDRESS,
+    NEG_RISK_CTF_EXCHANGE_ADDRESS,
+    UMA_NEG_RISK_ADAPTER_ADDRESS,
+  ] as const
+  const conditionalOperators = [
+    CTF_EXCHANGE_ADDRESS,
+    NEG_RISK_CTF_EXCHANGE_ADDRESS,
+    UMA_NEG_RISK_ADAPTER_ADDRESS,
+  ] as const
+  return [
+    ...collateralSpenders.map(spender => buildCollateralApproveCall(spender)),
+    ...conditionalOperators.map(operator => buildConditionalSetApprovalForAllCall(operator)),
+  ]
 }
 
 export interface SerializedOrder {
