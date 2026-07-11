@@ -12,6 +12,14 @@ const config: NextConfig = {
   output: process.env.VERCEL_ENV ? undefined : 'standalone',
   cacheComponents: true,
   typedRoutes: true,
+  // Skip the build-time `tsc` pass. It needs 2-4GB and thrashes into a 20-30min
+  // near-hang on memory-constrained Vercel Hobby build containers (the compile
+  // itself finishes in ~5min). Type safety is enforced BEFORE every push via a
+  // local `tsc --noEmit` + full `next build`, so re-checking on Vercel is pure
+  // redundant cost. Re-enable if CI/pre-push type-checking is ever dropped.
+  typescript: {
+    ignoreBuildErrors: true,
+  },
   // Force the Dynamic SDK packages through the app's bundling pipeline so their
   // internal React contexts (e.g. DynamicWidgetContext) are a single shared
   // instance. Without this, production-only barrel/scope-hoist optimization can
