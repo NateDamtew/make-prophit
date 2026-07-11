@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server'
+import { connection, NextResponse } from 'next/server'
 import { getDepositWalletAddress, isDepositWalletDeployed } from '@/lib/deposit-wallet'
 import { normalizeAddress } from '@/lib/wallet'
 import { requireTmaUser } from '../_lib'
@@ -10,6 +10,11 @@ import { requireTmaUser } from '../_lib'
  * deposit wallet address/status, and whether trading auth looks provisioned.
  */
 export async function GET() {
+  // cacheComponents tries to statically evaluate parameterless GET handlers at
+  // build time; the cookies() inside getCurrentUser then never resolves and
+  // hangs `next build` forever. connection() marks this request-time-only.
+  await connection()
+
   const guard = await requireTmaUser()
   if (guard.unauthorized) {
     return guard.unauthorized
