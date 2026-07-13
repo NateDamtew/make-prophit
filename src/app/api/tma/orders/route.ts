@@ -3,6 +3,7 @@ import type { CLOB_ORDER_TYPE } from '@/lib/constants'
 import type { OrderType } from '@/types'
 import { NextResponse } from 'next/server'
 import { wrapTypedDataSignature } from 'viem/experimental/erc7739'
+import { cancelOrderAction } from '@/app/[locale]/(platform)/event/[slug]/_actions/cancel-order'
 import { EIP712_TYPES, getExchangeEip712Domain, ORDER_TYPE } from '@/lib/constants'
 import { submitOrder } from '@/lib/orders'
 import { badRequest, buildOrderMessage, deserializeOrder, findMarketByTokenId, requireTmaUser } from '../_lib'
@@ -79,4 +80,34 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({ data: { orderId: result.orderId } })
+}
+
+/**
+ * DELETE /api/tma/orders
+ *
+ * Body: { orderId }. Wraps cancelOrderAction — per-user CLOB auth + HMAC
+ * DELETE /order on the CLOB, with the web app's error mapping.
+ */
+export async function DELETE(request: Request) {
+  const guard = await requireTmaUser()
+  if (guard.unauthorized) {
+    return guard.unauthorized
+  }
+
+  let body: { orderId?: string }
+  try {
+    body = await request.json()
+  }
+  catch {
+    return badRequest('Invalid JSON body.')
+  }
+  if (!body.orderId) {
+    return badRequest('orderId is required.')
+  }
+
+  const result = await cancelOrderAction(body.orderId)
+  if (result.error) {
+    return NextResponse.json({ error: result.error }, { status: 400 })
+  }
+  return NextResponse.json({ data: { ok: true } })
 }
