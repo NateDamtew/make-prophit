@@ -512,13 +512,32 @@ async function configureSupabaseScheduler(
 }
 
 function resolveMigrationConnectionString(): string | null {
-  const migrationUrl = process.env.POSTGRES_URL_NON_POOLING || process.env.POSTGRES_URL
+  return process.env.POSTGRES_URL_NON_POOLING || process.env.POSTGRES_URL || null
+}
 
-  if (!migrationUrl) {
-    return null
+/**
+ * Supabase endpoints present a certificate chain rooted in Supabase's own CA,
+ * which Node rejects as SELF_SIGNED_CERT_IN_CHAIN under default verification
+ * (this killed every Vercel db:push at "Connecting to database..."). Keep the
+ * connection encrypted but skip CA verification for TLS-capable endpoints;
+ * an explicit sslmode=disable (e.g. plain local postgres) still opts out.
+ */
+function resolveMigrationSslOption(connectionString: string): false | { rejectUnauthorized: false } {
+  try {
+    const url = new URL(connectionString)
+    const sslmode = url.searchParams.get('sslmode')
+    if (sslmode === 'disable') {
+      return false
+    }
+    const isSupabaseHost = url.hostname.endsWith('.supabase.com') || url.hostname.endsWith('.supabase.co')
+    if (sslmode || isSupabaseHost) {
+      return { rejectUnauthorized: false }
+    }
   }
-
-  return migrationUrl.replace('require', 'disable')
+  catch {
+    // Fall through to no-TLS for unparseable connection strings.
+  }
+  return false
 }
 
 async function acquireMigrationLock(sql: ReservedSql): Promise<void> {
@@ -542,6 +561,7 @@ async function run(): Promise<void> {
     max: 1,
     connect_timeout: 30,
     idle_timeout: 5,
+    ssl: resolveMigrationSslOption(connectionString),
   })
   let reserved: ReservedSql | null = null
   let lockAcquired = false
