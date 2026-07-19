@@ -92,11 +92,22 @@ describe('public shell env detection', () => {
     })).toBe(true)
   })
 
-  it('prerenders when Vercel build-time env is complete', async () => {
+  // FORK OVERRIDE: complete Vercel env alone does NOT enable prerendering —
+  // only the explicit BUILD_PRERENDER_PUBLIC_SHELL opt-in does.
+  it('still defers when Vercel build-time env is complete but no explicit opt-in', async () => {
     vi.stubEnv('NEXT_PHASE', 'phase-production-build')
     vi.stubEnv('POSTGRES_URL', 'postgres://user:pass@localhost:5432/app')
     vi.stubEnv('REOWN_APPKIT_PROJECT_ID', 'project-id')
     vi.stubEnv('VERCEL_PROJECT_PRODUCTION_URL', 'markets.example.com')
+
+    await deferPublicShellPrerenderIfNeeded()
+
+    expect(mocks.io).toHaveBeenCalledOnce()
+  })
+
+  it('prerenders when explicitly opted in', async () => {
+    vi.stubEnv('NEXT_PHASE', 'phase-production-build')
+    vi.stubEnv('BUILD_PRERENDER_PUBLIC_SHELL', 'true')
 
     await deferPublicShellPrerenderIfNeeded()
 

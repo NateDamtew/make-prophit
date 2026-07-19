@@ -48,6 +48,11 @@ const config: KnipConfig = {
     'src/hooks/usePolymarketWalletConnection.ts',
     // Local scratch area, never committed.
     'scratch/**',
+    // Upstream's wagmi cookie-SSR storage plumbing. Our Dynamic provider
+    // mounts client-only and doesn't hydrate wagmi state from cookies, so the
+    // app no longer imports these; kept in-tree for future upstream syncs.
+    'src/lib/wagmi-storage.ts',
+    'src/lib/wagmi-storage.server.ts',
   ],
   ignoreDependencies: [
     'lint-staged',

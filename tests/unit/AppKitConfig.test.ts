@@ -1,45 +1,33 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+// FORK: appkit.ts builds a plain wagmi config for the Dynamic connector
+// (upstream's version builds a Reown WagmiAdapter with cookie SSR storage).
 const mocks = vi.hoisted(() => ({
-  cookieStorage: {},
-  createStorage: vi.fn(() => 'cookie-storage'),
-  WagmiAdapter: vi.fn(),
-}))
-
-vi.mock('@reown/appkit-adapter-wagmi', () => ({
-  WagmiAdapter: class WagmiAdapter {
-    constructor(options: unknown) {
-      mocks.WagmiAdapter(options)
-    }
-  },
+  createConfig: vi.fn(() => 'wagmi-config'),
 }))
 
 vi.mock('wagmi', () => ({
-  cookieStorage: mocks.cookieStorage,
-  createStorage: mocks.createStorage,
+  createConfig: mocks.createConfig,
 }))
 
 describe('appKit config', () => {
   beforeEach(() => {
-    mocks.createStorage.mockClear()
-    mocks.WagmiAdapter.mockClear()
+    mocks.createConfig.mockClear()
   })
 
-  it('configures cookie-backed SSR hydration', async () => {
-    const { createAppKitWagmiAdapter, networks } = await import('@/lib/appkit')
-    const { WAGMI_STORAGE_KEY } = await import('@/lib/wagmi-storage')
+  it('builds a single-chain wagmi config for the Dynamic connector', async () => {
+    const { createDynamicWagmiConfig, defaultNetwork } = await import('@/lib/appkit')
 
-    createAppKitWagmiAdapter('test-project')
+    const config = createDynamicWagmiConfig()
 
-    expect(mocks.createStorage).toHaveBeenCalledWith({
-      key: WAGMI_STORAGE_KEY,
-      storage: mocks.cookieStorage,
-    })
-    expect(mocks.WagmiAdapter).toHaveBeenCalledWith({
-      networks,
-      projectId: 'test-project',
-      ssr: true,
-      storage: 'cookie-storage',
-    })
+    expect(config).toBe('wagmi-config')
+    expect(mocks.createConfig).toHaveBeenCalledTimes(1)
+    const options = mocks.createConfig.mock.calls[0]?.[0] as {
+      chains: readonly { id: number }[]
+      multiInjectedProviderDiscovery: boolean
+    }
+    expect(options.chains).toEqual([defaultNetwork])
+    // Dynamic manages provider discovery itself; wagmi must not double-discover.
+    expect(options.multiInjectedProviderDiscovery).toBe(false)
   })
 })
