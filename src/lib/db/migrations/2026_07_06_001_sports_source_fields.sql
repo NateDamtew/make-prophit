@@ -71,6 +71,14 @@ CREATE INDEX IF NOT EXISTS idx_market_sports_source_game
 CREATE INDEX IF NOT EXISTS idx_market_sports_source_league
   ON market_sports (sports_source_provider, sports_source_league_id);
 
+-- The settings id sequence can lag behind rows inserted with explicit ids,
+-- which makes the INSERT below die on settings_pkey before the (group, key)
+-- conflict target is ever considered. Realign it first.
+SELECT setval(
+  pg_get_serial_sequence('settings', 'id'),
+  GREATEST((SELECT COALESCE(MAX(id), 0) FROM settings), 1)
+);
+
 INSERT INTO settings ("group", key, value)
 VALUES ('ai', 'sports_thesportsdb_api_key', '123')
 ON CONFLICT ("group", key)
