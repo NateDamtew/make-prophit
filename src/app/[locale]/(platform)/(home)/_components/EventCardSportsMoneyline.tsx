@@ -1,19 +1,22 @@
 'use client'
 
+import type { CSSProperties } from 'react'
 import type { HomeSportsMoneylineButton, HomeSportsMoneylineModel } from '@/lib/sports-home-card'
 import type { Event } from '@/types'
 import { CheckIcon } from 'lucide-react'
+import { useExtracted, useLocale } from 'next-intl'
 import Image from 'next/image'
 import EventBookmark from '@/app/[locale]/(platform)/event/[slug]/_components/EventBookmark'
-import AppLink from '@/components/AppLink'
 import { Card, CardContent } from '@/components/ui/card'
 import { NewBadge } from '@/components/ui/new-badge'
+import { Link } from '@/i18n/navigation'
 import { ensureReadableTextColorOnDark } from '@/lib/color-contrast'
 import { shouldShowEventNewBadge } from '@/lib/event-new-badge'
 import { resolveEventOutcomePath } from '@/lib/events-routing'
-import { formatDate, formatVolume } from '@/lib/formatters'
+import { formatVolume } from '@/lib/formatters'
 import { isEventResolvedLike } from '@/lib/home-events'
 import { resolveHomeSportsButtonChance, resolveResolvedHomeSportsMoneylineWinner } from '@/lib/sports-home-card'
+import { parseSportsScore } from '@/lib/sports-resolution'
 import { resolveSportsTeamFallbackClassName } from '@/lib/sports-team-colors'
 import { cn } from '@/lib/utils'
 
@@ -25,28 +28,9 @@ export interface EventCardSportsMoneylineProps {
 }
 
 const HOME_OUTCOME_BUTTON_HEIGHT_CLASS = 'h-[40px]'
+const HOME_SPORTS_BUTTON_DARK_TEXT_VAR = '--home-sports-button-dark-text'
 const SPORTS_EVENT_TIME_ZONE = 'America/New_York'
 const SPORTS_EVENT_TIME_ZONE_LABEL = 'ET'
-const SPORTS_EVENT_TIME_FORMATTER = new Intl.DateTimeFormat('en-US', {
-  hour: 'numeric',
-  minute: '2-digit',
-  timeZone: SPORTS_EVENT_TIME_ZONE,
-})
-const SPORTS_EVENT_DATE_FORMATTER = new Intl.DateTimeFormat('en-US', {
-  month: 'short',
-  day: 'numeric',
-  timeZone: SPORTS_EVENT_TIME_ZONE,
-})
-const SPORTS_EVENT_WEEKDAY_FORMATTER = new Intl.DateTimeFormat('en-US', {
-  weekday: 'short',
-  timeZone: SPORTS_EVENT_TIME_ZONE,
-})
-const SPORTS_EVENT_DATE_PARTS_FORMATTER = new Intl.DateTimeFormat('en-US', {
-  year: 'numeric',
-  month: 'numeric',
-  day: 'numeric',
-  timeZone: SPORTS_EVENT_TIME_ZONE,
-})
 
 function normalizeComparableText(value: string | null | undefined) {
   return value
@@ -93,8 +77,14 @@ function resolveSportsCompetitionLabel(event: Event) {
     ?? formatSportsDisplayLabel(event.sports_sport_slug)
 }
 
-function getSportsEventDayNumber(date: Date) {
-  const parts = SPORTS_EVENT_DATE_PARTS_FORMATTER.formatToParts(date)
+function getSportsEventDayNumber(date: Date, locale: string) {
+  const parts = new Intl.DateTimeFormat(locale, {
+    year: 'numeric',
+    numberingSystem: 'latn',
+    month: 'numeric',
+    day: 'numeric',
+    timeZone: SPORTS_EVENT_TIME_ZONE,
+  }).formatToParts(date)
   const year = Number(parts.find(part => part.type === 'year')?.value)
   const month = Number(parts.find(part => part.type === 'month')?.value)
   const day = Number(parts.find(part => part.type === 'day')?.value)
@@ -106,7 +96,11 @@ function getSportsEventDayNumber(date: Date) {
   return Math.floor(Date.UTC(year, month - 1, day) / 86_400_000)
 }
 
-function formatSportsStartTime(value: string | null | undefined, currentTimestamp?: number | null) {
+function resolveSportsStartTime(
+  value: string | null | undefined,
+  locale: string,
+  currentTimestamp?: number | null,
+) {
   if (!value) {
     return null
   }
@@ -116,42 +110,57 @@ function formatSportsStartTime(value: string | null | undefined, currentTimestam
     return null
   }
 
-  const timeLabel = `${SPORTS_EVENT_TIME_FORMATTER.format(parsed)} ${SPORTS_EVENT_TIME_ZONE_LABEL}`
+  const timeLabel = `${new Intl.DateTimeFormat(locale, {
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZone: SPORTS_EVENT_TIME_ZONE,
+  }).format(parsed)} ${SPORTS_EVENT_TIME_ZONE_LABEL}`
 
   if (currentTimestamp == null) {
-    const dateLabel = SPORTS_EVENT_DATE_FORMATTER.format(parsed)
-    return `${dateLabel} ${timeLabel}`
+    const dateLabel = new Intl.DateTimeFormat(locale, {
+      month: 'short',
+      day: 'numeric',
+      timeZone: SPORTS_EVENT_TIME_ZONE,
+    }).format(parsed)
+    return { relativeDay: null, label: `${dateLabel} ${timeLabel}` } as const
   }
 
   const now = new Date(currentTimestamp)
-  const todayDayNumber = getSportsEventDayNumber(now)
-  const targetDayNumber = getSportsEventDayNumber(parsed)
+  const todayDayNumber = getSportsEventDayNumber(now, locale)
+  const targetDayNumber = getSportsEventDayNumber(parsed, locale)
 
   if (todayDayNumber == null || targetDayNumber == null) {
-    return timeLabel
+    return { relativeDay: null, label: timeLabel } as const
   }
 
   const dayDiff = targetDayNumber - todayDayNumber
 
   if (dayDiff === 0) {
-    return timeLabel
+    return { relativeDay: null, label: timeLabel } as const
   }
 
   if (dayDiff === 1) {
-    return `Tomorrow ${timeLabel}`
+    return { relativeDay: 'tomorrow', label: timeLabel } as const
   }
 
   if (dayDiff === -1) {
-    return `Yesterday ${timeLabel}`
+    return { relativeDay: 'yesterday', label: timeLabel } as const
   }
 
   if (dayDiff > 1 && dayDiff < 7) {
-    const weekdayLabel = SPORTS_EVENT_WEEKDAY_FORMATTER.format(parsed)
-    return `${weekdayLabel} ${timeLabel}`
+    const weekdayLabel = new Intl.DateTimeFormat(locale, {
+      weekday: 'short',
+      timeZone: SPORTS_EVENT_TIME_ZONE,
+    }).format(parsed)
+    return { relativeDay: null, label: `${weekdayLabel} ${timeLabel}` } as const
   }
 
-  const dateLabel = SPORTS_EVENT_DATE_FORMATTER.format(parsed)
-  return `${dateLabel} ${timeLabel}`
+  const dateLabel = new Intl.DateTimeFormat(locale, {
+    month: 'short',
+    day: 'numeric',
+    timeZone: SPORTS_EVENT_TIME_ZONE,
+  }).format(parsed)
+  return { relativeDay: null, label: `${dateLabel} ${timeLabel}` } as const
 }
 
 function getButtonToneStyles(button: HomeSportsMoneylineButton) {
@@ -168,23 +177,48 @@ function getButtonToneStyles(button: HomeSportsMoneylineButton) {
 
   if (!button.color) {
     return {
-      className: cn(
-        `${HOME_OUTCOME_BUTTON_HEIGHT_CLASS} flex-1 rounded-sm px-2 text-sm font-semibold text-foreground`,
-      ),
+      className: `
+        ${HOME_OUTCOME_BUTTON_HEIGHT_CLASS}
+        flex-1 rounded-sm px-2 text-xs/snug font-semibold text-foreground
+        hover:text-primary-foreground
+      `,
       style: undefined,
       backgroundClassName: resolveSportsTeamFallbackClassName(button.tone),
       backgroundStyle: undefined,
     }
   }
 
-  const textColor = ensureReadableTextColorOnDark(button.color)
+  const darkTextColor = ensureReadableTextColorOnDark(button.color)
 
   return {
-    className: `${HOME_OUTCOME_BUTTON_HEIGHT_CLASS} flex-1 rounded-sm px-2 text-sm font-semibold`,
-    style: textColor ? { color: textColor } : undefined,
+    className: `
+      ${HOME_OUTCOME_BUTTON_HEIGHT_CLASS} flex-1 rounded-sm px-2 text-xs/snug font-semibold
+      hover:!text-white dark:!text-[var(--home-sports-button-dark-text)]
+      dark:hover:!text-white
+    `,
+    style: {
+      color: button.color,
+      [HOME_SPORTS_BUTTON_DARK_TEXT_VAR]: darkTextColor ?? button.color,
+    } as CSSProperties,
     backgroundClassName: undefined,
     backgroundStyle: button.color ? { backgroundColor: button.color } : undefined,
   }
+}
+
+function resolveButtonDisplayLabel(
+  model: HomeSportsMoneylineModel,
+  button: HomeSportsMoneylineButton,
+  drawLabel: string,
+) {
+  if (button.tone === 'team1') {
+    return model.team1.name
+  }
+
+  if (button.tone === 'team2') {
+    return model.team2.name
+  }
+
+  return button.tone === 'draw' ? drawLabel : button.label
 }
 
 export default function EventCardSportsMoneyline({
@@ -193,6 +227,8 @@ export default function EventCardSportsMoneyline({
   getDisplayChance,
   currentTimestamp,
 }: EventCardSportsMoneylineProps) {
+  const locale = useLocale()
+  const t = useExtracted()
   const marketSlugByConditionId = new Map(
     (event.markets ?? [])
       .filter(market => Boolean(market.condition_id && market.slug))
@@ -208,7 +244,16 @@ export default function EventCardSportsMoneyline({
   }
   const isResolvedEvent = isEventResolvedLike(event)
   const sportsCompetitionLabel = resolveSportsCompetitionLabel(event)
-  const startTimeLabel = formatSportsStartTime(event.sports_start_time ?? event.start_date, currentTimestamp)
+  const sportsStartTime = resolveSportsStartTime(
+    event.sports_start_time ?? event.start_date,
+    locale,
+    currentTimestamp,
+  )
+  const startTimeLabel = sportsStartTime?.relativeDay === 'tomorrow'
+    ? t('Tomorrow {time}', { time: sportsStartTime.label })
+    : sportsStartTime?.relativeDay === 'yesterday'
+      ? t('Yesterday {time}', { time: sportsStartTime.label })
+      : sportsStartTime?.label ?? null
   const shouldShowNewBadge = shouldShowEventNewBadge(event, currentTimestamp ?? null)
   const endedLabel = isResolvedEvent && event.resolved_at
     ? (() => {
@@ -216,7 +261,13 @@ export default function EventCardSportsMoneyline({
         if (Number.isNaN(resolvedDate.getTime())) {
           return null
         }
-        return `Ended ${formatDate(resolvedDate)}`
+        const dateLabel = new Intl.DateTimeFormat(locale, {
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric',
+          timeZone: 'UTC',
+        }).format(resolvedDate)
+        return t('Ended {date}', { date: dateLabel })
       })()
     : null
   const team1Chance = Math.round(resolveHomeSportsButtonChance(
@@ -230,6 +281,10 @@ export default function EventCardSportsMoneyline({
   const resolvedWinner = isResolvedEvent
     ? resolveResolvedHomeSportsMoneylineWinner(event, model)
     : null
+  const showLiveScore = !isResolvedEvent && event.sports_live === true
+  const parsedLiveScore = showLiveScore ? parseSportsScore(event.sports_score) : null
+  const team1Score = parsedLiveScore?.team1 ?? null
+  const team2Score = parsedLiveScore?.team2 ?? null
 
   return (
     <Card
@@ -238,6 +293,7 @@ export default function EventCardSportsMoneyline({
         transition-all
         hover:-translate-y-0.5 hover:shadow-black/8
         dark:hover:bg-secondary
+        [&_img]:pointer-events-none [&_img]:select-none
       `)}
     >
       <CardContent
@@ -247,8 +303,7 @@ export default function EventCardSportsMoneyline({
         `)}
       >
         <div className="flex w-full flex-col gap-0.5">
-          <AppLink
-            intentPrefetch
+          <Link
             href={resolveButtonHref(model.team1Button)}
             className="group/team-row-1 flex h-8 items-center justify-between gap-2"
           >
@@ -266,6 +321,17 @@ export default function EventCardSportsMoneyline({
                     )
                   : null}
               </div>
+              {team1Score !== null && (
+                <>
+                  <span
+                    aria-label={t('{team} score {score}', { team: model.team1.name, score: String(team1Score) })}
+                    className="shrink-0 text-sm font-medium text-foreground tabular-nums"
+                  >
+                    {team1Score}
+                  </span>
+                  <span className="h-4 w-px shrink-0 bg-border" aria-hidden="true" />
+                </>
+              )}
               <p className="truncate text-sm font-medium decoration-2 group-hover/team-row-1:underline">
                 {model.team1.name}
               </p>
@@ -274,9 +340,8 @@ export default function EventCardSportsMoneyline({
               {team1Chance}
               %
             </p>
-          </AppLink>
-          <AppLink
-            intentPrefetch
+          </Link>
+          <Link
             href={resolveButtonHref(model.team2Button)}
             className="group/team-row-2 flex h-8 items-center justify-between gap-2"
           >
@@ -294,6 +359,17 @@ export default function EventCardSportsMoneyline({
                     )
                   : null}
               </div>
+              {team2Score !== null && (
+                <>
+                  <span
+                    aria-label={t('{team} score {score}', { team: model.team2.name, score: String(team2Score) })}
+                    className="shrink-0 text-sm font-medium text-foreground tabular-nums"
+                  >
+                    {team2Score}
+                  </span>
+                  <span className="h-4 w-px shrink-0 bg-border" aria-hidden="true" />
+                </>
+              )}
               <p className="truncate text-sm font-medium decoration-2 group-hover/team-row-2:underline">
                 {model.team2.name}
               </p>
@@ -302,7 +378,7 @@ export default function EventCardSportsMoneyline({
               {team2Chance}
               %
             </p>
-          </AppLink>
+          </Link>
         </div>
 
         <div className="flex flex-1 flex-col">
@@ -328,10 +404,10 @@ export default function EventCardSportsMoneyline({
                       .filter((button): button is HomeSportsMoneylineButton => Boolean(button))
                       .map((button) => {
                         const toneStyles = getButtonToneStyles(button)
+                        const displayLabel = resolveButtonDisplayLabel(model, button, t('Draw'))
 
                         return (
-                          <AppLink
-                            intentPrefetch
+                          <Link
                             key={`${button.conditionId}:${button.outcomeIndex}`}
                             href={resolveButtonHref(button)}
                             className={cn(
@@ -340,18 +416,17 @@ export default function EventCardSportsMoneyline({
                                 active:scale-[97%]
                               `,
                               button.tone === 'draw'
-                                ? 'hover:bg-secondary/80 hover:text-foreground'
+                                ? 'hover:bg-foreground/10 hover:text-foreground dark:hover:bg-background/70'
                                 : 'group/team-button hover:bg-transparent',
                               toneStyles.className,
                             )}
                             style={toneStyles.style}
                           >
                             {button.tone === 'draw'
-                              ? <span className="relative z-1">{button.label}</span>
+                              ? <span className="relative z-1">{displayLabel}</span>
                               : (
-                                  <span className="relative z-1 truncate">
-                                    <span className="group-hover/team-button:hidden">{button.label}</span>
-                                    <span className="hidden text-foreground group-hover/team-button:inline">{button.label}</span>
+                                  <span className="relative z-1 line-clamp-2 max-w-full text-center">
+                                    {displayLabel}
                                   </span>
                                 )}
                             {(toneStyles.backgroundClassName || toneStyles.backgroundStyle)
@@ -359,10 +434,8 @@ export default function EventCardSportsMoneyline({
                                   <span
                                     className={cn(
                                       `
-                                        absolute inset-0 z-0 rounded-sm opacity-20 transition-opacity
-                                        group-hover/team-button:opacity-40
-                                        dark:opacity-30
-                                        dark:group-hover/team-button:opacity-50
+                                        absolute inset-0 z-0 rounded-sm opacity-[0.15] transition-opacity
+                                        group-hover/team-button:opacity-100
                                       `,
                                       toneStyles.backgroundClassName,
                                     )}
@@ -370,7 +443,7 @@ export default function EventCardSportsMoneyline({
                                   />
                                 )
                               : null}
-                          </AppLink>
+                          </Link>
                         )
                       })}
                   </div>
@@ -384,9 +457,7 @@ export default function EventCardSportsMoneyline({
               ? <NewBadge />
               : (
                   <span>
-                    {formatVolume(event.volume)}
-                    {' '}
-                    Vol.
+                    {t('{amount} Vol.', { amount: formatVolume(event.volume) })}
                   </span>
                 )}
             {isResolvedEvent

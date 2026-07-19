@@ -1,6 +1,7 @@
 import type { LiFiWalletTokenItem } from '@/hooks/useLiFiWalletTokens'
 import { useQuery } from '@tanstack/react-query'
 import { parseUnits } from 'viem'
+import { formatNumber } from '@/lib/formatters'
 import { sanitizeLiFiAmount } from '@/lib/lifi-amount'
 
 const LIFI_QUOTE_QUERY_KEY = 'lifi-quote'
@@ -11,6 +12,7 @@ interface UseLiFiQuoteParams {
   fromAddress?: string | null
   toAddress?: string | null
   refreshIndex?: number
+  enabled?: boolean
 }
 
 export function useLiFiQuote({
@@ -19,6 +21,7 @@ export function useLiFiQuote({
   fromAddress,
   toAddress,
   refreshIndex = 0,
+  enabled = true,
 }: UseLiFiQuoteParams) {
   const tokenDecimals = fromToken?.decimals ?? 18
   const sanitizedAmount = sanitizeLiFiAmount(amountValue, tokenDecimals)
@@ -34,7 +37,7 @@ export function useLiFiQuote({
       return false
     }
   })()
-  const canQuote = hasAddresses && hasValidAmount
+  const canQuote = enabled && hasAddresses && hasValidAmount
 
   const query = useQuery({
     queryKey: [LIFI_QUOTE_QUERY_KEY, fromToken?.id, amountValue, fromAddress, toAddress, refreshIndex],
@@ -72,7 +75,7 @@ export function useLiFiQuote({
         const toAmountRaw = Number.parseFloat(quote?.estimate?.toAmount ?? '0')
         const toAmount = toAmountRaw / 10 ** toTokenDecimals
         const toAmountDisplay = Number.isFinite(toAmount)
-          ? toAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 6 })
+          ? formatNumber(toAmount, { minimumFractionDigits: 2, maximumFractionDigits: 6 })
           : null
 
         const gasUsd = quote?.estimate?.gasCosts?.reduce((sum: number, gas: { amountUSD?: string }) => {
@@ -80,7 +83,7 @@ export function useLiFiQuote({
           return Number.isFinite(usd) ? sum + usd : sum
         }, 0) ?? 0
         const gasUsdDisplay = Number.isFinite(gasUsd)
-          ? gasUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+          ? formatNumber(gasUsd, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
           : null
 
         return {

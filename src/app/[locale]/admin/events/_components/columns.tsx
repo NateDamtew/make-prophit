@@ -4,14 +4,15 @@ import type { ColumnDef } from '@tanstack/react-table'
 import type { AdminEventRow } from '@/app/[locale]/admin/events/_hooks/useAdminEvents'
 import { ArrowUpDownIcon, BadgeInfoIcon, EyeIcon, EyeOffIcon, RadioIcon, RepeatIcon, TrophyIcon } from 'lucide-react'
 import { useExtracted } from 'next-intl'
-import AppLink from '@/components/AppLink'
 import EventIconImage from '@/components/EventIconImage'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { Link } from '@/i18n/navigation'
 import { formatCompactCurrency, formatDate } from '@/lib/formatters'
 import { isSportsAuxiliaryEventSlug } from '@/lib/sports-event-slugs'
 import { cn } from '@/lib/utils'
+import { shouldHighlightSportsFinalAction } from './sports-final-action-state'
 
 interface EventColumnOptions {
   onToggleHidden: (event: AdminEventRow, nextValue: boolean) => void
@@ -98,8 +99,7 @@ export function useAdminEventsColumns({
 
               <div className="min-w-0 space-y-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <AppLink
-                    intentPrefetch
+                  <Link
                     href={`/event/${event.slug}`}
                     className={cn(`
                       line-clamp-2 text-sm font-medium text-wrap underline-offset-4
@@ -108,7 +108,7 @@ export function useAdminEventsColumns({
                     `)}
                   >
                     {event.title}
-                  </AppLink>
+                  </Link>
                 </div>
 
                 <div className="flex items-center gap-1 text-xs text-muted-foreground">
@@ -230,6 +230,7 @@ export function useAdminEventsColumns({
         const hiddenUpdatePending = isUpdatingHidden(event.id)
         const nextHiddenState = !event.is_hidden
         const shouldHideSportsAdminControls = isSportsAuxiliaryEventSlug(event.slug)
+        const shouldHighlightSportsFinal = shouldHighlightSportsFinalAction(event)
 
         return (
           <div className="flex w-full items-center justify-end gap-1">
@@ -240,7 +241,7 @@ export function useAdminEventsColumns({
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className={`size-8 ${event.sports_ended
+                    className={`size-8 ${shouldHighlightSportsFinal
                       ? 'text-primary hover:text-primary'
                       : 'text-muted-foreground'}`}
                     onClick={() => onOpenSportsFinalModal(event)}

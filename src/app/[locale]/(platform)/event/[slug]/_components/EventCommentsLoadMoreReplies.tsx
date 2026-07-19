@@ -1,5 +1,6 @@
 import type { Comment } from '@/types'
 import { AlertCircleIcon, LoaderIcon } from 'lucide-react'
+import { countDirectReplies } from '@/app/[locale]/(platform)/event/[slug]/_utils/comment-replies'
 import { cn } from '@/lib/utils'
 
 interface EventCommentsLoadMoreRepliesProps {
@@ -17,11 +18,14 @@ export default function EventCommentsLoadMoreReplies({
   error,
   onRetry,
 }: EventCommentsLoadMoreRepliesProps) {
+  const visibleRepliesCount = countDirectReplies(comment)
+  const hiddenRepliesCount = Math.max(0, comment.replies_count - visibleRepliesCount)
+
   function handleLoadMoreReplies() {
     onRepliesLoaded(comment.id)
   }
 
-  if (comment.replies_count <= 3) {
+  if (hiddenRepliesCount === 0) {
     return null
   }
 
@@ -54,7 +58,7 @@ export default function EventCommentsLoadMoreReplies({
     >
       {isLoading && <LoaderIcon className="size-3 animate-spin" />}
       <span>
-        {isLoading ? 'Loading replies...' : `View ${comment.replies_count - 3} more replies`}
+        {isLoading ? 'Loading replies...' : `View ${hiddenRepliesCount} more replies`}
       </span>
     </button>
   )

@@ -48,6 +48,18 @@ export const users = pgTable(
   }),
 )
 
+export const arbitrage_order_rate_limits = pgTable('arbitrage_order_rate_limits', {
+  user_id: text()
+    .primaryKey()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  window_started_at: timestamp({ withTimezone: true }).defaultNow().notNull(),
+  request_count: integer().default(0).notNull(),
+  updated_at: timestamp({ withTimezone: true })
+    .defaultNow()
+    .$onUpdate(() => /* @__PURE__ */ new Date())
+    .notNull(),
+})
+
 export const sessions = pgTable('sessions', {
   id: text().primaryKey(),
   expires_at: timestamp().notNull(),
@@ -111,6 +123,8 @@ export const two_factors = pgTable('two_factors', {
   secret: text().notNull(),
   backup_codes: text().notNull(),
   verified: boolean().default(true).notNull(),
+  failed_verification_count: integer().default(0).notNull(),
+  locked_until: timestamp({ withTimezone: true }),
   user_id: text('user_id')
     .notNull()
     .references(() => users.id, { onDelete: 'cascade' }),

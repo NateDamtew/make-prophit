@@ -193,7 +193,7 @@ export default function HeaderSearch({
     && !isResultsDismissed
   const showDiscoveryDropdown = showDesktopDiscovery && !emptyState && query.trim().length === 0 && hasFocusWithin && !isResultsDismissed
   const showAttachedDropdown = showDropdown || showDiscoveryDropdown
-  const inputBaseClass = showAttachedDropdown ? 'bg-background' : 'bg-accent'
+  const inputBaseClass = showAttachedDropdown ? 'bg-background' : 'bg-secondary'
   const inputBorderClass = showAttachedDropdown ? 'border-border' : 'border-transparent'
   const inputHoverClass = showAttachedDropdown ? 'hover:bg-background' : 'hover:bg-secondary'
   const inputFocusClass = 'focus:bg-background focus-visible:bg-background'

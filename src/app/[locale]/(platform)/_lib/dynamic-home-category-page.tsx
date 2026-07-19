@@ -6,6 +6,7 @@ import {
   buildLocalizedPagePath,
   buildPredictionResultsOgImageUrl,
 } from '@/app/[locale]/(platform)/_lib/prediction-results-metadata'
+import { resolveCommitSha } from '@/lib/git'
 import { loadPlatformMainTags } from '@/lib/platform-main-tags'
 import {
   findDynamicHomeCategoryBySlug,
@@ -18,6 +19,11 @@ import { getPublicShellStaticParams, shouldBypassPublicShellPlaceholder, STATIC_
 async function getMainTags(locale: SupportedLocale) {
   const { data: mainTags } = await loadPlatformMainTags(locale)
   return mainTags ?? []
+}
+
+function getCategoryEventCount(category: Awaited<ReturnType<typeof getMainTags>>[number]) {
+  const allItem = category.sidebarItems?.find(item => item.type === 'link' && item.isAll)
+  return allItem?.type === 'link' ? (allItem.count ?? 0) : 0
 }
 
 export async function generateDynamicHomeCategoryStaticParams() {
@@ -47,7 +53,7 @@ export async function buildDynamicHomeCategoryMetadata(locale: SupportedLocale, 
     locale,
     slug: category.slug,
     label: category.name,
-    version: process.env.VERCEL_GIT_COMMIT_SHA ?? null,
+    version: resolveCommitSha(),
   })
   const pageUrl = new URL(
     buildLocalizedPagePath(`/${category.slug}`, locale),
@@ -93,7 +99,7 @@ export async function buildDynamicHomeSubcategoryMetadata(
     locale,
     slug: resolvedSubcategory.subcategory.slug,
     label: resolvedSubcategory.subcategory.name,
-    version: process.env.VERCEL_GIT_COMMIT_SHA ?? null,
+    version: resolveCommitSha(),
   })
   const pageUrl = new URL(
     buildLocalizedPagePath(`/${resolvedSubcategory.category.slug}/${resolvedSubcategory.subcategory.slug}`, locale),
@@ -141,6 +147,13 @@ export async function DynamicHomeCategoryPageContent({
     <HomeInitialContent
       locale={locale}
       initialTag={category.slug}
+      categoryFaqContext={{
+        categoryName: category.name,
+        eventCount: getCategoryEventCount(category),
+        marketCount: category.active_markets_count ?? 0,
+        popularEventTitles: [],
+        subcategoryNames: (category.childs ?? []).filter(child => (child.count ?? 0) > 0).slice(0, 3).map(child => child.name),
+      }}
       deferRuntimePrerender={deferHomeRuntimePrerender}
     />
   )

@@ -7,8 +7,8 @@ import { usePlatformNavigationData } from '@/app/[locale]/(platform)/_providers/
 import EventBookmark from '@/app/[locale]/(platform)/event/[slug]/_components/EventBookmark'
 import EventEmbed from '@/app/[locale]/(platform)/event/[slug]/_components/EventEmbed'
 import EventShare from '@/app/[locale]/(platform)/event/[slug]/_components/EventShare'
-import AppLink from '@/components/AppLink'
 import EventIconImage from '@/components/EventIconImage'
+import { Link } from '@/i18n/navigation'
 import { isPlatformMainCategorySlug } from '@/lib/platform-routing'
 import { cn } from '@/lib/utils'
 
@@ -112,14 +112,13 @@ function EventHeaderTaxonomyItem({
 }: EventHeaderTaxonomyItemData & { className?: string }) {
   if (href) {
     return (
-      <AppLink
-        intentPrefetch
+      <Link
         href={href}
         className={cn('block truncate transition-colors hover:text-foreground', className)}
         title={label}
       >
         {label}
-      </AppLink>
+      </Link>
     )
   }
 
@@ -146,7 +145,7 @@ export default function EventHeader({ event }: EventHeaderProps) {
     <div
       className={cn(
         'relative z-10 -mx-4 flex items-center gap-3 px-4 transition-all ease-in-out',
-        { 'sticky top-26 translate-y-1 bg-background py-3 pr-6 md:translate-y-3 lg:top-28 lg:translate-y-1': scrolled },
+        { 'sticky top-0 bg-background py-3 pr-6 lg:top-28 lg:translate-y-1': scrolled },
       )}
     >
       {scrolled && (
@@ -155,7 +154,7 @@ export default function EventHeader({ event }: EventHeaderProps) {
       <div className="relative z-10 flex flex-1 items-center gap-2 lg:gap-4">
         <div
           className={cn(
-            'shrink-0 rounded-sm transition-all ease-in-out dark:bg-foreground',
+            'shrink-0 rounded-sm transition-all ease-in-out',
             scrolled ? 'size-10' : 'size-10 lg:size-16',
           )}
         >

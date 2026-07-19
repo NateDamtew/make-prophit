@@ -397,6 +397,21 @@ async function createSyncResolutionCron(
   })
 }
 
+async function createSyncSportsScoresCron(
+  sql: ReservedSql,
+  siteUrl: string,
+  cronSecret: string,
+): Promise<void> {
+  await createSyncCron(sql, {
+    jobName: 'sync-sports-scores',
+    schedule: '* * * * *',
+    endpointPath: '/api/sync/sports-scores',
+    siteUrl,
+    cronSecret,
+    timeoutMilliseconds: 30000,
+  })
+}
+
 async function createSyncEventCreationsCron(
   sql: ReservedSql,
   siteUrl: string,
@@ -490,6 +505,7 @@ async function configureSupabaseScheduler(
   await createSyncEventCreationsCron(sql, siteUrl, cronSecret)
   await createSyncTranslationsCron(sql, siteUrl, cronSecret)
   await createSyncResolutionCron(sql, siteUrl, cronSecret)
+  await createSyncSportsScoresCron(sql, siteUrl, cronSecret)
   await createSyncVolumeCron(sql, siteUrl, cronSecret)
   await createSyncCommunityResolutionsCron(sql, siteUrl, cronSecret)
   await createSyncCommunityDeployRecoveryCron(sql, siteUrl, cronSecret)

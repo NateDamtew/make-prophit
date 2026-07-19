@@ -1,15 +1,18 @@
 import type { AdminThemeSiteSettingsInitialState } from '@/app/[locale]/admin/theme/_types/theme-form-state'
 import { getExtracted, setRequestLocale } from 'next-intl/server'
-import { connection } from 'next/server'
+import { io } from 'next/cache'
 import { Suspense } from 'react'
 import AdminGeneralSettingsForm from '@/app/[locale]/admin/(general)/_components/AdminGeneralSettingsForm'
 import { parseMarketContextSettings } from '@/lib/ai/market-context-config'
+import { MARKET_CONTEXT_VARIABLES } from '@/lib/ai/market-context-template'
 import { fetchOpenRouterModels } from '@/lib/ai/openrouter'
+import { isArbitrageEnabled, isArbitrageMultiWalletEnabled } from '@/lib/arbitrage-settings'
 import { HomeFeaturedEventsRepository } from '@/lib/db/queries/home-featured-events'
 import { SettingsRepository } from '@/lib/db/queries/settings'
 import { getBlockedCountriesFromSettings } from '@/lib/geoblock-settings'
 import { getGlobalAnnouncementSettingsFromSettings } from '@/lib/global-announcement-settings'
 import { getHomeFeaturedSettingsFromSettings } from '@/lib/home-featured-settings'
+import { parseSportsSourceProviderSettings } from '@/lib/sports-source/settings'
 import { getPublicAssetUrl } from '@/lib/storage'
 import { getTermsOfServicePdfPath, getTermsOfServicePdfUrl } from '@/lib/terms-of-service'
 import { getThemeSiteSettingsFormState } from '@/lib/theme-settings'
@@ -24,12 +27,13 @@ function AdminGeneralSettingsFallback() {
 }
 
 async function AdminGeneralSettingsContent({ locale }: { locale: string }) {
-  await connection()
+  await io()
   const t = await getExtracted()
 
   const { data: allSettings } = await SettingsRepository.getSettings()
 
   const parsedMarketContextSettings = parseMarketContextSettings(allSettings ?? undefined)
+  const parsedSportsSourceSettings = parseSportsSourceProviderSettings(allSettings ?? undefined)
   const defaultOpenRouterModel = parsedMarketContextSettings.model ?? ''
   const apiKeyForModels = parsedMarketContextSettings.apiKey
   const isOpenRouterApiKeyConfigured = Boolean(apiKeyForModels)
@@ -65,6 +69,11 @@ async function AdminGeneralSettingsContent({ locale }: { locale: string }) {
   const initialTermsOfServicePdfPath = getTermsOfServicePdfPath(allSettings ?? undefined)
   const initialTermsOfServicePdfUrl = getTermsOfServicePdfUrl(allSettings ?? undefined) || null
   const initialHomeFeaturedSettings = getHomeFeaturedSettingsFromSettings(allSettings ?? undefined)
+  initialHomeFeaturedSettings.sideCard.slides = initialHomeFeaturedSettings.sideCard.slides.map(slide => ({
+    ...slide,
+    imageUrl: getPublicAssetUrl(slide.imagePath || null) ?? '',
+  }))
+  const initialHomeFeaturedSideCardImageUrl = getPublicAssetUrl(initialHomeFeaturedSettings.sideCard.imagePath || null)
   const { data: initialHomeFeaturedEvents } = await HomeFeaturedEventsRepository.listAdminFeaturedEvents(locale)
   const initialThemeSiteSettingsWithImage: AdminThemeSiteSettingsInitialState = {
     ...initialThemeSiteSettings,
@@ -81,7 +90,15 @@ async function AdminGeneralSettingsContent({ locale }: { locale: string }) {
       initialBlockedCountries={initialBlockedCountries}
       initialTermsOfServicePdfPath={initialTermsOfServicePdfPath}
       initialTermsOfServicePdfUrl={initialTermsOfServicePdfUrl}
+      initialMarketContextSettings={{
+        enabled: parsedMarketContextSettings.enabled,
+        prompt: parsedMarketContextSettings.prompt,
+      }}
+      initialArbitrageEnabled={isArbitrageEnabled(allSettings)}
+      initialArbitrageMultiWalletEnabled={isArbitrageMultiWalletEnabled(allSettings)}
+      marketContextVariables={MARKET_CONTEXT_VARIABLES}
       initialHomeFeaturedSettings={initialHomeFeaturedSettings}
+      initialHomeFeaturedSideCardImageUrl={initialHomeFeaturedSideCardImageUrl}
       initialHomeFeaturedEvents={initialHomeFeaturedEvents ?? []}
       openRouterSettings={{
         defaultModel: defaultOpenRouterModel,
@@ -89,6 +106,10 @@ async function AdminGeneralSettingsContent({ locale }: { locale: string }) {
         isModelSelectEnabled: isOpenRouterModelSelectEnabled,
         modelOptions: openRouterModelOptions,
         modelsError: openRouterModelsError,
+      }}
+      sportsSourceSettings={{
+        isPandaScoreTokenConfigured: Boolean(parsedSportsSourceSettings.pandascoreToken),
+        isTheSportsDbApiKeyConfigured: Boolean(parsedSportsSourceSettings.theSportsDbApiKey),
       }}
     />
   )

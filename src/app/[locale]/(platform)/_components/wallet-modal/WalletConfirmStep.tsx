@@ -6,18 +6,20 @@ import {
   FuelIcon,
   InfoIcon,
   Loader2Icon,
-  WalletIcon,
 } from 'lucide-react'
 import Image from 'next/image'
 import { useState } from 'react'
-import SiteLogoIcon from '@/components/SiteLogoIcon'
+import WalletTransferSummary, {
+  WalletTransferSummaryDivider,
+  WalletTransferSummaryRow,
+} from '@/app/[locale]/(platform)/_components/wallet-modal/WalletTransferSummary'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { useDirectUsdcDepositExecution } from '@/hooks/useDirectUsdcDepositExecution'
 import { useLiFiExecution } from '@/hooks/useLiFiExecution'
 import { useLiFiQuote } from '@/hooks/useLiFiQuote'
-import { useSiteIdentity } from '@/hooks/useSiteIdentity'
 import { formatDisplayAmount } from '@/lib/amount-input'
 import { cn } from '@/lib/utils'
 
@@ -30,6 +32,7 @@ function WalletConfirmStep({
   selectedToken,
   quote,
   refreshIndex,
+  executionMode = 'lifi',
 }: {
   walletEoaAddress?: string | null
   walletAddress?: string | null
@@ -39,11 +42,10 @@ function WalletConfirmStep({
   selectedToken?: LiFiWalletTokenItem | null
   quote?: { toAmountDisplay: string | null, gasUsdDisplay: string | null } | null
   refreshIndex: number
+  executionMode?: 'lifi' | 'direct-usdc'
 }) {
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const eoaSuffix = walletEoaAddress?.slice(-4)
   const [isBreakdownOpen, setIsBreakdownOpen] = useState(false)
-  const site = useSiteIdentity()
   const formattedAmount = formatDisplayAmount(amountValue)
   const displayAmount = formattedAmount && formattedAmount.trim() !== '' ? formattedAmount : '0.00'
   const { quote: fetchedQuote, isLoadingQuote } = useLiFiQuote({
@@ -52,20 +54,31 @@ function WalletConfirmStep({
     fromAddress: walletEoaAddress,
     toAddress: walletAddress,
     refreshIndex,
+    enabled: executionMode === 'lifi',
   })
-  const effectiveQuote = quote ?? fetchedQuote
+  const effectiveQuote = quote ?? (executionMode === 'lifi' ? fetchedQuote : null)
   const hasAmount = amountValue.trim() !== ''
   const isQuoteLoading = isLoadingQuote && hasAmount
   const status: 'quote' | 'gas' | 'ready' = effectiveQuote ? 'ready' : (isLoadingQuote ? 'gas' : 'quote')
   const {
-    execute,
-    isExecuting,
+    execute: executeLiFi,
+    isExecuting: isExecutingLiFi,
   } = useLiFiExecution({
     fromToken: selectedToken,
     amountValue,
     fromAddress: walletEoaAddress,
     toAddress: walletAddress,
   })
+  const {
+    execute: executeDirectUsdcDeposit,
+    isExecuting: isExecutingDirectUsdcDeposit,
+  } = useDirectUsdcDepositExecution({
+    amountValue,
+    fromAddress: walletEoaAddress,
+    toAddress: walletAddress,
+  })
+  const execute = executionMode === 'direct-usdc' ? executeDirectUsdcDeposit : executeLiFi
+  const isExecuting = executionMode === 'direct-usdc' ? isExecutingDirectUsdcDeposit : isExecutingLiFi
   const isCtaDisabled = isExecuting || isSubmitting || !effectiveQuote || isLoadingQuote
   const sendSymbol = selectedToken?.symbol ?? 'Token'
   const sendIcon = selectedToken?.icon ?? '/images/deposit/transfer/polygon_dark.png'
@@ -82,44 +95,20 @@ function WalletConfirmStep({
       </div>
 
       <div className="space-y-3">
-        <div className="rounded-lg border">
-          <div className="px-4 py-1.5 text-sm">
-            <div className="flex items-center justify-between text-muted-foreground">
-              <span>Source</span>
-              <span className="flex items-center gap-2 font-semibold text-foreground">
-                <WalletIcon className="size-4" />
-                Wallet
-                {eoaSuffix ? ` (...${eoaSuffix})` : ''}
-              </span>
-            </div>
-          </div>
-          <div className="mx-auto h-px w-[90%] bg-border/60" />
-          <div className="px-4 py-1.5 text-sm">
-            <div className="flex items-center justify-between text-muted-foreground">
-              <span>Destination</span>
-              <span className="flex items-center gap-2 font-semibold text-foreground">
-                <SiteLogoIcon
-                  logoSvg={site.logoSvg}
-                  logoImageUrl={site.logoImageUrl}
-                  alt={`${siteLabel} logo`}
-                  className="size-4 text-current [&_svg]:size-[1em] [&_svg_*]:fill-current [&_svg_*]:stroke-current"
-                  imageClassName="size-[1em] object-contain"
-                  size={16}
-                />
-                {siteLabel}
-                {' '}
-                Wallet
-              </span>
-            </div>
-          </div>
-          <div className="mx-auto h-px w-[90%] bg-border/60" />
-          <div className="px-4 py-1.5 text-sm">
-            <div className="flex items-center justify-between text-muted-foreground">
-              <span>Estimated time</span>
-              <span className="font-semibold text-foreground">&lt; 1 min</span>
-            </div>
-          </div>
-        </div>
+        <WalletTransferSummary
+          walletEoaAddress={walletEoaAddress}
+          walletAddress={walletAddress}
+          siteLabel={siteLabel}
+          extraRows={(
+            <>
+              <WalletTransferSummaryDivider />
+              <WalletTransferSummaryRow
+                label="Estimated time"
+                value="< 1 min"
+              />
+            </>
+          )}
+        />
 
         <div className="rounded-lg border">
           <div className="px-4 py-1.5 text-sm">

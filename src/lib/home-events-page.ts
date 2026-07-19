@@ -1,8 +1,6 @@
 import type { SupportedLocale } from '@/i18n/locales'
 import type { EventListSortBy, EventListStatusFilter } from '@/lib/event-list-filters'
 import type { Event } from '@/types'
-import { cacheTag } from 'next/cache'
-import { cacheTags } from '@/lib/cache-tags'
 import { EventRepository } from '@/lib/db/queries/event'
 import { filterHomeEvents, HOME_EVENTS_PAGE_SIZE } from '@/lib/home-events'
 
@@ -46,10 +44,6 @@ async function loadHomeEventCandidates({
   tag,
   userId,
 }: LoadHomeEventCandidatesOptions) {
-  'use cache'
-  cacheTag(cacheTags.events(userId || 'guest'))
-  cacheTag(cacheTags.eventsList)
-
   const targetOffset = Math.max(0, offset)
   const hasHomeVisibilityFilters = hideSports || hideCrypto || hideEarnings
 
@@ -64,7 +58,7 @@ async function loadHomeEventCandidates({
       frequency,
       status,
       offset: targetOffset,
-      limit: HOME_EVENTS_PAGE_SIZE,
+      limit: HOME_EVENTS_PAGE_SIZE + 1,
       locale,
       sportsSportSlug,
       sportsSection,
@@ -128,7 +122,7 @@ async function loadHomeEventCandidates({
         status,
       })
       visibleEventsCount += visibleBatch.length
-      if (visibleEventsCount >= targetOffset + HOME_EVENTS_PAGE_SIZE) {
+      if (visibleEventsCount > targetOffset + HOME_EVENTS_PAGE_SIZE) {
         break
       }
 
@@ -191,29 +185,47 @@ async function loadHomeEventCandidates({
 }
 
 export async function listHomeEventsPage({
+  bookmarked,
   currentTimestamp,
+  frequency = 'all',
   hideCrypto = false,
   hideEarnings = false,
   hideSports = false,
+  locale,
+  mainTag,
   offset = 0,
+  search = '',
+  sortBy,
+  sportsSection = '',
+  sportsSportSlug = '',
   status = 'active',
-  ...options
+  tag,
+  userId,
 }: ListHomeEventsPageOptions) {
   const targetOffset = Math.max(0, offset)
   const resolvedCurrentTimestamp = currentTimestamp ?? null
   const hasHomeVisibilityFilters = hideSports || hideCrypto || hideEarnings
 
   const { data: rawEvents, error } = await loadHomeEventCandidates({
-    ...options,
+    bookmarked,
+    frequency,
     hideCrypto,
     hideEarnings,
     hideSports,
+    locale,
+    mainTag,
     offset,
+    search,
+    sortBy,
+    sportsSection,
+    sportsSportSlug,
     status,
+    tag,
+    userId,
   })
 
   if (error) {
-    return { data: [], error, currentTimestamp: resolvedCurrentTimestamp ?? null }
+    return { data: [], error, currentTimestamp: resolvedCurrentTimestamp ?? null, hasMore: false }
   }
 
   let visibleEvents: Event[] = rawEvents ?? []
@@ -230,10 +242,12 @@ export async function listHomeEventsPage({
       : []
   }
   const pageStart = status === 'resolved' && !hasHomeVisibilityFilters ? 0 : targetOffset
+  const pageEnd = pageStart + HOME_EVENTS_PAGE_SIZE
 
   return {
-    data: visibleEvents.slice(pageStart, pageStart + HOME_EVENTS_PAGE_SIZE),
+    data: visibleEvents.slice(pageStart, pageEnd),
     error: null,
     currentTimestamp: resolvedCurrentTimestamp ?? null,
+    hasMore: visibleEvents.length > pageEnd,
   }
 }

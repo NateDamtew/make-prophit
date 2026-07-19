@@ -10,7 +10,6 @@ import { useExtracted } from 'next-intl'
 import dynamic from 'next/dynamic'
 import { useCallback, useMemo, useState, useSyncExternalStore } from 'react'
 import EventChartControls from '@/app/[locale]/(platform)/event/[slug]/_components/EventChartControls'
-import EventChartEmbedDialog from '@/app/[locale]/(platform)/event/[slug]/_components/EventChartEmbedDialog'
 import EventChartExportDialog from '@/app/[locale]/(platform)/event/[slug]/_components/EventChartExportDialog'
 import EventChartHeader from '@/app/[locale]/(platform)/event/[slug]/_components/EventChartHeader'
 import EventChartLayout from '@/app/[locale]/(platform)/event/[slug]/_components/EventChartLayout'
@@ -33,7 +32,7 @@ import { usePublicRuntimeConfig } from '@/hooks/usePublicRuntimeConfig'
 import { useSiteIdentity } from '@/hooks/useSiteIdentity'
 import { useWindowSize } from '@/hooks/useWindowSize'
 import { OUTCOME_INDEX } from '@/lib/constants'
-import { formatDate } from '@/lib/formatters'
+import { formatCurrency, formatDate } from '@/lib/formatters'
 import { resolveDisplayPrice } from '@/lib/market-chance'
 import { isMarketNew } from '@/lib/utils'
 
@@ -230,7 +229,6 @@ export default function MarketOutcomeGraph({
   const normalizeOutcomeLabel = useOutcomeLabel()
   const [activeTimeRange, setActiveTimeRange] = useState<TimeRange>('ALL')
   const [exportDialogOpen, setExportDialogOpen] = useState(false)
-  const [embedDialogOpen, setEmbedDialogOpen] = useState(false)
   const marketTargets = useMemo(() => buildMarketTargets([market]), [market])
   const { width: windowWidth } = useWindowSize()
   const chartWidth = isMobile ? ((windowWidth || 400) * 0.84) : Math.min((windowWidth ?? 1440) * 0.55, 900)
@@ -350,9 +348,10 @@ export default function MarketOutcomeGraph({
   const watermark = useMemo(
     () => ({
       iconSvg: site.logoSvg,
+      iconImageUrl: site.logoImageUrl,
       label: site.name,
     }),
-    [site.logoSvg, site.name],
+    [site.logoImageUrl, site.logoSvg, site.name],
   )
 
   const primarySeriesColor = showBothOutcomes
@@ -419,6 +418,7 @@ export default function MarketOutcomeGraph({
                 showLegend={false}
                 watermark={undefined}
                 lineCurve="monotoneX"
+                tooltipLabelVariant="panel"
               />
             )
           : (
@@ -441,7 +441,6 @@ export default function MarketOutcomeGraph({
                   settings={chartSettings}
                   onSettingsChange={handleChartSettingsChange}
                   onExportData={() => setExportDialogOpen(true)}
-                  onEmbed={() => setEmbedDialogOpen(true)}
                 />
               </div>
             )}
@@ -454,12 +453,6 @@ export default function MarketOutcomeGraph({
         eventCreatedAt={eventCreatedAt}
         markets={allMarkets}
         isMultiMarket={allMarkets.length > 1}
-      />
-      <EventChartEmbedDialog
-        open={embedDialogOpen}
-        onOpenChange={setEmbedDialogOpen}
-        markets={allMarkets}
-        initialMarketId={market.condition_id}
       />
     </>
   )
@@ -551,13 +544,7 @@ function MarketOutcomeMetaInformation({ market, currentTimestamp }: { market: Ma
   }, [market.volume, volumeFromApi])
 
   const shouldShowNew = isMarketNew(market.created_at, undefined, currentTimestamp)
-  const formattedVolume = Number.isFinite(resolvedVolume)
-    ? (resolvedVolume || 0).toLocaleString('en-US', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      })
-    : '0.00'
-  const volumeLabel = `$${formattedVolume} Vol.`
+  const volumeLabel = `${formatCurrency(resolvedVolume || 0)} Vol.`
   const expiryTooltip = t.rich(
     'This is estimated end date.<br></br>See rules below for specific resolution details.',
     { br: () => ' ' },

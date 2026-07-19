@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildAdminSportsDerivedContent,
+  buildAdminSportsStepErrors,
   createAdminSportsCustomMarket,
   createInitialAdminSportsForm,
 } from '@/lib/admin-sports-create'
@@ -206,6 +207,45 @@ describe('admin sports create', () => {
     expect(normalizeDateTimeLocalValue(derived.payload?.startTime ?? '')).toBe('2026-04-01T21:00')
   })
 
+  it('rejects game context values that normalize to empty slugs', () => {
+    const sports = createInitialAdminSportsForm()
+    sports.section = 'games'
+    sports.eventVariant = 'standard'
+    sports.sportSlug = '!!!'
+    sports.leagueSlug = '###'
+    sports.startTime = '2026-04-01T21:00'
+    sports.teams[0].name = 'LA Galaxy'
+    sports.teams[1].name = 'Inter Miami'
+
+    const derived = buildAdminSportsDerivedContent({
+      baseSlug: 'la-galaxy-vs-inter-miami-abc',
+      sports,
+    })
+
+    expect(derived.payload).toBeNull()
+    expect(buildAdminSportsStepErrors({
+      step: 1,
+      sports,
+      hasTeamLogoByHostStatus: {
+        home: true,
+        away: true,
+      },
+    })).toEqual([
+      'Select a sports match or enter a sport slug.',
+      'Select a sports match or enter a league slug.',
+    ])
+    expect(buildAdminSportsStepErrors({
+      step: 2,
+      sports,
+      hasTeamLogoByHostStatus: {
+        home: true,
+        away: true,
+      },
+    })).toEqual([
+      'Generated sports templates require full game details.',
+    ])
+  })
+
   it('keeps moneyline markets mandatory inside exact score sports packs', () => {
     const sports = createInitialAdminSportsForm()
     sports.section = 'games'
@@ -282,5 +322,103 @@ describe('admin sports create', () => {
       'moneyline-draw',
       'moneyline-away',
     ])
+  })
+
+  it('rejects source IDs without a supported provider', () => {
+    const sports = createInitialAdminSportsForm()
+    sports.section = 'games'
+    sports.eventVariant = 'standard'
+    sports.sourceEventId = 'fixture-123'
+
+    const derived = buildAdminSportsDerivedContent({
+      baseSlug: 'lakers-vs-celtics-abc',
+      sports,
+    })
+
+    expect(derived.payload).toBeNull()
+    expect(buildAdminSportsStepErrors({
+      step: 1,
+      sports,
+      hasTeamLogoByHostStatus: {
+        home: false,
+        away: false,
+      },
+    })).toEqual([
+      'Select a supported sports data provider for the source event or game ID.',
+    ])
+  })
+
+  it('requires full game details even when source identity is complete', () => {
+    const sports = createInitialAdminSportsForm()
+    sports.section = 'games'
+    sports.eventVariant = 'standard'
+    sports.sourceProvider = 'TheSportsDB'
+    sports.sourceEventId = 'fixture-123'
+
+    const derived = buildAdminSportsDerivedContent({
+      baseSlug: 'lakers-vs-celtics-abc',
+      sports,
+    })
+
+    expect(derived.payload).toBeNull()
+    expect(buildAdminSportsStepErrors({
+      step: 1,
+      sports,
+      hasTeamLogoByHostStatus: {
+        home: false,
+        away: false,
+      },
+    })).toEqual([
+      'Select a sports match or enter a sport slug.',
+      'Select a sports match or enter a league slug.',
+      'Select a sports match or enter the game start time.',
+      'Select a sports match or enter both home and away teams.',
+      'Sports games require a logo for both home and away teams.',
+    ])
+  })
+
+  it('omits blank source match confidence and clamps provided values', () => {
+    const sports = createInitialAdminSportsForm()
+    sports.section = 'games'
+    sports.eventVariant = 'standard'
+    sports.sportSlug = 'Soccer'
+    sports.leagueSlug = 'MLS'
+    sports.startTime = '2026-04-01T21:00'
+    sports.sourceProvider = 'thesportsdb'
+    sports.sourceEventId = 'fixture-123'
+    sports.teams[0].name = 'LA Galaxy'
+    sports.teams[1].name = 'Inter Miami'
+
+    expect(buildAdminSportsDerivedContent({
+      baseSlug: 'lakers-vs-celtics-abc',
+      sports,
+    }).payload).toEqual(expect.objectContaining({
+      sportSlug: 'soccer',
+      leagueSlug: 'mls',
+      sourceProvider: 'thesportsdb',
+      sourceEventId: 'fixture-123',
+    }))
+    expect(buildAdminSportsDerivedContent({
+      baseSlug: 'lakers-vs-celtics-abc',
+      sports,
+    }).payload?.sourceMatchConfidence).toBeUndefined()
+
+    sports.sourceMatchConfidence = '1.7'
+    expect(buildAdminSportsDerivedContent({
+      baseSlug: 'lakers-vs-celtics-abc',
+      sports,
+    }).payload?.sourceMatchConfidence).toBe(1)
+
+    sports.sourceMatchConfidence = '-0.2'
+    expect(buildAdminSportsDerivedContent({
+      baseSlug: 'lakers-vs-celtics-abc',
+      sports,
+    }).payload?.sourceMatchConfidence).toBe(0)
+
+    sports.sourceMatchConfidence = '0.75abc'
+    expect(buildAdminSportsDerivedContent({
+      baseSlug: 'lakers-vs-celtics-abc',
+      sports,
+    }).payload?.sourceMatchConfidence).toBeUndefined()
   })
 })

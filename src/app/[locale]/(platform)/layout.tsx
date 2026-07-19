@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import type { SupportedLocale } from '@/i18n/locales'
 import { getExtracted, setRequestLocale } from 'next-intl/server'
+import { PlatformLayoutFooter } from '@/app/[locale]/(platform)/(home)/_components/PlatformFooter'
 import AffiliateQueryHandler from '@/app/[locale]/(platform)/_components/AffiliateQueryHandler'
 import Header from '@/app/[locale]/(platform)/_components/Header'
 import MobileBottomNav from '@/app/[locale]/(platform)/_components/MobileBottomNav'
@@ -13,9 +14,25 @@ import { QuickViewProvider } from '@/app/[locale]/(platform)/_providers/QuickVie
 import { TradingOnboardingProvider } from '@/app/[locale]/(platform)/_providers/TradingOnboardingProvider'
 import { loadPlatformMainTags } from '@/lib/platform-main-tags'
 import { buildChildParentMap, buildPlatformNavigationTags } from '@/lib/platform-navigation'
-import { deferPublicShellPrerenderIfNeeded } from '@/lib/public-shell-rendering'
 import AppKitProvider from '@/providers/AppKitProvider'
-import Footer from '@/app/[locale]/(platform)/_components/Footer'
+
+async function loadPlatformLayoutNavigation(locale: SupportedLocale) {
+  'use cache'
+
+  const t = await getExtracted({ locale })
+  const { data: mainTags, globalChilds = [] } = await loadPlatformMainTags(locale)
+
+  return {
+    tags: buildPlatformNavigationTags({
+      mainTags: mainTags ?? [],
+      globalChilds,
+      trendingLabel: t('Trending'),
+      newLabel: t('New'),
+      communitiesLabel: t('Communities'),
+    }),
+    childParentMap: buildChildParentMap(mainTags ?? []),
+  }
+}
 
 async function PlatformLayoutContent({
   children,
@@ -24,49 +41,38 @@ async function PlatformLayoutContent({
   children: ReactNode
   locale: SupportedLocale
 }) {
-  setRequestLocale(locale)
-  const t = await getExtracted()
-  const { data: mainTags, globalChilds = [] } = await loadPlatformMainTags(locale)
-  const tags = buildPlatformNavigationTags({
-    mainTags: mainTags ?? [],
-    globalChilds,
-    trendingLabel: t('Trending'),
-    newLabel: t('New'),
-    communitiesLabel: t('Communities'),
-  })
-  const childParentMap = buildChildParentMap(mainTags ?? [])
+  const { tags, childParentMap } = await loadPlatformLayoutNavigation(locale)
 
   return (
-    <AppKitProvider>
-      <TradingOnboardingProvider>
-        <PlatformViewerState />
-        <FilterProvider>
-          <PlatformNavigationProvider tags={tags} childParentMap={childParentMap}>
-            <QuickViewProvider>
-              <Header />
-              <NavigationTabs />
-              {children}
-              <Footer />
-              <MobileBottomNav />
-              <AffiliateQueryHandler />
-              <TmaAutoLogin />
-            </QuickViewProvider>
-          </PlatformNavigationProvider>
-        </FilterProvider>
-      </TradingOnboardingProvider>
-    </AppKitProvider>
+    <TradingOnboardingProvider>
+      <PlatformViewerState />
+      <FilterProvider>
+        <PlatformNavigationProvider tags={tags} childParentMap={childParentMap}>
+          <QuickViewProvider>
+            <Header />
+            <NavigationTabs />
+            {children}
+            <PlatformLayoutFooter />
+            <MobileBottomNav />
+            <AffiliateQueryHandler />
+            <TmaAutoLogin />
+          </QuickViewProvider>
+        </PlatformNavigationProvider>
+      </FilterProvider>
+    </TradingOnboardingProvider>
   )
 }
 
 export default async function PlatformLayout({ params, children }: LayoutProps<'/[locale]'>) {
-  await deferPublicShellPrerenderIfNeeded()
-
   const { locale } = await params
   const resolvedLocale = locale as SupportedLocale
+  setRequestLocale(resolvedLocale)
 
   return (
-    <PlatformLayoutContent locale={resolvedLocale}>
-      {children}
-    </PlatformLayoutContent>
+    <AppKitProvider>
+      <PlatformLayoutContent locale={resolvedLocale}>
+        {children}
+      </PlatformLayoutContent>
+    </AppKitProvider>
   )
 }

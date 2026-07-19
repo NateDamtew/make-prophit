@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   listHomeEventsPage: vi.fn(),
@@ -7,6 +7,16 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/lib/home-events-page', () => ({
   listHomeEventsPage: (...args: any[]) => mocks.listHomeEventsPage(...args),
 }))
+
+vi.mock('next/cache', async () => {
+  const actual = await vi.importActual<typeof import('next/cache')>('next/cache')
+
+  return {
+    ...actual,
+    cacheLife: vi.fn(),
+    cacheTag: vi.fn(),
+  }
+})
 
 vi.mock('@/app/[locale]/(platform)/(home)/_components/HomeClient', () => ({
   default: () => null,
@@ -17,21 +27,32 @@ describe('homeContent', () => {
     mocks.listHomeEventsPage.mockReset()
   })
 
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it('uses the route main tag when fetching initial subcategory events', async () => {
-    mocks.listHomeEventsPage.mockResolvedValueOnce({ data: [], error: null })
+    const currentTimestamp = Date.parse('2026-05-11T12:30:00.000Z')
+    mocks.listHomeEventsPage.mockResolvedValue({ data: [], error: null })
 
     const HomeContent = (await import('@/app/[locale]/(platform)/(home)/_components/HomeContent')).default
     await HomeContent({
       locale: 'en',
       initialTag: 'ai',
       initialMainTag: 'tech',
+      currentTimestamp,
     })
 
     expect(mocks.listHomeEventsPage).toHaveBeenCalledWith(expect.objectContaining({
       tag: 'ai',
       mainTag: 'tech',
       locale: 'en',
-      currentTimestamp: null,
+      currentTimestamp,
+    }))
+    expect(mocks.listHomeEventsPage).toHaveBeenCalledWith(expect.objectContaining({
+      tag: 'ai',
+      mainTag: 'tech',
+      sortBy: 'created_at',
     }))
   })
 
@@ -57,6 +78,7 @@ describe('homeContent', () => {
     await HomeContent({
       locale: 'en',
       initialTag: 'new',
+      currentTimestamp: Date.parse('2026-05-11T12:30:00.000Z'),
     })
 
     expect(mocks.listHomeEventsPage).toHaveBeenCalledWith(expect.not.objectContaining({

@@ -1,10 +1,14 @@
 'use client'
 
+import type { CSSProperties } from 'react'
 import type { SportsGamesMarketType } from './sports-games-center-types'
 import type { SportsGamesButton, SportsGamesCard } from '@/app/[locale]/(platform)/sports/_utils/sports-games-data'
-import type { Outcome } from '@/types'
+import type { Market, Outcome } from '@/types'
 import { EqualIcon } from 'lucide-react'
 import Image from 'next/image'
+import { isStandaloneSportsAuxiliaryMarket } from '@/app/[locale]/(platform)/sports/_utils/sports-games-data'
+import EventIconImage from '@/components/EventIconImage'
+import { resolveSportsTeamFallbackColor } from '@/lib/sports-team-colors'
 import { shouldUseCroppedSportsTeamLogo } from '@/lib/sports-team-logo'
 import { cn } from '@/lib/utils'
 import {
@@ -164,6 +168,78 @@ function BttsBadge({ button }: { button: SportsGamesButton }) {
   )
 }
 
+function shouldUseTotalStyleBadge(
+  market: Market | null | undefined,
+  button: SportsGamesButton,
+  marketType: SportsGamesMarketType,
+) {
+  if (marketType === 'total') {
+    return true
+  }
+
+  if (button.tone !== 'over' && button.tone !== 'under') {
+    return false
+  }
+
+  const normalizedText = normalizeComparableText([
+    market?.sports_market_type,
+    market?.sports_group_item_title,
+    market?.short_title,
+    market?.title,
+  ].filter(Boolean).join(' '))
+
+  return normalizedText.includes('penalty shootout')
+    || normalizedText.includes('extra time')
+}
+
+function resolveSelectedLabelAccent(button: SportsGamesButton) {
+  const badgeAccent = resolveTradeHeaderBadgeAccent(button)
+
+  if ((button.tone === 'team1' || button.tone === 'team2') && badgeAccent.style?.color) {
+    return {
+      className: 'dark:mix-blend-plus-lighter',
+      style: {
+        color: badgeAccent.style.color,
+      } as CSSProperties,
+    }
+  }
+
+  if (button.tone === 'team1' || button.tone === 'team2') {
+    return {
+      className: 'dark:mix-blend-plus-lighter',
+      style: {
+        color: resolveSportsTeamFallbackColor(button.tone),
+      } as CSSProperties,
+    }
+  }
+
+  if (button.tone === 'over') {
+    return {
+      className: 'text-yes',
+      style: undefined,
+    }
+  }
+
+  if (button.tone === 'under') {
+    return {
+      className: 'text-no',
+      style: undefined,
+    }
+  }
+
+  if (button.tone === 'draw') {
+    return {
+      className: 'text-foreground',
+      style: undefined,
+    }
+  }
+
+  return {
+    className: 'text-muted-foreground',
+    style: undefined,
+  }
+}
+
 export default function SportsOrderPanelMarketInfo({
   card,
   selectedButton,
@@ -183,11 +259,23 @@ export default function SportsOrderPanelMarketInfo({
     selectedMarket,
     marketType,
   })
-  const badgeAccent = resolveTradeHeaderBadgeAccent(selectedButton)
+  const selectedLabelAccent = resolveSelectedLabelAccent(selectedButton)
+  const usesEventIcon = Boolean(selectedMarket && isStandaloneSportsAuxiliaryMarket(selectedMarket))
   const isExactScoreTrade = normalizeComparableText(selectedMarket?.sports_market_type).includes('exact score')
+  const usesTotalStyleBadge = shouldUseTotalStyleBadge(selectedMarket, selectedButton, marketType)
   let marketIcon: React.ReactNode = null
-  if (!isExactScoreTrade) {
-    if (marketType === 'total') {
+  if (usesEventIcon) {
+    marketIcon = (
+      <EventIconImage
+        src={card.event.icon_url}
+        alt={card.event.title}
+        sizes="44px"
+        containerClassName="size-11 shrink-0 rounded-lg"
+      />
+    )
+  }
+  else if (!isExactScoreTrade) {
+    if (usesTotalStyleBadge) {
       marketIcon = <TotalBadge button={selectedButton} />
     }
     else if (marketType === 'btts') {
@@ -211,15 +299,15 @@ export default function SportsOrderPanelMarketInfo({
         )}
 
         <div className="min-w-0">
-          <p className="line-clamp-2 text-base/tight font-bold text-foreground">
+          <p className="line-clamp-2 text-sm/tight font-medium text-muted-foreground">
             {headerTitle}
           </p>
           <span
             className={cn(
-              'mt-1.5 inline-flex items-center rounded-sm px-2.5 py-1 text-xs font-semibold',
-              badgeAccent.className,
+              'mt-1 block text-base/tight font-semibold',
+              selectedLabelAccent.className,
             )}
-            style={badgeAccent.style}
+            style={selectedLabelAccent.style}
           >
             {badgeLabel}
           </span>

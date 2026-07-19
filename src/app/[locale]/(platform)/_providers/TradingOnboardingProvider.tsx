@@ -6,7 +6,7 @@ import type { CommunityProfile } from '@/lib/community-profile'
 import type { User } from '@/types'
 import { useExtracted } from 'next-intl'
 import { usePathname } from 'next/navigation'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { createPublicClient, erc20Abi, erc1155Abi, http } from 'viem'
 import { useSignMessage, useSignTypedData } from 'wagmi'
 import { markApprovalStateWithoutTransactionAction } from '@/app/[locale]/(platform)/_actions/approve-tokens'
@@ -95,6 +95,51 @@ export function TradingOnboardingProvider({ children }: { children: ReactNode })
 interface TradingOnboardingProviderContentProps {
   children: ReactNode
   user: User | null
+}
+
+let routeAllowsTradingAuthPrompt = false
+const routePromptListeners = new Set<() => void>()
+
+function subscribeRouteTradingAuthPrompt(onStoreChange: () => void) {
+  routePromptListeners.add(onStoreChange)
+  return () => {
+    routePromptListeners.delete(onStoreChange)
+  }
+}
+
+function getRouteTradingAuthPromptSnapshot() {
+  return routeAllowsTradingAuthPrompt
+}
+
+function getServerRouteTradingAuthPromptSnapshot() {
+  return false
+}
+
+function setRouteTradingAuthPrompt(nextValue: boolean) {
+  if (routeAllowsTradingAuthPrompt === nextValue) {
+    return
+  }
+
+  routeAllowsTradingAuthPrompt = nextValue
+  routePromptListeners.forEach(listener => listener())
+}
+
+function useRouteTradingAuthPrompt() {
+  return useSyncExternalStore(
+    subscribeRouteTradingAuthPrompt,
+    getRouteTradingAuthPromptSnapshot,
+    getServerRouteTradingAuthPromptSnapshot,
+  )
+}
+
+function TradingAuthRoutePromptSync() {
+  const pathname = usePathname()
+
+  useEffect(function syncRouteTradingAuthPrompt() {
+    setRouteTradingAuthPrompt(pathname.includes('/event/'))
+  }, [pathname])
+
+  return null
 }
 
 function isGeneratedDepositWalletUsername(username?: string | null, depositWalletAddress?: string | null) {
@@ -380,6 +425,7 @@ function TradingOnboardingProviderContent({
   const [autoRedeemStep, setAutoRedeemStep] = useState<ApprovalsStep>('idle')
   const [requiresTradingAuthRefresh, setRequiresTradingAuthRefresh] = useState(false)
   const [shouldContinueTradingAuthPrompt, setShouldContinueTradingAuthPrompt] = useState(false)
+  const pendingTradingReadyActionRef = useRef<(() => void) | null>(null)
   const [communityUsernameHint, setCommunityUsernameHint] = useState<{
     address: string
     username: string
@@ -390,12 +436,12 @@ function TradingOnboardingProviderContent({
   const t = useExtracted()
   const signatureRejectedMessage = t('You rejected the signature request.')
   const walletConnectorReconnectMessage = t('Your wallet connection expired. Reconnect your wallet and try again.')
-  const pathname = usePathname()
   const affiliateMetadata = useAffiliateOrderMetadata()
   const { open: openAppKit, walletEmail } = useAppKit()
   const autoEmailRef = useRef<string | null>(null)
   const refreshSessionUserState = useSessionRefresher()
   const { communityUrl, polygonRpcUrl } = usePublicRuntimeConfig()
+  const allowsRouteTradingAuthPrompt = useRouteTradingAuthPrompt()
   const communityApiUrl = communityUrl
   const viemRpcUrl = useMemo(() => resolveViemRpcUrl(polygonRpcUrl), [polygonRpcUrl])
   const handleWalletActionError = useCallback((
@@ -483,10 +529,9 @@ function TradingOnboardingProviderContent({
     hasDepositWalletAddress: status.hasDepositWalletAddress,
   })
 
-  const isEventRoute = pathname.includes('/event/')
   const nextModal = resolveNextOnboardingModal({
     ...status,
-    allowTradingAuthPrompt: isEventRoute,
+    allowTradingAuthPrompt: allowsRouteTradingAuthPrompt,
   })
 
   // Social/email logins (Google etc.) already provide an email via the wallet
@@ -556,6 +601,16 @@ function TradingOnboardingProviderContent({
     })
   }, [shouldShowFundAfterTradingReady, status.hasDeployedDepositWallet, status.hasTokenApprovals])
 
+  useEffect(function resumePendingTradingAction() {
+    if (!status.tradingReady || !pendingTradingReadyActionRef.current) {
+      return
+    }
+
+    const action = pendingTradingReadyActionRef.current
+    pendingTradingReadyActionRef.current = null
+    action()
+  }, [status.tradingReady])
+
   const openNextRequirement = useCallback((options?: OpenNextRequirementOptions) => {
     if (!user) {
       void openAppKit()
@@ -576,7 +631,7 @@ function TradingOnboardingProviderContent({
 
     const allowTradingAuthPrompt = Boolean(options?.allowTradingAuthPrompt)
       || Boolean(options?.forceTradingAuth)
-      || isEventRoute
+      || allowsRouteTradingAuthPrompt
     setShouldContinueTradingAuthPrompt(allowTradingAuthPrompt)
 
     const forcedStatus = options?.forceTradingAuth
@@ -587,7 +642,7 @@ function TradingOnboardingProviderContent({
       allowTradingAuthPrompt,
     })
     setActiveModal(modal)
-  }, [isEventRoute, openAppKit, refreshSessionUserState, status, user])
+  }, [allowsRouteTradingAuthPrompt, openAppKit, refreshSessionUserState, status, user])
 
   const openFundModalIfBalanceEmpty = useCallback(async () => {
     if (!user?.deposit_wallet_address) {
@@ -730,7 +785,7 @@ function TradingOnboardingProviderContent({
       })
       void refreshSessionUserState()
       setDismissedModal(null)
-      const allowTradingAuthPrompt = shouldContinueTradingAuthPrompt || isEventRoute
+      const allowTradingAuthPrompt = shouldContinueTradingAuthPrompt || allowsRouteTradingAuthPrompt
       const nextModal = status.needsEmail
         ? 'email'
         : resolveNextOnboardingModal({
@@ -761,7 +816,7 @@ function TradingOnboardingProviderContent({
     t,
     user?.address,
     user?.deposit_wallet_address,
-    isEventRoute,
+    allowsRouteTradingAuthPrompt,
   ])
 
   const handleEmailSubmit = useCallback(async (email: string) => {
@@ -789,7 +844,7 @@ function TradingOnboardingProviderContent({
       })
       void refreshSessionUserState()
       setDismissedModal(null)
-      const allowTradingAuthPrompt = shouldContinueTradingAuthPrompt || isEventRoute
+      const allowTradingAuthPrompt = shouldContinueTradingAuthPrompt || allowsRouteTradingAuthPrompt
       const nextModal = resolveNextOnboardingModal({
         ...status,
         needsEmail: false,
@@ -803,7 +858,7 @@ function TradingOnboardingProviderContent({
     finally {
       setIsEmailSubmitting(false)
     }
-  }, [isEmailSubmitting, refreshSessionUserState, shouldContinueTradingAuthPrompt, status, isEventRoute])
+  }, [allowsRouteTradingAuthPrompt, isEmailSubmitting, refreshSessionUserState, shouldContinueTradingAuthPrompt, status])
 
   const handleEmailSkip = useCallback(async () => {
     if (isEmailSubmitting) {
@@ -829,7 +884,7 @@ function TradingOnboardingProviderContent({
       })
       void refreshSessionUserState()
       setDismissedModal(null)
-      const allowTradingAuthPrompt = shouldContinueTradingAuthPrompt || isEventRoute
+      const allowTradingAuthPrompt = shouldContinueTradingAuthPrompt || allowsRouteTradingAuthPrompt
       const nextModal = resolveNextOnboardingModal({
         ...status,
         needsEmail: false,
@@ -843,7 +898,7 @@ function TradingOnboardingProviderContent({
     finally {
       setIsEmailSubmitting(false)
     }
-  }, [isEmailSubmitting, refreshSessionUserState, shouldContinueTradingAuthPrompt, status, isEventRoute])
+  }, [allowsRouteTradingAuthPrompt, isEmailSubmitting, refreshSessionUserState, shouldContinueTradingAuthPrompt, status])
 
   const enableTradingAuthForCurrentUser = useCallback(async () => {
     if (!user?.address) {
@@ -884,7 +939,7 @@ function TradingOnboardingProviderContent({
         }),
       }
     })
-    void refreshSessionUserState()
+    await refreshSessionUserState()
     setRequiresTradingAuthRefresh(false)
     setDismissedModal(null)
   }, [
@@ -1304,9 +1359,16 @@ function TradingOnboardingProviderContent({
     return false
   }, [openAppKit, openNextRequirement, status.tradingReady, user])
 
-  const openTradeRequirements = useCallback((options?: { forceTradingAuth?: boolean }) => {
+  const openTradeRequirements = useCallback((options?: {
+    forceTradingAuth?: boolean
+    onTradingReady?: () => void
+  }) => {
+    const { onTradingReady, ...requirementOptions } = options ?? {}
+    if (onTradingReady) {
+      pendingTradingReadyActionRef.current = onTradingReady
+    }
     openNextRequirement({
-      ...options,
+      ...requirementOptions,
       allowTradingAuthPrompt: true,
     })
   }, [openNextRequirement])
@@ -1438,6 +1500,10 @@ function TradingOnboardingProviderContent({
 
   return (
     <TradingOnboardingContext value={contextValue}>
+      <Suspense fallback={null}>
+        <TradingAuthRoutePromptSync />
+      </Suspense>
+
       {children}
 
       <TradingOnboardingDialogs

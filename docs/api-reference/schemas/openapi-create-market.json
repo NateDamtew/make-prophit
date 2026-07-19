@@ -797,13 +797,38 @@
         "required": [
           "section",
           "eventVariant",
-          "sportSlug",
-          "leagueSlug",
-          "eventDate",
-          "startTime",
-          "teams",
           "template",
           "props"
+        ],
+        "anyOf": [
+          {
+            "required": [
+              "sourceProvider",
+              "sourceEventId"
+            ]
+          },
+          {
+            "required": [
+              "sourceProvider",
+              "sourceGameId"
+            ]
+          },
+          {
+            "required": [
+              "sportSlug",
+              "leagueSlug",
+              "eventDate",
+              "teams"
+            ]
+          },
+          {
+            "required": [
+              "sportSlug",
+              "leagueSlug",
+              "startTime",
+              "teams"
+            ]
+          }
         ],
         "properties": {
           "section": {
@@ -828,6 +853,48 @@
           },
           "leagueSlug": {
             "type": "string"
+          },
+          "sourceProvider": {
+            "type": "string",
+            "description": "Independent sports data provider key, for example thesportsdb for sports or pandascore for esports."
+          },
+          "sourceEventId": {
+            "oneOf": [
+              { "type": "string" },
+              { "type": "number" }
+            ],
+            "description": "Provider event or fixture id. For custom sports markets this can replace manual league/date/team fields."
+          },
+          "sourceGameId": {
+            "oneOf": [
+              { "type": "string" },
+              { "type": "number" }
+            ],
+            "description": "Provider game id when the provider distinguishes games from events."
+          },
+          "sourceLeagueId": {
+            "oneOf": [
+              { "type": "string" },
+              { "type": "number" }
+            ]
+          },
+          "sourceLeagueLabel": {
+            "type": "string"
+          },
+          "sourceMatchConfidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "sourcePayload": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "livestreamUrl": {
+            "type": "string",
+            "format": "uri",
+            "pattern": "^https://",
+            "description": "Validated https livestream URL from the selected provider, when available."
           },
           "eventDate": {
             "type": "string",

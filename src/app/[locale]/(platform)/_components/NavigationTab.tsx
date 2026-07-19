@@ -35,7 +35,7 @@ export default function NavigationTab({
           { 'gap-2': tag.slug === 'trending' || tag.slug === 'communities' },
           isActive
             ? 'border-primary font-semibold text-foreground'
-            : 'border-transparent text-muted-foreground hover:text-foreground',
+            : 'border-transparent text-foreground/65 hover:text-foreground',
         )}
       >
         {tag.slug === 'trending' && <TrendingUpIcon className="size-4" />}

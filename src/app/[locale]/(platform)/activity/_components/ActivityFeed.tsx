@@ -5,16 +5,15 @@ import type { DataApiActivity } from '@/lib/data-api/user'
 import type { ActivityOrder } from '@/types'
 import { Loader2Icon, SquareArrowOutUpRightIcon } from 'lucide-react'
 import { useExtracted } from 'next-intl'
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { usePlatformNavigationData } from '@/app/[locale]/(platform)/_providers/PlatformNavigationProvider'
-import AppLink from '@/components/AppLink'
 import EventIconImage from '@/components/EventIconImage'
 import ProfileLink from '@/components/ProfileLink'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useOutcomeLabel } from '@/hooks/useOutcomeLabel'
 import { usePublicRuntimeConfig } from '@/hooks/usePublicRuntimeConfig'
-import { useRouter } from '@/i18n/navigation'
+import { Link, useRouter } from '@/i18n/navigation'
 import { filterActivitiesByMinAmount } from '@/lib/activity/filter'
 import { PUBLIC_ALLOWED_MARKET_CREATORS_PATH } from '@/lib/allowed-market-creators'
 import { MICRO_UNIT } from '@/lib/constants'
@@ -56,6 +55,12 @@ interface ActivityCategoryOption {
   value: string
 }
 
+interface LiveActivityStoreInput {
+  wsUrl: string | undefined
+  allowedCreatorWallets: ReadonlySet<string> | null
+  categoryValues: ReadonlySet<string>
+}
+
 const MIN_AMOUNT_OPTIONS = [
   { value: 'none', label: 'None', display: 'Min amount' },
   { value: '10', label: '$10', display: 'Min $10' },
@@ -67,6 +72,7 @@ const MIN_AMOUNT_OPTIONS = [
 
 const MAX_ITEMS = 100
 const MAX_SEEN_ITEMS = MAX_ITEMS * 6
+const EMPTY_LIVE_ACTIVITY_ITEMS: LiveActivityItem[] = []
 const ROW_HEIGHT_ESTIMATE = 64
 const MIN_VISIBLE_ITEMS = 12
 const MAX_VISIBLE_ITEMS = 28
@@ -274,24 +280,24 @@ function useAllowedCreatorWallets() {
   return allowedCreatorWallets
 }
 
-function useLiveActivityStream({
-  wsUrl,
-  allowedCreatorWallets,
-  categoryValues,
-}: {
-  wsUrl: string | undefined
-  allowedCreatorWallets: ReadonlySet<string> | null
-  categoryValues: ReadonlySet<string>
-}) {
-  const [items, setItems] = useState<LiveActivityItem[]>([])
-  const wsUrlRef = useRef<string | null>(wsUrl ?? null)
-  const seenIdsRef = useRef<Set<string>>(new Set())
+function createLiveActivityStore() {
+  let items = EMPTY_LIVE_ACTIVITY_ITEMS
+  let seenIds = new Set<string>()
 
-  useEffect(function subscribeLiveActivityStream() {
+  function getSnapshot() {
+    return items
+  }
+
+  function getServerSnapshot() {
+    return EMPTY_LIVE_ACTIVITY_ITEMS
+  }
+
+  function subscribe(onStoreChange: () => void, input: LiveActivityStoreInput) {
+    const { wsUrl, allowedCreatorWallets, categoryValues } = input
     if (!wsUrl || !allowedCreatorWallets) {
-      return
+      return () => {}
     }
-    wsUrlRef.current = wsUrl
+    const activeWsUrl = wsUrl
 
     let isActive = true
     let ws: WebSocket | null = null
@@ -418,10 +424,10 @@ function useLiveActivityStream({
       }
 
       const uniqueNextItems = nextItems.filter((item) => {
-        if (seenIdsRef.current.has(item.id)) {
+        if (seenIds.has(item.id)) {
           return false
         }
-        seenIdsRef.current.add(item.id)
+        seenIds.add(item.id)
         return true
       })
 
@@ -429,14 +435,13 @@ function useLiveActivityStream({
         return
       }
 
-      setItems((prev) => {
-        const next = [...uniqueNextItems, ...prev]
-        const trimmed = next.slice(0, MAX_ITEMS)
-        if (seenIdsRef.current.size > MAX_SEEN_ITEMS) {
-          seenIdsRef.current = new Set(trimmed.map(item => item.id))
-        }
-        return trimmed
-      })
+      const next = [...uniqueNextItems, ...items]
+      const trimmed = next.slice(0, MAX_ITEMS)
+      if (seenIds.size > MAX_SEEN_ITEMS) {
+        seenIds = new Set(trimmed.map(item => item.id))
+      }
+      items = trimmed
+      onStoreChange()
     }
 
     function handleError() {
@@ -473,10 +478,7 @@ function useLiveActivityStream({
       if (!isActive || ws || document.hidden) {
         return
       }
-      if (!wsUrlRef.current) {
-        return
-      }
-      const socket = new WebSocket(wsUrlRef.current)
+      const socket = new WebSocket(activeWsUrl)
       socket.onopen = () => handleOpen(socket)
       socket.onmessage = eventMessage => handleMessage(socket, eventMessage)
       socket.onerror = handleError
@@ -513,9 +515,40 @@ function useLiveActivityStream({
         })
       }
     }
-  }, [allowedCreatorWallets, categoryValues, wsUrl])
+  }
 
-  return items
+  return { getSnapshot, getServerSnapshot, subscribe }
+}
+
+function useLiveActivityStream({
+  wsUrl,
+  allowedCreatorWallets,
+  categoryValues,
+}: {
+  wsUrl: string | undefined
+  allowedCreatorWallets: ReadonlySet<string> | null
+  categoryValues: ReadonlySet<string>
+}) {
+  const storeRef = useRef<ReturnType<typeof createLiveActivityStore> | null>(null)
+  if (!storeRef.current) {
+    storeRef.current = createLiveActivityStore()
+  }
+  const store = storeRef.current
+  const categoryValuesKey = Array.from(categoryValues).sort().join('\0')
+  const stableCategoryValues = useMemo(
+    () => new Set(categoryValuesKey ? categoryValuesKey.split('\0') : []),
+    [categoryValuesKey],
+  )
+  const subscribe = useCallback(
+    (onStoreChange: () => void) => store.subscribe(onStoreChange, {
+      wsUrl,
+      allowedCreatorWallets,
+      categoryValues: stableCategoryValues,
+    }),
+    [allowedCreatorWallets, stableCategoryValues, store, wsUrl],
+  )
+
+  return useSyncExternalStore(subscribe, store.getSnapshot, store.getServerSnapshot)
 }
 
 function useFilteredActivityOrders({
@@ -766,8 +799,7 @@ export default function ActivityFeed() {
                 }}
               >
                 <div className="flex min-w-0 flex-1 items-start gap-3">
-                  <AppLink
-                    intentPrefetch
+                  <Link
                     href={eventHref}
                     onClick={event => event.stopPropagation()}
                     className="relative size-12 shrink-0 overflow-hidden rounded-md"
@@ -784,11 +816,10 @@ export default function ActivityFeed() {
                       : (
                           <div className="size-full" aria-hidden />
                         )}
-                  </AppLink>
+                  </Link>
 
                   <div className="min-w-0 flex-1 space-y-1">
-                    <AppLink
-                      intentPrefetch
+                    <Link
                       href={eventHref}
                       onClick={event => event.stopPropagation()}
                       className={cn(`
@@ -798,7 +829,7 @@ export default function ActivityFeed() {
                       title={activity.market.title}
                     >
                       {activity.market.title}
-                    </AppLink>
+                    </Link>
 
                     <div
                       onClick={event => event.stopPropagation()}

@@ -1,17 +1,19 @@
 'use client'
 
 import type {
+  AuxiliaryMarketPanel,
   EventSectionKey,
   SportsEventCenterProps,
 } from '@/app/[locale]/(platform)/sports/_components/sports-event-center-types'
 import type {
   SportsGamesButton,
 } from '@/app/[locale]/(platform)/sports/_utils/sports-games-data'
-import { ChevronLeftIcon } from 'lucide-react'
+import { ChevronLeftIcon, InfoIcon } from 'lucide-react'
 import { useLocale } from 'next-intl'
 import Image from 'next/image'
 import { Suspense, useMemo } from 'react'
 import EventBookmark from '@/app/[locale]/(platform)/event/[slug]/_components/EventBookmark'
+import EventEmbed from '@/app/[locale]/(platform)/event/[slug]/_components/EventEmbed'
 import EventOrderPanelForm from '@/app/[locale]/(platform)/event/[slug]/_components/EventOrderPanelForm'
 import EventOrderPanelMobile from '@/app/[locale]/(platform)/event/[slug]/_components/EventOrderPanelMobile'
 import EventOrderPanelTermsDisclaimer
@@ -45,12 +47,12 @@ import {
   headerIconButtonClass,
 } from '@/app/[locale]/(platform)/sports/_components/sports-event-center-types'
 import {
+  formatSportsEventLocalStartLabels,
   formatSportsEventStartLabels,
   normalizeLivestreamUrl,
   parseSportsScore,
   resolveMoneylineButtonGridClass,
   resolveTeamShortLabel,
-  shouldUseFullScoreboardHeroLabels,
   sortSectionButtons,
 } from '@/app/[locale]/(platform)/sports/_components/sports-event-center-utils'
 import SportsEventAboutPanel from '@/app/[locale]/(platform)/sports/_components/SportsEventAboutPanel'
@@ -64,6 +66,7 @@ import {
   resolveButtonStyle,
   resolveSelectedButton,
   resolveSelectedMarket,
+  resolveSportsGraphSelection,
   SportsGameDetailsPanel,
   SportsGameGraph,
   SportsOrderPanelMarketInfo,
@@ -72,11 +75,20 @@ import SportsLivestreamFloatingPlayer
   from '@/app/[locale]/(platform)/sports/_components/SportsLivestreamFloatingPlayer'
 import SportsRedeemModal from '@/app/[locale]/(platform)/sports/_components/SportsRedeemModal'
 import SportsSegmentNumberPicker from '@/app/[locale]/(platform)/sports/_components/SportsSegmentNumberPicker'
-import AppLink from '@/components/AppLink'
+import {
+  resolveSportsMarketLineLabel,
+  resolveSportsMarketLineValue,
+  resolveSportsPlayerPropMarketViewKey,
+  resolveSportsPlayerPropPlayerName,
+} from '@/app/[locale]/(platform)/sports/_utils/sports-games-data'
+import EventIconImage from '@/components/EventIconImage'
 import SiteLogoIcon from '@/components/SiteLogoIcon'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useCurrentTimestamp } from '@/hooks/useCurrentTimestamp'
+import { useHasHydrated } from '@/hooks/useHasHydrated'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { useSiteIdentity } from '@/hooks/useSiteIdentity'
+import { Link } from '@/i18n/navigation'
 import { formatVolume } from '@/lib/formatters'
 import { shouldUseCroppedSportsTeamLogo } from '@/lib/sports-team-logo'
 import { getSportsVerticalConfig } from '@/lib/sports-vertical'
@@ -84,6 +96,224 @@ import { cn } from '@/lib/utils'
 import { useOrder } from '@/stores/useOrder'
 import { useSportsLivestream } from '@/stores/useSportsLivestream'
 import { useUser } from '@/stores/useUser'
+
+const PLAYER_PROP_TOOLTIP_BY_VIEW_KEY = {
+  goals:
+    'Player to record X or more goals. If the player is listed as inactive or otherwise does not play, the market will resolve "No". This market refers only to the outcome within the first 90 minutes of regular play plus stoppage time.',
+  assists:
+    'Player to record X or more assists. If the player is listed as inactive or otherwise does not play, the market will resolve "No". This market refers only to the outcome within the first 90 minutes of regular play plus stoppage time.',
+  shots:
+    'Player to record X or more shots. If the player is listed as inactive or otherwise does not play, the market will resolve "No". This market refers only to the outcome within the first 90 minutes of regular play plus stoppage time.',
+} as const
+
+const HALVES_REG_TIME_TOOLTIP
+  = 'This market refers only to the outcome within the first 45 minutes of regular play plus stoppage time.'
+const EXACT_SCORE_REG_TIME_TOOLTIP
+  = 'This market refers only to the outcome within the first 90 minutes of regular play plus stoppage time.'
+
+function resolvePlayerPropPanelViewKey(entry: AuxiliaryMarketPanel) {
+  for (const market of entry.markets) {
+    const viewKey = resolveSportsPlayerPropMarketViewKey(market)
+    if (viewKey) {
+      return viewKey
+    }
+  }
+
+  return null
+}
+
+function toSortableCreatedAt(value: unknown) {
+  if (value instanceof Date) {
+    return value.getTime()
+  }
+
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : Number.POSITIVE_INFINITY
+  }
+
+  if (typeof value === 'string') {
+    const timestamp = Date.parse(value)
+    return Number.isFinite(timestamp) ? timestamp : Number.POSITIVE_INFINITY
+  }
+
+  return Number.POSITIVE_INFINITY
+}
+
+function compareMarketCreatedAt(
+  left: { condition_id?: string | null, created_at?: unknown },
+  right: { condition_id?: string | null, created_at?: unknown },
+) {
+  const timestampComparison = toSortableCreatedAt(left.created_at) - toSortableCreatedAt(right.created_at)
+  if (timestampComparison !== 0) {
+    return timestampComparison
+  }
+
+  return (left.condition_id ?? '').localeCompare(right.condition_id ?? '')
+}
+
+function resolveAuxiliaryLineOptions(entry: AuxiliaryMarketPanel) {
+  const seenLineValues = new Set<number>()
+
+  return [...entry.markets]
+    .filter(market => Number.isFinite(Number(market.sports_line)))
+    .sort((left, right) => {
+      const leftLineValue = resolveSportsMarketLineValue(left)
+      const rightLineValue = resolveSportsMarketLineValue(right)
+      if (leftLineValue !== rightLineValue) {
+        if (!Number.isFinite(leftLineValue)) {
+          return 1
+        }
+        if (!Number.isFinite(rightLineValue)) {
+          return -1
+        }
+        return leftLineValue - rightLineValue
+      }
+
+      return compareMarketCreatedAt(left, right)
+    })
+    .reduce<Array<{ key: string, label: string, number: number }>>((options, market) => {
+      const lineValue = resolveSportsMarketLineValue(market)
+      if (!Number.isFinite(lineValue) || seenLineValues.has(lineValue)) {
+        return options
+      }
+
+      seenLineValues.add(lineValue)
+      options.push({
+        key: `${market.condition_id}:${lineValue}`,
+        label: resolveSportsMarketLineLabel(market),
+        number: lineValue,
+      })
+      return options
+    }, [])
+}
+
+function resolvePlayerPropLineOptions(entry: AuxiliaryMarketPanel) {
+  const seenLineValues = new Set<number>()
+
+  return [...entry.markets]
+    .sort((left, right) => {
+      const leftLineValue = resolveSportsMarketLineValue(left)
+      const rightLineValue = resolveSportsMarketLineValue(right)
+      if (leftLineValue !== rightLineValue) {
+        if (!Number.isFinite(leftLineValue)) {
+          return 1
+        }
+        if (!Number.isFinite(rightLineValue)) {
+          return -1
+        }
+        return leftLineValue - rightLineValue
+      }
+
+      return compareMarketCreatedAt(left, right)
+    })
+    .reduce<Array<{ key: string, label: string, number: number }>>((options, market) => {
+      const lineValue = resolveSportsMarketLineValue(market)
+      if (!Number.isFinite(lineValue) || seenLineValues.has(lineValue)) {
+        return options
+      }
+
+      seenLineValues.add(lineValue)
+      options.push({
+        key: `${market.condition_id}:${lineValue}`,
+        label: resolveSportsMarketLineLabel(market),
+        number: lineValue,
+      })
+      return options
+    }, [])
+}
+
+function normalizeAuxiliaryPanelText(value: string | null | undefined) {
+  return value
+    ?.normalize('NFKD')
+    .replace(/[\u0300-\u036F]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    ?? ''
+}
+
+function resolveAuxiliaryPanelSearchText(entry: AuxiliaryMarketPanel) {
+  return normalizeAuxiliaryPanelText([
+    entry.title,
+    ...entry.markets.flatMap(market => [
+      market.sports_market_type,
+      market.sports_group_item_title,
+      market.short_title,
+      market.title,
+    ]),
+  ].filter(Boolean).join(' '))
+}
+
+function isFirstToScorePanel(entry: AuxiliaryMarketPanel) {
+  const normalizedText = resolveAuxiliaryPanelSearchText(entry)
+
+  return /\bfirst (?:team )?to score\b/.test(normalizedText)
+    || /\b(?:team )?to score first\b/.test(normalizedText)
+}
+
+function isHalftimeResultPanel(entry: AuxiliaryMarketPanel) {
+  const normalizedText = resolveAuxiliaryPanelSearchText(entry)
+
+  return /\b(?:half\s*time|first\s+half|1st\s+half|1h|second\s+half|2nd\s+half|2h)\s+(?:result|moneyline)\b/
+    .test(normalizedText)
+}
+
+function areLineValuesEqual(left: number, right: number) {
+  return Math.abs(left - right) < 0.0001
+}
+
+function resolveAuxiliaryMarketByLineValue(entry: AuxiliaryMarketPanel, lineValue: number) {
+  return entry.markets.find(market =>
+    areLineValuesEqual(resolveSportsMarketLineValue(market), lineValue),
+  ) ?? null
+}
+
+function resolvePlayerPropSelectedMarket(entry: AuxiliaryMarketPanel, selectedButtonKey: string | null) {
+  const selectedButton = selectedButtonKey
+    ? entry.buttons.find(button => button.key === selectedButtonKey) ?? null
+    : null
+  const selectedMarket = selectedButton
+    ? entry.markets.find(market => market.condition_id === selectedButton.conditionId) ?? null
+    : null
+
+  return selectedMarket ?? entry.markets[0] ?? null
+}
+
+function resolveAuxiliaryLineButtons(entry: AuxiliaryMarketPanel, conditionId: string | null) {
+  return conditionId
+    ? entry.buttons.filter(button => button.conditionId === conditionId)
+    : []
+}
+
+function resolveAuxiliaryDefaultButton(buttons: SportsGamesButton[]) {
+  return buttons.find(button => button.tone === 'over')
+    ?? buttons[0]
+    ?? null
+}
+
+function resolveHalvesPanelGroup(entry: AuxiliaryMarketPanel) {
+  const normalizedText = resolveAuxiliaryPanelSearchText(entry)
+
+  if (
+    normalizedText.includes('second half')
+    || normalizedText.includes('2nd half')
+    || /\b2h\b/.test(normalizedText)
+  ) {
+    return '2nd Half'
+  }
+
+  if (
+    normalizedText.includes('halftime')
+    || normalizedText.includes('half time')
+    || normalizedText.includes('first half')
+    || normalizedText.includes('1st half')
+    || /\b1h\b/.test(normalizedText)
+  ) {
+    return '1st Half'
+  }
+
+  return null
+}
 
 export default function SportsEventCenter({
   card,
@@ -99,6 +329,7 @@ export default function SportsEventCenter({
 }: SportsEventCenterProps) {
   const verticalConfig = getSportsVerticalConfig(vertical)
   const locale = useLocale()
+  const hasHydrated = useHasHydrated()
   const site = useSiteIdentity()
   const isMobile = useIsMobile()
   const setOrderEvent = useOrder(state => state.setEvent)
@@ -130,7 +361,7 @@ export default function SportsEventCenter({
     heroGroupedButtons,
     segmentLabel,
     segmentPluralLabel,
-    isHalftimeResultView,
+    isHalvesView,
     baseUsesSectionLayout,
     hasEsportsSegmentedLayout,
   } = useDerivedActiveCard({ card, activeMarketView, vertical })
@@ -472,17 +703,17 @@ export default function SportsEventCenter({
   const startLabels = startTimestamp !== null
     ? formatSportsEventStartLabels(startTimestamp, locale)
     : null
-  const timeLabel = startLabels?.timeLabel ?? 'TBD'
-  const dayLabel = startLabels?.dayLabel ?? 'Date TBD'
+  const localStartLabels = hasHydrated && startTimestamp !== null
+    ? formatSportsEventLocalStartLabels(startTimestamp, locale)
+    : null
+  const visibleStartLabels = localStartLabels ?? startLabels
+  const timeLabel = visibleStartLabels?.timeLabel ?? 'TBD'
+  const dayLabel = visibleStartLabels?.dayLabel ?? 'Date TBD'
 
   const team1 = heroCard.teams[0] ?? null
   const team2 = heroCard.teams[1] ?? null
-  const useFullCompetitorHeroLabels = shouldUseFullScoreboardHeroLabels({
-    sportSlug: heroCard.event.sports_sport_slug ?? sportSlug,
-    vertical,
-  })
-  const heroTeam1Label = useFullCompetitorHeroLabels ? (team1?.name ?? '—') : (team1?.abbreviation ?? '—')
-  const heroTeam2Label = useFullCompetitorHeroLabels ? (team2?.name ?? '—') : (team2?.abbreviation ?? '—')
+  const heroTeam1Label = team1?.name ?? team1?.abbreviation ?? '—'
+  const heroTeam2Label = team2?.name ?? team2?.abbreviation ?? '—'
   const useCroppedHeroTeamLogo = shouldUseCroppedSportsTeamLogo(heroCard.event.sports_sport_slug ?? sportSlug)
   const shortTeam1Label = resolveTeamShortLabel(team1)
   const shortTeam2Label = resolveTeamShortLabel(team2)
@@ -520,8 +751,7 @@ export default function SportsEventCenter({
     : heroGroupedButtons.moneyline[0]?.key
       ?? heroCard.buttons.find(button => button.marketType === 'moneyline')?.key
       ?? null
-  const heroMoneylineSelectedButton = resolveSelectedButton(heroCard, heroMoneylineButtonKey)
-  const graphConditionId = heroMoneylineSelectedButton?.conditionId ?? null
+  const sportsGraphSelection = resolveSportsGraphSelection(heroCard, heroMoneylineButtonKey)
   const esportsSegmentTabs = hasEsportsSegmentedLayout
     ? [
         { key: 'series' as const, label: 'Series Lines' },
@@ -578,9 +808,33 @@ export default function SportsEventCenter({
         </div>
       )
     : null
-  const auxiliaryMarketPanels = renderedAuxiliaryMarketCards.map((entry) => {
+  const auxiliaryMarketPanelEntries = renderedAuxiliaryMarketCards.map((entry) => {
     const panelKey = entry.key
+    const halvesGroup = resolveHalvesPanelGroup(entry)
     const selectedButtonKey = selectedAuxiliaryButtonByConditionId[panelKey] ?? entry.buttons[0]?.key ?? null
+    const playerPropViewKey = resolvePlayerPropPanelViewKey(entry)
+    const isPlayerPropPanel = playerPropViewKey !== null
+    const isFirstToScore = isFirstToScorePanel(entry)
+    const isHalftimeResult = isHalftimeResultPanel(entry)
+    const playerPropLineOptions = isPlayerPropPanel ? resolvePlayerPropLineOptions(entry) : []
+    const auxiliaryLineOptions = !isPlayerPropPanel && !isFirstToScore && !isHalftimeResult
+      ? resolveAuxiliaryLineOptions(entry)
+      : []
+    const linePickerOptions = isPlayerPropPanel ? playerPropLineOptions : auxiliaryLineOptions
+    const usesLinePicker = !isFirstToScore && !isHalftimeResult && linePickerOptions.length > 1
+    const selectedAuxiliaryMarket = (isPlayerPropPanel || usesLinePicker)
+      ? resolvePlayerPropSelectedMarket(entry, selectedButtonKey)
+      : null
+    const linePickerSelectedMarket = usesLinePicker ? selectedAuxiliaryMarket : null
+    const linePickerActiveLineValue = linePickerSelectedMarket
+      ? resolveSportsMarketLineValue(linePickerSelectedMarket)
+      : null
+    const visibleButtons = usesLinePicker
+      ? resolveAuxiliaryLineButtons(entry, linePickerSelectedMarket?.condition_id ?? null)
+      : entry.buttons
+    const visibleSelectedButtonKey = visibleButtons.some(button => button.key === selectedButtonKey)
+      ? selectedButtonKey
+      : (resolveAuxiliaryDefaultButton(visibleButtons)?.key ?? selectedButtonKey)
     const isOpen = openAuxiliaryConditionId === panelKey
     const activeTab = tabByAuxiliaryConditionId[panelKey] ?? 'orderBook'
     const isResolved = auxiliaryResolvedByConditionId.get(panelKey) === true
@@ -591,10 +845,22 @@ export default function SportsEventCenter({
     const shouldShowRedeemButton = Boolean(singleConditionId && isResolved && claimGroup)
     const marketTitle = entry.title
     const panelVolume = Number(entry.volume)
-    const firstButtonKey = entry.buttons[0]?.key ?? null
-    const isMoneylinePanel = entry.buttons.every(button => button.marketType === 'moneyline')
+    const firstButtonKey = visibleButtons[0]?.key ?? entry.buttons[0]?.key ?? null
+    const isMoneylinePanel = visibleButtons.every(button => button.marketType === 'moneyline')
     const shouldShowResolvedSegmentedButtons = hasEsportsSegmentedLayout && entry.mapNumber != null
-    const shouldRenderButtons = (!isResolved || shouldShowResolvedSegmentedButtons) && entry.buttons.length > 0
+    const shouldRenderButtons = (!isResolved || shouldShowResolvedSegmentedButtons) && visibleButtons.length > 0
+    const playerPropTooltip = playerPropViewKey ? PLAYER_PROP_TOOLTIP_BY_VIEW_KEY[playerPropViewKey] : null
+    const regTimeTooltip = playerPropTooltip
+      ?? (activeMarketView?.key === 'halves'
+        ? HALVES_REG_TIME_TOOLTIP
+        : activeMarketView?.key === 'exactScore'
+          ? EXACT_SCORE_REG_TIME_TOOLTIP
+          : null)
+    const detailsAllowedConditionIds = new Set(
+      usesLinePicker && linePickerSelectedMarket
+        ? [linePickerSelectedMarket.condition_id]
+        : entry.markets.map(market => market.condition_id),
+    )
 
     function toggleCondition() {
       setOpenAuxiliaryConditionId(current => current === panelKey ? null : panelKey)
@@ -626,7 +892,17 @@ export default function SportsEventCenter({
       toggleCondition()
     }
 
-    return (
+    function handlePickAuxiliaryLine(lineValue: number) {
+      const pickedMarket = resolveAuxiliaryMarketByLineValue(entry, lineValue)
+      const pickedButtons = resolveAuxiliaryLineButtons(entry, pickedMarket?.condition_id ?? null)
+      const pickedButton = resolveAuxiliaryDefaultButton(pickedButtons)
+
+      if (pickedButton) {
+        updateAuxiliarySelection(panelKey, pickedButton.key, { panelMode: 'preserve' })
+      }
+    }
+
+    const node = (
       <article
         key={`${activeCard.id}-${panelKey}`}
         className="overflow-hidden rounded-xl border bg-card"
@@ -644,13 +920,53 @@ export default function SportsEventCenter({
           onClick={handleCardClick}
           onKeyDown={handleCardKeyDown}
         >
-          <div className="min-w-0 text-left transition-colors hover:text-foreground/90">
-            <h3 className="text-sm font-semibold text-foreground">{marketTitle}</h3>
-            <p className="mt-0.5 text-xs font-semibold text-muted-foreground">
-              {formatVolume(panelVolume)}
-              {' '}
-              Vol.
-            </p>
+          <div className="flex min-w-0 items-center gap-3 text-left transition-colors hover:text-foreground/90">
+            {isPlayerPropPanel && selectedAuxiliaryMarket?.icon_url && (
+              <EventIconImage
+                src={selectedAuxiliaryMarket.icon_url}
+                alt={resolveSportsPlayerPropPlayerName(selectedAuxiliaryMarket)}
+                containerClassName="size-11 shrink-0"
+                imageClassName="object-contain"
+                sizes="44px"
+              />
+            )}
+
+            <div className="min-w-0">
+              <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                <h3 className="min-w-0 text-sm font-semibold text-foreground">{marketTitle}</h3>
+                {regTimeTooltip && (
+                  <span className="inline-flex shrink-0 items-center gap-1.5">
+                    <span className="text-2xs font-semibold tracking-normal text-muted-foreground">REG. TIME</span>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          data-sports-card-control="true"
+                          onClick={event => event.stopPropagation()}
+                          className={cn(`
+                            inline-flex size-4 items-center justify-center rounded-full text-muted-foreground
+                            transition-colors
+                            hover:text-foreground
+                            focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none
+                          `)}
+                          aria-label="Regular time rules"
+                        >
+                          <InfoIcon className="size-3.5" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="max-w-80 text-left leading-relaxed">
+                        {regTimeTooltip}
+                      </TooltipContent>
+                    </Tooltip>
+                  </span>
+                )}
+              </div>
+              <p className="mt-0.5 text-xs font-semibold text-muted-foreground">
+                {formatVolume(panelVolume)}
+                {' '}
+                Vol.
+              </p>
+            </div>
           </div>
 
           {shouldRenderButtons && (
@@ -663,16 +979,18 @@ export default function SportsEventCenter({
                   `
                   : 'grid min-w-0 flex-1 items-stretch gap-2',
                 !isMoneylinePanel && (
-                  entry.buttons.length >= 3
-                    ? 'min-[1200px]:ml-auto min-[1200px]:w-[380px] min-[1200px]:flex-none'
-                    : 'min-[1200px]:ml-auto min-[1200px]:w-[248px] min-[1200px]:flex-none'
+                  usesLinePicker
+                    ? 'sm:ml-auto sm:w-[248px] sm:flex-none'
+                    : visibleButtons.length >= 3
+                      ? 'min-[1200px]:ml-auto min-[1200px]:w-[380px] min-[1200px]:flex-none'
+                      : 'min-[1200px]:ml-auto min-[1200px]:w-[248px] min-[1200px]:flex-none'
                 ),
                 isMoneylinePanel
-                  ? resolveMoneylineButtonGridClass(entry.buttons.length)
-                  : (entry.buttons.length >= 3 ? 'grid-cols-3' : 'grid-cols-2'),
+                  ? resolveMoneylineButtonGridClass(visibleButtons.length)
+                  : (visibleButtons.length >= 3 ? 'grid-cols-3' : 'grid-cols-2'),
               )}
             >
-              {entry.buttons.map((button) => {
+              {visibleButtons.map((button) => {
                 const isActive = activeTradeButtonKey === button.key
                 const hasTeamColor = (button.tone === 'team1' || button.tone === 'team2')
                   && (button.marketType === 'moneyline' || isActive)
@@ -787,14 +1105,23 @@ export default function SportsEventCenter({
           )}
         </div>
 
+        {usesLinePicker && linePickerOptions.length > 1 && (
+          <SportsSegmentNumberPicker
+            options={linePickerOptions}
+            activeNumber={linePickerActiveLineValue}
+            segmentLabel="Line"
+            onPick={handlePickAuxiliaryLine}
+          />
+        )}
+
         <div className={cn('bg-card px-2.5', isOpen ? 'border-t pt-3' : 'pt-0')}>
           <SportsGameDetailsPanel
             card={activeCard}
             activeDetailsTab={activeTab}
-            selectedButtonKey={selectedButtonKey}
+            selectedButtonKey={visibleSelectedButtonKey}
             showBottomContent={isOpen}
             defaultGraphTimeRange="ALL"
-            allowedConditionIds={new Set(entry.markets.map(market => market.condition_id))}
+            allowedConditionIds={detailsAllowedConditionIds}
             showAboutTab
             aboutEvent={activeCard.event}
             rulesEvent={heroCard.event}
@@ -809,8 +1136,51 @@ export default function SportsEventCenter({
         </div>
       </article>
     )
+
+    return {
+      key: panelKey,
+      halvesGroup,
+      node,
+    }
   })
-  const nonSectionAuxiliaryMarketPanels = auxiliaryMarketPanels
+  const auxiliaryMarketPanels = auxiliaryMarketPanelEntries.map(entry => entry.node)
+  const nonSectionAuxiliaryMarketPanels = activeMarketView?.key === 'halves'
+    ? ([
+        ...auxiliaryMarketPanelEntries
+          .filter(entry => entry.halvesGroup === '1st Half')
+          .flatMap((entry, index) => [
+            index === 0
+              ? (
+                  <h2
+                    key="halves-1st-half-heading"
+                    className="px-1 pt-1 text-sm font-semibold text-muted-foreground"
+                  >
+                    1st Half
+                  </h2>
+                )
+              : null,
+            entry.node,
+          ]),
+        ...auxiliaryMarketPanelEntries
+          .filter(entry => entry.halvesGroup === '2nd Half')
+          .flatMap((entry, index) => [
+            index === 0
+              ? (
+                  <h2
+                    key="halves-2nd-half-heading"
+                    className="px-1 pt-3 text-sm font-semibold text-muted-foreground"
+                  >
+                    2nd Half
+                  </h2>
+                )
+              : null,
+            entry.node,
+          ]),
+        ...auxiliaryMarketPanelEntries
+          .filter(entry => entry.halvesGroup == null)
+          .map(entry => entry.node),
+      ])
+    : auxiliaryMarketPanels
   const seriesPreviewSegmentWinnerCard = activeSeriesPreviewSegmentWinnerPanel
     && hasEsportsSegmentedLayout
     && activeEsportsSegmentTabKey === 'series'
@@ -970,8 +1340,8 @@ export default function SportsEventCenter({
               const isSectionResolved = sectionResolvedByKey[section.key]
               const sectionClaimGroups = claimGroupsBySection[section.key]
               const shouldShowRedeemButton = isSectionResolved && sectionClaimGroups.length > 0
-              const sectionTitle = isHalftimeResultView && section.key === 'moneyline'
-                ? 'Halftime Result'
+              const sectionTitle = isHalvesView && section.key === 'moneyline'
+                ? 'Halves'
                 : hasEsportsSegmentedLayout && activeEsportsSegmentTabKey === 'series' && section.key === 'spread'
                   ? `${segmentLabel} Handicap`
                   : hasEsportsSegmentedLayout && activeEsportsSegmentTabKey === 'series' && section.key === 'total'
@@ -1295,7 +1665,7 @@ export default function SportsEventCenter({
       )
     : (
         <div key={activeMarketView?.key ?? 'gameLines'} className="space-y-4">
-          {auxiliaryMarketPanels}
+          {nonSectionAuxiliaryMarketPanels}
         </div>
       )
 
@@ -1305,22 +1675,17 @@ export default function SportsEventCenter({
         <SportsEventQuerySync onSelectionChange={handleQuerySelectionChange} />
       </Suspense>
       <div className={cn(`
-        min-[1200px]:grid min-[1200px]:h-full min-[1200px]:min-h-0 min-[1200px]:grid-cols-[minmax(0,1fr)_21.25rem]
-        min-[1200px]:[align-content:start] min-[1200px]:[align-items:start] min-[1200px]:gap-6
+        min-[1200px]:grid min-[1200px]:grid-cols-[minmax(0,1fr)_21.25rem] min-[1200px]:[align-content:start]
+        min-[1200px]:items-start min-[1200px]:gap-6
       `)}
       >
         <section
           data-sports-scroll-pane="center"
-          className={cn(`
-            min-w-0
-            min-[1200px]:min-h-0 min-[1200px]:self-stretch min-[1200px]:overflow-y-auto min-[1200px]:overscroll-contain
-            min-[1200px]:pr-1
-            lg:ml-4
-          `)}
+          className={cn(`min-w-0 min-[1200px]:pr-1 lg:ml-4`)}
         >
           <div className="mb-4">
             <div className="relative mb-1 flex min-h-9 items-center justify-center">
-              <AppLink
+              <Link
                 href={`${verticalConfig.basePath}/${sportSlug}/games`}
                 aria-label="Back to games"
                 className={cn(
@@ -1329,7 +1694,7 @@ export default function SportsEventCenter({
                 )}
               >
                 <ChevronLeftIcon className="size-4 text-foreground" />
-              </AppLink>
+              </Link>
 
               <div
                 className={cn(`
@@ -1337,21 +1702,22 @@ export default function SportsEventCenter({
                   sm:px-22
                 `)}
               >
-                <AppLink href={verticalConfig.livePath} className="hover:text-foreground">
+                <Link href={verticalConfig.livePath} className="hover:text-foreground">
                   {verticalConfig.label}
-                </AppLink>
+                </Link>
                 <span className="opacity-60">·</span>
-                <AppLink
+                <Link
                   href={`${verticalConfig.basePath}/${sportSlug}/games`}
                   className="truncate hover:text-foreground"
                 >
                   {sportLabel}
-                </AppLink>
+                </Link>
               </div>
 
               <div className="absolute right-0 flex items-center gap-1 text-foreground">
-                <EventBookmark event={heroCard.event} />
+                <EventEmbed event={heroCard.event} />
                 <SportsEventShareButton event={heroCard.event} />
+                <EventBookmark event={heroCard.event} />
               </div>
             </div>
 
@@ -1403,8 +1769,8 @@ export default function SportsEventCenter({
             </div>
           )}
 
-          <div className="mb-4 flex items-center justify-center gap-12 md:gap-14">
-            <div className={cn('flex flex-col items-center gap-2', useFullCompetitorHeroLabels ? 'w-24 sm:w-28' : 'w-20')}>
+          <div className="mb-4 flex items-center justify-center gap-14 md:gap-16">
+            <div className="flex min-w-0 flex-col items-center gap-2">
               <div
                 className={cn(
                   'pointer-events-none flex items-center justify-center select-none',
@@ -1451,12 +1817,7 @@ export default function SportsEventCenter({
                     )}
               </div>
               <span
-                className={cn(
-                  'text-center font-semibold text-foreground',
-                  useFullCompetitorHeroLabels
-                    ? 'max-w-full text-xs/tight sm:text-sm'
-                    : 'text-base uppercase',
-                )}
+                className="text-center text-xs/tight font-semibold whitespace-nowrap text-foreground sm:text-sm"
               >
                 {heroTeam1Label}
               </span>
@@ -1506,7 +1867,7 @@ export default function SportsEventCenter({
                   </div>
                 )}
 
-            <div className={cn('flex flex-col items-center gap-2', useFullCompetitorHeroLabels ? 'w-24 sm:w-28' : 'w-20')}>
+            <div className="flex min-w-0 flex-col items-center gap-2">
               <div
                 className={cn(
                   'pointer-events-none flex items-center justify-center select-none',
@@ -1553,12 +1914,7 @@ export default function SportsEventCenter({
                     )}
               </div>
               <span
-                className={cn(
-                  'text-center font-semibold text-foreground',
-                  useFullCompetitorHeroLabels
-                    ? 'max-w-full text-xs/tight sm:text-sm'
-                    : 'text-base uppercase',
-                )}
+                className="text-center text-xs/tight font-semibold whitespace-nowrap text-foreground sm:text-sm"
               >
                 {heroTeam2Label}
               </span>
@@ -1590,8 +1946,8 @@ export default function SportsEventCenter({
             </div>
             <SportsGameGraph
               card={heroCard}
-              selectedMarketType="moneyline"
-              selectedConditionId={graphConditionId}
+              selectedMarketType={sportsGraphSelection?.selectedMarketType ?? 'moneyline'}
+              selectedConditionId={sportsGraphSelection?.selectedConditionId ?? null}
               defaultTimeRange="ALL"
               variant="sportsEventHero"
             />
@@ -1617,7 +1973,7 @@ export default function SportsEventCenter({
           data-sports-scroll-pane="aside"
           className={cn(`
             hidden gap-4
-            min-[1200px]:sticky min-[1200px]:top-0 min-[1200px]:block min-[1200px]:h-fit min-[1200px]:max-h-full
+            min-[1200px]:sticky min-[1200px]:top-29 min-[1200px]:block min-[1200px]:max-h-[calc(100dvh-8.25rem)]
             min-[1200px]:self-start min-[1200px]:overflow-y-auto
           `)}
         >
@@ -1628,6 +1984,7 @@ export default function SportsEventCenter({
                     isMobile={false}
                     event={activeCard.event}
                     className="bg-card"
+                    stickyDesktopTabs
                     oddsFormat={oddsFormat}
                     outcomeButtonStyleVariant="sports3d"
                     optimisticallyClaimedConditionIds={claimedConditionIds}
@@ -1660,6 +2017,7 @@ export default function SportsEventCenter({
                       isMobile={false}
                       event={activeCard.event}
                       className="bg-card"
+                      stickyDesktopTabs
                       oddsFormat={oddsFormat}
                       optimisticallyClaimedConditionIds={claimedConditionIds}
                       initialMarket={pageAboutMarket}

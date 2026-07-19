@@ -1,9 +1,10 @@
 'use client'
 
 import type { WalletDepositModalProps, WalletWithdrawModalProps } from '@/app/[locale]/(platform)/_components/wallet-modal/utils'
+import type { LiFiWalletTokenItem } from '@/hooks/useLiFiWalletTokens'
 import { ChevronLeftIcon } from 'lucide-react'
 import dynamic from 'next/dynamic'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import CountdownBadge from '@/app/[locale]/(platform)/_components/wallet-modal/CountdownBadge'
 import { getSelectedWalletTokenId } from '@/app/[locale]/(platform)/_components/wallet-modal/utils'
 import WalletAmountStep from '@/app/[locale]/(platform)/_components/wallet-modal/WalletAmountStep'
@@ -15,10 +16,15 @@ import WalletSuccessStep from '@/app/[locale]/(platform)/_components/wallet-moda
 import WalletTokenList from '@/app/[locale]/(platform)/_components/wallet-modal/WalletTokenList'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from '@/components/ui/drawer'
+import { useBalance } from '@/hooks/useBalance'
 import { useLiFiQuote } from '@/hooks/useLiFiQuote'
 import { useLiFiWalletTokens } from '@/hooks/useLiFiWalletTokens'
 import { useSiteIdentity } from '@/hooks/useSiteIdentity'
+import { formatDisplayAmount } from '@/lib/amount-input'
+import { COLLATERAL_TOKEN_ADDRESS } from '@/lib/contracts'
+import { DEFAULT_CHAIN_ID, IS_TEST_MODE } from '@/lib/network'
 import { cn } from '@/lib/utils'
+import { defaultViemNetwork } from '@/lib/viem-network'
 
 // TON funding (Telegram Mini App only) is loaded client-side on demand so the
 // TON SDK (@ton/core) never ships in the web bundle.
@@ -52,8 +58,47 @@ export function WalletDepositModal(props: WalletDepositModalProps) {
   const [copied, setCopied] = useState(false)
   const site = useSiteIdentity()
   const siteLabel = siteName ?? site.name
+  const isDirectTestModeDeposit = IS_TEST_MODE
   const tokensQueryEnabled = open && (view === 'wallets' || view === 'amount' || view === 'confirm')
-  const { items: walletTokenItems, isLoadingTokens } = useLiFiWalletTokens(walletEoaAddress, { enabled: tokensQueryEnabled })
+  const { balance: directWalletBalance, isLoadingBalance: isLoadingDirectWalletBalance } = useBalance({
+    depositWalletAddress: walletEoaAddress,
+    enabled: open && isDirectTestModeDeposit,
+  })
+  const directWalletTokenItems = useMemo<LiFiWalletTokenItem[]>(() => {
+    if (!isDirectTestModeDeposit || !walletEoaAddress || directWalletBalance.raw <= 0) {
+      return []
+    }
+
+    const formattedBalance = directWalletBalance.raw.toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 6,
+    })
+    const formattedUsdBalance = directWalletBalance.raw.toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })
+
+    return [{
+      id: `${DEFAULT_CHAIN_ID}:${COLLATERAL_TOKEN_ADDRESS}`,
+      chainId: DEFAULT_CHAIN_ID,
+      address: COLLATERAL_TOKEN_ADDRESS,
+      decimals: 6,
+      symbol: directWalletBalance.symbol,
+      network: defaultViemNetwork.name,
+      icon: '/images/deposit/transfer/usdc_dark.png',
+      chainIcon: '/images/deposit/transfer/polygon_dark.png',
+      balance: formattedBalance,
+      balanceRaw: directWalletBalance.raw,
+      usd: formattedUsdBalance,
+      usdValue: directWalletBalance.raw,
+      disabled: false,
+    }]
+  }, [directWalletBalance.raw, directWalletBalance.symbol, isDirectTestModeDeposit, walletEoaAddress])
+  const { items: lifiWalletTokenItems, isLoadingTokens: isLoadingLiFiTokens } = useLiFiWalletTokens(walletEoaAddress, {
+    enabled: tokensQueryEnabled && !isDirectTestModeDeposit,
+  })
+  const walletTokenItems = isDirectTestModeDeposit ? directWalletTokenItems : lifiWalletTokenItems
+  const isLoadingTokens = isDirectTestModeDeposit ? isLoadingDirectWalletBalance : isLoadingLiFiTokens
   const [preferredSelectedTokenId, setPreferredSelectedTokenId] = useState('')
   const [amountValue, setAmountValue] = useState('')
   const [confirmRefreshIndex, setConfirmRefreshIndex] = useState(0)
@@ -75,13 +120,36 @@ export function WalletDepositModal(props: WalletDepositModalProps) {
 
   const selectedTokenId = getSelectedWalletTokenId(walletTokenItems, preferredSelectedTokenId)
   const selectedToken = walletTokenItems.find(item => item.id === selectedTokenId) ?? null
-  const { quote } = useLiFiQuote({
+  const { quote: lifiQuote } = useLiFiQuote({
     fromToken: selectedToken,
     amountValue,
     fromAddress: walletEoaAddress,
     toAddress: walletAddress,
     refreshIndex: confirmRefreshIndex,
+    enabled: !isDirectTestModeDeposit,
   })
+  const directQuote = useMemo(() => {
+    if (!isDirectTestModeDeposit || !selectedToken || !amountValue.trim()) {
+      return null
+    }
+
+    const amountNumber = Number.parseFloat(amountValue)
+    if (
+      !Number.isFinite(amountNumber)
+      || amountNumber <= 0
+      || amountNumber > selectedToken.balanceRaw
+    ) {
+      return null
+    }
+
+    return {
+      toAmountDisplay: formatDisplayAmount(amountValue),
+      gasUsdDisplay: null,
+    }
+  }, [amountValue, isDirectTestModeDeposit, selectedToken])
+  const quote = isDirectTestModeDeposit ? directQuote : lifiQuote
+  const effectiveWalletBalance = isDirectTestModeDeposit ? directWalletBalance.text : walletBalance
+  const isEffectiveWalletBalanceLoading = isDirectTestModeDeposit ? isLoadingDirectWalletBalance : isBalanceLoading
 
   const content = view === 'fund'
     ? (
@@ -91,14 +159,14 @@ export function WalletDepositModal(props: WalletDepositModalProps) {
           }}
           onReceive={() => onViewChange('receive')}
           onWallet={() => onViewChange('wallets')}
-          onTon={() => onViewChange('ton')}
-          showTon={showTon}
           disabledBuy={!meldUrl}
           disabledReceive={!hasDeployedDepositWallet}
           meldUrl={meldUrl}
           walletEoaAddress={walletEoaAddress}
-          walletBalance={walletBalance}
-          isBalanceLoading={isBalanceLoading}
+          walletBalance={effectiveWalletBalance}
+          isBalanceLoading={isEffectiveWalletBalanceLoading}
+          onTon={() => onViewChange('ton')}
+          showTon={showTon}
         />
       )
     : view === 'ton'
@@ -124,6 +192,7 @@ export function WalletDepositModal(props: WalletDepositModalProps) {
                 isLoadingTokens={isLoadingTokens}
                 selectedId={selectedTokenId}
                 onSelect={setPreferredSelectedTokenId}
+                emptyMessage={isDirectTestModeDeposit ? 'No Amoy USDC balance found.' : undefined}
               />
             )
           : view === 'amount'
@@ -147,6 +216,7 @@ export function WalletDepositModal(props: WalletDepositModalProps) {
                     selectedToken={selectedToken}
                     quote={quote}
                     refreshIndex={confirmRefreshIndex}
+                    executionMode={isDirectTestModeDeposit ? 'direct-usdc' : 'lifi'}
                   />
                 )
               : (
@@ -304,7 +374,6 @@ export function WalletWithdrawModal(props: WalletWithdrawModalProps) {
     availableBalance,
     onMax,
     isBalanceLoading,
-    pendingWithdrawals = [],
   } = props
   const site = useSiteIdentity()
   const siteLabel = siteName ?? site.name
@@ -322,7 +391,6 @@ export function WalletWithdrawModal(props: WalletWithdrawModalProps) {
       availableBalance={availableBalance}
       onMax={onMax}
       isBalanceLoading={isBalanceLoading}
-      pendingWithdrawals={pendingWithdrawals}
     />
   )
 

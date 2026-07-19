@@ -2,9 +2,15 @@ import type { Comment, Market } from '@/types'
 import { MoreHorizontalIcon } from 'lucide-react'
 import { useExtracted } from 'next-intl'
 import { useCallback } from 'react'
-import { resolveCommentUserIdentity } from '@/app/[locale]/(platform)/event/[slug]/_components/comment-user'
+import {
+  isCommentOwnedByUser,
+  resolveCommentUserIdentity,
+} from '@/app/[locale]/(platform)/event/[slug]/_components/comment-user'
 import EventCommentContent from '@/app/[locale]/(platform)/event/[slug]/_components/EventCommentContent'
 import { CommentPositionsIndicator } from '@/app/[locale]/(platform)/event/[slug]/_components/EventCommentPositionsIndicator'
+import {
+  resolveCommentParentId,
+} from '@/app/[locale]/(platform)/event/[slug]/_utils/comment-replies'
 import ProfileLink from '@/components/ProfileLink'
 import { DropdownMenu, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { useAppKit } from '@/hooks/useAppKit'
@@ -31,12 +37,24 @@ interface CommentItemProps {
   onRepliesLoaded: (commentId: string) => void
   onDeleteReply: (commentId: string, replyId: string) => void
   onUpdateReply: (commentId: string, replyId: string) => void
-  createReply: (parentCommentId: string, content: string) => Promise<Comment>
+  createReply: (parentCommentId: string, content: string, replyToCommentId?: string) => Promise<Comment>
   isCreatingComment: boolean
+  isDeletingCommentForComment: (commentId: string) => boolean
   isTogglingLikeForComment: (commentId: string) => boolean
   isLoadingRepliesForComment: (commentId: string) => boolean
   loadRepliesError: Error | null
   retryLoadReplies: (commentId: string) => void
+}
+
+function resolveReplyTargetIdentity(comment: Comment, reply: Comment, replies: Comment[]) {
+  const rootIdentity = resolveCommentUserIdentity(comment)
+  const parentCommentId = resolveCommentParentId(reply)
+  if (!parentCommentId || parentCommentId === comment.id) {
+    return rootIdentity
+  }
+
+  const parentReply = replies.find(candidate => candidate.id === parentCommentId)
+  return parentReply ? resolveCommentUserIdentity(parentReply) : rootIdentity
 }
 
 function useCommentItemHandlers({
@@ -115,12 +133,15 @@ export default function EventCommentItem({
   onUpdateReply,
   createReply,
   isCreatingComment,
+  isDeletingCommentForComment,
   isTogglingLikeForComment,
   isLoadingRepliesForComment,
   loadRepliesError,
   retryLoadReplies,
 }: CommentItemProps) {
   const { displayName, profileSlug } = resolveCommentUserIdentity(comment)
+  const canManageComment = isCommentOwnedByUser(comment, user)
+  const isDeletingComment = isDeletingCommentForComment(comment.id)
   const t = useExtracted()
   const {
     handleReplyClick,
@@ -183,7 +204,7 @@ export default function EventCommentItem({
               </button>
             </div>
           </div>
-          {comment.is_owner && (
+          {canManageComment && (
             <div className="relative">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -196,8 +217,8 @@ export default function EventCommentItem({
                   </button>
                 </DropdownMenuTrigger>
                 <EventCommentMenu
-                  comment={comment}
                   onDelete={handleDelete}
+                  isDeleting={isDeletingComment}
                 />
               </DropdownMenu>
             </div>
@@ -222,30 +243,35 @@ export default function EventCommentItem({
 
       {comment.recent_replies && comment.recent_replies.length > 0 && (
         <div className="ml-13">
-          {comment.recent_replies.map(reply => (
-            <EventCommentReplyItem
-              key={reply.id}
-              reply={reply}
-              parentDisplayName={displayName}
-              parentProfileSlug={profileSlug}
-              commentId={comment.id}
-              user={user}
-              usePrimaryPositionTone={usePrimaryPositionTone}
-              isSingleMarket={isSingleMarket}
-              marketsByConditionId={marketsByConditionId}
-              onLikeToggle={onUpdateReply}
-              onDelete={onDeleteReply}
-              replyingTo={replyingTo}
-              onSetReplyingTo={onSetReplyingTo}
-              replyText={replyText}
-              onSetReplyText={onSetReplyText}
-              createReply={createReply}
-              isCreatingComment={isCreatingComment}
-              isTogglingLikeForComment={isTogglingLikeForComment}
-            />
-          ))}
+          {comment.recent_replies.map((reply) => {
+            const replyTargetIdentity = resolveReplyTargetIdentity(comment, reply, comment.recent_replies ?? [])
 
-          {comment.replies_count > 3 && !expandedComments.has(comment.id) && (
+            return (
+              <EventCommentReplyItem
+                key={reply.id}
+                reply={reply}
+                parentDisplayName={replyTargetIdentity.displayName}
+                parentProfileSlug={replyTargetIdentity.profileSlug}
+                commentId={comment.id}
+                user={user}
+                usePrimaryPositionTone={usePrimaryPositionTone}
+                isSingleMarket={isSingleMarket}
+                marketsByConditionId={marketsByConditionId}
+                onLikeToggle={onUpdateReply}
+                onDelete={onDeleteReply}
+                replyingTo={replyingTo}
+                onSetReplyingTo={onSetReplyingTo}
+                replyText={replyText}
+                onSetReplyText={onSetReplyText}
+                createReply={createReply}
+                isCreatingComment={isCreatingComment}
+                isDeletingCommentForComment={isDeletingCommentForComment}
+                isTogglingLikeForComment={isTogglingLikeForComment}
+              />
+            )
+          })}
+
+          {(comment.recent_replies?.length ?? 0) < comment.replies_count && !expandedComments.has(comment.id) && (
             <EventCommentsLoadMoreReplies
               comment={comment}
               onRepliesLoaded={onRepliesLoaded}

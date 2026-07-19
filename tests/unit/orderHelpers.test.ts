@@ -22,6 +22,21 @@ describe('calculateOrderAmounts', () => {
     expect(result.takerAmount).toBe(30850000n)
   })
 
+  it('uses the terminal price cap with an explicit share quantity for MARKET BUY orders', () => {
+    const result = calculateOrderAmounts({
+      orderType: ORDER_TYPE.MARKET,
+      side: ORDER_SIDE.BUY,
+      amount: '4.50',
+      limitPrice: '0',
+      limitShares: '0',
+      marketPriceCents: 50,
+      marketMinimumShares: 10,
+    })
+
+    expect(result.makerAmount).toBe(5000000n)
+    expect(result.takerAmount).toBe(10000000n)
+  })
+
   it('computes limit sell amounts using percent-based price input', () => {
     const result = calculateOrderAmounts({
       orderType: ORDER_TYPE.LIMIT,
@@ -46,6 +61,20 @@ describe('calculateOrderAmounts', () => {
 
     expect(result.makerAmount).toBe(130000n)
     expect(result.takerAmount).toBe(10000000n)
+  })
+
+  it('computes market buy amounts when derived prices have more than 15 significant digits', () => {
+    const result = calculateOrderAmounts({
+      orderType: ORDER_TYPE.MARKET,
+      side: ORDER_SIDE.BUY,
+      amount: '1',
+      limitPrice: '0',
+      limitShares: '0',
+      marketPriceCents: 7.483805618869868,
+    })
+
+    expect(result.makerAmount).toBe(1000000n)
+    expect(result.takerAmount).toBe(13362195n)
   })
 })
 

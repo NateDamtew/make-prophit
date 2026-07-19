@@ -1,11 +1,12 @@
 'use client'
 
+import type { GeneralSettingsActionState } from '@/app/[locale]/admin/(general)/_actions/update-general-settings'
 import type { AdminThemeSiteSettingsInitialState } from '@/app/[locale]/admin/theme/_types/theme-form-state'
+import type { MarketContextVariable } from '@/lib/ai/market-context-template'
 import type { CustomJavascriptCodeConfig, CustomJavascriptCodeDisablePage } from '@/lib/custom-javascript-code'
 import type { HomeFeaturedEventAdminItem, HomeFeaturedSettings } from '@/types'
 import { useExtracted } from 'next-intl'
-import { useRouter } from 'next/navigation'
-import { useActionState, useEffect, useMemo, useRef, useState, useTransition } from 'react'
+import { useActionState, useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { toast } from 'sonner'
 import {
   removeTermsOfServicePdfAction,
@@ -14,17 +15,23 @@ import {
 import { Button } from '@/components/ui/button'
 import { InputError } from '@/components/ui/input-error'
 import { serializeCustomJavascriptCodes } from '@/lib/custom-javascript-code'
-import { DEFAULT_HOME_FEATURED_SETTINGS } from '@/lib/home-featured-settings'
+import { serializeHomeFeaturedEventsForSave } from '@/lib/home-featured-payload'
+import {
+  DEFAULT_HOME_FEATURED_SETTINGS,
+  serializeHomeFeaturedSideCardSlides,
+} from '@/lib/home-featured-settings'
+import { optimizeSideCardImage } from '@/lib/side-card-image-client'
 import { sanitizeSvg } from '@/lib/utils'
 import BrandIdentitySection from './BrandIdentitySection'
 import GlobalAnnouncementSection from './GlobalAnnouncementSection'
 import HomeFeaturedMarketsSection from './HomeFeaturedMarketsSection'
 import IntegrationsSection from './IntegrationsSection'
 import LegalSection from './LegalSection'
+import MarketContextSection from './MarketContextSection'
 import MarketFeeSection from './MarketFeeSection'
 import SocialCommunitySection from './SocialCommunitySection'
 
-const initialState = {
+const initialState: GeneralSettingsActionState = {
   error: null,
 }
 
@@ -48,11 +55,21 @@ interface OpenRouterGeneralSettings {
   modelsError?: string
 }
 
+interface SportsSourceGeneralSettings {
+  isPandaScoreTokenConfigured: boolean
+  isTheSportsDbApiKeyConfigured: boolean
+}
+
 interface InitialGlobalAnnouncementSettings {
   message: string
   linkUrl: string
   disabledOn: CustomJavascriptCodeDisablePage[]
   disableFaucetBanner: boolean
+}
+
+interface InitialMarketContextSettings {
+  enabled: boolean
+  prompt: string
 }
 
 interface AdminGeneralSettingsFormProps {
@@ -62,9 +79,15 @@ interface AdminGeneralSettingsFormProps {
   initialBlockedCountries: string[]
   initialTermsOfServicePdfPath: string
   initialTermsOfServicePdfUrl: string | null
+  initialMarketContextSettings: InitialMarketContextSettings
+  initialArbitrageEnabled: boolean
+  initialArbitrageMultiWalletEnabled: boolean
+  marketContextVariables: MarketContextVariable[]
   initialHomeFeaturedSettings?: HomeFeaturedSettings
+  initialHomeFeaturedSideCardImageUrl?: string | null
   initialHomeFeaturedEvents?: HomeFeaturedEventAdminItem[]
   openRouterSettings: OpenRouterGeneralSettings
+  sportsSourceSettings: SportsSourceGeneralSettings
 }
 
 interface CustomJavascriptCodeDraft extends CustomJavascriptCodeConfig {
@@ -89,11 +112,17 @@ function AdminGeneralSettingsFormInner({
   initialBlockedCountries,
   initialTermsOfServicePdfPath,
   initialTermsOfServicePdfUrl,
+  initialMarketContextSettings,
+  initialArbitrageEnabled,
+  initialArbitrageMultiWalletEnabled,
+  marketContextVariables,
   initialHomeFeaturedSettings,
   initialHomeFeaturedEvents,
   openRouterSettings,
+  sportsSourceSettings,
 }: AdminGeneralSettingsFormProps) {
   const t = useExtracted()
+  const settingsSavedMessage = t('Settings saved successfully!')
   const resolvedInitialHomeFeaturedSettings = initialHomeFeaturedSettings ?? DEFAULT_HOME_FEATURED_SETTINGS
   const resolvedInitialHomeFeaturedEvents = initialHomeFeaturedEvents ?? []
   const initialSiteName = initialThemeSiteSettings.siteName
@@ -125,6 +154,10 @@ function AdminGeneralSettingsFormInner({
   const initialLiFiApiKeyConfigured = initialThemeSiteSettings.lifiApiKeyConfigured
   const initialOpenRouterModel = openRouterSettings.defaultModel ?? ''
   const initialOpenRouterApiKeyConfigured = openRouterSettings.isApiKeyConfigured
+  const initialPandaScoreTokenConfigured = sportsSourceSettings.isPandaScoreTokenConfigured
+  const initialTheSportsDbApiKeyConfigured = sportsSourceSettings.isTheSportsDbApiKeyConfigured
+  const initialMarketContextEnabled = initialMarketContextSettings.enabled
+  const initialMarketContextPrompt = initialMarketContextSettings.prompt
   const initialHomeFeaturedEnabled = resolvedInitialHomeFeaturedSettings.enabled
   const initialHomeFeaturedUseAi = resolvedInitialHomeFeaturedSettings.useAi
   const initialHomeFeaturedMaxCards = resolvedInitialHomeFeaturedSettings.maxCards
@@ -136,10 +169,39 @@ function AdminGeneralSettingsFormInner({
   const initialHomeFeaturedIncludeNewEvents = resolvedInitialHomeFeaturedSettings.includeNewEvents
   const initialHomeFeaturedSideCard = resolvedInitialHomeFeaturedSettings.sideCard
 
-  const router = useRouter()
-  const [state, formAction, isPending] = useActionState(updateGeneralSettingsAction, initialState)
+  const optimizedSideCardImagesRef = useRef(new Map<string, File>())
+  const sideCardImageProcessingRequestRef = useRef(new Map<string, number>())
+  const sideCardImagePreviewUrlsRef = useRef<Record<string, string>>({})
+  const submitGeneralSettingsAction = useCallback(
+    async (previousState: GeneralSettingsActionState, formData: FormData) => {
+      for (const key of Array.from(formData.keys())) {
+        if (key.startsWith('home_featured_side_card_image_')) {
+          formData.delete(key)
+        }
+      }
+      for (const [slideId, file] of optimizedSideCardImagesRef.current) {
+        formData.set(`home_featured_side_card_image_${slideId}`, file)
+        if (slideId === 'legacy') {
+          formData.set('home_featured_side_card_image', file)
+        }
+      }
+
+      const result = await updateGeneralSettingsAction(previousState, formData)
+
+      if (result.error) {
+        toast.error(result.error)
+      }
+      else {
+        optimizedSideCardImagesRef.current.clear()
+        toast.success(settingsSavedMessage)
+      }
+
+      return result
+    },
+    [settingsSavedMessage],
+  )
+  const [state, formAction, isPending] = useActionState(submitGeneralSettingsAction, initialState)
   const [isRemovingTermsOfServicePdf, startRemovingTermsOfServicePdf] = useTransition()
-  const wasPendingRef = useRef(isPending)
   const nextCustomJavascriptCodeIdRef = useRef(0)
 
   const [siteName, setSiteName] = useState(initialSiteName)
@@ -173,7 +235,13 @@ function AdminGeneralSettingsFormInner({
   const [tosPdfPath, setTosPdfPath] = useState(initialTermsOfServicePdfPath)
   const [lifiIntegrator, setLifiIntegrator] = useState(initialLiFiIntegrator)
   const [lifiApiKey, setLifiApiKey] = useState(initialLiFiApiKey)
+  const [arbitrageEnabled, setArbitrageEnabled] = useState(initialArbitrageEnabled)
+  const [arbitrageMultiWalletEnabled, setArbitrageMultiWalletEnabled] = useState(
+    initialArbitrageMultiWalletEnabled,
+  )
   const [openRouterApiKey, setOpenRouterApiKey] = useState('')
+  const [pandaScoreToken, setPandaScoreToken] = useState('')
+  const [theSportsDbApiKey, setTheSportsDbApiKey] = useState('')
   const [openRouterModel, setOpenRouterModel] = useState(initialOpenRouterModel)
   const [openRouterSelectValue, setOpenRouterSelectValue] = useState(
     initialOpenRouterModel || AUTOMATIC_MODEL_VALUE,
@@ -181,6 +249,8 @@ function AdminGeneralSettingsFormInner({
   const [openRouterModelOptions, setOpenRouterModelOptions] = useState<ModelOption[]>(openRouterSettings.modelOptions)
   const [openRouterModelsError, setOpenRouterModelsError] = useState<string | undefined>(openRouterSettings.modelsError)
   const [isRefreshingOpenRouterModels, setIsRefreshingOpenRouterModels] = useState(false)
+  const [marketContextEnabled, setMarketContextEnabled] = useState(initialMarketContextEnabled)
+  const [marketContextPrompt, setMarketContextPrompt] = useState(initialMarketContextPrompt)
   const [homeFeaturedEnabled, setHomeFeaturedEnabled] = useState(initialHomeFeaturedEnabled)
   const [homeFeaturedUseAi, setHomeFeaturedUseAi] = useState(initialHomeFeaturedUseAi)
   const [homeFeaturedMaxCards, setHomeFeaturedMaxCards] = useState(initialHomeFeaturedMaxCards)
@@ -197,7 +267,30 @@ function AdminGeneralSettingsFormInner({
   const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null)
   const [pwaIcon192PreviewUrl, setPwaIcon192PreviewUrl] = useState<string | null>(null)
   const [pwaIcon512PreviewUrl, setPwaIcon512PreviewUrl] = useState<string | null>(null)
+  const [sideCardImagePreviewUrls, setSideCardImagePreviewUrls] = useState<Record<string, string>>({})
+  const [processingSideCardImageIds, setProcessingSideCardImageIds] = useState<string[]>([])
   const [openSections, setOpenSections] = useState<string[]>([])
+  const isSideCardImageProcessing = processingSideCardImageIds.length > 0
+
+  useEffect(function trackSideCardImagePreviewUrls() {
+    sideCardImagePreviewUrlsRef.current = sideCardImagePreviewUrls
+  }, [sideCardImagePreviewUrls])
+
+  useEffect(function revokeSideCardImagePreviewUrlsOnUnmount() {
+    const previewUrlsRef = sideCardImagePreviewUrlsRef
+    return function cleanup() {
+      for (const previewUrl of Object.values(previewUrlsRef.current)) {
+        URL.revokeObjectURL(previewUrl)
+      }
+    }
+  }, [])
+
+  useEffect(function cancelPendingSideCardImageProcessing() {
+    const processingRequests = sideCardImageProcessingRequestRef.current
+    return function cleanup() {
+      processingRequests.clear()
+    }
+  }, [])
 
   useEffect(function revokeObjectUrls() {
     return function cleanup() {
@@ -213,23 +306,13 @@ function AdminGeneralSettingsFormInner({
     }
   }, [logoPreviewUrl, pwaIcon192PreviewUrl, pwaIcon512PreviewUrl])
 
-  useEffect(function handleFormTransition() {
-    const transitionedToIdle = wasPendingRef.current && !isPending
-
-    if (transitionedToIdle && state.error === null) {
-      toast.success(t('Settings saved successfully!'))
-      router.refresh()
-    }
-    else if (transitionedToIdle && state.error) {
-      toast.error(state.error)
-    }
-
-    wasPendingRef.current = isPending
-  }, [isPending, router, state.error, t])
-
   const imagePreview = useMemo(() => logoPreviewUrl ?? initialLogoImageUrl, [initialLogoImageUrl, logoPreviewUrl])
   const pwaIcon192Preview = useMemo(() => pwaIcon192PreviewUrl ?? initialPwaIcon192Url, [initialPwaIcon192Url, pwaIcon192PreviewUrl])
   const pwaIcon512Preview = useMemo(() => pwaIcon512PreviewUrl ?? initialPwaIcon512Url, [initialPwaIcon512Url, pwaIcon512PreviewUrl])
+  const serializedHomeFeaturedSideCardSlides = useMemo(
+    () => serializeHomeFeaturedSideCardSlides(homeFeaturedSideCard.slides),
+    [homeFeaturedSideCard.slides],
+  )
   const serializedCustomJavascriptCodes = useMemo(
     () => serializeCustomJavascriptCodes(customJavascriptCodes.map(toCustomJavascriptCodeConfig)),
     [customJavascriptCodes],
@@ -240,24 +323,7 @@ function AdminGeneralSettingsFormInner({
   )
   const blockedCountriesValue = useMemo(() => formatBlockedCountriesValue(blockedCountries), [blockedCountries])
   const serializedHomeFeaturedEvents = useMemo(
-    () => JSON.stringify(homeFeaturedEvents.map((event, index) => ({
-      targetType: event.targetType,
-      eventId: event.eventId,
-      seriesSlug: event.seriesSlug,
-      enabled: event.enabled,
-      rank: index,
-      source: event.source,
-      startsAt: event.startsAt,
-      endsAt: event.endsAt,
-      contextMode: event.contextMode,
-      autoRolloverEnabled: event.autoRolloverEnabled,
-      contextLocale: locale,
-      contextEventId: event.eventId,
-      contextItems: (event.contextItems ?? []).map(contextItem => ({
-        ...contextItem,
-        locale,
-      })),
-    }))),
+    () => JSON.stringify(serializeHomeFeaturedEventsForSave(homeFeaturedEvents, locale)),
     [homeFeaturedEvents, locale],
   )
   const customJavascriptCodeDisablePageOptions = useMemo(() => ([
@@ -300,6 +366,52 @@ function AdminGeneralSettingsFormInner({
 
   function handleClearBlockedCountries() {
     setBlockedCountries([])
+  }
+
+  async function handleSideCardImageChange(slideId: string, file: File | null) {
+    const requestId = (sideCardImageProcessingRequestRef.current.get(slideId) ?? 0) + 1
+    sideCardImageProcessingRequestRef.current.set(slideId, requestId)
+    optimizedSideCardImagesRef.current.delete(slideId)
+
+    setSideCardImagePreviewUrls((previous) => {
+      const existing = previous[slideId]
+      if (existing) {
+        URL.revokeObjectURL(existing)
+      }
+      const { [slideId]: _removed, ...remaining } = previous
+      return remaining
+    })
+
+    if (!file) {
+      setProcessingSideCardImageIds(previous => previous.filter(id => id !== slideId))
+      return
+    }
+
+    setProcessingSideCardImageIds(previous => previous.includes(slideId) ? previous : [...previous, slideId])
+    try {
+      const optimizedFile = await optimizeSideCardImage(file)
+      if (requestId !== sideCardImageProcessingRequestRef.current.get(slideId)) {
+        return
+      }
+
+      const previewUrl = URL.createObjectURL(optimizedFile)
+      optimizedSideCardImagesRef.current.set(slideId, optimizedFile)
+      setSideCardImagePreviewUrls(previous => ({ ...previous, [slideId]: previewUrl }))
+    }
+    catch (error) {
+      if (requestId !== sideCardImageProcessingRequestRef.current.get(slideId)) {
+        return
+      }
+
+      console.error('Failed to optimize side card image', error)
+      optimizedSideCardImagesRef.current.delete(slideId)
+      toast.error(t('Could not process the side card image. Please try another image.'))
+    }
+    finally {
+      if (requestId === sideCardImageProcessingRequestRef.current.get(slideId)) {
+        setProcessingSideCardImageIds(previous => previous.filter(id => id !== slideId))
+      }
+    }
   }
 
   function toggleSection(value: string) {
@@ -416,7 +528,6 @@ function AdminGeneralSettingsFormInner({
         setTosPdfPath('')
         setSelectedTermsOfServicePdfFile(null)
         toast.success(t('Terms of Use PDF removed.'))
-        router.refresh()
       }
       catch (error) {
         console.error('Failed to remove Terms of Use PDF', error)
@@ -433,6 +544,8 @@ function AdminGeneralSettingsFormInner({
       <input type="hidden" name="pwa_icon_192_path" value={pwaIcon192Path} />
       <input type="hidden" name="pwa_icon_512_path" value={pwaIcon512Path} />
       <input type="hidden" name="openrouter_model" value={openRouterModel} />
+      <input type="hidden" name="market_context_enabled" value={String(marketContextEnabled)} />
+      <input type="hidden" name="market_context_prompt" value={marketContextPrompt} />
       <input type="hidden" name="tos_pdf_path" value={tosPdfPath} />
       <input type="hidden" name="custom_javascript_codes_json" value={serializedCustomJavascriptCodes} />
       <input type="hidden" name="global_announcement_disabled_on_json" value={serializedGlobalAnnouncementDisabledOn} />
@@ -457,6 +570,19 @@ function AdminGeneralSettingsFormInner({
       <input type="hidden" name="home_featured_side_card_cta_href" value={homeFeaturedSideCard.ctaHref} />
       <input type="hidden" name="home_featured_side_card_icon" value={homeFeaturedSideCard.icon} />
       <input type="hidden" name="home_featured_side_card_use_ai" value={String(homeFeaturedSideCard.useAi)} />
+      <input type="hidden" name="home_featured_side_card_use_image" value={String(homeFeaturedSideCard.useImage)} />
+      <input type="hidden" name="home_featured_side_card_image_path" value={homeFeaturedSideCard.imagePath} />
+      <input type="hidden" name="home_featured_side_card_slides_json" value={serializedHomeFeaturedSideCardSlides} />
+      {homeFeaturedSideCard.useImage && (
+        <input
+          id="home-featured-side-card-image-file"
+          type="file"
+          accept="image/png,image/jpeg"
+          className="sr-only"
+          disabled={isPending || isSideCardImageProcessing}
+          onChange={event => void handleSideCardImageChange('legacy', event.target.files?.[0] ?? null)}
+        />
+      )}
       <input type="hidden" name="home_featured_events_json" value={serializedHomeFeaturedEvents} />
 
       <div className="grid min-w-0 gap-6">
@@ -527,9 +653,20 @@ function AdminGeneralSettingsFormInner({
           customJavascriptCodeDisablePageOptions={customJavascriptCodeDisablePageOptions}
         />
 
+        <MarketContextSection
+          isPending={isPending}
+          openSections={openSections}
+          onToggleSection={toggleSection}
+          enabled={marketContextEnabled}
+          onEnabledChange={setMarketContextEnabled}
+          prompt={marketContextPrompt}
+          onPromptChange={setMarketContextPrompt}
+          variables={marketContextVariables}
+        />
+
         <HomeFeaturedMarketsSection
           locale={locale}
-          isPending={isPending}
+          isPending={isPending || isSideCardImageProcessing}
           openSections={openSections}
           onToggleSection={toggleSection}
           enabled={homeFeaturedEnabled}
@@ -552,6 +689,9 @@ function AdminGeneralSettingsFormInner({
           onIncludeNewEventsChange={setHomeFeaturedIncludeNewEvents}
           sideCard={homeFeaturedSideCard}
           onSideCardChange={setHomeFeaturedSideCard}
+          sideCardImagePreviewUrls={sideCardImagePreviewUrls}
+          processingSideCardImageIds={processingSideCardImageIds}
+          onSideCardImageChange={handleSideCardImageChange}
           featuredEvents={homeFeaturedEvents}
           onFeaturedEventsChange={setHomeFeaturedEvents}
         />
@@ -588,11 +728,21 @@ function AdminGeneralSettingsFormInner({
           trimmedOpenRouterApiKey={trimmedOpenRouterApiKey}
           onRefreshOpenRouterModels={handleRefreshOpenRouterModels}
           initialOpenRouterApiKeyConfigured={initialOpenRouterApiKeyConfigured}
+          pandaScoreToken={pandaScoreToken}
+          onPandaScoreTokenChange={setPandaScoreToken}
+          initialPandaScoreTokenConfigured={initialPandaScoreTokenConfigured}
+          theSportsDbApiKey={theSportsDbApiKey}
+          onTheSportsDbApiKeyChange={setTheSportsDbApiKey}
+          initialTheSportsDbApiKeyConfigured={initialTheSportsDbApiKeyConfigured}
           lifiIntegrator={lifiIntegrator}
           onLifiIntegratorChange={setLifiIntegrator}
           lifiApiKey={lifiApiKey}
           onLifiApiKeyChange={setLifiApiKey}
           initialLiFiApiKeyConfigured={initialLiFiApiKeyConfigured}
+          arbitrageEnabled={arbitrageEnabled}
+          onArbitrageEnabledChange={setArbitrageEnabled}
+          arbitrageMultiWalletEnabled={arbitrageMultiWalletEnabled}
+          onArbitrageMultiWalletEnabledChange={setArbitrageMultiWalletEnabled}
           customJavascriptCodes={customJavascriptCodes}
           onAddCustomJavascriptCode={handleAddCustomJavascriptCode}
           onRemoveCustomJavascriptCode={handleRemoveCustomJavascriptCode}
@@ -611,7 +761,11 @@ function AdminGeneralSettingsFormInner({
       {state.error && <InputError message={state.error} />}
 
       <div className="flex justify-end">
-        <Button type="submit" className="w-full sm:w-40" disabled={isPending || isRemovingTermsOfServicePdf}>
+        <Button
+          type="submit"
+          className="w-full sm:w-40"
+          disabled={isPending || isRemovingTermsOfServicePdf || isSideCardImageProcessing}
+        >
           {isPending ? t('Saving...') : t('Save settings')}
         </Button>
       </div>
@@ -627,9 +781,15 @@ export default function AdminGeneralSettingsForm(props: AdminGeneralSettingsForm
     initialBlockedCountries: props.initialBlockedCountries,
     initialTermsOfServicePdfPath: props.initialTermsOfServicePdfPath,
     initialTermsOfServicePdfUrl: props.initialTermsOfServicePdfUrl,
+    initialMarketContextSettings: props.initialMarketContextSettings,
+    initialArbitrageEnabled: props.initialArbitrageEnabled,
+    initialArbitrageMultiWalletEnabled: props.initialArbitrageMultiWalletEnabled,
+    marketContextVariables: props.marketContextVariables,
     initialHomeFeaturedSettings: props.initialHomeFeaturedSettings ?? DEFAULT_HOME_FEATURED_SETTINGS,
+    initialHomeFeaturedSideCardImageUrl: props.initialHomeFeaturedSideCardImageUrl,
     initialHomeFeaturedEvents: props.initialHomeFeaturedEvents ?? [],
     openRouterSettings: props.openRouterSettings,
+    sportsSourceSettings: props.sportsSourceSettings,
   })
 
   return <AdminGeneralSettingsFormInner key={formResetKey} {...props} />

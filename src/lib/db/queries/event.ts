@@ -8,8 +8,8 @@ import { and, asc, count, desc, eq, exists, ilike, inArray, not, or, sql } from 
 import { cacheTag } from 'next/cache'
 import { DEFAULT_LOCALE } from '@/i18n/locales'
 import { cacheTags } from '@/lib/cache-tags'
-import { buildEventVisibilityFilter } from '@/lib/community-visibility'
 import { resolveClobUrl } from '@/lib/clob'
+import { buildEventVisibilityFilter } from '@/lib/community-visibility'
 import { OUTCOME_INDEX } from '@/lib/constants'
 import { getSportsSlugResolverFromDb } from '@/lib/db/queries/sports-menu'
 import { bookmarks } from '@/lib/db/schema/bookmarks/tables'
@@ -52,6 +52,9 @@ type PriceApiResponse = Record<string, { BUY?: string, SELL?: string } | undefin
 interface OutcomePrices { buy?: number, sell?: number }
 const MAX_PRICE_BATCH = 500
 const DEFAULT_EVENT_LIST_LIMIT = 32
+const DEFAULT_SPORTS_FEED_EVENT_LIMIT = 128
+const MAX_SPORTS_FEED_EVENT_LIMIT = 256
+const SPORTS_FEED_EVENT_QUERY_CACHE_VERSION = 2
 
 interface LastTradePriceEntry {
   token_id: string
@@ -459,6 +462,16 @@ interface ListEventsProps {
   sportsVertical?: SportsVertical | ''
 }
 
+type SportsFeedMode = 'liveAndSoon' | 'soon'
+
+interface ListSportsFeedEventsProps {
+  cacheVersion?: number
+  locale?: SupportedLocale
+  limit?: number
+  mode: SportsFeedMode
+  sportsVertical: SportsVertical
+}
+
 interface RelatedEventOptions {
   tagSlug?: string
   locale?: SupportedLocale
@@ -501,6 +514,19 @@ interface AdminEventRow {
   sports_score: string | null
   sports_live: boolean | null
   sports_ended: boolean | null
+  sports_event_date: string | null
+  sports_start_time: string | null
+  sports_teams: Array<{ name?: string | null, abbreviation?: string | null }> | null
+  sports_sport_slug: string | null
+  sports_league_slug: string | null
+  sports_series_slug: string | null
+  sports_source_provider: string | null
+  sports_source_event_id: string | null
+  sports_source_game_id: string | null
+  sports_source_league_id: string | null
+  sports_source_league_label: string | null
+  sports_source_match_confidence: string | null
+  sports_vertical: 'sports' | 'esports' | null
   is_sports_games_moneyline: boolean
   end_date: string | null
   created_at: string
@@ -897,6 +923,41 @@ function buildSportsVerticalTagCondition(sportsVertical: SportsVertical | '' | u
     : sql`NOT ${hasEsportsTag}`
 }
 
+function buildSportsSectionCondition(sportsSection: string) {
+  const normalizedSportsSection = sportsSection.trim().toLowerCase()
+  if (normalizedSportsSection !== 'games' && normalizedSportsSection !== 'props') {
+    return null
+  }
+
+  const sectionTagSlugs = normalizedSportsSection === 'games'
+    ? ['games', 'game']
+    : ['props', 'prop']
+  const sportsTagsMatchCondition = buildSportsTagsMatchCondition(sectionTagSlugs)
+  const sportsMetadataSectionCondition = sportsTagsMatchCondition
+    ? exists(
+        db.select()
+          .from(event_sports)
+          .where(and(
+            eq(event_sports.event_id, events.id),
+            sportsTagsMatchCondition,
+          )),
+      )
+    : null
+  const genericTagSectionCondition = exists(
+    db.select()
+      .from(event_tags)
+      .innerJoin(tags, eq(event_tags.tag_id, tags.id))
+      .where(and(
+        eq(event_tags.event_id, events.id),
+        inArray(tags.slug, sectionTagSlugs),
+      )),
+  )
+
+  return sportsMetadataSectionCondition
+    ? or(sportsMetadataSectionCondition, genericTagSectionCondition)
+    : genericTagSectionCondition
+}
+
 function toOptionalIsoString(value: unknown): string | null {
   if (!value) {
     return null
@@ -981,6 +1042,7 @@ function eventResource(
       sports_market_type: market.sports?.sports_market_type ?? null,
       sports_game_start_time: market.sports?.sports_game_start_time?.toISOString?.() ?? null,
       sports_start_time: market.sports?.sports_start_time?.toISOString?.() ?? null,
+      sports_line: market.sports?.sports_line ?? null,
       sports_group_item_title: market.sports?.sports_group_item_title ?? null,
       sports_group_item_threshold: market.sports?.sports_group_item_threshold ?? null,
       end_time: market.end_time?.toISOString?.() ?? null,
@@ -1047,6 +1109,7 @@ function eventResource(
     additional_context: event.additional_context ?? null,
     additional_context_updated_at: event.additional_context_updated_at?.toISOString?.() ?? null,
     show_market_icons: event.show_market_icons ?? true,
+    is_polymarket_mirror: Boolean(event.is_polymarket_mirror),
     enable_neg_risk: Boolean(event.enable_neg_risk),
     neg_risk_augmented: Boolean(event.neg_risk_augmented),
     neg_risk: Boolean(event.neg_risk),
@@ -1076,6 +1139,12 @@ function eventResource(
     sports_tags: normalizedSportsTags,
     sports_teams: normalizedSportsTeams,
     sports_team_logo_urls: normalizedSportsTeamLogoUrls,
+    sports_source_provider: event.sports?.sports_source_provider ?? null,
+    sports_source_event_id: event.sports?.sports_source_event_id ?? null,
+    sports_source_game_id: event.sports?.sports_source_game_id ?? null,
+    sports_source_league_id: event.sports?.sports_source_league_id ?? null,
+    sports_source_league_label: event.sports?.sports_source_league_label ?? null,
+    sports_source_match_confidence: event.sports?.sports_source_match_confidence ?? null,
     has_live_chart: hasLiveChart,
     active_markets_count: Number(event.active_markets_count || 0),
     total_markets_count: Number(event.total_markets_count || 0),
@@ -1145,6 +1214,11 @@ interface EventListQueryContext {
 function normalizeEventListLimit(value: number | undefined) {
   const normalized = Number.isFinite(value) ? Math.floor(value as number) : DEFAULT_EVENT_LIST_LIMIT
   return Math.min(Math.max(normalized, 1), 128)
+}
+
+function normalizeSportsFeedEventLimit(value: number | undefined) {
+  const normalized = Number.isFinite(value) ? Math.floor(value as number) : DEFAULT_SPORTS_FEED_EVENT_LIMIT
+  return Math.min(Math.max(normalized, 1), MAX_SPORTS_FEED_EVENT_LIMIT)
 }
 
 function normalizeEventListOffset(value: number | undefined) {
@@ -1391,22 +1465,9 @@ async function buildEventListQueryContext({
     )
   }
 
-  const normalizedSportsSection = sportsSection.trim().toLowerCase()
-  if (normalizedSportsSection === 'games' || normalizedSportsSection === 'props') {
-    const sectionTagSlugs = normalizedSportsSection === 'games'
-      ? ['games', 'game']
-      : ['props', 'prop']
-    whereConditions.push(
-      exists(
-        db.select()
-          .from(event_tags)
-          .innerJoin(tags, eq(event_tags.tag_id, tags.id))
-          .where(and(
-            eq(event_tags.event_id, events.id),
-            inArray(tags.slug, sectionTagSlugs),
-          )),
-      ),
-    )
+  const sportsSectionCondition = buildSportsSectionCondition(sportsSection)
+  if (sportsSectionCondition) {
+    whereConditions.push(sportsSectionCondition)
   }
 
   const sportsVerticalCondition = buildSportsVerticalTagCondition(sportsVertical)
@@ -1536,6 +1597,71 @@ async function selectOrderedEventIds({
   return rows.map(row => row.id)
 }
 
+async function selectSportsFeedEventIds({
+  baseWhere,
+  limit = DEFAULT_SPORTS_FEED_EVENT_LIMIT,
+  mode,
+  now = new Date(),
+}: {
+  baseWhere: SQL<unknown> | undefined
+  limit?: number
+  mode: SportsFeedMode
+  now?: Date
+}) {
+  if (!baseWhere) {
+    return []
+  }
+
+  const cappedLimit = normalizeSportsFeedEventLimit(limit)
+  const sportsStartTime = sql<Date | null>`COALESCE(${event_sports.sports_start_time}, ${events.start_date})`
+  const sportsReferenceEndTime = sql<Date | null>`
+    CASE
+      WHEN ${events.end_date} IS NOT NULL AND ${events.end_date} > ${sportsStartTime}
+        THEN ${events.end_date}
+      ELSE ${sportsStartTime}
+    END
+  `
+  const sportsLiveWindowCondition = sql`
+    ${event_sports.sports_live} IS TRUE
+    OR (
+      ${sportsStartTime} IS NOT NULL
+      AND ${sportsStartTime} <= ${now}
+      AND ${now} <= ${sportsReferenceEndTime} + INTERVAL '2 hours'
+    )
+  `
+  const sportsFutureCondition = sql`
+    ${sportsStartTime} IS NOT NULL
+    AND ${sportsStartTime} > ${now}
+  `
+  const sportsFeedCondition = mode === 'soon'
+    ? sportsFutureCondition
+    : or(sportsLiveWindowCondition, sportsFutureCondition)
+  const sportsLiveSortRank = sql<number>`
+    CASE
+      WHEN ${sportsLiveWindowCondition} THEN 0
+      ELSE 1
+    END
+  `
+
+  const rows = await db
+    .select({ id: events.id })
+    .from(events)
+    .innerJoin(event_sports, eq(event_sports.event_id, events.id))
+    .where(and(
+      baseWhere,
+      sql`${event_sports.sports_ended} IS NOT TRUE`,
+      sportsFeedCondition,
+    ))
+    .orderBy(
+      ...(mode === 'liveAndSoon' ? [asc(sportsLiveSortRank)] : []),
+      asc(sportsStartTime),
+      desc(events.id),
+    )
+    .limit(cappedLimit)
+
+  return rows.map(row => row.id)
+}
+
 function getEventMainTag(tags: any[] | undefined): string {
   if (!tags?.length) {
     return 'World'
@@ -1543,6 +1669,79 @@ function getEventMainTag(tags: any[] | undefined): string {
 
   const mainTag = tags.find(tag => tag.is_main_category)
   return mainTag?.name || tags[0].name
+}
+
+async function hydrateEventListResults({
+  eventsData,
+  locale,
+  skipLivePricing = false,
+  sportsSlugResolver,
+  userId = '',
+}: {
+  eventsData: DrizzleEventResult[]
+  locale: SupportedLocale
+  skipLivePricing?: boolean
+  sportsSlugResolver: SportsSlugResolver
+  userId?: string
+}) {
+  const tokensForPricing = skipLivePricing
+    ? []
+    : eventsData.flatMap(event =>
+        (event.markets ?? []).flatMap(market =>
+          (market.condition?.outcomes ?? []).map(outcome => outcome.token_id).filter(Boolean),
+        ),
+      )
+  const tagIds = Array.from(new Set(
+    eventsData.flatMap(event =>
+      (event.eventTags ?? [])
+        .map(eventTag => eventTag.tag?.id)
+        .filter((tagId): tagId is number => typeof tagId === 'number'),
+    ),
+  ))
+  const eventIds = eventsData.map(event => event.id)
+  const sportsVolumeGroupKeyByEventId = await getSportsVolumeGroupKeysByEventId(eventIds)
+  const sportsVolumeGroupKeysForAggregation = Array.from(new Set(
+    sportsVolumeGroupKeyByEventId.values(),
+  ))
+  const [priceMap, lastTradeMap, localizedTagNamesById, localizedEventTitlesById, groupedSportsVolumesByGroupKey] = await Promise.all([
+    skipLivePricing ? Promise.resolve(new Map<string, OutcomePrices>()) : fetchOutcomePrices(tokensForPricing),
+    skipLivePricing ? Promise.resolve(new Map<string, number>()) : fetchLastTradePrices(tokensForPricing),
+    getLocalizedTagNamesById(tagIds, locale),
+    getLocalizedEventTitlesById(eventIds, locale),
+    getSportsAggregatedVolumesByGroupKey(sportsVolumeGroupKeysForAggregation),
+  ])
+  const liveChartSeriesSlugs = await getEnabledLiveChartSeriesSlugs()
+
+  return eventsData
+    .filter(event => event.markets?.length > 0)
+    .map(event =>
+      eventResource(
+        event as DrizzleEventResult,
+        userId,
+        sportsSlugResolver,
+        priceMap,
+        lastTradeMap,
+        localizedTagNamesById,
+        localizedEventTitlesById,
+        liveChartSeriesSlugs,
+      ),
+    )
+    .map((event) => {
+      const groupKey = sportsVolumeGroupKeyByEventId.get(event.id)
+      if (!groupKey) {
+        return event
+      }
+
+      const groupedVolume = groupedSportsVolumesByGroupKey.get(groupKey)
+      if (groupedVolume == null) {
+        return event
+      }
+
+      return {
+        ...event,
+        volume: groupedVolume,
+      }
+    })
 }
 
 export const EventRepository = {
@@ -1640,22 +1839,9 @@ export const EventRepository = {
         )
       }
 
-      const normalizedSportsSection = sportsSection.trim().toLowerCase()
-      if (normalizedSportsSection === 'games' || normalizedSportsSection === 'props') {
-        const sectionTagSlugs = normalizedSportsSection === 'games'
-          ? ['games', 'game']
-          : ['props', 'prop']
-        whereConditions.push(
-          exists(
-            db.select()
-              .from(event_tags)
-              .innerJoin(tags, eq(event_tags.tag_id, tags.id))
-              .where(and(
-                eq(event_tags.event_id, events.id),
-                inArray(tags.slug, sectionTagSlugs),
-              )),
-          ),
-        )
+      const sportsSectionCondition = buildSportsSectionCondition(sportsSection)
+      if (sportsSectionCondition) {
+        whereConditions.push(sportsSectionCondition)
       }
 
       const sportsVerticalCondition = buildSportsVerticalTagCondition(sportsVertical)
@@ -1973,62 +2159,90 @@ export const EventRepository = {
         })
       }
 
-      const tokensForPricing = skipLivePricing
-        ? []
-        : eventsData.flatMap(event =>
-            (event.markets ?? []).flatMap(market =>
-              (market.condition?.outcomes ?? []).map(outcome => outcome.token_id).filter(Boolean),
-            ),
-          )
-      const tagIds = Array.from(new Set(
-        eventsData.flatMap(event =>
-          (event.eventTags ?? [])
-            .map(eventTag => eventTag.tag?.id)
-            .filter((tagId): tagId is number => typeof tagId === 'number'),
+      const eventsWithMarkets = await hydrateEventListResults({
+        eventsData,
+        locale,
+        skipLivePricing,
+        sportsSlugResolver,
+        userId,
+      })
+
+      return { data: eventsWithMarkets, error: null }
+    })
+  },
+
+  async listSportsFeedEvents({
+    cacheVersion = SPORTS_FEED_EVENT_QUERY_CACHE_VERSION,
+    locale = DEFAULT_LOCALE,
+    limit = DEFAULT_SPORTS_FEED_EVENT_LIMIT,
+    mode,
+    sportsVertical,
+  }: ListSportsFeedEventsProps): Promise<QueryResult<Event[]>> {
+    'use cache'
+    cacheTag(cacheTags.events('guest'))
+    cacheTag(cacheTags.eventsList)
+    void cacheVersion
+
+    return await runQuery(async () => {
+      const { baseWhere, empty, sportsSlugResolver } = await buildEventListQueryContext({
+        tag: '',
+        sportsVertical,
+        search: '',
+        userId: '',
+        bookmarked: false,
+        status: 'active',
+        locale,
+        sportsSection: 'games',
+        excludeSportsAuxiliary: true,
+      })
+
+      if (empty) {
+        return { data: [], error: null }
+      }
+
+      const orderedIds = await selectSportsFeedEventIds({
+        baseWhere,
+        limit,
+        mode,
+      })
+
+      if (orderedIds.length === 0) {
+        return { data: [], error: null }
+      }
+
+      const orderIndex = new Map(orderedIds.map((id, index) => [id, index]))
+      const sportsFeedData = await db.query.events.findMany({
+        where: and(
+          baseWhere,
+          inArray(events.id, orderedIds),
         ),
-      ))
-      const eventIds = eventsData.map(event => event.id)
-      const sportsVolumeGroupKeyByEventId = await getSportsVolumeGroupKeysByEventId(eventIds)
-      const sportsVolumeGroupKeysForAggregation = Array.from(new Set(
-        sportsVolumeGroupKeyByEventId.values(),
-      ))
-      const [priceMap, lastTradeMap, localizedTagNamesById, localizedEventTitlesById, groupedSportsVolumesByGroupKey] = await Promise.all([
-        skipLivePricing ? Promise.resolve(new Map<string, OutcomePrices>()) : fetchOutcomePrices(tokensForPricing),
-        skipLivePricing ? Promise.resolve(new Map<string, number>()) : fetchLastTradePrices(tokensForPricing),
-        getLocalizedTagNamesById(tagIds, locale),
-        getLocalizedEventTitlesById(eventIds, locale),
-        getSportsAggregatedVolumesByGroupKey(sportsVolumeGroupKeysForAggregation),
-      ])
-      const liveChartSeriesSlugs = await getEnabledLiveChartSeriesSlugs()
+        with: {
+          markets: {
+            with: {
+              sports: true,
+              condition: {
+                with: { outcomes: true },
+              },
+            },
+          },
 
-      const eventsWithMarkets = eventsData
-        .filter(event => event.markets?.length > 0)
-        .map(event => eventResource(
-          event as DrizzleEventResult,
-          userId,
-          sportsSlugResolver,
-          priceMap,
-          lastTradeMap,
-          localizedTagNamesById,
-          localizedEventTitlesById,
-          liveChartSeriesSlugs,
-        ))
-        .map((event) => {
-          const groupKey = sportsVolumeGroupKeyByEventId.get(event.id)
-          if (!groupKey) {
-            return event
-          }
+          eventTags: {
+            with: { tag: true },
+          },
+          sports: true,
+        },
+      }) as DrizzleEventResult[]
 
-          const groupedVolume = groupedSportsVolumesByGroupKey.get(groupKey)
-          if (groupedVolume == null) {
-            return event
-          }
-
-          return {
-            ...event,
-            volume: groupedVolume,
-          }
-        })
+      const eventsData = sportsFeedData.sort((left, right) => {
+        const leftIndex = orderIndex.get(left.id) ?? Number.MAX_SAFE_INTEGER
+        const rightIndex = orderIndex.get(right.id) ?? Number.MAX_SAFE_INTEGER
+        return leftIndex - rightIndex
+      })
+      const eventsWithMarkets = await hydrateEventListResults({
+        eventsData,
+        locale,
+        sportsSlugResolver,
+      })
 
       return { data: eventsWithMarkets, error: null }
     })
@@ -2382,8 +2596,20 @@ export const EventRepository = {
       sports_score: string | null
       sports_live: boolean | null
       sports_ended: boolean | null
+      sports_event_date: string | null
+      sports_start_time: string | null
+      sports_teams: Array<{ name?: string | null, abbreviation?: string | null }> | null
+      sports_sport_slug: string | null
+      sports_league_slug: string | null
+      sports_series_slug: string | null
+      sports_source_provider: string | null
+      sports_source_event_id: string | null
+      sports_source_game_id: string | null
+      sports_source_league_id: string | null
+      sports_source_league_label: string | null
+      sports_source_match_confidence: string | null
     }>()
-    const sportsTagStateByEventId = new Map<string, { hasSportsTag: boolean, hasGamesTag: boolean }>()
+    const sportsTagStateByEventId = new Map<string, { hasSportsTag: boolean, hasEsportsTag: boolean, hasGamesTag: boolean }>()
     const moneylineEventIds = new Set<string>()
 
     if (eventIds.length > 0) {
@@ -2410,6 +2636,18 @@ export const EventRepository = {
           sports_score: event_sports.sports_score,
           sports_live: event_sports.sports_live,
           sports_ended: event_sports.sports_ended,
+          sports_event_date: event_sports.sports_event_date,
+          sports_start_time: event_sports.sports_start_time,
+          sports_teams: event_sports.sports_teams,
+          sports_sport_slug: event_sports.sports_sport_slug,
+          sports_league_slug: event_sports.sports_league_slug,
+          sports_series_slug: event_sports.sports_series_slug,
+          sports_source_provider: event_sports.sports_source_provider,
+          sports_source_event_id: event_sports.sports_source_event_id,
+          sports_source_game_id: event_sports.sports_source_game_id,
+          sports_source_league_id: event_sports.sports_source_league_id,
+          sports_source_league_label: event_sports.sports_source_league_label,
+          sports_source_match_confidence: event_sports.sports_source_match_confidence,
         })
         .from(event_sports)
         .where(inArray(event_sports.event_id, eventIds))
@@ -2419,6 +2657,18 @@ export const EventRepository = {
           sports_score: row.sports_score ?? null,
           sports_live: row.sports_live ?? null,
           sports_ended: row.sports_ended ?? null,
+          sports_event_date: row.sports_event_date ?? null,
+          sports_start_time: row.sports_start_time?.toISOString?.() ?? null,
+          sports_teams: Array.isArray(row.sports_teams) ? row.sports_teams : null,
+          sports_sport_slug: row.sports_sport_slug ?? null,
+          sports_league_slug: row.sports_league_slug ?? null,
+          sports_series_slug: row.sports_series_slug ?? null,
+          sports_source_provider: row.sports_source_provider ?? null,
+          sports_source_event_id: row.sports_source_event_id ?? null,
+          sports_source_game_id: row.sports_source_game_id ?? null,
+          sports_source_league_id: row.sports_source_league_id ?? null,
+          sports_source_league_label: row.sports_source_league_label ?? null,
+          sports_source_match_confidence: row.sports_source_match_confidence ?? null,
         })
       }
 
@@ -2431,17 +2681,21 @@ export const EventRepository = {
         .innerJoin(tags, eq(event_tags.tag_id, tags.id))
         .where(and(
           inArray(event_tags.event_id, eventIds),
-          inArray(tags.slug, ['sports', 'games', 'game']),
+          inArray(tags.slug, ['sports', 'esports', 'games', 'game']),
         ))
 
       for (const row of sportsTagRows) {
         const currentState = sportsTagStateByEventId.get(row.event_id) ?? {
           hasSportsTag: false,
+          hasEsportsTag: false,
           hasGamesTag: false,
         }
 
         if (row.slug === 'sports') {
           currentState.hasSportsTag = true
+        }
+        if (row.slug === 'esports') {
+          currentState.hasEsportsTag = true
         }
         if (row.slug === 'games' || row.slug === 'game') {
           currentState.hasGamesTag = true
@@ -2495,8 +2749,21 @@ export const EventRepository = {
         sports_score: sportsData?.sports_score ?? null,
         sports_live: sportsData?.sports_live ?? null,
         sports_ended: sportsData?.sports_ended ?? null,
+        sports_event_date: sportsData?.sports_event_date ?? null,
+        sports_start_time: sportsData?.sports_start_time ?? null,
+        sports_teams: sportsData?.sports_teams ?? null,
+        sports_sport_slug: sportsData?.sports_sport_slug ?? null,
+        sports_league_slug: sportsData?.sports_league_slug ?? null,
+        sports_series_slug: sportsData?.sports_series_slug ?? null,
+        sports_source_provider: sportsData?.sports_source_provider ?? null,
+        sports_source_event_id: sportsData?.sports_source_event_id ?? null,
+        sports_source_game_id: sportsData?.sports_source_game_id ?? null,
+        sports_source_league_id: sportsData?.sports_source_league_id ?? null,
+        sports_source_league_label: sportsData?.sports_source_league_label ?? null,
+        sports_source_match_confidence: sportsData?.sports_source_match_confidence ?? null,
+        sports_vertical: sportsTagState?.hasEsportsTag ? 'esports' : sportsTagState?.hasSportsTag ? 'sports' : null,
         is_sports_games_moneyline: Boolean(
-          sportsTagState?.hasSportsTag
+          (sportsTagState?.hasSportsTag || sportsTagState?.hasEsportsTag)
           && sportsTagState?.hasGamesTag
           && moneylineEventIds.has(row.id),
         ),
@@ -2633,81 +2900,139 @@ export const EventRepository = {
     {
       sportsEnded,
       sportsScore,
+      sportsSource,
+      livestreamUrl,
     }: {
       sportsEnded: boolean
       sportsScore: string | null
+      sportsSource?: {
+        provider: string | null
+        eventId: string | null
+        gameId: string | null
+        leagueId: string | null
+        leagueLabel: string | null
+        matchConfidence: string | null
+        payload?: Record<string, unknown> | null
+      }
+      livestreamUrl?: string | null
     },
   ): Promise<QueryResult<{
     id: string
     slug: string
+    livestream_url: string | null
     sports_score: string | null
     sports_live: boolean | null
     sports_ended: boolean | null
+    sports_source_provider: string | null
+    sports_source_event_id: string | null
+    sports_source_game_id: string | null
+    sports_source_league_id: string | null
+    sports_source_league_label: string | null
+    sports_source_match_confidence: string | null
   }>> {
     return runQuery(async () => {
-      const row = await db
-        .select({
-          id: events.id,
-          slug: events.slug,
-        })
-        .from(events)
-        .where(eq(events.id, eventId))
-        .limit(1)
+      return db.transaction(async (tx) => {
+        const row = await tx
+          .select({
+            id: events.id,
+            slug: events.slug,
+            livestream_url: events.livestream_url,
+          })
+          .from(events)
+          .where(eq(events.id, eventId))
+          .limit(1)
 
-      const eventRow = row[0]
-      if (!eventRow) {
-        return { data: null, error: 'Event not found.' }
-      }
+        const eventRow = row[0]
+        if (!eventRow) {
+          return { data: null, error: 'Event not found.' }
+        }
 
-      const now = new Date()
-      const sportsPayload: {
-        sports_ended: boolean
-        sports_score: string | null
-        sports_live?: boolean
-        updated_at: Date
-      } = {
-        sports_ended: sportsEnded,
-        sports_score: sportsScore,
-        updated_at: now,
-      }
+        const now = new Date()
+        const sportsPayload: Partial<typeof event_sports.$inferInsert> & {
+          sports_ended: boolean
+          sports_score: string | null
+          updated_at: Date
+        } = {
+          sports_ended: sportsEnded,
+          sports_score: sportsScore,
+          updated_at: now,
+        }
 
-      if (sportsEnded) {
-        sportsPayload.sports_live = false
-      }
+        if (sportsEnded) {
+          sportsPayload.sports_live = false
+        }
 
-      await db
-        .insert(event_sports)
-        .values({
-          event_id: eventId,
-          ...sportsPayload,
-        })
-        .onConflictDoUpdate({
-          target: event_sports.event_id,
-          set: sportsPayload,
-        })
+        if (sportsSource) {
+          const hasSourceIdentity = Boolean(sportsSource.provider && (sportsSource.eventId || sportsSource.gameId))
+          sportsPayload.sports_source_provider = sportsSource.provider
+          sportsPayload.sports_source_event_id = sportsSource.eventId
+          sportsPayload.sports_source_game_id = sportsSource.gameId
+          sportsPayload.sports_source_league_id = sportsSource.leagueId
+          sportsPayload.sports_source_league_label = sportsSource.leagueLabel
+          sportsPayload.sports_source_match_confidence = sportsSource.matchConfidence
+          sportsPayload.sports_source_selected_at = hasSourceIdentity ? now : null
+          if ('payload' in sportsSource) {
+            sportsPayload.sports_source_payload = sportsSource.payload ?? null
+          }
+        }
 
-      const sportsRows = await db
-        .select({
-          sports_score: event_sports.sports_score,
-          sports_live: event_sports.sports_live,
-          sports_ended: event_sports.sports_ended,
-        })
-        .from(event_sports)
-        .where(eq(event_sports.event_id, eventId))
-        .limit(1)
+        if (livestreamUrl !== undefined) {
+          await tx
+            .update(events)
+            .set({
+              livestream_url: livestreamUrl,
+              updated_at: now,
+            })
+            .where(eq(events.id, eventId))
+        }
 
-      const sportsRow = sportsRows[0]
+        await tx
+          .insert(event_sports)
+          .values({
+            event_id: eventId,
+            ...sportsPayload,
+          })
+          .onConflictDoUpdate({
+            target: event_sports.event_id,
+            set: sportsPayload,
+          })
 
-      return {
-        data: {
-          id: eventRow.id,
-          slug: eventRow.slug,
-          sports_score: sportsRow?.sports_score ?? null,
-          sports_live: sportsRow?.sports_live ?? null,
-          sports_ended: sportsRow?.sports_ended ?? null,
-        },
-        error: null,
-      }
+        const sportsRows = await tx
+          .select({
+            sports_score: event_sports.sports_score,
+            sports_live: event_sports.sports_live,
+            sports_ended: event_sports.sports_ended,
+            sports_source_provider: event_sports.sports_source_provider,
+            sports_source_event_id: event_sports.sports_source_event_id,
+            sports_source_game_id: event_sports.sports_source_game_id,
+            sports_source_league_id: event_sports.sports_source_league_id,
+            sports_source_league_label: event_sports.sports_source_league_label,
+            sports_source_match_confidence: event_sports.sports_source_match_confidence,
+          })
+          .from(event_sports)
+          .where(eq(event_sports.event_id, eventId))
+          .limit(1)
+
+        const sportsRow = sportsRows[0]
+
+        return {
+          data: {
+            id: eventRow.id,
+            slug: eventRow.slug,
+            livestream_url: livestreamUrl !== undefined ? livestreamUrl : eventRow.livestream_url ?? null,
+            sports_score: sportsRow?.sports_score ?? null,
+            sports_live: sportsRow?.sports_live ?? null,
+            sports_ended: sportsRow?.sports_ended ?? null,
+            sports_source_provider: sportsRow?.sports_source_provider ?? null,
+            sports_source_event_id: sportsRow?.sports_source_event_id ?? null,
+            sports_source_game_id: sportsRow?.sports_source_game_id ?? null,
+            sports_source_league_id: sportsRow?.sports_source_league_id ?? null,
+            sports_source_league_label: sportsRow?.sports_source_league_label ?? null,
+            sports_source_match_confidence: sportsRow?.sports_source_match_confidence ?? null,
+          },
+          error: null,
+        }
+      })
     })
   },
 

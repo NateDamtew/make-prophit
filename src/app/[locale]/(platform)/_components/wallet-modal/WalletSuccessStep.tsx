@@ -3,16 +3,13 @@
 import type { LiFiWalletTokenItem } from '@/hooks/useLiFiWalletTokens'
 import {
   CheckIcon,
-  ExternalLinkIcon,
   InfoIcon,
-  WalletIcon,
 } from 'lucide-react'
 import Image from 'next/image'
-import SiteLogoIcon from '@/components/SiteLogoIcon'
+import WalletTransferSummary from '@/app/[locale]/(platform)/_components/wallet-modal/WalletTransferSummary'
 import { Button } from '@/components/ui/button'
 import { useSiteIdentity } from '@/hooks/useSiteIdentity'
 import { formatDisplayAmount } from '@/lib/amount-input'
-import { POLYGON_SCAN_BASE } from '@/lib/network'
 
 function WalletSuccessStep({
   walletEoaAddress,
@@ -33,8 +30,6 @@ function WalletSuccessStep({
   onClose: () => void
   onNewDeposit: () => void
 }) {
-  const eoaSuffix = walletEoaAddress?.slice(-4)
-  const safeSuffix = walletAddress?.slice(-4)
   const site = useSiteIdentity()
   const supportUrl = site.supportUrl
   const supportIsEmail = supportUrl?.startsWith('mailto:') ?? false
@@ -77,60 +72,13 @@ function WalletSuccessStep({
           </div>
         </div>
 
-        <div className="rounded-lg border">
-          <div className="px-4 py-1.5 text-sm">
-            <div className="flex items-center justify-between text-muted-foreground">
-              <span>Source</span>
-              <span className="flex items-center gap-2 font-semibold text-foreground">
-                <WalletIcon className="size-4" />
-                Wallet
-                {eoaSuffix ? ` (...${eoaSuffix})` : ''}
-                {walletEoaAddress && (
-                  <a
-                    href={`${POLYGON_SCAN_BASE}/address/${walletEoaAddress}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex"
-                    aria-label="View wallet on Polygonscan"
-                  >
-                    <ExternalLinkIcon className="size-3" />
-                  </a>
-                )}
-              </span>
-            </div>
-          </div>
-          <div className="mx-auto h-px w-[90%] bg-border/60" />
-          <div className="px-4 py-1.5 text-sm">
-            <div className="flex items-center justify-between text-muted-foreground">
-              <span>Destination</span>
-              <span className="flex items-center gap-2 font-semibold text-foreground">
-                <SiteLogoIcon
-                  logoSvg={site.logoSvg}
-                  logoImageUrl={site.logoImageUrl}
-                  alt={`${siteLabel} logo`}
-                  className="size-4 text-current [&_svg]:size-[1em] [&_svg_*]:fill-current [&_svg_*]:stroke-current"
-                  imageClassName="size-[1em] object-contain"
-                  size={16}
-                />
-                {siteLabel}
-                {' '}
-                Wallet
-                {safeSuffix ? ` (...${safeSuffix})` : ''}
-                {walletAddress && (
-                  <a
-                    href={`${POLYGON_SCAN_BASE}/address/${walletAddress}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex"
-                    aria-label="View wallet on Polygonscan"
-                  >
-                    <ExternalLinkIcon className="size-3" />
-                  </a>
-                )}
-              </span>
-            </div>
-          </div>
-        </div>
+        <WalletTransferSummary
+          walletEoaAddress={walletEoaAddress}
+          walletAddress={walletAddress}
+          siteLabel={siteLabel}
+          showDestinationAddress
+          showExternalLinks
+        />
 
         <div className="rounded-lg border">
           <div className="px-4 py-1.5 text-sm">

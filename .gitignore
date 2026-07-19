@@ -63,3 +63,7 @@ docs2
 # Private fundraise / strategy docs — never commit
 PROPHIT-FUNDRAISE.md
 PROPHIT-YC-APPLICATION.md
+
+# Local scratch area
+scratch/
+.env.backup

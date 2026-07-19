@@ -12,22 +12,22 @@ import { useCallback, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { useSignTypedData } from 'wagmi'
 import { useTradingOnboarding } from '@/app/[locale]/(platform)/_providers/TradingOnboardingProvider'
-import AppLink from '@/components/AppLink'
 import EventIconImage from '@/components/EventIconImage'
 import SiteLogoIcon from '@/components/SiteLogoIcon'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Drawer, DrawerContent, DrawerTitle, DrawerTrigger } from '@/components/ui/drawer'
-import { DEPOSIT_WALLET_BALANCE_QUERY_KEY } from '@/hooks/useBalance'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { useSignaturePromptRunner } from '@/hooks/useSignaturePromptRunner'
 import { useSiteIdentity } from '@/hooks/useSiteIdentity'
+import { Link } from '@/i18n/navigation'
 import { formatCurrency, formatPercent } from '@/lib/formatters'
 import { isCurrentNegRiskAdapterAddress } from '@/lib/neg-risk-adapter'
 import { removeClaimedPublicPositions, updateQueryDataWhere } from '@/lib/optimistic-trading'
 import { buildPublicProfilePath } from '@/lib/platform-routing'
 import { isTradingAuthRequiredError } from '@/lib/trading-auth/errors'
+import { invalidatePortfolioClaimQueries } from '@/lib/trading-cache'
 import { cn, triggerConfetti } from '@/lib/utils'
 import { normalizeAddress } from '@/lib/wallet'
 import {
@@ -253,18 +253,10 @@ export default function PortfolioMarketsWonCardClient({ data }: PortfolioMarkets
     )
 
     setTimeout(() => {
-      void queryClient.invalidateQueries({ queryKey: ['user-positions'] })
-      void queryClient.invalidateQueries({ queryKey: ['user-market-positions'] })
-      void queryClient.invalidateQueries({ queryKey: ['user-conditional-shares'] })
-      void queryClient.invalidateQueries({ queryKey: [DEPOSIT_WALLET_BALANCE_QUERY_KEY] })
-      void queryClient.invalidateQueries({ queryKey: ['portfolio-value'] })
+      invalidatePortfolioClaimQueries(queryClient)
     }, 4_000)
     setTimeout(() => {
-      void queryClient.invalidateQueries({ queryKey: ['user-positions'] })
-      void queryClient.invalidateQueries({ queryKey: ['user-market-positions'] })
-      void queryClient.invalidateQueries({ queryKey: ['user-conditional-shares'] })
-      void queryClient.invalidateQueries({ queryKey: [DEPOSIT_WALLET_BALANCE_QUERY_KEY] })
-      void queryClient.invalidateQueries({ queryKey: ['portfolio-value'] })
+      invalidatePortfolioClaimQueries(queryClient)
     }, 12_000)
 
     router.refresh()
@@ -576,9 +568,9 @@ export default function PortfolioMarketsWonCardClient({ data }: PortfolioMarkets
 
           return href
             ? (
-                <AppLink intentPrefetch key={market.conditionId} href={href} className={itemClassName}>
+                <Link key={market.conditionId} href={href} className={itemClassName}>
                   {content}
-                </AppLink>
+                </Link>
               )
             : (
                 <div key={market.conditionId} className={itemClassName} aria-disabled="true">

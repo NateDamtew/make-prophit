@@ -14,6 +14,48 @@ export function useAppKitNetworkCore() {
   return { chainId }
 }
 
+interface AppKitConnectingWalletConnector {
+  id?: string
+  rdns?: string
+  chain?: string
+}
+
+interface AppKitConnectingWallet {
+  id?: string
+  isInjected?: boolean
+  connectors: AppKitConnectingWalletConnector[]
+}
+
+interface AppKitSwitchConnectionArgs {
+  connection: {
+    connectorId: string
+    accounts: Array<{ address: string }>
+  }
+  address: string
+}
+
+/**
+ * Reown multi-connection shim. Dynamic manages a single active wallet, so
+ * there is no switchable connection list — switchConnection stays null and the
+ * multi-wallet arbitrage switch-back path is skipped at its null guard.
+ */
+export function useAppKitConnection(_options?: { namespace?: string }) {
+  return { switchConnection: null as ((args: AppKitSwitchConnectionArgs) => Promise<void>) | null }
+}
+
+/** Reown modal state shim: no Reown modal exists under Dynamic. */
+export function useAppKitState() {
+  return {
+    open: false,
+    initialized: true,
+    loading: false,
+    // Reown's per-project multi-wallet flag; always false under Dynamic, which
+    // keeps the multi-wallet arbitrage connect flow disabled.
+    multiWallet: false,
+    connectingWallet: undefined as AppKitConnectingWallet | undefined,
+  }
+}
+
 export function useAppKitProvider<T = unknown>(_namespace: string) {
   const { isEmbedded } = useAppKit()
   const { data: connectorClient } = useConnectorClient()

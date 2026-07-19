@@ -6,12 +6,10 @@
 import type { ChangeEvent } from 'react'
 import type {
   LoadedSignaturePlan,
-  PreSignIndicatorState,
   RpcWalletProvider,
 } from './admin-create-event-form-signature-helpers'
 import type {
   AiValidationIssue,
-  AllowedCreatorCheckState,
   CategoryItem,
   CategorySuggestion,
   ContentCheckState,
@@ -30,12 +28,10 @@ import type {
   PrepareResponse,
   PreSignCheckKey,
   ProposerWhitelistCheckState,
-  RecurringOccurrencePreview,
   ResolutionType,
   SignatureExecutionTx,
   SignerOption,
   SlugValidationState,
-  TeamLogoFileMap,
 } from './admin-create-event-form-types'
 import type {
   AdminSportsCustomMarketState,
@@ -46,8 +42,6 @@ import type {
 } from '@/lib/admin-sports-create'
 import type { EventCreationDraftRecord } from '@/lib/db/queries/event-creations'
 import type { EventCreationAssetPayload, EventCreationRecurrenceUnit } from '@/lib/event-creation'
-import { useAppKitAccount } from '@/hooks/useAppKitAccount'
-import { useAppKitNetworkCore, useAppKitProvider } from '@/hooks/useAppKitCompat'
 import {
   Loader2Icon,
 } from 'lucide-react'
@@ -56,34 +50,24 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { createPublicClient, createWalletClient, custom, formatUnits, getAddress, http, isAddress, keccak256, stringToHex } from 'viem'
 import { usePublicClient, useWalletClient } from 'wagmi'
+import { useAppKitAccount } from '@/hooks/useAppKitAccount'
 
+import { useAppKitNetworkCore, useAppKitProvider } from '@/hooks/useAppKitCompat'
 import { usePublicRuntimeConfig } from '@/hooks/usePublicRuntimeConfig'
 import { useSignaturePromptRunner } from '@/hooks/useSignaturePromptRunner'
 import { useRouter } from '@/i18n/navigation'
 import {
   buildAdminSportsDerivedContent,
-  createAdminSportsCustomMarket,
-  createAdminSportsProp,
   createInitialAdminSportsForm,
-  getAdminSportsMarketTypeDefaultOutcomes,
   getAdminSportsMarketTypeGroups,
   isSportsMainCategory,
-  resolveAdminSportsMarketTypeOption,
 } from '@/lib/admin-sports-create'
-import { formatDateTimeLocalValue, normalizeDateTimeLocalValue } from '@/lib/datetime-local'
+import { normalizeDateTimeLocalValue } from '@/lib/datetime-local'
 import {
-  addRecurrenceInterval,
   appendEventCreationSlugSuffix,
-  applyEventCreationTemplate,
-  buildDefaultDeployAt,
-  buildEventCreationTimestampSeed,
   buildEventCreationWalletTail,
-  buildImmediateDeployAt,
-  buildScheduledRecurringDeployAt,
-  hasEventCreationDateTemplateVariable,
   normalizeEventCreationAssetPayload,
   slugifyEventCreationValue as slugify,
-  slugifyEventCreationTemplate as slugifyTemplate,
 } from '@/lib/event-creation'
 import {
   isProposerWhitelistStatusResponse,
@@ -93,7 +77,6 @@ import { sendWithEstimatedFeeRetry } from '@/lib/transaction-fees'
 import { defaultViemNetwork, resolveViemNetworkByChainId, resolveViemRpcUrl } from '@/lib/viem-network'
 import { useUser } from '@/stores/useUser'
 import {
-  buildCategorySlugSet,
   mergeCategoryItems,
   removeGeneratedCategoryItems,
 } from './admin-create-event-form-category-helpers'
@@ -118,7 +101,6 @@ import {
   OPENROUTER_CHECK_TIMEOUT_MS,
   PREPARE_POLL_DELAY_MS,
   PREPARE_POLL_MAX_ATTEMPTS,
-  SIGNATURE_COUNTDOWN_INTERVAL_MS,
   SLUG_CHECK_TIMEOUT_MS,
   TOTAL_STEPS,
   USDC_DECIMALS,
@@ -137,17 +119,11 @@ import {
   areOptionItemsEqual,
   buildRpcTransactionRequest,
   createInitialForm,
-  createOption,
-  extractTitleCategorySuggestions,
   fetchAdminApi,
   fetchAdminApiWithTimeout,
-  formatSignatureCountdown,
   getAiIssueKey,
   getChainLabel,
-  hasRecurringDeploymentHistory,
-  isAiRulesResponse,
   isAiValidationResponse,
-  isAllowedCreatorsResponse,
   isAlreadyInitializedError,
   isBigIntSerializationError,
   isEventCreationRecurrenceUnit,
@@ -166,6 +142,19 @@ import {
   shouldRetryFinalizeRequest,
 } from './admin-create-event-form-utils'
 import { buildStepErrors } from './admin-create-event-form-validation'
+import { useAdminWalletActions } from './useAdminWalletActions'
+import { useAiRules } from './useAiRules'
+import { useAllowedCreatorWallets } from './useAllowedCreatorWallets'
+import { useCategorySuggestions } from './useCategorySuggestions'
+import { useCreateEventFormHandlers } from './useCreateEventFormHandlers'
+import { useEventAssets } from './useEventAssets'
+import { useEventPreview } from './useEventPreview'
+import { usePreSignStatus } from './usePreSignStatus'
+import { useRecurringEventPreview } from './useRecurringEventPreview'
+import { useResolvedDateInputs } from './useResolvedDateInputs'
+import { useSignatureCountdown } from './useSignatureCountdown'
+import { useSportsMarketRows } from './useSportsMarketRows'
+import { useSportsMatchSearch } from './useSportsMatchSearch'
 
 const UMA_RESOLUTION_TEMPORARILY_DISABLED = true
 
@@ -253,13 +242,21 @@ export function useAdminCreateEventForm({
   const [mainCategories, setMainCategories] = useState<MainCategory[]>([])
   const [globalCategories, setGlobalCategories] = useState<CategorySuggestion[]>([])
   const [categoryQuery, setCategoryQuery] = useState('')
-  const [eventImageFile, setEventImageFile] = useState<File | null>(null)
-  const [teamLogoFiles, setTeamLogoFiles] = useState<TeamLogoFileMap>({
-    home: null,
-    away: null,
-  })
-  const [optionImageFiles, setOptionImageFiles] = useState<Record<string, File | null>>({})
-  const [storedAssets, setStoredAssets] = useState<EventCreationAssetPayload>(() => normalizeEventCreationAssetPayload(serverAssetPayload))
+  const {
+    eventImageFile,
+    setEventImageFile,
+    teamLogoFiles,
+    setTeamLogoFiles,
+    optionImageFiles,
+    setOptionImageFiles,
+    storedAssets,
+    setStoredAssets,
+    eventImagePreviewUrl,
+    optionImagePreviewUrls,
+    teamLogoPreviewUrls,
+    hasEventImage,
+    hasTeamLogoByHostStatus,
+  } = useEventAssets(serverAssetPayload)
   const [slugValidationState, setSlugValidationState] = useState<SlugValidationState>('idle')
   const [slugCheckError, setSlugCheckError] = useState('')
   const [resolutionType, setResolutionType] = useState<ResolutionType>('dro_moov2')
@@ -273,8 +270,6 @@ export function useAdminCreateEventForm({
   const [requiredGasPol, setRequiredGasPol] = useState(0)
   const [nativeGasCheckState, setNativeGasCheckState] = useState<NativeGasCheckState>('idle')
   const [nativeGasCheckError, setNativeGasCheckError] = useState('')
-  const [allowedCreatorCheckState, setAllowedCreatorCheckState] = useState<AllowedCreatorCheckState>('idle')
-  const [allowedCreatorCheckError, setAllowedCreatorCheckError] = useState('')
   const [proposerWhitelistCheckState, setProposerWhitelistCheckState] = useState<ProposerWhitelistCheckState>('idle')
   const [proposerWhitelistCheckError, setProposerWhitelistCheckError] = useState('')
   const [openRouterCheckState, setOpenRouterCheckState] = useState<OpenRouterCheckState>('idle')
@@ -285,18 +280,34 @@ export function useAdminCreateEventForm({
   const [bypassedIssueKeys, setBypassedIssueKeys] = useState<string[]>([])
   const [contentCheckProgressLine, setContentCheckProgressLine] = useState('')
   const [contentCheckError, setContentCheckError] = useState('')
-  const [isAddingCreatorWallet, setIsAddingCreatorWallet] = useState(false)
   const [creatorWalletDialogOpen, setCreatorWalletDialogOpen] = useState(false)
   const [proposersDialogOpen, setProposersDialogOpen] = useState(false)
   const [creatorWalletName, setCreatorWalletName] = useState('')
-  const [isGeneratingRules, setIsGeneratingRules] = useState(false)
+  const {
+    allowedCreatorCheckState,
+    allowedCreatorCheckError,
+    isAddingCreatorWallet,
+    runAllowedCreatorCheck,
+    addCurrentWalletToAllowedCreators,
+    resetAllowedCreatorCheck,
+  } = useAllowedCreatorWallets({
+    eoaAddress,
+    creatorWalletName,
+    setCreatorWalletDialogOpen,
+    setCreatorWalletName,
+  })
   const [isSigningAuth, setIsSigningAuth] = useState(false)
   const [isPreparingSignaturePlan, setIsPreparingSignaturePlan] = useState(false)
   const [isExecutingSignatures, setIsExecutingSignatures] = useState(false)
   const [isFinalizingSignatureFlow, setIsFinalizingSignatureFlow] = useState(false)
   const [isLoadingPendingRequest, setIsLoadingPendingRequest] = useState(false)
-  const [authChallengeExpiresAtMs, setAuthChallengeExpiresAtMs] = useState<number | null>(null)
-  const [signatureNowMs, setSignatureNowMs] = useState(0)
+  const {
+    authChallengeExpiresAtMs,
+    setAuthChallengeExpiresAtMs,
+    setSignatureNowMs,
+    authChallengeRemainingSeconds,
+    authChallengeCountdownLabel,
+  } = useSignatureCountdown()
   const [signatureFlowDone, setSignatureFlowDone] = useState(false)
   const [signatureFlowError, setSignatureFlowError] = useState('')
   const [pendingWorkflowRequestId, setPendingWorkflowRequestId] = useState<string | null>(null)
@@ -348,7 +359,6 @@ export function useAdminCreateEventForm({
   const [rulesGeneratorDialogOpen, setRulesGeneratorDialogOpen] = useState(false)
   const [finalPreviewDialogOpen, setFinalPreviewDialogOpen] = useState(false)
   const [resetFormDialogOpen, setResetFormDialogOpen] = useState(false)
-  const [isAddressCopied, setIsAddressCopied] = useState(false)
   const [isBinaryOutcomesEditable, setIsBinaryOutcomesEditable] = useState(false)
   const [areMultiOutcomesEditable, setAreMultiOutcomesEditable] = useState(false)
   const [slugSeed, setSlugSeed] = useState('0')
@@ -363,7 +373,6 @@ export function useAdminCreateEventForm({
   const [isCustomSportSlug, setIsCustomSportSlug] = useState(false)
   const [isCustomLeagueSlug, setIsCustomLeagueSlug] = useState(false)
 
-  const copyTimeoutRef = useRef<number | null>(null)
   const draftAutosaveTimeoutRef = useRef<number | null>(null)
   const lastDraftAutosaveFingerprintRef = useRef<string | null>(null)
   const contentCheckProgressRef = useRef<number | null>(null)
@@ -396,31 +405,6 @@ export function useAdminCreateEventForm({
   const eventEndDateInputRef = useRef<HTMLInputElement | null>(null)
   const sportsStartTimeInputRef = useRef<HTMLInputElement | null>(null)
   const sportsGeneratedCategorySlugsRef = useRef<Set<string>>(new Set())
-
-  const eventImagePreviewUrl = useMemo(
-    () => (eventImageFile ? URL.createObjectURL(eventImageFile) : (storedAssets.eventImage?.publicUrl || null)),
-    [eventImageFile, storedAssets.eventImage?.publicUrl],
-  )
-  const optionImagePreviewUrls = useMemo(() => {
-    const previewUrls: Record<string, string> = Object.fromEntries(
-      Object.entries(storedAssets.optionImages).map(([optionId, asset]) => [optionId, asset.publicUrl]),
-    )
-    Object.entries(optionImageFiles).forEach(([optionId, file]) => {
-      if (file) {
-        previewUrls[optionId] = URL.createObjectURL(file)
-      }
-    })
-    return previewUrls
-  }, [optionImageFiles, storedAssets.optionImages])
-  const teamLogoPreviewUrls = useMemo(() => ({
-    home: teamLogoFiles.home ? URL.createObjectURL(teamLogoFiles.home) : (storedAssets.teamLogos.home?.publicUrl || null),
-    away: teamLogoFiles.away ? URL.createObjectURL(teamLogoFiles.away) : (storedAssets.teamLogos.away?.publicUrl || null),
-  }), [storedAssets.teamLogos.away?.publicUrl, storedAssets.teamLogos.home?.publicUrl, teamLogoFiles])
-  const hasEventImage = Boolean(eventImageFile || storedAssets.eventImage?.publicUrl)
-  const hasTeamLogoByHostStatus = useMemo(() => ({
-    home: Boolean(teamLogoFiles.home || storedAssets.teamLogos.home?.publicUrl),
-    away: Boolean(teamLogoFiles.away || storedAssets.teamLogos.away?.publicUrl),
-  }), [storedAssets.teamLogos.away?.publicUrl, storedAssets.teamLogos.home?.publicUrl, teamLogoFiles.away, teamLogoFiles.home])
 
   const selectedMainCategory = useMemo(
     () => mainCategories.find(category => category.slug === form.mainCategorySlug) ?? null,
@@ -485,6 +469,12 @@ export function useAdminCreateEventForm({
     () => selectedCreatorAddress ?? '',
     [selectedCreatorAddress],
   )
+  const {
+    isAddressCopied,
+    copyWalletAddress,
+    openAdminSettings,
+    resetAddressCopied,
+  } = useAdminWalletActions(eoaAddress)
   const creatorSlugTail = useMemo(
     () => buildEventCreationWalletTail(slugWalletAddress),
     [slugWalletAddress],
@@ -500,6 +490,23 @@ export function useAdminCreateEventForm({
     },
     [form.title, slugSuffix],
   )
+  const {
+    defaultSportsMatchQuery,
+    sportsMatchQuery,
+    setSportsMatchQuery,
+    sportsMatchCandidates,
+    selectedSportsMatch,
+    setSelectedSportsMatch,
+    isSearchingSportsMatches,
+    sportsMatchError,
+    searchSportsMatches,
+  } = useSportsMatchSearch({
+    baseEventSlug,
+    endDateIso: form.endDateIso,
+    mainCategorySlug: form.mainCategorySlug,
+    sportsForm,
+    title: form.title,
+  })
   const sportsDerivedContent = useMemo(
     () => buildAdminSportsDerivedContent({
       baseSlug: baseEventSlug,
@@ -608,511 +615,120 @@ export function useAdminCreateEventForm({
       : 'Example: 120k',
     [form.marketMode],
   )
-  const titleCategorySuggestions = useMemo(
-    () => extractTitleCategorySuggestions(form.title),
-    [form.title],
-  )
-
-  const categorySuggestionsPool = useMemo(() => {
-    const source = selectedMainCategory?.childs?.length
-      ? selectedMainCategory.childs
-      : globalCategories
-
-    const sourceHead = source.slice(0, 4)
-    const sourceTail = source.slice(4)
-    const ordered = [...sourceHead, ...titleCategorySuggestions, ...sourceTail]
-
-    const bySlug = new Map<string, CategorySuggestion>()
-    ordered.forEach((item) => {
-      if (!bySlug.has(item.slug)) {
-        bySlug.set(item.slug, item)
-      }
-    })
-
-    return Array.from(bySlug.values())
-  }, [globalCategories, selectedMainCategory, titleCategorySuggestions])
-
-  const filteredCategorySuggestions = useMemo(() => {
-    const query = categoryQuery.trim().toLowerCase()
-    const selectedSlugs = new Set(form.categories.map(category => category.slug))
-
-    return categorySuggestionsPool
-      .filter((item) => {
-        if (selectedSlugs.has(item.slug)) {
-          return false
-        }
-
-        if (!query) {
-          return true
-        }
-
-        return item.name.toLowerCase().includes(query) || item.slug.toLowerCase().includes(query)
-      })
-      .slice(0, 10)
-  }, [categoryQuery, categorySuggestionsPool, form.categories])
-
-  const selectedCategoryChips = useMemo(() => {
-    const chips = [...form.categories]
-    if (!selectedMainCategory) {
-      return chips
-    }
-
-    const exists = chips.some(category => category.slug === selectedMainCategory.slug)
-    if (!exists) {
-      return [{ label: selectedMainCategory.name, slug: selectedMainCategory.slug }, ...chips]
-    }
-
-    return chips
-  }, [form.categories, selectedMainCategory])
-  const sportsGeneratedCategorySlugs = useMemo(
-    () => buildCategorySlugSet(sportsDerivedContent.categories),
-    [sportsDerivedContent.categories],
-  )
-  const sportsCustomCategoryChips = useMemo(
-    () => removeGeneratedCategoryItems(form.categories, sportsGeneratedCategorySlugs),
-    [form.categories, sportsGeneratedCategorySlugs],
-  )
-  const scheduleDateValue = useMemo(
-    () => normalizeDateTimeLocalValue(form.endDateIso),
-    [form.endDateIso],
-  )
-  const scheduleOccurrenceDate = useMemo(() => {
-    if (!scheduleDateValue) {
-      return null
-    }
-
-    const parsed = new Date(scheduleDateValue)
-    return Number.isNaN(parsed.getTime()) ? null : parsed
-  }, [scheduleDateValue])
-  const recurrenceIntervalNumber = useMemo(
-    () => Math.max(1, Number.parseInt(recurrenceInterval || '1', 10) || 1),
-    [recurrenceInterval],
-  )
-  const hasRecurringDeployHistory = useMemo(
-    () => creationMode === 'recurring' && hasRecurringDeploymentHistory(initialDraftRecord),
-    [creationMode, initialDraftRecord],
-  )
-  const automaticDeployAtIso = useMemo(() => {
-    if (!scheduleOccurrenceDate) {
-      return null
-    }
-
-    if (creationMode !== 'recurring') {
-      return buildDefaultDeployAt(scheduleOccurrenceDate)?.toISOString() ?? null
-    }
-
-    if (!hasRecurringDeployHistory) {
-      return buildImmediateDeployAt(clientNowMs)?.toISOString() ?? null
-    }
-
-    return buildScheduledRecurringDeployAt(
-      scheduleOccurrenceDate,
-      recurrenceUnit || null,
-      recurrenceIntervalNumber,
-    )?.toISOString() ?? null
-  }, [clientNowMs, creationMode, hasRecurringDeployHistory, recurrenceIntervalNumber, recurrenceUnit, scheduleOccurrenceDate])
-  const automaticDeployAtDate = useMemo(() => {
-    if (!automaticDeployAtIso) {
-      return null
-    }
-
-    const parsed = new Date(automaticDeployAtIso)
-    return Number.isNaN(parsed.getTime()) ? null : parsed
-  }, [automaticDeployAtIso])
-  const nextRecurringResolutionDate = useMemo(() => {
-    if (creationMode !== 'recurring' || !scheduleOccurrenceDate || !recurrenceUnit) {
-      return null
-    }
-
-    return addRecurrenceInterval(scheduleOccurrenceDate, recurrenceUnit, recurrenceIntervalNumber)
-  }, [creationMode, recurrenceIntervalNumber, recurrenceUnit, scheduleOccurrenceDate])
-  const nextRecurringDeployDate = useMemo(() => {
-    if (!nextRecurringResolutionDate || !recurrenceUnit) {
-      return null
-    }
-
-    return buildScheduledRecurringDeployAt(nextRecurringResolutionDate, recurrenceUnit, recurrenceIntervalNumber)
-  }, [nextRecurringResolutionDate, recurrenceIntervalNumber, recurrenceUnit])
-  const recurringResolvedTitle = useMemo(() => {
-    if (creationMode !== 'recurring') {
-      return ''
-    }
-
-    const baseTemplate = titleTemplate.trim()
-    if (!baseTemplate) {
-      return ''
-    }
-
-    if (!scheduleOccurrenceDate) {
-      return baseTemplate
-    }
-
-    return applyEventCreationTemplate(baseTemplate, scheduleOccurrenceDate, baseTemplate).trim() || baseTemplate
-  }, [creationMode, scheduleOccurrenceDate, titleTemplate])
-  const derivedRecurringSlugTemplate = useMemo(() => {
-    if (creationMode !== 'recurring') {
-      return ''
-    }
-
-    return slugifyTemplate(titleTemplate)
-  }, [creationMode, titleTemplate])
-  const recurringSlugSuffix = useMemo(() => {
-    if (creationMode !== 'recurring') {
-      return ''
-    }
-
-    const timestampSeed = scheduleOccurrenceDate
-      ? buildEventCreationTimestampSeed(scheduleOccurrenceDate)
-      : slugSeed
-
-    return `${timestampSeed}${creatorSlugTail}`
-  }, [creationMode, creatorSlugTail, scheduleOccurrenceDate, slugSeed])
-  const effectiveRecurringSlugTemplate = useMemo(() => {
-    if (creationMode !== 'recurring') {
-      return ''
-    }
-
-    return slugTemplate.trim() || derivedRecurringSlugTemplate
-  }, [creationMode, derivedRecurringSlugTemplate, slugTemplate])
-  const recurringResolvedSlug = useMemo(() => {
-    if (creationMode !== 'recurring') {
-      return ''
-    }
-
-    const baseTemplate = effectiveRecurringSlugTemplate
-      || slugify(recurringResolvedTitle)
-    if (!baseTemplate) {
-      return ''
-    }
-
-    const rawSlug = scheduleOccurrenceDate
-      ? applyEventCreationTemplate(baseTemplate, scheduleOccurrenceDate, baseTemplate)
-      : baseTemplate
-
-    if (!scheduleOccurrenceDate) {
-      return appendEventCreationSlugSuffix(baseTemplate, recurringSlugSuffix)
-    }
-
-    return appendEventCreationSlugSuffix(slugify(rawSlug || baseTemplate), recurringSlugSuffix)
-  }, [creationMode, effectiveRecurringSlugTemplate, recurringResolvedTitle, recurringSlugSuffix, scheduleOccurrenceDate])
-  const recurringResolvedRules = useMemo(() => {
-    if (creationMode !== 'recurring') {
-      return ''
-    }
-
-    const baseTemplate = form.resolutionRules.trim()
-    if (!baseTemplate) {
-      return ''
-    }
-
-    if (!scheduleOccurrenceDate) {
-      return baseTemplate
-    }
-
-    return applyEventCreationTemplate(baseTemplate, scheduleOccurrenceDate, baseTemplate).trim() || baseTemplate
-  }, [creationMode, form.resolutionRules, scheduleOccurrenceDate])
-  const effectiveResolutionRules = useMemo(
-    () => creationMode === 'recurring'
-      ? (recurringResolvedRules || form.resolutionRules.trim())
-      : form.resolutionRules.trim(),
-    [creationMode, form.resolutionRules, recurringResolvedRules],
-  )
-  const buildRecurringOccurrencePreview = useCallback((date: Date | null): RecurringOccurrencePreview | null => {
-    if (creationMode !== 'recurring' || !date) {
-      return null
-    }
-
-    const rawTitleTemplate = titleTemplate.trim()
-    const resolvedTitle = applyEventCreationTemplate(rawTitleTemplate, date, rawTitleTemplate).trim()
-      || rawTitleTemplate
-      || form.title.trim()
-
-    const rawSlugTemplate = (effectiveRecurringSlugTemplate || slugify(resolvedTitle)).trim()
-    const resolvedBaseSlug = slugify(applyEventCreationTemplate(rawSlugTemplate, date, rawSlugTemplate) || rawSlugTemplate)
-    const suffix = `${buildEventCreationTimestampSeed(date)}${creatorSlugTail}`
-    const resolvedSlug = appendEventCreationSlugSuffix(resolvedBaseSlug, suffix)
-    const rawRulesTemplate = form.resolutionRules.trim()
-    const resolvedRules = applyEventCreationTemplate(rawRulesTemplate, date, rawRulesTemplate).trim() || rawRulesTemplate
-
-    return {
-      endDateIso: date.toISOString(),
-      title: resolvedTitle,
-      slug: resolvedSlug,
-      resolutionRules: resolvedRules,
-    }
-  }, [creationMode, creatorSlugTail, effectiveRecurringSlugTemplate, form.resolutionRules, form.title, titleTemplate])
-  const recurringOccurrencePreviews = useMemo(
-    () => creationMode === 'recurring'
-      ? [buildRecurringOccurrencePreview(scheduleOccurrenceDate), buildRecurringOccurrencePreview(nextRecurringResolutionDate)].filter(Boolean) as RecurringOccurrencePreview[]
-      : [],
-    [buildRecurringOccurrencePreview, creationMode, nextRecurringResolutionDate, scheduleOccurrenceDate],
-  )
-  const recurringPreviewErrors = useMemo(() => {
-    if (creationMode !== 'recurring') {
-      return [] as string[]
-    }
-
-    const errors: string[] = []
-    const [currentPreview, nextPreview] = recurringOccurrencePreviews
-
-    if (scheduleOccurrenceDate && !currentPreview?.slug) {
-      errors.push('Recurring slug preview is invalid.')
-    }
-
-    if (scheduleOccurrenceDate && !currentPreview?.title) {
-      errors.push('Recurring title preview is invalid.')
-    }
-
-    if (scheduleOccurrenceDate && !currentPreview?.resolutionRules) {
-      errors.push('Recurring resolution rules preview is invalid.')
-    }
-
-    if (currentPreview && nextPreview && currentPreview.slug === nextPreview.slug) {
-      errors.push('Recurring slug preview must change between occurrences.')
-    }
-
-    return errors
-  }, [creationMode, recurringOccurrencePreviews, scheduleOccurrenceDate])
-  const recurringEditorialWarnings = useMemo(() => {
-    if (creationMode !== 'recurring') {
-      return [] as string[]
-    }
-
-    const warnings = new Set<string>()
-    const [currentPreview, nextPreview] = recurringOccurrencePreviews
-
-    if (titleTemplate.trim() && !hasEventCreationDateTemplateVariable(titleTemplate)) {
-      warnings.add('Title template has no date variable, so recurring event titles may look identical between occurrences.')
-    }
-
-    if (form.resolutionRules.trim() && !hasEventCreationDateTemplateVariable(form.resolutionRules)) {
-      warnings.add('Resolution rules have no date variable, so recurring rules may look identical between occurrences.')
-    }
-
-    if (currentPreview && nextPreview && currentPreview.title.trim().toLowerCase() === nextPreview.title.trim().toLowerCase()) {
-      warnings.add('First and next recurring title previews are identical.')
-    }
-
-    if (currentPreview && nextPreview && currentPreview.resolutionRules.trim().toLowerCase() === nextPreview.resolutionRules.trim().toLowerCase()) {
-      warnings.add('First and next recurring resolution rules previews are identical.')
-    }
-
-    return Array.from(warnings)
-  }, [creationMode, form.resolutionRules, recurringOccurrencePreviews, titleTemplate])
-  const recurringRequiresServerWalletSetup = creationMode === 'recurring' && !hasConfiguredServerSigners
+  const {
+    titleCategorySuggestions,
+    filteredCategorySuggestions,
+    selectedCategoryChips,
+    sportsGeneratedCategorySlugs,
+    sportsCustomCategoryChips,
+  } = useCategorySuggestions({
+    categoryQuery,
+    form,
+    globalCategories,
+    selectedMainCategory,
+    sportsDerivedCategories: sportsDerivedContent.categories,
+  })
+  const {
+    scheduleDateValue,
+    scheduleOccurrenceDate,
+    recurrenceIntervalNumber,
+    hasRecurringDeployHistory,
+    automaticDeployAtIso,
+    automaticDeployAtDate,
+    nextRecurringResolutionDate,
+    nextRecurringDeployDate,
+    recurringResolvedTitle,
+    effectiveRecurringSlugTemplate,
+    recurringResolvedSlug,
+    recurringResolvedRules,
+    effectiveResolutionRules,
+    recurringOccurrencePreviews,
+    recurringPreviewErrors,
+    recurringEditorialWarnings,
+    recurringRequiresServerWalletSetup,
+  } = useRecurringEventPreview({
+    clientNowMs,
+    creationMode,
+    creatorSlugTail,
+    form,
+    hasConfiguredServerSigners,
+    initialDraftRecord,
+    recurrenceInterval,
+    recurrenceUnit,
+    slugSeed,
+    slugTemplate,
+    titleTemplate,
+  })
 
   const stepLabels = useMemo(
     () => ['Event', 'Market Structure', 'Resolution', 'Pre-sign', 'Sign & Create'],
     [],
   )
-  const previewEndDate = useMemo(() => {
-    const normalizedEndDate = normalizeDateTimeLocalValue(form.endDateIso)
-    if (!normalizedEndDate) {
-      return 'Resolution date not set'
-    }
-    const parsed = new Date(normalizedEndDate)
-    if (Number.isNaN(parsed.getTime())) {
-      return normalizedEndDate
-    }
-    return parsed.toLocaleString()
-  }, [form.endDateIso])
-  const previewTitle = useMemo(
-    () => creationMode === 'recurring'
-      ? (recurringResolvedTitle || titleTemplate.trim() || 'Untitled event')
-      : (form.title || 'Untitled event'),
-    [creationMode, form.title, recurringResolvedTitle, titleTemplate],
-  )
-  const previewSlug = useMemo(
-    () => creationMode === 'recurring'
-      ? (recurringResolvedSlug || effectiveRecurringSlugTemplate || 'event-slug')
-      : (form.slug || 'event-slug'),
-    [creationMode, effectiveRecurringSlugTemplate, form.slug, recurringResolvedSlug],
-  )
-  const previewMarkets = useMemo(() => {
-    if (form.marketMode === 'binary') {
-      return [
-        {
-          key: 'binary',
-          title: previewTitle.trim(),
-          question: (previewTitle || form.binaryQuestion).trim(),
-          shortName: '',
-          outcomeYes: form.binaryOutcomeYes.trim() || 'Yes',
-          outcomeNo: form.binaryOutcomeNo.trim() || 'No',
-          imageUrl: eventImagePreviewUrl,
-        },
-      ]
-    }
-
-    if (form.marketMode === 'multi_multiple' || form.marketMode === 'multi_unique') {
-      return form.options.map((option, index) => ({
-        key: option.id || `option-${index + 1}`,
-        title: option.title.trim(),
-        question: option.question.trim(),
-        shortName: option.shortName.trim(),
-        outcomeYes: option.outcomeYes.trim() || 'Yes',
-        outcomeNo: option.outcomeNo.trim() || 'No',
-        imageUrl: optionImagePreviewUrls[option.id] ?? null,
-      }))
-    }
-
-    return []
-  }, [
-    eventImagePreviewUrl,
-    form.binaryOutcomeNo,
-    form.binaryOutcomeYes,
-    form.binaryQuestion,
-    form.marketMode,
-    form.options,
-    optionImagePreviewUrls,
+  const {
+    previewEndDate,
     previewTitle,
-  ])
-  const tradePreviewMarket = useMemo(
-    () => previewMarkets[0] ?? null,
-    [previewMarkets],
-  )
-  const previewEventUrl = useMemo(
-    () => `${previewSiteOrigin}/event/${previewSlug}`,
-    [previewSiteOrigin, previewSlug],
-  )
-  const isMultiMarketPreview = form.marketMode === 'multi_multiple' || form.marketMode === 'multi_unique'
+    previewSlug,
+    previewMarkets,
+    tradePreviewMarket,
+    previewEventUrl,
+    isMultiMarketPreview,
+  } = useEventPreview({
+    creationMode,
+    effectiveRecurringSlugTemplate,
+    eventImagePreviewUrl,
+    form,
+    optionImagePreviewUrls,
+    previewSiteOrigin,
+    recurringResolvedSlug,
+    recurringResolvedTitle,
+    titleTemplate,
+  })
 
-  const pendingAiIssues = useMemo(
-    () => contentCheckIssues.filter(issue => !bypassedIssueKeys.includes(getAiIssueKey(issue))),
-    [bypassedIssueKeys, contentCheckIssues],
-  )
-  const fundingHasIssue = fundingCheckState === 'insufficient' || fundingCheckState === 'no_wallet' || fundingCheckState === 'error'
-  const nativeGasHasIssue = nativeGasCheckState === 'insufficient'
-    || nativeGasCheckState === 'no_wallet'
-    || nativeGasCheckState === 'error'
-  const allowedCreatorHasIssue = allowedCreatorCheckState === 'missing'
-    || allowedCreatorCheckState === 'no_wallet'
-    || allowedCreatorCheckState === 'error'
-  const proposerWhitelistHasIssue = proposerWhitelistCheckState === 'missing'
-    || proposerWhitelistCheckState === 'no_wallet'
-    || proposerWhitelistCheckState === 'error'
-  const slugHasIssue = slugValidationState === 'duplicate' || slugValidationState === 'error'
-  const openRouterHasIssue = openRouterCheckState === 'error'
-  const contentIndicatorState = useMemo<PreSignIndicatorState>(() => {
-    if (openRouterCheckState === 'error') {
-      return 'error'
-    }
-    if (openRouterCheckState === 'checking' || contentCheckState === 'checking') {
-      return 'checking'
-    }
-    if (openRouterCheckState === 'idle' || contentCheckState === 'idle') {
-      return 'idle'
-    }
-    if (contentCheckError || pendingAiIssues.length > 0 || contentCheckState === 'error') {
-      return 'error'
-    }
-    return 'ok'
-  }, [contentCheckError, contentCheckState, openRouterCheckState, pendingAiIssues.length])
-  const contentHasIssue = contentIndicatorState === 'error'
-  const completedSignatureCount = useMemo(
-    () => signatureTxs.filter(item => item.status === 'success').length,
-    [signatureTxs],
-  )
-  const finalizeInProgressAccepted = pendingWorkflowStatus === 'finalize_in_progress'
-  const finalizeStepSucceeded = signatureFlowDone || finalizeInProgressAccepted
-  const finalizeStepIsRunning = isFinalizingSignatureFlow || pendingWorkflowStatus === 'finalize_running'
-  const finalizeStepHasError = !finalizeStepSucceeded
-    && Boolean(signatureFlowError)
-    && completedSignatureCount === signatureTxs.length
-    && signatureTxs.length > 0
-  const authPhaseCompleted = Boolean(preparedSignaturePlan)
-  const totalSignatureUnits = useMemo(
-    () => (preparedSignaturePlan ? signatureTxs.length + 2 : 2),
-    [preparedSignaturePlan, signatureTxs.length],
-  )
-  const completedSignatureUnits = useMemo(
-    () => {
-      let completed = authPhaseCompleted ? 1 : 0
-      completed += completedSignatureCount
-      if (finalizeStepSucceeded) {
-        completed += 1
-      }
-      return completed
-    },
-    [authPhaseCompleted, completedSignatureCount, finalizeStepSucceeded],
-  )
-  const signatureProgressPercent = useMemo(() => {
-    if (totalSignatureUnits <= 0) {
-      return 0
-    }
-    return Math.min(100, Math.round((completedSignatureUnits / totalSignatureUnits) * 100))
-  }, [completedSignatureUnits, totalSignatureUnits])
-  const authChallengeRemainingSeconds = useMemo(() => {
-    if (!authChallengeExpiresAtMs || signatureNowMs <= 0) {
-      return null
-    }
-    return Math.max(0, Math.floor((authChallengeExpiresAtMs - signatureNowMs) / 1000))
-  }, [authChallengeExpiresAtMs, signatureNowMs])
-  const authChallengeCountdownLabel = useMemo(() => {
-    if (authChallengeRemainingSeconds === null) {
-      return ''
-    }
-    return formatSignatureCountdown(authChallengeRemainingSeconds)
-  }, [authChallengeRemainingSeconds])
-
-  const readNormalizedDateTimeInputValue = useCallback((input: HTMLInputElement | null, fallbackValue: string) => {
-    const rawInputValue = input?.value?.trim() ?? ''
-    const inputValue = normalizeDateTimeLocalValue(rawInputValue)
-    if (inputValue) {
-      return inputValue
-    }
-
-    const inputDate = input?.valueAsDate
-    if (inputDate instanceof Date && !Number.isNaN(inputDate.getTime())) {
-      return formatDateTimeLocalValue(inputDate)
-    }
-
-    const normalizedFallbackValue = normalizeDateTimeLocalValue(fallbackValue)
-    if (normalizedFallbackValue) {
-      return normalizedFallbackValue
-    }
-
-    return rawInputValue || fallbackValue.trim()
-  }, [])
-
-  const getResolvedDateForms = useCallback(() => {
-    const resolvedEndDateIso = readNormalizedDateTimeInputValue(eventEndDateInputRef.current, form.endDateIso)
-    const resolvedSportsStartTime = readNormalizedDateTimeInputValue(sportsStartTimeInputRef.current, sportsForm.startTime)
-
-    return {
-      resolvedForm: {
-        ...form,
-        endDateIso: resolvedEndDateIso,
-      },
-      resolvedSportsForm: {
-        ...sportsForm,
-        startTime: resolvedSportsStartTime,
-      },
-    }
-  }, [form, readNormalizedDateTimeInputValue, sportsForm])
-
-  const syncResolvedDateInputs = useCallback(() => {
-    const { resolvedForm, resolvedSportsForm } = getResolvedDateForms()
-
-    if (resolvedForm.endDateIso && resolvedForm.endDateIso !== form.endDateIso) {
-      setForm(prev => (prev.endDateIso === resolvedForm.endDateIso
-        ? prev
-        : {
-            ...prev,
-            endDateIso: resolvedForm.endDateIso,
-          }))
-    }
-
-    if (resolvedSportsForm.startTime && resolvedSportsForm.startTime !== sportsForm.startTime) {
-      setSportsForm(prev => (prev.startTime === resolvedSportsForm.startTime
-        ? prev
-        : {
-            ...prev,
-            startTime: resolvedSportsForm.startTime,
-          }))
-    }
-
-    return { resolvedForm, resolvedSportsForm }
-  }, [form.endDateIso, getResolvedDateForms, sportsForm.startTime])
+  const {
+    pendingAiIssues,
+    fundingHasIssue,
+    nativeGasHasIssue,
+    allowedCreatorHasIssue,
+    proposerWhitelistHasIssue,
+    slugHasIssue,
+    openRouterHasIssue,
+    contentIndicatorState,
+    contentHasIssue,
+    completedSignatureCount,
+    finalizeInProgressAccepted,
+    finalizeStepSucceeded,
+    finalizeStepIsRunning,
+    finalizeStepHasError,
+    authPhaseCompleted,
+    totalSignatureUnits,
+    completedSignatureUnits,
+    signatureProgressPercent,
+  } = usePreSignStatus({
+    allowedCreatorCheckState,
+    bypassedIssueKeys,
+    contentCheckError,
+    contentCheckIssues,
+    contentCheckState,
+    fundingCheckState,
+    isFinalizingSignatureFlow,
+    nativeGasCheckState,
+    openRouterCheckState,
+    pendingWorkflowStatus,
+    preparedSignaturePlan,
+    proposerWhitelistCheckState,
+    signatureFlowDone,
+    signatureFlowError,
+    signatureTxs,
+    slugValidationState,
+  })
+  const { getResolvedDateForms, syncResolvedDateInputs } = useResolvedDateInputs({
+    eventEndDateInputRef,
+    form,
+    setForm,
+    setSportsForm,
+    sportsForm,
+    sportsStartTimeInputRef,
+  })
 
   const isStepValid = useCallback((step: number) => {
     const { resolvedForm, resolvedSportsForm } = getResolvedDateForms()
@@ -1185,42 +801,8 @@ export function useAdminCreateEventForm({
     return map
   }, [currentStep, isStepValid, maxVisitedStep])
 
-  useEffect(function revokeEventImagePreviewObjectUrl() {
-    if (!eventImagePreviewUrl || !eventImagePreviewUrl.startsWith('blob:')) {
-      return
-    }
-
-    return function cleanupEventImagePreviewObjectUrl() {
-      URL.revokeObjectURL(eventImagePreviewUrl)
-    }
-  }, [eventImagePreviewUrl])
-
-  useEffect(function revokeOptionImagePreviewObjectUrls() {
-    return function cleanupOptionImagePreviewObjectUrls() {
-      Object.values(optionImagePreviewUrls).forEach((url) => {
-        if (url.startsWith('blob:')) {
-          URL.revokeObjectURL(url)
-        }
-      })
-    }
-  }, [optionImagePreviewUrls])
-
-  useEffect(function revokeTeamLogoPreviewObjectUrls() {
-    return function cleanupTeamLogoPreviewObjectUrls() {
-      Object.values(teamLogoPreviewUrls).forEach((url) => {
-        if (url?.startsWith('blob:')) {
-          URL.revokeObjectURL(url)
-        }
-      })
-    }
-  }, [teamLogoPreviewUrls])
-
   useEffect(function cleanupPendingTimersOnUnmount() {
     return function clearPendingTimers() {
-      if (copyTimeoutRef.current !== null) {
-        window.clearTimeout(copyTimeoutRef.current)
-      }
-
       if (contentCheckProgressRef.current !== null) {
         window.clearInterval(contentCheckProgressRef.current)
       }
@@ -1230,20 +812,6 @@ export function useAdminCreateEventForm({
       }
     }
   }, [])
-
-  useEffect(function runAuthChallengeCountdown() {
-    if (!authChallengeExpiresAtMs) {
-      return
-    }
-
-    const timer = window.setInterval(function tickSignatureCountdownNow() {
-      setSignatureNowMs(Date.now())
-    }, SIGNATURE_COUNTDOWN_INTERVAL_MS)
-
-    return function clearAuthChallengeCountdownTimer() {
-      window.clearInterval(timer)
-    }
-  }, [authChallengeExpiresAtMs])
 
   useEffect(function closeFinalPreviewWhenLeavingPreSignStep() {
     if (currentStep !== 4 && finalPreviewDialogOpen) {
@@ -1347,7 +915,7 @@ export function useAdminCreateEventForm({
     setSignatureTxs([])
     setSignatureFlowDone(false)
     setSignatureFlowError('')
-  }, [signatureResetFingerprint])
+  }, [setAuthChallengeExpiresAtMs, signatureResetFingerprint])
 
   const preSignChecksAutoFingerprint = useMemo(() => JSON.stringify({
     allowedCreatorCheckState,
@@ -1452,12 +1020,12 @@ export function useAdminCreateEventForm({
       }
       catch (error) {
         console.error('Error loading categories:', error)
-        toast.error('Could not load categories.')
+        toast.error(t('Could not load categories.'))
       }
     }
 
     void loadMainCategories()
-  }, [])
+  }, [t])
 
   useEffect(function loadSignerWalletsOnMount() {
     async function loadSignerWallets() {
@@ -1469,7 +1037,7 @@ export function useAdminCreateEventForm({
         })
         if (!response.ok) {
           const payload = await response.json().catch(() => ({}))
-          throw new Error(typeof payload?.error === 'string' ? payload.error : 'Could not load server wallets.')
+          throw new Error(typeof payload?.error === 'string' ? payload.error : t('Could not load server wallets.'))
         }
 
         const payload = await response.json().catch(() => null) as { data?: SignerOption[] } | null
@@ -1477,7 +1045,7 @@ export function useAdminCreateEventForm({
       }
       catch (error) {
         console.error('Failed to load event creation signers', error)
-        toast.error(error instanceof Error ? error.message : 'Could not load server wallets.')
+        toast.error(error instanceof Error ? error.message : t('Could not load server wallets.'))
       }
       finally {
         setIsLoadingSigners(false)
@@ -1485,7 +1053,7 @@ export function useAdminCreateEventForm({
     }
 
     void loadSignerWallets()
-  }, [])
+  }, [t])
 
   useEffect(function selectOnlyAvailableSignerWhenNeeded() {
     if (!automaticWalletAddress && signers.length === 1 && (creationMode === 'recurring' || !eoaAddress)) {
@@ -1732,6 +1300,13 @@ export function useAdminCreateEventForm({
             startTime: typeof parsed.sportsForm.startTime === 'string'
               ? normalizeDateTimeLocalValue(parsed.sportsForm.startTime)
               : fallbackSports.startTime,
+            sourceProvider: typeof parsed.sportsForm.sourceProvider === 'string' ? parsed.sportsForm.sourceProvider : fallbackSports.sourceProvider,
+            sourceEventId: typeof parsed.sportsForm.sourceEventId === 'string' ? parsed.sportsForm.sourceEventId : fallbackSports.sourceEventId,
+            sourceGameId: typeof parsed.sportsForm.sourceGameId === 'string' ? parsed.sportsForm.sourceGameId : fallbackSports.sourceGameId,
+            sourceLeagueId: typeof parsed.sportsForm.sourceLeagueId === 'string' ? parsed.sportsForm.sourceLeagueId : fallbackSports.sourceLeagueId,
+            sourceLeagueLabel: typeof parsed.sportsForm.sourceLeagueLabel === 'string' ? parsed.sportsForm.sourceLeagueLabel : fallbackSports.sourceLeagueLabel,
+            sourceMatchConfidence: typeof parsed.sportsForm.sourceMatchConfidence === 'string' ? parsed.sportsForm.sourceMatchConfidence : fallbackSports.sourceMatchConfidence,
+            livestreamUrl: typeof parsed.sportsForm.livestreamUrl === 'string' ? parsed.sportsForm.livestreamUrl : fallbackSports.livestreamUrl,
             includeDraw: Boolean(parsed.sportsForm.includeDraw),
             includeBothTeamsToScore: parsed.sportsForm.includeBothTeamsToScore !== false,
             includeSpreads: parsed.sportsForm.includeSpreads !== false,
@@ -1761,10 +1336,10 @@ export function useAdminCreateEventForm({
       catch (error) {
         const draftLoadErrorMessage = error instanceof Error && error.message.trim()
           ? error.message.trim()
-          : 'The saved draft could not be parsed.'
+          : t('The saved draft could not be parsed.')
         if (lastDraftLoadErrorMessageRef.current !== draftLoadErrorMessage) {
           lastDraftLoadErrorMessageRef.current = draftLoadErrorMessage
-          toast.error('Failed to load saved draft.', {
+          toast.error(t('Failed to load saved draft.'), {
             id: 'admin-create-event-draft-load-error',
             description: draftLoadErrorMessage,
           })
@@ -1785,6 +1360,8 @@ export function useAdminCreateEventForm({
     normalizedInitialTitle,
     serverAssetPayload,
     serverDraftPayload,
+    setStoredAssets,
+    t,
   ])
 
   useEffect(function autosaveDraftPayload() {
@@ -1997,6 +1574,7 @@ export function useAdminCreateEventForm({
     sportsDerivedContent.eventSlug,
     sportsDerivedContent.options,
     sportsGeneratedCategorySlugs,
+    setOptionImageFiles,
   ])
 
   const autoSlugFingerprint = `${creationMode}:${isSportsEvent ? 'sports' : 'default'}:${slugSuffix}:${sportsDerivedContent.eventSlug}:${form.title}`
@@ -2073,58 +1651,36 @@ export function useAdminCreateEventForm({
     }
   }, [])
 
-  const handleSportsFieldChange = useCallback(
-    <K extends keyof AdminSportsFormState>(field: K, value: AdminSportsFormState[K]) => {
-      setSportsForm((prev) => {
-        if (field === 'startTime') {
-          return {
-            ...prev,
-            startTime: normalizeDateTimeLocalValue(typeof value === 'string' ? value : ''),
-          }
-        }
-
-        if (field === 'section') {
-          if (value === 'props') {
-            return {
-              ...prev,
-              section: value,
-              eventVariant: 'standard',
-            }
-          }
-
-          if (value === 'games') {
-            return {
-              ...prev,
-              section: value,
-              eventVariant: '',
-            }
-          }
-        }
-
-        return {
-          ...prev,
-          [field]: value,
-        }
-      })
-    },
-    [],
-  )
-
-  const handleSportsTeamChange = useCallback((
-    hostStatus: AdminSportsTeamHostStatus,
-    field: 'name' | 'abbreviation',
-    value: string,
-  ) => {
-    setSportsForm(prev => ({
-      ...prev,
-      teams: prev.teams.map(team => team.hostStatus === hostStatus
-        ? {
-            ...team,
-            [field]: value,
-          }
-        : team) as AdminSportsFormState['teams'],
-    }))
-  }, [])
+  const {
+    handleSportsFieldChange,
+    handleSportsTeamChange,
+    applySportsMatchCandidate,
+    clearSportsMatchCandidate,
+    handleSportSlugSelectChange,
+    handleLeagueSlugSelectChange,
+    handleFieldChange,
+    handleEndDateInputValueChange,
+    handleSportsStartTimeInputValueChange,
+    addCategory,
+    addCategoryFromInput,
+    removeCategory,
+    handleOptionChange,
+    addOption,
+    removeOption,
+  } = useCreateEventFormHandlers({
+    categoryQuery,
+    filteredCategorySuggestions,
+    form,
+    normalizedLeagueSlug,
+    setCategoryQuery,
+    setForm,
+    setIsCustomLeagueSlug,
+    setIsCustomSportSlug,
+    setOptionImageFiles,
+    setSelectedSportsMatch,
+    setSportsForm,
+    sportsSlugCatalog,
+  })
 
   function handleSportsTeamLogoUpload(hostStatus: AdminSportsTeamHostStatus, event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0] ?? null
@@ -2135,278 +1691,19 @@ export function useAdminCreateEventForm({
     if (file) {
       void uploadDraftAsset('teamLogo', hostStatus, file).catch((error) => {
         console.error('Error uploading team logo:', error)
-        toast.error(error instanceof Error ? error.message : 'Could not save team logo.')
+        toast.error(error instanceof Error ? error.message : t('Could not save team logo.'))
       })
     }
   }
 
-  const handleSportsPropChange = useCallback((
-    propId: string,
-    field: keyof AdminSportsPropState,
-    value: string,
-  ) => {
-    setSportsForm(prev => ({
-      ...prev,
-      props: prev.props.map(prop => prop.id === propId
-        ? {
-            ...prop,
-            [field]: value,
-          }
-        : prop),
-    }))
-  }, [])
-
-  const handleSportSlugSelectChange = useCallback((value: string) => {
-    if (value === CUSTOM_SPORTS_SLUG_SELECT_VALUE) {
-      setIsCustomSportSlug(true)
-      handleSportsFieldChange('sportSlug', '')
-      return
-    }
-
-    const nextLeagueOptions = sportsSlugCatalog.leagueOptionsBySport[value] ?? []
-    setIsCustomSportSlug(false)
-    handleSportsFieldChange('sportSlug', value)
-
-    if (
-      nextLeagueOptions.length > 0
-      && normalizedLeagueSlug
-      && !nextLeagueOptions.some(option => option.value === normalizedLeagueSlug)
-    ) {
-      setIsCustomLeagueSlug(false)
-      handleSportsFieldChange('leagueSlug', '')
-    }
-  }, [handleSportsFieldChange, normalizedLeagueSlug, sportsSlugCatalog.leagueOptionsBySport])
-
-  const handleLeagueSlugSelectChange = useCallback((value: string) => {
-    if (value === CUSTOM_SPORTS_SLUG_SELECT_VALUE) {
-      setIsCustomLeagueSlug(true)
-      handleSportsFieldChange('leagueSlug', '')
-      return
-    }
-
-    setIsCustomLeagueSlug(false)
-    handleSportsFieldChange('leagueSlug', value)
-  }, [handleSportsFieldChange])
-
-  const addSportsProp = useCallback(() => {
-    setSportsForm((prev) => {
-      const existingIds = new Set(prev.props.map(prop => prop.id))
-      let nextIndex = prev.props.length + 1
-      let nextId = `prop-${nextIndex}`
-      while (existingIds.has(nextId)) {
-        nextIndex += 1
-        nextId = `prop-${nextIndex}`
-      }
-
-      return {
-        ...prev,
-        props: [...prev.props, createAdminSportsProp(nextId)],
-      }
-    })
-  }, [])
-
-  const removeSportsProp = useCallback((propId: string) => {
-    setSportsForm((prev) => {
-      if (prev.props.length <= 1) {
-        toast.error('At least 1 prop is required.')
-        return prev
-      }
-
-      return {
-        ...prev,
-        props: prev.props.filter(prop => prop.id !== propId),
-      }
-    })
-  }, [])
-
-  const handleSportsCustomMarketChange = useCallback((
-    marketId: string,
-    field: keyof AdminSportsCustomMarketState,
-    value: string,
-  ) => {
-    setSportsForm((prev) => {
-      const homeTeamName = prev.teams.find(team => team.hostStatus === 'home')?.name ?? ''
-      const awayTeamName = prev.teams.find(team => team.hostStatus === 'away')?.name ?? ''
-
-      return {
-        ...prev,
-        customMarkets: prev.customMarkets.map((market) => {
-          if (market.id !== marketId) {
-            return market
-          }
-
-          if (field !== 'sportsMarketType') {
-            return {
-              ...market,
-              [field]: field === 'iconAssetKey' && value === 'none' ? '' : value,
-            }
-          }
-
-          const typeOption = resolveAdminSportsMarketTypeOption(value)
-          const defaultOutcomes = getAdminSportsMarketTypeDefaultOutcomes(value, {
-            homeTeamName,
-            awayTeamName,
-          })
-
-          return {
-            ...market,
-            sportsMarketType: value,
-            title: market.title || typeOption?.label || '',
-            shortName: market.shortName || typeOption?.label || '',
-            groupItemTitle: market.groupItemTitle || typeOption?.label || '',
-            outcomeOne: market.outcomeOne || defaultOutcomes?.[0] || '',
-            outcomeTwo: market.outcomeTwo || defaultOutcomes?.[1] || '',
-            iconAssetKey: market.iconAssetKey,
-          }
-        }),
-      }
-    })
-  }, [])
-
-  const addSportsCustomMarket = useCallback(() => {
-    setSportsForm((prev) => {
-      const existingIds = new Set(prev.customMarkets.map(market => market.id))
-      let nextIndex = prev.customMarkets.length + 1
-      let nextId = `market-${nextIndex}`
-      while (existingIds.has(nextId)) {
-        nextIndex += 1
-        nextId = `market-${nextIndex}`
-      }
-
-      return {
-        ...prev,
-        customMarkets: [...prev.customMarkets, createAdminSportsCustomMarket(nextId)],
-      }
-    })
-  }, [])
-
-  const removeSportsCustomMarket = useCallback((marketId: string) => {
-    setSportsForm((prev) => {
-      if (prev.customMarkets.length <= 1) {
-        toast.error('At least 1 custom sports market row is required.')
-        return prev
-      }
-
-      return {
-        ...prev,
-        customMarkets: prev.customMarkets.filter(market => market.id !== marketId),
-      }
-    })
-  }, [])
-
-  const handleFieldChange = useCallback(
-    <K extends keyof FormState>(field: K, value: FormState[K]) => {
-      if (field === 'endDateIso') {
-        setForm(prev => ({
-          ...prev,
-          endDateIso: normalizeDateTimeLocalValue(typeof value === 'string' ? value : ''),
-        }))
-        return
-      }
-
-      if (field === 'mainCategorySlug') {
-        const nextMainCategorySlug = typeof value === 'string' ? value : ''
-        setForm((prev) => {
-          if (isSportsMainCategory(nextMainCategorySlug)) {
-            return {
-              ...prev,
-              mainCategorySlug: nextMainCategorySlug,
-              marketMode: 'multi_multiple',
-              categories: [],
-              options: [],
-            }
-          }
-
-          if (isSportsMainCategory(prev.mainCategorySlug)) {
-            const fallback = createInitialForm()
-            return {
-              ...prev,
-              mainCategorySlug: nextMainCategorySlug,
-              categories: [],
-              marketMode: null,
-              options: fallback.options,
-              binaryQuestion: fallback.binaryQuestion,
-              binaryOutcomeYes: fallback.binaryOutcomeYes,
-              binaryOutcomeNo: fallback.binaryOutcomeNo,
-            }
-          }
-
-          return {
-            ...prev,
-            mainCategorySlug: nextMainCategorySlug,
-          }
-        })
-        return
-      }
-
-      setForm(prev => ({ ...prev, [field]: value }))
-    },
-    [],
-  )
-
-  const handleEndDateInputValueChange = useCallback((value: string) => {
-    handleFieldChange('endDateIso', value)
-  }, [handleFieldChange])
-
-  const handleSportsStartTimeInputValueChange = useCallback((value: string) => {
-    handleSportsFieldChange('startTime', value)
-  }, [handleSportsFieldChange])
-
-  const addCategory = useCallback((category: CategorySuggestion | CategoryItem) => {
-    const nextLabel = ('name' in category ? category.name : category.label).trim()
-    const nextSlug = slugify(category.slug || nextLabel)
-
-    if (!nextSlug || !nextLabel) {
-      return
-    }
-
-    setForm((prev) => {
-      const alreadyExists = prev.categories.some(item => item.slug === nextSlug)
-      if (alreadyExists) {
-        return prev
-      }
-
-      return {
-        ...prev,
-        categories: [
-          ...prev.categories,
-          {
-            label: nextLabel,
-            slug: nextSlug,
-          },
-        ],
-      }
-    })
-
-    setCategoryQuery('')
-  }, [])
-
-  const addCategoryFromInput = useCallback(() => {
-    const text = categoryQuery.trim()
-    if (!text) {
-      return
-    }
-
-    const querySlug = slugify(text)
-    const exactMatch = filteredCategorySuggestions.find(item => item.slug === querySlug)
-
-    if (exactMatch) {
-      addCategory(exactMatch)
-      return
-    }
-
-    addCategory({
-      label: text,
-      slug: querySlug,
-    })
-  }, [addCategory, categoryQuery, filteredCategorySuggestions])
-
-  const removeCategory = useCallback((slug: string) => {
-    setForm(prev => ({
-      ...prev,
-      categories: prev.categories.filter(item => item.slug !== slug),
-    }))
-  }, [])
+  const {
+    handleSportsPropChange,
+    addSportsProp,
+    removeSportsProp,
+    handleSportsCustomMarketChange,
+    addSportsCustomMarket,
+    removeSportsCustomMarket,
+  } = useSportsMarketRows({ sportsForm, setSportsForm })
 
   async function uploadDraftAsset(
     kind: 'eventImage' | 'optionImage' | 'teamLogo',
@@ -2446,92 +1743,10 @@ export function useAdminCreateEventForm({
     if (file) {
       void uploadDraftAsset('eventImage', '', file).catch((error) => {
         console.error('Error uploading event image:', error)
-        toast.error(error instanceof Error ? error.message : 'Could not save event image.')
+        toast.error(error instanceof Error ? error.message : t('Could not save event image.'))
       })
     }
   }
-
-  const handleOptionChange = useCallback((optionId: string, field: 'question' | 'title' | 'shortName' | 'outcomeYes' | 'outcomeNo', value: string) => {
-    setForm((prev) => {
-      const options = prev.options.map((option) => {
-        if (option.id !== optionId) {
-          return option
-        }
-
-        if (field === 'question') {
-          return {
-            ...option,
-            question: value,
-          }
-        }
-
-        if (field === 'title') {
-          return {
-            ...option,
-            title: value,
-            slug: slugify(value),
-          }
-        }
-
-        if (field === 'outcomeYes') {
-          return {
-            ...option,
-            outcomeYes: value,
-          }
-        }
-
-        if (field === 'outcomeNo') {
-          return {
-            ...option,
-            outcomeNo: value,
-          }
-        }
-
-        return {
-          ...option,
-          shortName: value,
-        }
-      })
-
-      return { ...prev, options }
-    })
-  }, [])
-
-  const addOption = useCallback(() => {
-    setForm((prev) => {
-      const existingIds = new Set(prev.options.map(option => option.id))
-      let nextIndex = prev.options.length + 1
-      let nextId = `opt-${nextIndex}`
-      while (existingIds.has(nextId)) {
-        nextIndex += 1
-        nextId = `opt-${nextIndex}`
-      }
-
-      return {
-        ...prev,
-        options: [...prev.options, createOption(nextId)],
-      }
-    })
-  }, [])
-
-  const removeOption = useCallback((optionId: string) => {
-    setForm((prev) => {
-      if (prev.options.length <= 2) {
-        toast.error('At least 2 options are required.')
-        return prev
-      }
-
-      return {
-        ...prev,
-        options: prev.options.filter(option => option.id !== optionId),
-      }
-    })
-
-    setOptionImageFiles((prev) => {
-      const { [optionId]: _removed, ...rest } = prev
-      return rest
-    })
-  }, [])
 
   function handleOptionImageUpload(optionId: string, event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0] ?? null
@@ -2542,7 +1757,7 @@ export function useAdminCreateEventForm({
     if (file) {
       void uploadDraftAsset('optionImage', optionId, file).catch((error) => {
         console.error('Error uploading option image:', error)
-        toast.error(error instanceof Error ? error.message : 'Could not save option image.')
+        toast.error(error instanceof Error ? error.message : t('Could not save option image.'))
       })
     }
   }
@@ -2762,10 +1977,10 @@ export function useAdminCreateEventForm({
       setContentCheckState(nextIssues.length === 0 ? 'ok' : 'error')
 
       if (nextIssues.length === 0) {
-        toast.success('Content AI checker passed.')
+        toast.success(t('Content AI checker passed.'))
       }
       else {
-        toast.error('Content AI checker found issues.')
+        toast.error(t('Content AI checker found issues.'))
       }
 
       setContentCheckProgressLine('finished')
@@ -2792,7 +2007,7 @@ export function useAdminCreateEventForm({
         contentCheckProgressRef.current = null
       }
     }
-  }, [buildAiPayload])
+  }, [buildAiPayload, t])
 
   const runSlugCheck = useCallback(async () => {
     const slugSamples = creationMode === 'recurring'
@@ -2843,86 +2058,6 @@ export function useAdminCreateEventForm({
       return false
     }
   }, [creationMode, form.slug, recurringOccurrencePreviews])
-
-  const runAllowedCreatorCheck = useCallback(async () => {
-    setAllowedCreatorCheckState('checking')
-    setAllowedCreatorCheckError('')
-
-    if (!eoaAddress) {
-      setAllowedCreatorCheckState('no_wallet')
-      return false
-    }
-
-    try {
-      const response = await fetchAdminApi(`/event-creations/allowed-creators?address=${encodeURIComponent(eoaAddress)}`, {
-        method: 'GET',
-        cache: 'no-store',
-      })
-
-      const payload = await response.json().catch(() => null) as unknown
-      const apiError = readApiError(payload)
-
-      if (!response.ok || apiError || !isAllowedCreatorsResponse(payload)) {
-        throw new Error(apiError || `Allowed creators check failed (${response.status})`)
-      }
-
-      setAllowedCreatorCheckState(payload.allowed ? 'ok' : 'missing')
-      return Boolean(payload.allowed)
-    }
-    catch (error) {
-      console.error('Error validating allowed creator wallets:', error)
-      setAllowedCreatorCheckState('error')
-      setAllowedCreatorCheckError('Could not validate allowed market creator wallets.')
-      return false
-    }
-  }, [eoaAddress])
-
-  const addCurrentWalletToAllowedCreators = useCallback(async () => {
-    if (!eoaAddress) {
-      toast.error(t('Select an EOA wallet first.'))
-      return
-    }
-
-    const trimmedCreatorWalletName = creatorWalletName.trim()
-    if (!trimmedCreatorWalletName) {
-      toast.error('Wallet name is required.')
-      return
-    }
-
-    setIsAddingCreatorWallet(true)
-    try {
-      const response = await fetchAdminApi('/event-creations/allowed-creators', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          sourceType: 'wallet',
-          walletAddress: eoaAddress,
-          name: trimmedCreatorWalletName,
-        }),
-      })
-
-      const payload = await response.json().catch(() => null) as unknown
-      const apiError = readApiError(payload)
-
-      if (!response.ok || apiError || !isAllowedCreatorsResponse(payload)) {
-        throw new Error(apiError || `Failed to add allowed creator (${response.status})`)
-      }
-
-      toast.success('Wallet added to allowed market creator wallets.')
-      setCreatorWalletDialogOpen(false)
-      setCreatorWalletName('')
-      await runAllowedCreatorCheck()
-    }
-    catch (error) {
-      console.error('Error adding allowed creator wallet:', error)
-      toast.error(error instanceof Error ? error.message : 'Could not add wallet to allowed market creator wallets.')
-    }
-    finally {
-      setIsAddingCreatorWallet(false)
-    }
-  }, [creatorWalletName, eoaAddress, runAllowedCreatorCheck, t])
 
   const runProposerWhitelistCheck = useCallback(async () => {
     setProposerWhitelistCheckState('checking')
@@ -3166,7 +2301,7 @@ export function useAdminCreateEventForm({
     setSignatureFlowError(typeof input.errorMessage === 'string' ? input.errorMessage : '')
     setAuthChallengeExpiresAtMs(null)
     return txs
-  }, [])
+  }, [setAuthChallengeExpiresAtMs])
 
   const fetchPendingSignatureRequest = useCallback(async (options?: {
     chainId?: number
@@ -3281,7 +2416,7 @@ export function useAdminCreateEventForm({
           setSignatureFlowError('')
           setPendingWorkflowRequestId(null)
           setPendingWorkflowStatus(null)
-          toast.success('All signatures completed. Your created event will be available on your site shortly.', {
+          toast.success(t('All signatures completed. Your created event will be available on your site shortly.'), {
             duration: 10_000,
           })
           return pending
@@ -3302,7 +2437,7 @@ export function useAdminCreateEventForm({
     setPendingWorkflowRequestId(null)
     setPendingWorkflowStatus(null)
     throw new Error('Timed out while finalizing the market. Please retry the pending plan.')
-  }, [applyPreparedSignatureState, fetchPendingSignatureRequest])
+  }, [applyPreparedSignatureState, fetchPendingSignatureRequest, t])
 
   const loadPendingSignaturePlan = useCallback(async (options?: {
     silent?: boolean
@@ -3387,7 +2522,7 @@ export function useAdminCreateEventForm({
       }
 
       if (!silent) {
-        toast.success('Recovered pending signature progress from server.')
+        toast.success(t('Recovered pending signature progress from server.'))
       }
       return loadedPlan
     }
@@ -3396,7 +2531,7 @@ export function useAdminCreateEventForm({
       setPendingWorkflowRequestId(null)
       setPendingWorkflowStatus(null)
       if (!silent) {
-        const message = error instanceof Error ? error.message : 'Could not recover pending signature progress.'
+        const message = error instanceof Error ? error.message : t('Could not recover pending signature progress.')
         toast.error(message)
       }
       return null
@@ -3410,6 +2545,7 @@ export function useAdminCreateEventForm({
     fetchPendingSignatureRequest,
     pollPendingFinalization,
     pollPendingPreparation,
+    t,
   ])
 
   const persistConfirmedTxs = useCallback(async (requestId: string, txs: PrepareFinalizeRequestTx[]) => {
@@ -3466,42 +2602,11 @@ export function useAdminCreateEventForm({
     walletProvider,
   ])
 
-  const generateRulesWithAi = useCallback(async () => {
-    setIsGeneratingRules(true)
-    try {
-      const response = await fetchAdminApi('/event-creations/ai', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          mode: 'generate_rules',
-          data: buildAiPayload(),
-        }),
-      })
-
-      const payload = await response.json().catch(() => null) as unknown
-      const apiError = readApiError(payload)
-      if (!response.ok || apiError || !isAiRulesResponse(payload)) {
-        throw new Error(apiError || `Rules generation failed (${response.status})`)
-      }
-
-      setForm(prev => ({
-        ...prev,
-        resolutionRules: payload.rules,
-      }))
-      setRulesGeneratorDialogOpen(false)
-      toast.success(`Rules generated from ${payload.samplesUsed} samples.`)
-    }
-    catch (error) {
-      console.error('Error generating rules:', error)
-      const message = error instanceof Error ? error.message : 'Could not generate rules with AI right now.'
-      toast.error(message)
-    }
-    finally {
-      setIsGeneratingRules(false)
-    }
-  }, [buildAiPayload])
+  const { isGeneratingRules, generateRulesWithAi } = useAiRules({
+    buildAiPayload,
+    setForm,
+    setRulesGeneratorDialogOpen,
+  })
 
   const prepareSignaturePlan = useCallback(async () => {
     if (!eoaAddress) {
@@ -3668,10 +2773,12 @@ export function useAdminCreateEventForm({
       })
       const txCount = preparedPending.prepared?.txPlan.length ?? 0
       if (txCount === 0) {
-        toast.success('Auth completed. No creator transactions were returned.')
+        toast.success(t('Auth completed. No creator transactions were returned.'))
       }
       else {
-        toast.success(`Auth completed. Prepared ${txCount} signature request${txCount > 1 ? 's' : ''}.`)
+        toast.success(txCount > 1
+          ? t('Auth completed. Prepared {txCount} signature requests.', { txCount: String(txCount) })
+          : t('Auth completed. Prepared {txCount} signature request.', { txCount: String(txCount) }))
       }
       return buildLoadedSignaturePlan(preparedPending)
     }
@@ -3718,6 +2825,9 @@ export function useAdminCreateEventForm({
     optionImageFiles,
     pollPendingPreparation,
     runWithSignaturePrompt,
+    setAuthChallengeExpiresAtMs,
+    setSignatureNowMs,
+    t,
     teamLogoFiles,
   ])
 
@@ -3770,7 +2880,7 @@ export function useAdminCreateEventForm({
             setSignatureFlowError('')
             setPendingWorkflowRequestId(null)
             setPendingWorkflowStatus(null)
-            toast.success('All signatures completed. Your created event will be available on your site shortly.', {
+            toast.success(t('All signatures completed. Your created event will be available on your site shortly.'), {
               duration: 10_000,
             })
             return
@@ -3821,7 +2931,7 @@ export function useAdminCreateEventForm({
     finally {
       setIsFinalizingSignatureFlow(false)
     }
-  }, [applyPreparedSignatureState, createMarketUrl, eoaAddress, pollPendingFinalization, preparedSignaturePlan, signatureTxs])
+  }, [applyPreparedSignatureState, createMarketUrl, eoaAddress, pollPendingFinalization, preparedSignaturePlan, signatureTxs, t])
 
   const executeSignatureFlow = useCallback(async (input?: {
     prepared: PrepareResponse
@@ -4209,38 +3319,6 @@ export function useAdminCreateEventForm({
     t,
   ])
 
-  const copyWalletAddress = useCallback(async () => {
-    if (!eoaAddress) {
-      return
-    }
-
-    try {
-      await navigator.clipboard.writeText(eoaAddress)
-      setIsAddressCopied(true)
-      if (copyTimeoutRef.current !== null) {
-        window.clearTimeout(copyTimeoutRef.current)
-      }
-      copyTimeoutRef.current = window.setTimeout(() => {
-        setIsAddressCopied(false)
-      }, 1400)
-    }
-    catch (error) {
-      console.error('Error copying wallet address:', error)
-    }
-  }, [eoaAddress])
-
-  const openAdminSettings = useCallback(() => {
-    if (typeof window === 'undefined') {
-      return
-    }
-
-    const segments = window.location.pathname.split('/').filter(Boolean)
-    const href = segments.length >= 2 && segments[1] === 'admin'
-      ? `/${segments[0]}/admin`
-      : '/admin'
-    window.open(href, '_blank', 'noopener,noreferrer')
-  }, [])
-
   const validateStep = useCallback((step: number, withToast = true) => {
     const { resolvedForm, resolvedSportsForm } = syncResolvedDateInputs()
     const errors = buildStepErrors(step, {
@@ -4322,7 +3400,7 @@ export function useAdminCreateEventForm({
     setOptionImageFiles({})
     setFinalPreviewDialogOpen(false)
     setRulesGeneratorDialogOpen(false)
-    setIsAddressCopied(false)
+    resetAddressCopied()
     setIsBinaryOutcomesEditable(false)
     setAreMultiOutcomesEditable(false)
 
@@ -4332,8 +3410,7 @@ export function useAdminCreateEventForm({
     setFundingCheckError('')
     setNativeGasCheckState('idle')
     setNativeGasCheckError('')
-    setAllowedCreatorCheckState('idle')
-    setAllowedCreatorCheckError('')
+    resetAllowedCreatorCheck()
     setProposerWhitelistCheckState('idle')
     setProposerWhitelistCheckError('')
     setOpenRouterCheckState('idle')
@@ -4371,6 +3448,13 @@ export function useAdminCreateEventForm({
     normalizedInitialEndDateIso,
     normalizedInitialSlug,
     normalizedInitialTitle,
+    resetAllowedCreatorCheck,
+    resetAddressCopied,
+    setAuthChallengeExpiresAtMs,
+    setEventImageFile,
+    setOptionImageFiles,
+    setSignatureNowMs,
+    setTeamLogoFiles,
   ])
 
   const resetFormDraft = useCallback(() => {
@@ -4411,7 +3495,7 @@ export function useAdminCreateEventForm({
     setOptionImageFiles({})
     setFinalPreviewDialogOpen(false)
     setRulesGeneratorDialogOpen(false)
-    setIsAddressCopied(false)
+    resetAddressCopied()
     setIsBinaryOutcomesEditable(false)
     setAreMultiOutcomesEditable(false)
 
@@ -4421,8 +3505,7 @@ export function useAdminCreateEventForm({
     setFundingCheckError('')
     setNativeGasCheckState('idle')
     setNativeGasCheckError('')
-    setAllowedCreatorCheckState('idle')
-    setAllowedCreatorCheckError('')
+    resetAllowedCreatorCheck()
     setProposerWhitelistCheckState('idle')
     setProposerWhitelistCheckError('')
     setOpenRouterCheckState('idle')
@@ -4449,6 +3532,11 @@ export function useAdminCreateEventForm({
     normalizedInitialTitle,
     pendingWorkflowRequestId,
     preparedSignaturePlan,
+    resetAllowedCreatorCheck,
+    resetAddressCopied,
+    setEventImageFile,
+    setOptionImageFiles,
+    setTeamLogoFiles,
     signatureFlowDone,
     signatureFlowError,
     signatureTxs.length,
@@ -4461,8 +3549,8 @@ export function useAdminCreateEventForm({
   const confirmResetForm = useCallback(() => {
     setResetFormDialogOpen(false)
     resetFormDraft()
-    toast.success('Form cleared.')
-  }, [resetFormDraft])
+    toast.success(t('Form cleared.'))
+  }, [resetFormDraft, t])
 
   const goNext = useCallback(() => {
     if (currentStep <= 3) {
@@ -4498,7 +3586,7 @@ export function useAdminCreateEventForm({
 
     if (signatureFlowDone) {
       resetCreateEventFlow()
-      toast.success('Form cleared.')
+      toast.success(t('Form cleared.'))
       return
     }
 
@@ -4533,7 +3621,7 @@ export function useAdminCreateEventForm({
         await executeSignatureFlow()
       }
       catch (error) {
-        const message = error instanceof Error ? error.message : 'Could not complete signature flow.'
+        const message = error instanceof Error ? error.message : t('Could not complete signature flow.')
         toast.error(message)
       }
     }
@@ -4556,6 +3644,7 @@ export function useAdminCreateEventForm({
     resetCreateEventFlow,
     setFinalPreviewDialogOpen,
     signatureFlowDone,
+    t,
     validateStep,
   ])
 
@@ -4681,6 +3770,13 @@ export function useAdminCreateEventForm({
     signers,
     isLoadingSigners,
     sportsForm,
+    defaultSportsMatchQuery,
+    sportsMatchQuery,
+    setSportsMatchQuery,
+    sportsMatchCandidates,
+    selectedSportsMatch,
+    isSearchingSportsMatches,
+    sportsMatchError,
     mainCategories,
     categoryQuery,
     setCategoryQuery,
@@ -4822,6 +3918,9 @@ export function useAdminCreateEventForm({
     isStepValid,
     handleSportsFieldChange,
     handleSportsTeamChange,
+    applySportsMatchCandidate,
+    clearSportsMatchCandidate,
+    searchSportsMatches,
     handleSportsTeamLogoUpload,
     handleSportsPropChange,
     handleSportSlugSelectChange,

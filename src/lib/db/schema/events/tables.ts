@@ -80,6 +80,9 @@ export const events = pgTable(
     is_hidden: boolean()
       .notNull()
       .default(false),
+    is_polymarket_mirror: boolean()
+      .notNull()
+      .default(false),
     livestream_url: text(),
     additional_context: text(),
     additional_context_updated_at: timestamp({ withTimezone: true }),
@@ -255,6 +258,7 @@ export const markets = pgTable(
     condition_id: text()
       .primaryKey()
       .references(() => conditions.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
+    polymarket_condition_id: text(),
     event_id: char({ length: 26 })
       .notNull()
       .references(() => events.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
@@ -418,9 +422,26 @@ export const event_sports = pgTable(
     sports_tags: jsonb(),
     sports_teams: jsonb(),
     sports_team_logo_urls: jsonb(),
+    sports_source_provider: text(),
+    sports_source_event_id: text(),
+    sports_source_game_id: text(),
+    sports_source_league_id: text(),
+    sports_source_league_label: text(),
+    sports_source_match_confidence: numeric({ precision: 6, scale: 4 }),
+    sports_source_payload: jsonb(),
+    sports_source_selected_at: timestamp({ withTimezone: true }),
     created_at: timestamp({ withTimezone: true }).defaultNow().notNull(),
     updated_at: timestamp({ withTimezone: true }).defaultNow().notNull(),
   },
+  table => ({
+    sourceConfidenceCheck: check(
+      'event_sports_source_match_confidence_range',
+      sql`${table.sports_source_match_confidence} IS NULL OR (${table.sports_source_match_confidence} >= 0 AND ${table.sports_source_match_confidence} <= 1)`,
+    ),
+    sourceEventIdx: index('idx_event_sports_source_event').on(table.sports_source_provider, table.sports_source_event_id),
+    sourceGameIdx: index('idx_event_sports_source_game').on(table.sports_source_provider, table.sports_source_game_id),
+    sourceLeagueIdx: index('idx_event_sports_source_league').on(table.sports_source_provider, table.sports_source_league_id),
+  }),
 )
 
 export const market_sports = pgTable(
@@ -444,9 +465,26 @@ export const market_sports = pgTable(
     sports_event_slug: text(),
     sports_teams: jsonb(),
     sports_team_logo_urls: jsonb(),
+    sports_source_provider: text(),
+    sports_source_event_id: text(),
+    sports_source_game_id: text(),
+    sports_source_league_id: text(),
+    sports_source_league_label: text(),
+    sports_source_market_id: text(),
+    sports_source_match_confidence: numeric({ precision: 6, scale: 4 }),
+    sports_source_payload: jsonb(),
     created_at: timestamp({ withTimezone: true }).defaultNow().notNull(),
     updated_at: timestamp({ withTimezone: true }).defaultNow().notNull(),
   },
+  table => ({
+    sourceConfidenceCheck: check(
+      'market_sports_source_match_confidence_range',
+      sql`${table.sports_source_match_confidence} IS NULL OR (${table.sports_source_match_confidence} >= 0 AND ${table.sports_source_match_confidence} <= 1)`,
+    ),
+    sourceEventIdx: index('idx_market_sports_source_event').on(table.sports_source_provider, table.sports_source_event_id),
+    sourceGameIdx: index('idx_market_sports_source_game').on(table.sports_source_provider, table.sports_source_game_id),
+    sourceLeagueIdx: index('idx_market_sports_source_league').on(table.sports_source_provider, table.sports_source_league_id),
+  }),
 )
 
 export const sports_menu_items = pgTable(
@@ -466,6 +504,10 @@ export const sports_menu_items = pgTable(
     props_enabled: boolean().notNull().default(true),
     sort_order: integer().notNull().default(0),
     enabled: boolean().notNull().default(true),
+    sidebar_category: boolean().notNull().default(false),
+    sidebar_enabled: boolean().notNull().default(false),
+    sidebar_featured: boolean().notNull().default(false),
+    sidebar_sort_order: integer().notNull().default(0),
     created_at: timestamp({ withTimezone: true }).defaultNow().notNull(),
     updated_at: timestamp({ withTimezone: true }).defaultNow().notNull(),
   },
@@ -480,6 +522,7 @@ export const outcomes = pgTable(
     outcome_text: text().notNull(),
     outcome_index: smallint().notNull(),
     token_id: text().notNull().primaryKey(),
+    polymarket_token_id: text(),
     is_winning_outcome: boolean().default(false),
     payout_value: numeric({ precision: 20, scale: 6 }),
     created_at: timestamp({ withTimezone: true }).defaultNow().notNull(),

@@ -139,7 +139,10 @@ export default function LocaleSwitcherMenuItem() {
         </span>
       </DropdownMenuSubTrigger>
       <DropdownMenuPortal>
-        <DropdownMenuSubContent sideOffset={-30}>
+        <DropdownMenuSubContent
+          sideOffset={-30}
+          className="max-h-(--radix-dropdown-menu-content-available-height) overflow-x-hidden overflow-y-auto"
+        >
           <DropdownMenuRadioGroup
             value={locale}
             onValueChange={handleValueChange}

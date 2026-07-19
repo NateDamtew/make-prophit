@@ -8,14 +8,23 @@ const mocks = vi.hoisted(() => ({
   eventBookmark: vi.fn(),
 }))
 
+vi.mock('next-intl', () => ({
+  useExtracted: () => (message: string, values?: Record<string, string | number>) =>
+    Object.entries(values ?? {}).reduce(
+      (label, [key, value]) => label.replace(`{${key}}`, String(value)),
+      message,
+    ),
+  useLocale: () => 'en-US',
+}))
+
 vi.mock('next/image', () => ({
   default: function MockImage({ fill: _fill, ...props }: any) {
     return <img {...props} />
   },
 }))
 
-vi.mock('@/components/AppLink', () => ({
-  default: function MockAppLink({
+vi.mock('@/i18n/navigation', () => ({
+  Link: function MockLink({
     children,
     href,
     ...props
@@ -109,6 +118,198 @@ describe('eventCardSportsMoneyline', () => {
     expect(mocks.eventBookmark).toHaveBeenCalledWith(expect.objectContaining({
       refreshStatusOnMount: false,
     }))
+  })
+
+  it('renders full team names in active moneyline buttons', () => {
+    const event = {
+      status: 'active',
+      volume: 2500,
+      sports_sport_slug: 'soccer',
+      sports_start_time: '2026-03-14T23:00:00.000Z',
+      markets: [
+        {
+          condition_id: 'match-winner-condition',
+          slug: 'france-vs-morocco-match-winner',
+        },
+      ],
+    } as any
+
+    const model = {
+      team1: {
+        name: 'France',
+        abbreviation: 'FRA',
+        color: '#1d4ed8',
+        logoUrl: null,
+        hostStatus: 'home',
+      },
+      team2: {
+        name: 'Morocco',
+        abbreviation: 'MAR',
+        color: '#dc2626',
+        logoUrl: null,
+        hostStatus: 'away',
+      },
+      team1Button: {
+        conditionId: 'match-winner-condition',
+        outcomeIndex: 0,
+        label: 'FRA',
+        tone: 'team1',
+        color: '#1d4ed8',
+      },
+      team2Button: {
+        conditionId: 'match-winner-condition',
+        outcomeIndex: 1,
+        label: 'MAR',
+        tone: 'team2',
+        color: '#dc2626',
+      },
+    } as any
+
+    render(
+      <EventCardSportsMoneyline
+        event={event}
+        model={model}
+        getDisplayChance={() => 61}
+      />,
+    )
+
+    const franceButtonLabel = screen.getAllByText('France')
+      .find(element => element.tagName.toLowerCase() === 'span')
+    const moroccoButtonLabel = screen.getAllByText('Morocco')
+      .find(element => element.tagName.toLowerCase() === 'span')
+
+    expect(franceButtonLabel).toBeInTheDocument()
+    expect(moroccoButtonLabel).toBeInTheDocument()
+    expect(franceButtonLabel?.closest('a')).toHaveStyle('color: #1d4ed8')
+    expect(moroccoButtonLabel?.closest('a')).toHaveStyle('color: #dc2626')
+    expect(franceButtonLabel?.closest('a')).toHaveClass('hover:!text-white')
+    expect(moroccoButtonLabel?.closest('a')).toHaveClass('hover:!text-white')
+    expect(franceButtonLabel?.closest('a')).toHaveClass('dark:!text-[var(--home-sports-button-dark-text)]')
+    expect(moroccoButtonLabel?.closest('a')).toHaveClass('dark:!text-[var(--home-sports-button-dark-text)]')
+    expect(franceButtonLabel?.closest('a')).toHaveStyle('--home-sports-button-dark-text: #a9bcf0')
+    expect(moroccoButtonLabel?.closest('a')).toHaveStyle('--home-sports-button-dark-text: #f2adad')
+    expect(screen.queryByText('FRA')).not.toBeInTheDocument()
+    expect(screen.queryByText('MAR')).not.toBeInTheDocument()
+  })
+
+  it('shows live team scores between the logo and team name', () => {
+    const event = {
+      status: 'active',
+      volume: 2500,
+      sports_live: true,
+      sports_score: '2 - 1',
+      sports_sport_slug: 'soccer',
+      sports_start_time: '2026-03-14T23:00:00.000Z',
+      markets: [
+        {
+          condition_id: 'match-winner-condition',
+          slug: 'france-vs-morocco-match-winner',
+        },
+      ],
+    } as any
+
+    const model = {
+      team1: {
+        name: 'France',
+        abbreviation: 'FRA',
+        color: '#1d4ed8',
+        logoUrl: 'https://example.com/france.png',
+        hostStatus: 'home',
+      },
+      team2: {
+        name: 'Morocco',
+        abbreviation: 'MAR',
+        color: '#dc2626',
+        logoUrl: 'https://example.com/morocco.png',
+        hostStatus: 'away',
+      },
+      team1Button: {
+        conditionId: 'match-winner-condition',
+        outcomeIndex: 0,
+        label: 'FRA',
+        tone: 'team1',
+        color: '#1d4ed8',
+      },
+      team2Button: {
+        conditionId: 'match-winner-condition',
+        outcomeIndex: 1,
+        label: 'MAR',
+        tone: 'team2',
+        color: '#dc2626',
+      },
+    } as any
+
+    render(
+      <EventCardSportsMoneyline
+        event={event}
+        model={model}
+        getDisplayChance={() => 61}
+      />,
+    )
+
+    expect(screen.getByLabelText('France score 2')).toBeInTheDocument()
+    expect(screen.getByLabelText('Morocco score 1')).toBeInTheDocument()
+  })
+
+  it('does not show live team scores when score data is missing', () => {
+    const event = {
+      status: 'active',
+      volume: 2500,
+      sports_live: true,
+      sports_score: null,
+      sports_sport_slug: 'soccer',
+      sports_start_time: '2026-03-14T23:00:00.000Z',
+      markets: [
+        {
+          condition_id: 'match-winner-condition',
+          slug: 'france-vs-morocco-match-winner',
+        },
+      ],
+    } as any
+
+    const model = {
+      team1: {
+        name: 'France',
+        abbreviation: 'FRA',
+        color: '#1d4ed8',
+        logoUrl: 'https://example.com/france.png',
+        hostStatus: 'home',
+      },
+      team2: {
+        name: 'Morocco',
+        abbreviation: 'MAR',
+        color: '#dc2626',
+        logoUrl: 'https://example.com/morocco.png',
+        hostStatus: 'away',
+      },
+      team1Button: {
+        conditionId: 'match-winner-condition',
+        outcomeIndex: 0,
+        label: 'FRA',
+        tone: 'team1',
+        color: '#1d4ed8',
+      },
+      team2Button: {
+        conditionId: 'match-winner-condition',
+        outcomeIndex: 1,
+        label: 'MAR',
+        tone: 'team2',
+        color: '#dc2626',
+      },
+    } as any
+
+    render(
+      <EventCardSportsMoneyline
+        event={event}
+        model={model}
+        getDisplayChance={() => 61}
+      />,
+    )
+
+    expect(screen.queryByLabelText('France score 0')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Morocco score 0')).not.toBeInTheDocument()
+    expect(screen.getAllByText('France')).toHaveLength(2)
+    expect(screen.getAllByText('Morocco')).toHaveLength(2)
   })
 
   it('renders the resolved winner and ended footer for sports cards', () => {

@@ -3,8 +3,10 @@ import type { KnipConfig } from 'knip'
 const config: KnipConfig = {
   ignore: [
     'docs.config.ts',
+    'docs/**',
     'public/**/*',
     'scripts/**',
+    'src/lib/db/schema/**',
     'src/components/ui/**',
     '.husky/**',
     // Drizzle schema files are consumed via `import * as schema from './db/schema'`.
@@ -40,6 +42,12 @@ const config: KnipConfig = {
     'src/app/[locale]/(platform)/community/[slug]/_components/presets/ForumPreset.tsx',
     // Header-only ticker; its sole consumer (CommunityHeader) is paused above.
     'src/components/community-engagement/ActivityTicker.tsx',
+    // Upstream's arbitrage second-wallet reconnect hook. Its mount point was
+    // upstream's Reown AppKitProvider; our Dynamic provider doesn't mount it
+    // (multi-wallet arb is inert under Dynamic). Kept for future syncs.
+    'src/hooks/usePolymarketWalletConnection.ts',
+    // Local scratch area, never committed.
+    'scratch/**',
   ],
   ignoreDependencies: [
     'lint-staged',

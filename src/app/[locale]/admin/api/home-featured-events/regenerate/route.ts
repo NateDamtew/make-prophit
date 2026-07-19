@@ -76,6 +76,11 @@ async function persistDraftPayload(payload: Record<string, unknown> | null) {
       sideCardCtaHref: readStringPayloadValue(sideCardRecord.ctaHref ?? settingsRecord.sideCardCtaHref),
       sideCardIcon: readStringPayloadValue(sideCardRecord.icon ?? settingsRecord.sideCardIcon),
       sideCardUseAi: readStringPayloadValue(sideCardRecord.useAi ?? settingsRecord.sideCardUseAi),
+      sideCardUseImage: readStringPayloadValue(sideCardRecord.useImage ?? settingsRecord.sideCardUseImage),
+      sideCardImagePath: readStringPayloadValue(sideCardRecord.imagePath ?? settingsRecord.sideCardImagePath),
+      sideCardSlidesJson: Array.isArray(sideCardRecord.slides)
+        ? JSON.stringify(sideCardRecord.slides)
+        : readStringPayloadValue(settingsRecord.sideCardSlidesJson),
     })
 
     if (!validated.data) {

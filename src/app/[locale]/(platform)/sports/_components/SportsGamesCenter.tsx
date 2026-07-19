@@ -2,7 +2,7 @@
 
 import type { Route } from 'next'
 import type { SportsGamesCenterProps, SportsGamesMarketType } from './_sports-games-center/sports-games-center-types'
-import type { SportsGamesCard } from '@/app/[locale]/(platform)/sports/_utils/sports-games-data'
+import type { SportsGamesButton, SportsGamesCard } from '@/app/[locale]/(platform)/sports/_utils/sports-games-data'
 import {
   BookOpenTextIcon,
   CheckIcon,
@@ -24,7 +24,6 @@ import {
   resolveSportsGamesCardVisibleMarketTypes,
   resolveSportsGamesHeaderMarketTypes,
 } from '@/app/[locale]/(platform)/sports/_utils/sports-games-data'
-import AppLink from '@/components/AppLink'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -38,9 +37,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useCurrentTimestamp } from '@/hooks/useCurrentTimestamp'
 import { useIsMobile } from '@/hooks/useIsMobile'
-import { useRouter } from '@/i18n/navigation'
+import { Link, useRouter } from '@/i18n/navigation'
 import { formatVolume } from '@/lib/formatters'
 import { ODDS_FORMAT_OPTIONS } from '@/lib/odds-format'
+import { resolveSportsTeamFallbackColor } from '@/lib/sports-team-colors'
 import { shouldUseCroppedSportsTeamLogo } from '@/lib/sports-team-logo'
 import { getSportsVerticalConfig } from '@/lib/sports-vertical'
 import { cn } from '@/lib/utils'
@@ -96,11 +96,44 @@ export {
   resolveSelectedButton,
   resolveSelectedMarket,
   resolveSelectedOutcome,
+  resolveSportsGraphSelection,
   resolveStableSpreadPrimaryOutcomeIndex,
 } from './_sports-games-center/sports-games-center-utils'
 export { default as SportsGameDetailsPanel } from './_sports-games-center/SportsGameDetailsPanel'
 export { default as SportsGameGraph } from './_sports-games-center/SportsGameGraph'
 export { default as SportsOrderPanelMarketInfo } from './_sports-games-center/SportsOrderPanelMarketInfo'
+
+function normalizeChancePercent(value: number | null | undefined) {
+  if (value == null || !Number.isFinite(value)) {
+    return null
+  }
+
+  return Math.min(100, Math.max(0, value))
+}
+
+function resolveEsportsMoneylineBarStyle({
+  button,
+  cents,
+  teamColor,
+}: {
+  button: SportsGamesButton | null
+  cents: number | null | undefined
+  teamColor: string | null
+}) {
+  const chance = normalizeChancePercent(cents)
+  if (chance == null || !button) {
+    return null
+  }
+
+  return {
+    width: `${chance}%`,
+    backgroundColor: button.color?.trim()
+      || teamColor?.trim()
+      || (button.tone === 'team2'
+        ? resolveSportsTeamFallbackColor('team2')
+        : resolveSportsTeamFallbackColor('team1')),
+  }
+}
 
 export default function SportsGamesCenter({
   cards,
@@ -405,6 +438,7 @@ export default function SportsGamesCenter({
     const isSpreadOrTotalSelected = selectedButton?.marketType === 'spread' || selectedButton?.marketType === 'total'
     const isFinalizedCard = card.event.sports_ended === true
     const parsedFinalScore = parseSportsScore(card.event.sports_score)
+    const shouldShowLiveScore = options.topBadgeMode === 'live' && !isFinalizedCard && parsedFinalScore !== null
     const teamScores = [
       parsedFinalScore?.team1 ?? null,
       parsedFinalScore?.team2 ?? null,
@@ -419,6 +453,21 @@ export default function SportsGamesCenter({
     const shouldRenderDetailsPanel = !isMobile && isExpanded && (effectiveIsDetailsContentVisible || isSpreadOrTotalSelected)
     const activeMarketType = resolveActiveMarketType(card, selectedButtonKey)
     const buttonGroups = groupButtonsByMarketType(card.buttons)
+    const esportsMoneylineBarStyles = vertical === 'esports' && !isFinalizedCard
+      ? card.teams.map((team, teamIndex) => {
+          const tone = teamIndex === 0 ? 'team1' : 'team2'
+          const button = buttonGroups.moneyline.find(currentButton => currentButton.tone === tone)
+            ?? buttonGroups.moneyline[teamIndex]
+            ?? null
+          const cents = button ? (buttonPriceCentsByKey.get(`${card.id}:${button.key}`) ?? button.cents) : null
+
+          return resolveEsportsMoneylineBarStyle({
+            button,
+            cents,
+            teamColor: team.color,
+          })
+        })
+      : []
     const shouldUseClosedDetailsSpacing = Boolean(
       selectedButton
       && (selectedButton.marketType === 'spread' || selectedButton.marketType === 'total')
@@ -453,11 +502,14 @@ export default function SportsGamesCenter({
               hover:bg-secondary/30
             `,
             shouldRenderDetailsPanel ? 'rounded-t-xl' : 'rounded-xl',
-            isFinalizedCard ? 'pb-3' : 'pb-2.5',
+            isFinalizedCard
+              ? 'pb-3'
+              : vertical === 'esports' && !shouldRenderDetailsPanel
+                ? 'pb-3.5'
+                : 'pb-2.5',
           )}
         >
-          <AppLink
-            intentPrefetch
+          <Link
             href={card.eventHref as Route}
             aria-label={`Open ${card.title}`}
             className={cn(`
@@ -663,13 +715,30 @@ export default function SportsGamesCenter({
                 return (
                   <div
                     key={`${card.id}-${team.abbreviation}-${team.name}`}
-                    className="flex items-center gap-2"
+                    className={cn('flex items-center', vertical === 'esports' ? 'gap-2.5' : 'gap-2')}
                   >
+                    {shouldShowLiveScore && (
+                      <span
+                        className={cn(`
+                          inline-flex h-6 min-w-6 shrink-0 items-center justify-center rounded-lg bg-secondary/80 px-1.5
+                          text-sm font-bold text-foreground tabular-nums
+                        `)}
+                      >
+                        {teamScore ?? '—'}
+                      </span>
+                    )}
+
                     <div
                       className={cn(
                         useCroppedTeamLogo
-                          ? 'relative h-7 w-12 shrink-0 overflow-hidden rounded-sm'
-                          : 'flex size-6 shrink-0 items-center justify-center',
+                          ? cn(
+                              'relative shrink-0 overflow-hidden rounded-sm',
+                              vertical === 'esports' ? 'h-8 w-14' : 'h-7 w-12',
+                            )
+                          : cn(
+                              'flex shrink-0 items-center justify-center',
+                              vertical === 'esports' ? 'size-7' : 'size-6',
+                            ),
                       )}
                     >
                       {team.logoUrl
@@ -688,9 +757,9 @@ export default function SportsGamesCenter({
                                   <Image
                                     src={team.logoUrl}
                                     alt={`${team.name} logo`}
-                                    width={24}
-                                    height={24}
-                                    sizes="20px"
+                                    width={vertical === 'esports' ? 28 : 24}
+                                    height={vertical === 'esports' ? 28 : 24}
+                                    sizes={vertical === 'esports' ? '28px' : '20px'}
                                     className="size-[92%] object-contain object-center"
                                   />
                                 )
@@ -710,8 +779,25 @@ export default function SportsGamesCenter({
                           )}
                     </div>
 
-                    <span className="truncate text-sm font-semibold text-foreground">
-                      {team.name}
+                    <span className="min-w-0 flex-1">
+                      <span
+                        className={cn(
+                          'block truncate font-semibold text-foreground',
+                          vertical === 'esports' ? 'text-[15px]' : 'text-sm',
+                        )}
+                      >
+                        {team.name}
+                      </span>
+                      {esportsMoneylineBarStyles[teamIndex]
+                        ? (
+                            <span className="mt-1 block h-0.5 w-28 max-w-full overflow-hidden rounded-full">
+                              <span
+                                className="block h-full rounded-full"
+                                style={esportsMoneylineBarStyles[teamIndex] ?? undefined}
+                              />
+                            </span>
+                          )
+                        : null}
                     </span>
 
                     {team.record && (

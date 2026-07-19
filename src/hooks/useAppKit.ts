@@ -15,7 +15,7 @@ export interface TonTxMessage {
 }
 
 export interface AppKitValue {
-  open: (options?: { view?: string }) => Promise<void>
+  open: (options?: { view?: string, namespace?: string }) => Promise<void>
   close: () => Promise<void>
   isReady: boolean
   /** Wallet state, surfaced here so consumers never call Dynamic hooks directly. */

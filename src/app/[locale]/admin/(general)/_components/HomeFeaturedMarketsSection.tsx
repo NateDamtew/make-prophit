@@ -1,7 +1,7 @@
 'use client'
 
 import type { IconName } from 'lucide-react/dynamic'
-import type { Dispatch, SetStateAction } from 'react'
+import type { Dispatch, ReactNode, SetStateAction } from 'react'
 import type {
   HomeFeaturedContextItem,
   HomeFeaturedContextMode,
@@ -9,21 +9,18 @@ import type {
   HomeFeaturedSideCardSettings,
 } from '@/types'
 import {
-  ArrowDownIcon,
-  ArrowUpIcon,
   Loader2Icon,
-  NewspaperIcon,
   PlusIcon,
   SearchIcon,
   SettingsIcon,
   SlidersHorizontalIcon,
   SparklesIcon,
   StarIcon,
+  VideoIcon,
   XIcon,
 } from 'lucide-react'
 import { DynamicIcon } from 'lucide-react/dynamic'
 import { useExtracted } from 'next-intl'
-import Image from 'next/image'
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -35,6 +32,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+} from '@/components/ui/drawer'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -46,12 +51,13 @@ import {
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
+import { useIsMobile } from '@/hooks/useIsMobile'
 import { formatDollarValueLabel } from '@/lib/formatters'
-import {
-  HOME_FEATURED_SIDE_CARD_ICONS,
-  HOME_FEATURED_SIDE_CARD_LIMITS,
-} from '@/lib/home-featured-settings'
+import { serializeHomeFeaturedEventsForSave } from '@/lib/home-featured-payload'
 import { cn } from '@/lib/utils'
+import HomeFeaturedAdminPreviewImage from './HomeFeaturedAdminPreviewImage'
+import HomeFeaturedEventRow from './HomeFeaturedEventRow'
+import HomeFeaturedSideCardCarouselDialog from './HomeFeaturedSideCardCarouselDialog'
 import SettingsAccordionSection from './SettingsAccordionSection'
 
 interface AdminEventCandidate {
@@ -95,19 +101,15 @@ interface HomeFeaturedMarketsSectionProps {
   onIncludeNewEventsChange: (value: boolean) => void
   sideCard: HomeFeaturedSideCardSettings
   onSideCardChange: Dispatch<SetStateAction<HomeFeaturedSideCardSettings>>
+  sideCardImagePreviewUrls: Record<string, string>
+  processingSideCardImageIds: string[]
+  onSideCardImageChange: (slideId: string, file: File | null) => Promise<void>
   featuredEvents: HomeFeaturedEventAdminItem[]
   onFeaturedEventsChange: Dispatch<SetStateAction<HomeFeaturedEventAdminItem[]>>
 }
 
 function fetchAdminEventsApi(pathname: string, init?: RequestInit) {
   return fetch(`/admin/api/events${pathname}`, init)
-}
-
-function formatSideCardIconLabel(icon: string) {
-  return icon
-    .split('-')
-    .map(part => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ')
 }
 
 function readApiError(payload: unknown) {
@@ -164,27 +166,6 @@ function moveItem<T>(items: T[], index: number, direction: -1 | 1) {
   return next
 }
 
-function serializeFeaturedEventsForSave(items: HomeFeaturedEventAdminItem[], locale: string) {
-  return items.map((event, index) => ({
-    targetType: event.targetType,
-    eventId: event.eventId,
-    seriesSlug: event.seriesSlug,
-    enabled: event.enabled,
-    rank: index,
-    source: event.source,
-    startsAt: event.startsAt,
-    endsAt: event.endsAt,
-    contextMode: event.contextMode,
-    autoRolloverEnabled: event.autoRolloverEnabled,
-    contextLocale: locale,
-    contextEventId: event.eventId,
-    contextItems: (event.contextItems ?? []).map(contextItem => ({
-      ...contextItem,
-      locale,
-    })),
-  }))
-}
-
 function buildManualNewsContextItem(item: {
   title: string
   source: string
@@ -211,13 +192,76 @@ function buildManualNewsContextItem(item: {
   }
 }
 
+function HomeFeaturedResponsiveOverlay({
+  isMobile,
+  open,
+  title,
+  description,
+  children,
+  footer,
+  dialogClassName,
+  onOpenChange,
+}: {
+  isMobile: boolean
+  open: boolean
+  title: ReactNode
+  description: ReactNode
+  children: ReactNode
+  footer: ReactNode
+  dialogClassName: string
+  onOpenChange: (open: boolean) => void
+}) {
+  if (isMobile) {
+    return (
+      <Drawer open={open} onOpenChange={onOpenChange}>
+        <DrawerContent className="max-h-[90vh] w-full overflow-hidden bg-background px-4 pt-4 pb-6">
+          <DrawerHeader className="shrink-0 space-y-2 p-0 text-left">
+            <DrawerTitle>{title}</DrawerTitle>
+            <DrawerDescription>{description}</DrawerDescription>
+          </DrawerHeader>
+          <div className="min-h-0 flex-1 overflow-y-auto py-4 pr-1">
+            {children}
+          </div>
+          <DrawerFooter className="shrink-0 border-t p-0 pt-4">
+            {footer}
+          </DrawerFooter>
+        </DrawerContent>
+      </Drawer>
+    )
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        className={cn(
+          'max-h-[90vh] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden',
+          dialogClassName,
+        )}
+      >
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
+        </DialogHeader>
+        <div className="min-h-0 overflow-y-auto pr-1">
+          {children}
+        </div>
+        <DialogFooter className="border-t pt-4">
+          {footer}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function HomeFeaturedSelectionDialog({
+  isMobile,
   open,
   disabled,
   selectedItems,
   onOpenChange,
   onAddCandidate,
 }: {
+  isMobile: boolean
   open: boolean
   disabled: boolean
   selectedItems: HomeFeaturedEventAdminItem[]
@@ -302,101 +346,91 @@ function HomeFeaturedSelectionDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-3xl">
-        <DialogHeader>
-          <DialogTitle>{t('Add featured markets')}</DialogTitle>
-          <DialogDescription>
-            {t('Select active markets for the home carousel. Recurring markets are saved as a series automatically.')}
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="grid gap-3">
-          <div className="relative">
-            <SearchIcon
-              className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
-            />
-            <Input
-              value={search}
-              onChange={event => setSearch(event.target.value)}
-              placeholder={t('Search active markets')}
-              className="pl-9"
-              disabled={disabled}
-            />
-          </div>
-
-          <div className="max-h-96 overflow-y-auto rounded-lg border">
-            {isLoading && (
-              <div className="flex h-28 items-center justify-center gap-2 text-sm text-muted-foreground">
-                <Loader2Icon className="size-4 animate-spin" />
-                {t('Searching events...')}
-              </div>
-            )}
-
-            {!isLoading && candidates.length === 0 && (
-              <div className="flex h-28 items-center justify-center text-sm text-muted-foreground">
-                {t('No events found')}
-              </div>
-            )}
-
-            {!isLoading && candidates.map((candidate) => {
-              const candidateKey = buildFeaturedKey(toFeaturedItem(candidate, selectedItems.length))
-              const isSelected = selectedKeys.has(candidateKey)
-
-              return (
-                <button
-                  key={candidate.id}
-                  type="button"
-                  disabled={disabled || isSelected}
-                  onClick={() => onAddCandidate(candidate)}
-                  className={cn(`
-                    flex w-full items-center gap-3 border-b p-3 text-left
-                    last:border-b-0
-                    hover:bg-muted/50
-                    disabled:cursor-not-allowed disabled:opacity-60
-                  `)}
-                >
-                  <div className="size-10 overflow-hidden rounded-lg bg-muted">
-                    {candidate.icon_url && (
-                      <Image
-                        src={candidate.icon_url}
-                        alt=""
-                        width={40}
-                        height={40}
-                        className="size-10 object-cover"
-                      />
-                    )}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium">{candidate.title}</p>
-                    <p className="truncate text-sm text-muted-foreground">
-                      {candidate.series_slug ? `${t('Series')} · ${candidate.series_slug}` : candidate.slug}
-                    </p>
-                  </div>
-                  <div className="hidden text-right text-sm text-muted-foreground sm:block">
-                    <p>{formatDollarValueLabel(candidate.volume, { maximumFractionDigits: 0 })}</p>
-                    <p>{`${formatDollarValueLabel(candidate.volume_24h, { maximumFractionDigits: 0 })} 24h`}</p>
-                  </div>
-                  <span className="text-sm text-muted-foreground">
-                    {isSelected ? t('Added') : t('Add')}
-                  </span>
-                </button>
-              )
-            })}
-          </div>
+    <HomeFeaturedResponsiveOverlay
+      isMobile={isMobile}
+      open={open}
+      onOpenChange={handleOpenChange}
+      title={t('Add featured markets')}
+      description={t('Select active markets for the home carousel. Recurring markets are saved as a series automatically.')}
+      dialogClassName="sm:max-w-3xl"
+      footer={(
+        <Button type="button" variant="secondary" onClick={() => handleOpenChange(false)}>
+          {t('Done')}
+        </Button>
+      )}
+    >
+      <div className="grid gap-3">
+        <div className="relative">
+          <SearchIcon
+            className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+          />
+          <Input
+            value={search}
+            onChange={event => setSearch(event.target.value)}
+            placeholder={t('Search active markets')}
+            className="pl-9"
+            disabled={disabled}
+          />
         </div>
 
-        <DialogFooter>
-          <Button type="button" variant="secondary" onClick={() => handleOpenChange(false)}>
-            {t('Done')}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        <div className="max-h-96 overflow-y-auto rounded-lg border">
+          {isLoading && (
+            <div className="flex h-28 items-center justify-center gap-2 text-sm text-muted-foreground">
+              <Loader2Icon className="size-4 animate-spin" />
+              {t('Searching events...')}
+            </div>
+          )}
+
+          {!isLoading && candidates.length === 0 && (
+            <div className="flex h-28 items-center justify-center text-sm text-muted-foreground">
+              {t('No events found')}
+            </div>
+          )}
+
+          {!isLoading && candidates.map((candidate) => {
+            const candidateKey = buildFeaturedKey(toFeaturedItem(candidate, selectedItems.length))
+            const isSelected = selectedKeys.has(candidateKey)
+
+            return (
+              <button
+                key={candidate.id}
+                type="button"
+                disabled={disabled || isSelected}
+                onClick={() => onAddCandidate(candidate)}
+                className={cn(`
+                  flex w-full items-center gap-3 border-b p-3 text-left
+                  last:border-b-0
+                  hover:bg-muted/50
+                  disabled:cursor-not-allowed disabled:opacity-60
+                `)}
+              >
+                <div className="size-10 overflow-hidden rounded-lg bg-muted">
+                  <HomeFeaturedAdminPreviewImage src={candidate.icon_url} alt="" className="size-10 object-cover" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium">{candidate.title}</p>
+                  <p className="truncate text-sm text-muted-foreground">
+                    {candidate.series_slug ? `${t('Series')} · ${candidate.series_slug}` : candidate.slug}
+                  </p>
+                </div>
+                <div className="hidden text-right text-sm text-muted-foreground sm:block">
+                  <p>{formatDollarValueLabel(candidate.volume, { maximumFractionDigits: 0 })}</p>
+                  <p>{`${formatDollarValueLabel(candidate.volume_24h, { maximumFractionDigits: 0 })} 24h`}</p>
+                </div>
+                <span className="text-sm text-muted-foreground">
+                  {isSelected ? t('Added') : t('Add')}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+    </HomeFeaturedResponsiveOverlay>
   )
 }
 
 function HomeFeaturedSettingsDialog({
+  isMobile,
   open,
   disabled,
   useAi,
@@ -416,6 +450,7 @@ function HomeFeaturedSettingsDialog({
   onIncludeSportsTodayChange,
   onIncludeNewEventsChange,
 }: {
+  isMobile: boolean
   open: boolean
   disabled: boolean
   useAi: boolean
@@ -438,51 +473,62 @@ function HomeFeaturedSettingsDialog({
   const t = useExtracted()
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{t('Selection and context settings')}</DialogTitle>
-          <DialogDescription>
-            {t('Manual order is respected first. AI picks can fill empty slots when enabled.')}
-          </DialogDescription>
-        </DialogHeader>
+    <HomeFeaturedResponsiveOverlay
+      isMobile={isMobile}
+      open={open}
+      onOpenChange={onOpenChange}
+      title={t('Selection and context settings')}
+      description={t('Manual order is respected first. AI picks can fill empty slots when enabled.')}
+      dialogClassName="sm:max-w-3xl"
+      footer={(
+        <Button type="button" variant="secondary" onClick={() => onOpenChange(false)}>
+          {t('Done')}
+        </Button>
+      )}
+    >
+      <div className="grid gap-6">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-[0.75fr_1fr_1.25fr]">
+          <div className="grid gap-2">
+            <Label htmlFor="home-featured-max-cards">{t('Max cards')}</Label>
+            <Input
+              id="home-featured-max-cards"
+              type="number"
+              min={1}
+              max={8}
+              value={maxCards}
+              onChange={event => onMaxCardsChange(Math.min(8, Math.max(1, Number(event.target.value) || 1)))}
+              disabled={disabled}
+            />
+          </div>
 
-        <div className="grid gap-6">
-          <div className="grid gap-4 md:grid-cols-3">
-            <div className="grid gap-2">
-              <Label htmlFor="home-featured-max-cards">{t('Max cards')}</Label>
-              <Input
-                id="home-featured-max-cards"
-                type="number"
-                min={1}
-                max={8}
-                value={maxCards}
-                onChange={event => onMaxCardsChange(Math.min(8, Math.max(1, Number(event.target.value) || 1)))}
-                disabled={disabled}
-              />
-            </div>
+          <div className="grid gap-2">
+            <Label>{t('Default context')}</Label>
+            <Select
+              value={defaultContextMode}
+              onValueChange={value => onDefaultContextModeChange(value as HomeFeaturedContextMode)}
+              disabled={disabled}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="auto">{t('Auto')}</SelectItem>
+                <SelectItem value="news">{t('News')}</SelectItem>
+                <SelectItem value="comments">{t('Comments')}</SelectItem>
+                <SelectItem value="hidden">{t('Hidden')}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
 
-            <div className="grid gap-2">
-              <Label>{t('Default context')}</Label>
-              <Select
-                value={defaultContextMode}
-                onValueChange={value => onDefaultContextModeChange(value as HomeFeaturedContextMode)}
-                disabled={disabled}
+          <div className="grid gap-2">
+            <Label htmlFor="home-featured-min-volume">{t('Minimum 24h volume')}</Label>
+            <div className="relative">
+              <span className="
+                pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-sm text-muted-foreground
+              "
               >
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="auto">{t('Auto')}</SelectItem>
-                  <SelectItem value="news">{t('News')}</SelectItem>
-                  <SelectItem value="comments">{t('Comments')}</SelectItem>
-                  <SelectItem value="hidden">{t('Hidden')}</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="grid gap-2">
-              <Label htmlFor="home-featured-min-volume">{t('Minimum 24h volume')}</Label>
+                $
+              </span>
               <Input
                 id="home-featured-min-volume"
                 type="number"
@@ -490,211 +536,78 @@ function HomeFeaturedSettingsDialog({
                 value={minVolume24h}
                 onChange={event => onMinVolume24hChange(Math.max(0, Number(event.target.value) || 0))}
                 disabled={disabled}
+                className="pl-7"
               />
             </div>
           </div>
+        </div>
 
-          <div className="grid gap-3 rounded-lg border p-3">
-            <Label>{t('Automatic filters')}</Label>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="flex items-center justify-between gap-3 text-sm">
+        <fieldset className="grid gap-3 rounded-lg border p-3">
+          <legend className="px-1 text-sm font-medium">{t('Automatic filters')}</legend>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <div className="flex items-center justify-between gap-3 rounded-md bg-muted/50 p-3">
+              <Label htmlFor="home-featured-include-sports-today" className="cursor-pointer">
                 {t('Sports live/today')}
-                <Switch checked={includeSportsToday} onCheckedChange={onIncludeSportsTodayChange} disabled={disabled} />
-              </label>
-              <label className="flex items-center justify-between gap-3 text-sm">
+              </Label>
+              <Switch
+                id="home-featured-include-sports-today"
+                checked={includeSportsToday}
+                onCheckedChange={onIncludeSportsTodayChange}
+                disabled={disabled}
+              />
+            </div>
+            <div className="flex items-center justify-between gap-3 rounded-md bg-muted/50 p-3">
+              <Label htmlFor="home-featured-include-new-events" className="cursor-pointer">
                 {t('New events')}
-                <Switch checked={includeNewEvents} onCheckedChange={onIncludeNewEventsChange} disabled={disabled} />
-              </label>
+              </Label>
+              <Switch
+                id="home-featured-include-new-events"
+                checked={includeNewEvents}
+                onCheckedChange={onIncludeNewEventsChange}
+                disabled={disabled}
+              />
             </div>
           </div>
+        </fieldset>
 
-          {useAi && (
-            <div className="grid gap-2">
-              <Label htmlFor="home-featured-news-sources">{t('News sources')}</Label>
-              <Textarea
-                id="home-featured-news-sources"
-                value={newsSources}
-                onChange={event => onNewsSourcesChange(event.target.value)}
-                placeholder={t('One RSS feed, news URL, sitemap, or allowed domain per line')}
-                disabled={disabled}
-                className="min-h-28"
-              />
-              <p className="text-xs text-muted-foreground">
-                {t('AI uses these as publication hints, then searches for recent news about each featured market.')}
-              </p>
-            </div>
-          )}
-
+        {useAi && (
           <div className="grid gap-2">
-            <Label htmlFor="home-featured-comment-blacklist">{t('Comment blacklist')}</Label>
+            <Label htmlFor="home-featured-news-sources">{t('News sources')}</Label>
             <Textarea
-              id="home-featured-comment-blacklist"
-              value={commentBlacklist}
-              onChange={event => onCommentBlacklistChange(event.target.value)}
-              placeholder="www&#10;.com&#10;spam"
+              id="home-featured-news-sources"
+              value={newsSources}
+              onChange={event => onNewsSourcesChange(event.target.value)}
+              placeholder={t('One RSS feed, news URL, sitemap, or allowed domain per line')}
               disabled={disabled}
               className="min-h-28"
             />
             <p className="text-xs text-muted-foreground">
-              {t('One word or fragment per line. Comments containing any fragment will not appear on the home card.')}
+              {t('AI uses these as publication hints, then searches for recent news about each featured market.')}
             </p>
           </div>
+        )}
+
+        <div className="grid gap-2">
+          <Label htmlFor="home-featured-comment-blacklist">{t('Comment blacklist')}</Label>
+          <Textarea
+            id="home-featured-comment-blacklist"
+            value={commentBlacklist}
+            onChange={event => onCommentBlacklistChange(event.target.value)}
+            placeholder="www&#10;.com&#10;scam&#10;damn"
+            disabled={disabled}
+            className="min-h-28"
+          />
+          <p className="text-xs text-muted-foreground">
+            {t('One word or fragment per line. Comments containing any fragment will not appear on the home card.')}
+          </p>
         </div>
-
-        <DialogFooter>
-          <Button type="button" variant="secondary" onClick={() => onOpenChange(false)}>
-            {t('Done')}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-function HomeFeaturedSideCardDialog({
-  open,
-  disabled,
-  sideCard,
-  onOpenChange,
-  onSideCardChange,
-}: {
-  open: boolean
-  disabled: boolean
-  sideCard: HomeFeaturedSideCardSettings
-  onOpenChange: (open: boolean) => void
-  onSideCardChange: Dispatch<SetStateAction<HomeFeaturedSideCardSettings>>
-}) {
-  const t = useExtracted()
-
-  function updateSideCard(updates: Partial<HomeFeaturedSideCardSettings>) {
-    onSideCardChange(previous => ({
-      ...previous,
-      ...updates,
-    }))
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{t('Side card')}</DialogTitle>
-          <DialogDescription>
-            {t('Configure the compact card shown above Hot topics in the featured markets rail.')}
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="grid gap-5">
-          <div className="grid gap-2">
-            <Label htmlFor="home-featured-side-title">{t('Title')}</Label>
-            <Input
-              id="home-featured-side-title"
-              value={sideCard.title}
-              onChange={event => updateSideCard({ title: event.target.value.slice(0, HOME_FEATURED_SIDE_CARD_LIMITS.title) })}
-              maxLength={HOME_FEATURED_SIDE_CARD_LIMITS.title}
-              disabled={disabled}
-            />
-          </div>
-
-          <div className="grid gap-2">
-            <Label htmlFor="home-featured-side-text">{t('Text')}</Label>
-            <Textarea
-              id="home-featured-side-text"
-              value={sideCard.text}
-              onChange={event => updateSideCard({ text: event.target.value.slice(0, HOME_FEATURED_SIDE_CARD_LIMITS.text) })}
-              maxLength={HOME_FEATURED_SIDE_CARD_LIMITS.text}
-              disabled={disabled}
-              className="min-h-24"
-            />
-          </div>
-
-          <label className="flex items-center justify-between gap-4 rounded-lg border p-3">
-            <span className="grid gap-1">
-              <span className="text-sm font-medium">{t('Generate side card with AI')}</span>
-              <span className="text-sm text-muted-foreground">
-                {t('Use topics and featured markets to fill this card automatically.')}
-              </span>
-            </span>
-            <Switch
-              checked={sideCard.useAi}
-              onCheckedChange={checked => updateSideCard({ useAi: checked })}
-              disabled={disabled}
-            />
-          </label>
-
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="grid gap-2">
-              <Label htmlFor="home-featured-side-cta-label">{t('CTA label')}</Label>
-              <Input
-                id="home-featured-side-cta-label"
-                value={sideCard.ctaLabel}
-                onChange={event => updateSideCard({ ctaLabel: event.target.value.slice(0, HOME_FEATURED_SIDE_CARD_LIMITS.ctaLabel) })}
-                maxLength={HOME_FEATURED_SIDE_CARD_LIMITS.ctaLabel}
-                disabled={disabled}
-              />
-            </div>
-
-            <div className="grid gap-2">
-              <Label htmlFor="home-featured-side-cta-link">{t('CTA link')}</Label>
-              <Input
-                id="home-featured-side-cta-link"
-                value={sideCard.ctaHref}
-                onChange={event => updateSideCard({ ctaHref: event.target.value.slice(0, HOME_FEATURED_SIDE_CARD_LIMITS.ctaHref) })}
-                maxLength={HOME_FEATURED_SIDE_CARD_LIMITS.ctaHref}
-                placeholder="/trending"
-                disabled={disabled}
-              />
-            </div>
-          </div>
-
-          <div className="grid gap-2">
-            <Label>{t('Icon')}</Label>
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(2.25rem,1fr))] gap-2 rounded-lg border p-2">
-              {HOME_FEATURED_SIDE_CARD_ICONS.map((icon) => {
-                const selected = sideCard.icon === icon
-                const label = formatSideCardIconLabel(icon)
-
-                return (
-                  <button
-                    key={icon}
-                    type="button"
-                    aria-label={label}
-                    aria-pressed={selected}
-                    title={label}
-                    disabled={disabled}
-                    onClick={() => updateSideCard({ icon })}
-                    className={cn(
-                      `
-                        flex h-9 min-w-0 items-center justify-center rounded-md border text-muted-foreground
-                        transition-colors
-                        hover:border-border hover:bg-secondary hover:text-foreground
-                        focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-none
-                        disabled:cursor-not-allowed disabled:opacity-50
-                      `,
-                      selected && `
-                        border-primary/50 bg-primary/10 text-primary
-                        hover:border-primary/50 hover:bg-primary/10 hover:text-primary
-                      `,
-                    )}
-                  >
-                    <DynamicIcon name={icon as IconName} className="size-4" />
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-        </div>
-
-        <DialogFooter>
-          <Button type="button" variant="secondary" onClick={() => onOpenChange(false)}>
-            {t('Done')}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      </div>
+    </HomeFeaturedResponsiveOverlay>
   )
 }
 
 function HomeFeaturedContextDialog({
+  isMobile,
   open,
   disabled,
   item,
@@ -702,6 +615,7 @@ function HomeFeaturedContextDialog({
   onOpenChange,
   onSave,
 }: {
+  isMobile: boolean
   open: boolean
   disabled: boolean
   item: HomeFeaturedEventAdminItem | null
@@ -820,234 +734,103 @@ function HomeFeaturedContextDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{t('Manage context')}</DialogTitle>
-          <DialogDescription>
-            {item?.title ?? t('Featured market')}
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="grid gap-5">
-          {canManageNews && (
-            <div className="grid gap-3">
-              <div>
-                <Label>{t('News shown on home')}</Label>
-                <p className="text-sm text-muted-foreground">
-                  {t('Add article URLs manually or ask AI to find recent news from the configured source hints.')}
-                </p>
-              </div>
-
-              <div className="flex gap-2">
-                <Input
-                  value={newsUrl}
-                  onChange={event => setNewsUrl(event.target.value)}
-                  placeholder="https://news-site.com/article"
-                  disabled={disabled || isFetchingUrl}
-                />
-                <Button type="button" variant="secondary" onClick={addUrl} disabled={disabled || isFetchingUrl || !newsUrl.trim()}>
-                  {isFetchingUrl ? <Loader2Icon className="size-4 animate-spin" /> : <PlusIcon className="size-4" />}
-                  {t('Add URL')}
-                </Button>
-              </div>
-
-              <Button type="button" variant="outline" className="w-fit" onClick={findNewsWithAi} disabled={disabled || isFindingNews}>
-                {isFindingNews ? <Loader2Icon className="size-4 animate-spin" /> : <SparklesIcon className="size-4" />}
-                {t('Find news with AI')}
-              </Button>
-
-              <div className="grid gap-2">
-                {contextItemsDraft.length === 0
-                  ? (
-                      <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-                        {t('No manual news selected yet.')}
-                      </div>
-                    )
-                  : contextItemsDraft.map((contextItem, index) => (
-                      <div
-                        key={`${contextItem.url ?? contextItem.id}:${index}`}
-                        className="
-                          grid gap-3 rounded-lg border p-3
-                          sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center
-                        "
-                      >
-                        <div className="size-8 overflow-hidden rounded-md bg-muted">
-                          {contextItem.faviconUrl && (
-                            <Image
-                              src={contextItem.faviconUrl}
-                              alt=""
-                              width={32}
-                              height={32}
-                              className="size-8 object-cover"
-                            />
-                          )}
-                        </div>
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-medium">{contextItem.title}</p>
-                          <p className="truncate text-xs text-muted-foreground">
-                            {[contextItem.source, contextItem.url].filter(Boolean).join(' · ')}
-                          </p>
-                        </div>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          disabled={disabled}
-                          onClick={() => setContextItemsDraft(previous => previous.filter((_, itemIndex) => itemIndex !== index))}
-                          aria-label={t('Remove')}
-                        >
-                          <XIcon className="size-4" />
-                        </Button>
-                      </div>
-                    ))}
-              </div>
-            </div>
-          )}
-        </div>
-
-        <DialogFooter>
+    <HomeFeaturedResponsiveOverlay
+      isMobile={isMobile}
+      open={open}
+      onOpenChange={onOpenChange}
+      title={t('Manage context')}
+      description={item?.title ?? t('Featured market')}
+      dialogClassName="sm:max-w-3xl"
+      footer={(
+        <>
           <Button type="button" variant="secondary" onClick={() => onOpenChange(false)}>
             {t('Cancel')}
           </Button>
           <Button type="button" onClick={saveAndClose} disabled={disabled}>
             {t('Done')}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-function FeaturedEventRow({
-  item,
-  index,
-  disabled,
-  isFirst,
-  isLast,
-  onMove,
-  onRemove,
-  onManageContext,
-  onContextModeChange,
-  onEnabledChange,
-}: {
-  item: HomeFeaturedEventAdminItem
-  index: number
-  disabled: boolean
-  isFirst: boolean
-  isLast: boolean
-  onMove: (index: number, direction: -1 | 1) => void
-  onRemove: (index: number) => void
-  onManageContext: (index: number) => void
-  onContextModeChange: (index: number, mode: HomeFeaturedContextMode) => void
-  onEnabledChange: (index: number, enabled: boolean) => void
-}) {
-  const t = useExtracted()
-
-  return (
-    <div className="
-      grid min-w-0 gap-3 rounded-lg border p-3
-      md:grid-cols-[auto_minmax(0,1fr)_auto_auto_auto] md:items-center
-    "
+        </>
+      )}
     >
-      <div className="size-10 overflow-hidden rounded-lg bg-muted">
-        {item.iconUrl && (
-          <Image
-            src={item.iconUrl}
-            alt=""
-            width={40}
-            height={40}
-            className="size-10 object-cover"
-          />
+      <div className="grid gap-5">
+        {canManageNews && (
+          <div className="grid gap-3">
+            <div>
+              <Label>{t('News shown on home')}</Label>
+              <p className="text-sm text-muted-foreground">
+                {t('Add article URLs manually or ask AI to find recent news from the configured source hints.')}
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Input
+                value={newsUrl}
+                onChange={event => setNewsUrl(event.target.value)}
+                placeholder="https://news-site.com/article"
+                disabled={disabled || isFetchingUrl}
+              />
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={addUrl}
+                disabled={disabled || isFetchingUrl || !newsUrl.trim()}
+                className="w-full sm:w-auto"
+              >
+                {isFetchingUrl ? <Loader2Icon className="size-4 animate-spin" /> : <PlusIcon className="size-4" />}
+                {t('Add URL')}
+              </Button>
+            </div>
+
+            <Button type="button" variant="outline" className="w-fit" onClick={findNewsWithAi} disabled={disabled || isFindingNews}>
+              {isFindingNews ? <Loader2Icon className="size-4 animate-spin" /> : <SparklesIcon className="size-4" />}
+              {t('Find news with AI')}
+            </Button>
+
+            <div className="grid gap-2">
+              {contextItemsDraft.length === 0
+                ? (
+                    <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                      {t('No manual news selected yet.')}
+                    </div>
+                  )
+                : contextItemsDraft.map((contextItem, index) => (
+                    <div
+                      key={`${contextItem.url ?? contextItem.id}:${index}`}
+                      className="
+                        grid gap-3 rounded-lg border p-3
+                        sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center
+                      "
+                    >
+                      <div className="size-8 overflow-hidden rounded-md bg-muted">
+                        <HomeFeaturedAdminPreviewImage
+                          src={contextItem.faviconUrl}
+                          alt=""
+                          className="size-8 object-cover"
+                        />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium">{contextItem.title}</p>
+                        <p className="truncate text-xs text-muted-foreground">
+                          {[contextItem.source, contextItem.url].filter(Boolean).join(' · ')}
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        disabled={disabled}
+                        onClick={() => setContextItemsDraft(previous => previous.filter((_, itemIndex) => itemIndex !== index))}
+                        aria-label={t('Remove')}
+                      >
+                        <XIcon className="size-4" />
+                      </Button>
+                    </div>
+                  ))}
+            </div>
+          </div>
         )}
       </div>
-
-      <div className="min-w-0">
-        <p className="truncate text-sm font-medium">{item.title}</p>
-        <p className="truncate text-sm text-muted-foreground">
-          {item.targetType === 'series' ? `${t('Series')} · ${item.seriesSlug}` : item.slug}
-        </p>
-      </div>
-
-      <Select
-        value={item.contextMode}
-        onValueChange={value => onContextModeChange(index, value as HomeFeaturedContextMode)}
-        disabled={disabled}
-      >
-        <SelectTrigger className="hidden w-32 sm:flex">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="auto">{t('Auto')}</SelectItem>
-          <SelectItem value="news">{t('News')}</SelectItem>
-          <SelectItem value="comments">{t('Comments')}</SelectItem>
-          <SelectItem value="hidden">{t('Hidden')}</SelectItem>
-        </SelectContent>
-      </Select>
-
-      <div className="flex items-center justify-between gap-3 md:block">
-        <Select
-          value={item.contextMode}
-          onValueChange={value => onContextModeChange(index, value as HomeFeaturedContextMode)}
-          disabled={disabled}
-        >
-          <SelectTrigger className="w-32 sm:hidden">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="auto">{t('Auto')}</SelectItem>
-            <SelectItem value="news">{t('News')}</SelectItem>
-            <SelectItem value="comments">{t('Comments')}</SelectItem>
-            <SelectItem value="hidden">{t('Hidden')}</SelectItem>
-          </SelectContent>
-        </Select>
-
-        <Switch checked={item.enabled} onCheckedChange={checked => onEnabledChange(index, checked)} disabled={disabled} />
-      </div>
-
-      <div className="flex items-center justify-end gap-1">
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          disabled={disabled || item.contextMode === 'hidden' || item.contextMode === 'comments'}
-          onClick={() => onManageContext(index)}
-          aria-label={t('Manage context')}
-        >
-          <NewspaperIcon className="size-4" />
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          disabled={disabled || isFirst}
-          onClick={() => onMove(index, -1)}
-          aria-label={t('Move up')}
-        >
-          <ArrowUpIcon className="size-4" />
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          disabled={disabled || isLast}
-          onClick={() => onMove(index, 1)}
-          aria-label={t('Move down')}
-        >
-          <ArrowDownIcon className="size-4" />
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          disabled={disabled}
-          onClick={() => onRemove(index)}
-          aria-label={t('Remove')}
-        >
-          <XIcon className="size-4" />
-        </Button>
-      </div>
-    </div>
+    </HomeFeaturedResponsiveOverlay>
   )
 }
 
@@ -1076,10 +859,14 @@ export default function HomeFeaturedMarketsSection({
   onIncludeNewEventsChange,
   sideCard,
   onSideCardChange,
+  sideCardImagePreviewUrls,
+  processingSideCardImageIds,
+  onSideCardImageChange,
   featuredEvents,
   onFeaturedEventsChange,
 }: HomeFeaturedMarketsSectionProps) {
   const t = useExtracted()
+  const isMobile = useIsMobile()
   const [selectionDialogOpen, setSelectionDialogOpen] = useState(false)
   const [settingsDialogOpen, setSettingsDialogOpen] = useState(false)
   const [sideCardDialogOpen, setSideCardDialogOpen] = useState(false)
@@ -1087,6 +874,11 @@ export default function HomeFeaturedMarketsSection({
   const [isRegenerating, startRegenerating] = useTransition()
   const disabled = isPending || isRegenerating
   const manageContextItem = manageContextIndex == null ? null : featuredEvents[manageContextIndex] ?? null
+  const activeSideCardSlides = sideCard.slides.filter(slide => slide.enabled)
+  const firstSideCardSlide = activeSideCardSlides[0] ?? sideCard.slides[0]
+  const firstSideCardImagePreviewUrl = firstSideCardSlide
+    ? sideCardImagePreviewUrls[firstSideCardSlide.id] || firstSideCardSlide.imageUrl
+    : ''
 
   function addCandidate(candidate: AdminEventCandidate) {
     onFeaturedEventsChange((previous) => {
@@ -1128,7 +920,7 @@ export default function HomeFeaturedMarketsSection({
               includeNewEvents,
               sideCard,
             },
-            featuredEvents: serializeFeaturedEventsForSave(featuredEvents, locale),
+            featuredEvents: serializeHomeFeaturedEventsForSave(featuredEvents, locale),
           }),
         })
         const payload = await response.json().catch(() => null) as unknown
@@ -1217,15 +1009,31 @@ export default function HomeFeaturedMarketsSection({
                 flex size-10 shrink-0 items-center justify-center rounded-lg bg-secondary text-muted-foreground
               "
               >
-                <DynamicIcon name={sideCard.icon as IconName} className="size-5" />
+                {firstSideCardSlide?.type === 'image' && firstSideCardImagePreviewUrl
+                  ? (
+                      <HomeFeaturedAdminPreviewImage
+                        src={firstSideCardImagePreviewUrl}
+                        alt=""
+                        className="size-10 rounded-lg object-cover"
+                      />
+                    )
+                  : firstSideCardSlide?.type === 'video'
+                    ? <VideoIcon className="size-5" />
+                    : <DynamicIcon name={(firstSideCardSlide?.icon ?? sideCard.icon) as IconName} className="size-5" />}
               </span>
               <div className="min-w-0">
                 <p className="text-sm font-medium">{t('Side card')}</p>
                 <p className="line-clamp-2 text-sm text-muted-foreground">
-                  {sideCard.title || sideCard.text || (sideCard.useAi ? t('AI side card enabled') : t('Manual side card'))}
+                  {firstSideCardSlide
+                    ? firstSideCardSlide.type === 'video'
+                      ? firstSideCardSlide.videoUrl || t('Video slide')
+                      : firstSideCardSlide.type === 'image'
+                        ? firstSideCardSlide.ctaLabel || t('Image side card')
+                        : firstSideCardSlide.title || firstSideCardSlide.text
+                    : t('Side card')}
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  {sideCard.useAi ? t('AI side card enabled') : t('Manual side card')}
+                  {t('{count} active slides', { count: String(activeSideCardSlides.length) })}
                 </p>
               </div>
             </div>
@@ -1281,7 +1089,7 @@ export default function HomeFeaturedMarketsSection({
             : (
                 <div className="grid gap-2">
                   {featuredEvents.map((item, index) => (
-                    <FeaturedEventRow
+                    <HomeFeaturedEventRow
                       key={`${buildFeaturedKey(item)}:${index}`}
                       item={item}
                       index={index}
@@ -1301,6 +1109,7 @@ export default function HomeFeaturedMarketsSection({
       </div>
 
       <HomeFeaturedSelectionDialog
+        isMobile={isMobile}
         open={selectionDialogOpen}
         disabled={disabled}
         selectedItems={featuredEvents}
@@ -1309,6 +1118,7 @@ export default function HomeFeaturedMarketsSection({
       />
 
       <HomeFeaturedSettingsDialog
+        isMobile={isMobile}
         open={settingsDialogOpen}
         disabled={disabled}
         useAi={useAi}
@@ -1329,15 +1139,20 @@ export default function HomeFeaturedMarketsSection({
         onIncludeNewEventsChange={onIncludeNewEventsChange}
       />
 
-      <HomeFeaturedSideCardDialog
+      <HomeFeaturedSideCardCarouselDialog
+        isMobile={isMobile}
         open={sideCardDialogOpen}
         disabled={disabled}
         sideCard={sideCard}
+        imagePreviewUrls={sideCardImagePreviewUrls}
+        processingImageIds={processingSideCardImageIds}
         onOpenChange={setSideCardDialogOpen}
         onSideCardChange={onSideCardChange}
+        onImageChange={onSideCardImageChange}
       />
 
       <HomeFeaturedContextDialog
+        isMobile={isMobile}
         key={manageContextItem
           ? `${buildFeaturedKey(manageContextItem)}:${manageContextItem.slug ?? ''}`
           : 'home-featured-context-dialog'}

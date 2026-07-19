@@ -100,7 +100,7 @@ function FilterToolbarSearchInputField({
         defaultValue={search}
         onChange={handleInputChange}
         className={cn(`
-          border-transparent bg-accent pl-10 shadow-none transition-colors
+          border-transparent bg-secondary pl-10 shadow-none transition-colors
           hover:bg-secondary
           focus-visible:border-border focus-visible:bg-background focus-visible:ring-0 focus-visible:ring-offset-0
         `)}

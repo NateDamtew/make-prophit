@@ -8,6 +8,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import {
   MAX_CUSTOM_JAVASCRIPT_CODE_NAME_LENGTH,
@@ -51,11 +52,21 @@ interface IntegrationsSectionProps {
   trimmedOpenRouterApiKey: string
   onRefreshOpenRouterModels: () => void
   initialOpenRouterApiKeyConfigured: boolean
+  pandaScoreToken: string
+  onPandaScoreTokenChange: (value: string) => void
+  initialPandaScoreTokenConfigured: boolean
+  theSportsDbApiKey: string
+  onTheSportsDbApiKeyChange: (value: string) => void
+  initialTheSportsDbApiKeyConfigured: boolean
   lifiIntegrator: string
   onLifiIntegratorChange: (value: string) => void
   lifiApiKey: string
   onLifiApiKeyChange: (value: string) => void
   initialLiFiApiKeyConfigured: boolean
+  arbitrageEnabled: boolean
+  onArbitrageEnabledChange: (enabled: boolean) => void
+  arbitrageMultiWalletEnabled: boolean
+  onArbitrageMultiWalletEnabledChange: (enabled: boolean) => void
   customJavascriptCodes: CustomJavascriptCodeDraft[]
   onAddCustomJavascriptCode: () => void
   onRemoveCustomJavascriptCode: (index: number) => void
@@ -88,11 +99,21 @@ function IntegrationsSection({
   trimmedOpenRouterApiKey,
   onRefreshOpenRouterModels,
   initialOpenRouterApiKeyConfigured,
+  pandaScoreToken,
+  onPandaScoreTokenChange,
+  initialPandaScoreTokenConfigured,
+  theSportsDbApiKey,
+  onTheSportsDbApiKeyChange,
+  initialTheSportsDbApiKeyConfigured,
   lifiIntegrator,
   onLifiIntegratorChange,
   lifiApiKey,
   onLifiApiKeyChange,
   initialLiFiApiKeyConfigured,
+  arbitrageEnabled,
+  onArbitrageEnabledChange,
+  arbitrageMultiWalletEnabled,
+  onArbitrageMultiWalletEnabledChange,
   customJavascriptCodes,
   onAddCustomJavascriptCode,
   onRemoveCustomJavascriptCode,
@@ -101,6 +122,8 @@ function IntegrationsSection({
   customJavascriptCodeDisablePageOptions,
 }: IntegrationsSectionProps) {
   const t = useExtracted()
+  const trimmedPandaScoreToken = pandaScoreToken.trim()
+  const trimmedTheSportsDbApiKey = theSportsDbApiKey.trim()
 
   return (
     <SettingsAccordionSection
@@ -231,6 +254,77 @@ function IntegrationsSection({
 
         <div className="grid gap-4 border-t border-border/50 pt-6 md:grid-cols-2">
           <div className="grid gap-2 md:col-span-2">
+            <h4 className="text-sm font-medium">{t('Sports data providers')}</h4>
+          </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor="sports-thesportsdb-key">{t('TheSportsDB API key')}</Label>
+            <Input
+              id="sports-thesportsdb-key"
+              name="sports_thesportsdb_api_key"
+              type="password"
+              autoComplete="off"
+              maxLength={512}
+              value={theSportsDbApiKey}
+              onChange={event => onTheSportsDbApiKeyChange(event.target.value)}
+              disabled={isPending}
+              placeholder={
+                initialTheSportsDbApiKeyConfigured && !trimmedTheSportsDbApiKey
+                  ? '••••••••••••••••'
+                  : t('Optional')
+              }
+            />
+            <p className="text-xs text-muted-foreground">
+              {t('Get a key at')}
+              {' '}
+              <a
+                href="https://www.thesportsdb.com/api.php"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline underline-offset-2"
+              >
+                thesportsdb.com/api.php
+              </a>
+              .
+            </p>
+          </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor="sports-pandascore-token">{t('PandaScore token')}</Label>
+            <Input
+              id="sports-pandascore-token"
+              name="sports_pandascore_token"
+              type="password"
+              autoComplete="off"
+              maxLength={512}
+              value={pandaScoreToken}
+              onChange={event => onPandaScoreTokenChange(event.target.value)}
+              disabled={isPending}
+              placeholder={
+                initialPandaScoreTokenConfigured && !trimmedPandaScoreToken
+                  ? '••••••••••••••••'
+                  : t('Optional')
+              }
+            />
+            <p className="text-xs text-muted-foreground">
+              {t('Get a token at')}
+              {' '}
+              <a
+                href="https://www.pandascore.co"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline underline-offset-2"
+              >
+                pandascore.co
+              </a>
+              .
+            </p>
+          </div>
+
+        </div>
+
+        <div className="grid gap-4 border-t border-border/50 pt-6 md:grid-cols-2">
+          <div className="grid gap-2 md:col-span-2">
             <h4 className="text-sm font-medium">{t('LI.FI integration')}</h4>
           </div>
 
@@ -281,6 +375,49 @@ function IntegrationsSection({
               {t('Spacer')}
             </p>
           </div>
+        </div>
+
+        <div className="grid gap-4 border-t border-border/50 pt-6">
+          <div className="flex items-center justify-between gap-4">
+            <div className="grid gap-1">
+              <Label htmlFor="arbitrage-enabled">{t('Arbitrage with Polymarket')}</Label>
+              <p className="text-sm text-muted-foreground">
+                {t('Let users compare mirrored markets and trade opposite outcomes across both exchanges.')}
+              </p>
+            </div>
+            <input type="hidden" name="arbitrage_enabled" value={arbitrageEnabled ? 'true' : 'false'} />
+            <Switch
+              id="arbitrage-enabled"
+              checked={arbitrageEnabled}
+              onCheckedChange={onArbitrageEnabledChange}
+              disabled={isPending}
+            />
+          </div>
+
+          <input
+            type="hidden"
+            name="arbitrage_multi_wallet_enabled"
+            value={arbitrageMultiWalletEnabled ? 'true' : 'false'}
+          />
+          {arbitrageEnabled && (
+            <div className="flex items-center justify-between gap-4 rounded-xl border bg-muted/30 p-4">
+              <div className="grid gap-1">
+                <Label htmlFor="arbitrage-multi-wallet-enabled">{t('Separate Polymarket wallets')}</Label>
+                <p className="text-sm text-muted-foreground">
+                  {t('Allow users to connect a different wallet for Polymarket. Requires a Reown Pro or Enterprise plan with Multi-Wallet enabled in Reown Cloud.')}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {t('When disabled, users can only trade arbitrage when they use the same wallet on both sites.')}
+                </p>
+              </div>
+              <Switch
+                id="arbitrage-multi-wallet-enabled"
+                checked={arbitrageMultiWalletEnabled}
+                onCheckedChange={onArbitrageMultiWalletEnabledChange}
+                disabled={isPending}
+              />
+            </div>
+          )}
         </div>
 
         <div className="grid gap-3 border-t border-border/50 pt-6">

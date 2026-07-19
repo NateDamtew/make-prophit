@@ -8,6 +8,7 @@ export interface Event {
   additional_context?: string | null
   additional_context_updated_at?: string | null
   show_market_icons: boolean
+  is_polymarket_mirror?: boolean
   enable_neg_risk?: boolean
   neg_risk_augmented?: boolean
   neg_risk?: boolean
@@ -33,6 +34,12 @@ export interface Event {
   sports_tags?: string[] | null
   sports_teams?: SportsTeam[] | null
   sports_team_logo_urls?: string[] | null
+  sports_source_provider?: string | null
+  sports_source_event_id?: string | null
+  sports_source_game_id?: string | null
+  sports_source_league_id?: string | null
+  sports_source_league_label?: string | null
+  sports_source_match_confidence?: string | null
   has_live_chart?: boolean
   active_markets_count: number
   total_markets_count: number
@@ -160,6 +167,9 @@ export interface HomeFeaturedContextItem {
 
 export interface HomeFeaturedOutcomeSummary {
   key: string
+  conditionId: string
+  marketSlug: string | null
+  outcomeIndex: number
   label: string
   chance: number
   imageUrl: string | null
@@ -205,13 +215,27 @@ export interface HomeFeaturedHotTopic {
   volume24h: number
 }
 
-export interface HomeFeaturedSideCardSettings {
+export type HomeFeaturedSideCardSlideType = 'text' | 'image' | 'video'
+
+export interface HomeFeaturedSideCardSlide {
+  id: string
+  enabled: boolean
+  type: HomeFeaturedSideCardSlideType
   title: string
   text: string
   ctaLabel: string
   ctaHref: string
   icon: HomeFeaturedSideCardIcon
   useAi: boolean
+  useImage: boolean
+  imagePath: string
+  imageUrl: string
+  videoUrl: string
+  videoEmbedUrl: string
+}
+
+export interface HomeFeaturedSideCardSettings extends HomeFeaturedSideCardSlide {
+  slides: HomeFeaturedSideCardSlide[]
 }
 
 export interface HomeFeaturedSettings {
@@ -250,6 +274,7 @@ export interface ConditionChangeLogEntry {
 
 export interface Market {
   condition_id: string
+  polymarket_condition_id?: string | null
   question_id: string
   event_id: string
   title: string
@@ -277,6 +302,7 @@ export interface Market {
   sports_market_type?: string | null
   sports_game_start_time?: string | null
   sports_start_time?: string | null
+  sports_line?: string | null
   sports_group_item_title?: string | null
   sports_group_item_threshold?: string | null
   volume_24h: number
@@ -304,6 +330,7 @@ export interface Outcome {
   outcome_text: string
   outcome_index: number
   token_id: string
+  polymarket_token_id?: string | null
   is_winning_outcome: boolean
   payout_value?: number
   buy_price?: number
@@ -429,6 +456,8 @@ export interface Comment {
   created_at: string
   is_owner: boolean
   user_has_liked: boolean
+  parent_comment_id?: string | null
+  parentCommentID?: string | null
   positions?: CommentPosition[]
   recent_replies?: Comment[]
 }

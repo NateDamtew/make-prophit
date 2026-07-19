@@ -31,14 +31,14 @@ function HeaderMenuClient() {
   const t = useExtracted()
   const { open } = useAppKit()
   const { openQuickView } = useQuickView()
-  const { data: session, isPending: isSessionPending } = useSession()
+  const { data: session } = useSession()
   const hasHydrated = useHasHydrated()
   const isMobile = useIsMobile()
   const tradingOnboarding = useOptionalTradingOnboarding()
   const user = useUser()
 
   const isAuthenticated = hasHydrated && (Boolean(session?.user) || Boolean(user))
-  const shouldShowGuestActions = hasHydrated && !isAuthenticated && !isSessionPending
+  const shouldShowGuestActions = !isAuthenticated
   const startDepositFlow = tradingOnboarding?.startDepositFlow
 
   return (

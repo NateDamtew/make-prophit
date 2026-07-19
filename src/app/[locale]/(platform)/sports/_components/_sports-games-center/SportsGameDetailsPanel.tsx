@@ -389,6 +389,7 @@ export default function SportsGameDetailsPanel({
               card={card}
               selectedMarketType={selectedButton?.marketType ?? 'moneyline'}
               selectedConditionId={selectedButton?.conditionId ?? null}
+              selectedOutcomeIndex={selectedButton?.outcomeIndex ?? null}
               defaultTimeRange={defaultGraphTimeRange}
               variant="sportsCardLegend"
             />

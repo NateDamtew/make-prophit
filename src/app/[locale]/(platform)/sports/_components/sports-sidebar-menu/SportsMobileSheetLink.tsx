@@ -3,16 +3,9 @@
 import type { Route } from 'next'
 import type { SportsMenuRenderableLinkEntry, SportsSidebarMode } from './sports-sidebar-menu-utils'
 import type { SportsVertical } from '@/lib/sports-vertical'
-import AppLink from '@/components/AppLink'
+import { Link } from '@/i18n/navigation'
 import { cn } from '@/lib/utils'
-import {
-  isFutureMenuLinkHref,
-  isLiveMenuHref,
-  isMenuLinkActive,
-  isSoonMenuLinkHref,
-  normalizeTagSlug,
-  resolveLinkEventsCount,
-} from './sports-sidebar-menu-utils'
+import { resolveSportsMenuLinkState } from './sports-sidebar-menu-utils'
 import SportsMenuIcon from './SportsMenuIcon'
 
 function SportsMobileSheetLink({
@@ -32,17 +25,22 @@ function SportsMobileSheetLink({
   countByTagSlug?: Record<string, number>
   onActionComplete?: () => void
 }) {
-  const href = normalizeTagSlug(entry.href)
-  const isLiveLink = isLiveMenuHref(href, vertical)
-  const isSoonLink = isSoonMenuLinkHref(href, vertical)
-  const isFutureLink = isFutureMenuLinkHref(href, vertical)
-  const futureIconVariant = isSoonLink ? 'upcoming' : 'futures'
-  const isActive = isMenuLinkActive({ entry, vertical, mode, activeTagSlug })
-  const displayCount = resolveLinkEventsCount(entry, vertical, countByTagSlug)
+  const {
+    displayCount,
+    futureIconVariant,
+    isActive,
+    isFutureLink,
+    isLiveLink,
+  } = resolveSportsMenuLinkState({
+    entry,
+    vertical,
+    mode,
+    activeTagSlug,
+    countByTagSlug,
+  })
 
   return (
-    <AppLink
-      intentPrefetch
+    <Link
       href={entry.href as Route}
       aria-current={isActive ? 'page' : undefined}
       onClick={() => onActionComplete?.()}
@@ -56,7 +54,7 @@ function SportsMobileSheetLink({
         <SportsMenuIcon
           entry={entry}
           futureIconVariant={futureIconVariant}
-          isFutureLink={isSoonLink || isFutureLink}
+          isFutureLink={isFutureLink}
           isLiveLink={isLiveLink}
           nested={nested}
           className="size-full"
@@ -79,7 +77,7 @@ function SportsMobileSheetLink({
           )
         </span>
       )}
-    </AppLink>
+    </Link>
   )
 }
 

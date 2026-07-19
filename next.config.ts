@@ -10,7 +10,9 @@ const commitSha = resolveCommitSha()
 
 const config: NextConfig = {
   output: process.env.VERCEL_ENV ? undefined : 'standalone',
+  deploymentId: process.env.VERCEL_ENV ? undefined : commitSha,
   cacheComponents: true,
+  partialPrefetching: true,
   typedRoutes: true,
   // Skip the build-time `tsc` pass. It needs 2-4GB and thrashes into a 20-30min
   // near-hang on memory-constrained Vercel Hobby build containers (the compile
@@ -39,6 +41,7 @@ const config: NextConfig = {
       bodySizeLimit: '2mb',
     },
     typedEnv: true,
+    turbopackRustReactCompiler: true,
   },
   images: {
     unoptimized: process.env.DISABLE_IMAGE_OPTIMIZATION === 'true',

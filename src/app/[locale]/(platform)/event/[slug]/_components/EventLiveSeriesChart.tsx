@@ -6,12 +6,14 @@ import dynamic from 'next/dynamic'
 import { useMemo, useState } from 'react'
 import { useSiteIdentity } from '@/hooks/useSiteIdentity'
 import { useWindowSize } from '@/hooks/useWindowSize'
+import { resolveEventPagePath } from '@/lib/events-routing'
 import { cn } from '@/lib/utils'
 import { useLiveSeriesClock } from '../_hooks/useLiveSeriesClock'
 import { useLiveSeriesPriceSnapshot } from '../_hooks/useLiveSeriesPriceSnapshot'
 import { useLiveSeriesWebSocket } from '../_hooks/useLiveSeriesWebSocket'
 import {
   buildAxis,
+  findLiveSeriesEvent,
   formatDateAtTimezone,
   formatTimeAtTimezone,
   formatUsd,
@@ -35,7 +37,6 @@ import {
   normalizeLiveChartPrice,
   normalizeSubscriptionSymbol,
   parseUtcDate,
-  readPersistedLivePrice,
   resolveEventEndTimestamp,
   resolveLiveSeriesDisplayPrice,
   SERIES_KEY,
@@ -207,14 +208,12 @@ function EventLiveSeriesChartContent({
     )
   const chartNowMs = isEventClosed ? endTimestamp : nowMs
 
-  const [initialPersistedFallbackPrice] = useState(
-    () => readPersistedLivePrice(config.topic, subscriptionSymbol),
-  )
-  const persistedFallbackPrice = snapshotFallbackPrice ?? initialPersistedFallbackPrice
+  const persistedFallbackPrice = snapshotFallbackPrice
 
   const { data, status } = useLiveSeriesWebSocket({
     topic: config.topic,
     eventType: config.event_type,
+    eventEndTimestamp: explicitEndTimestamp,
     subscriptionSymbol,
     isLiveView: isLiveView && !isEventClosed,
     setBaselinePrice,
@@ -339,6 +338,13 @@ function EventLiveSeriesChartContent({
   }, [endTimestamp, referenceSnapshot?.event_window_start_ms, startTimestamp, tradingWindowMs])
 
   const isTradingWindowActive = !isEventClosed && nowMs >= tradingWindowStartMs
+  const liveSeriesEvent = useMemo(
+    () => findLiveSeriesEvent(seriesEvents, event.slug, nowMs, tradingWindowMs),
+    [event.slug, nowMs, seriesEvents, tradingWindowMs],
+  )
+  const liveMarketHref = isEventClosed && liveSeriesEvent
+    ? resolveEventPagePath(liveSeriesEvent)
+    : null
   const closedFallbackData = useMemo(
     () => buildClosedLiveSeriesData(endTimestamp, finalPrice),
     [endTimestamp, finalPrice],
@@ -348,13 +354,27 @@ function EventLiveSeriesChartContent({
       return data
     }
 
-    const hasPreCloseData = data.some((point) => {
+    const preCloseData = data.filter((point) => {
       const timestamp = point.date.getTime()
       return Number.isFinite(timestamp) && timestamp <= endTimestamp
     })
 
-    return hasPreCloseData ? data : closedFallbackData
-  }, [closedFallbackData, data, endTimestamp, isEventClosed])
+    if (!preCloseData.length) {
+      return closedFallbackData
+    }
+
+    if (!isFinitePositivePrice(finalPrice)) {
+      return preCloseData
+    }
+
+    return [
+      ...preCloseData.filter(point => point.date.getTime() < endTimestamp),
+      {
+        date: new Date(endTimestamp),
+        [SERIES_KEY]: finalPrice,
+      },
+    ].slice(-MAX_POINTS)
+  }, [closedFallbackData, data, endTimestamp, finalPrice, isEventClosed])
 
   const renderData = useMemo(() => {
     if (!dataSource.length) {
@@ -422,9 +442,7 @@ function EventLiveSeriesChartContent({
     renderedPrice,
     fallbackCurrentPrice,
   })
-  const axisSourceData = isEventClosed
-    ? renderData
-    : data.length > 0 ? data : renderData
+  const axisSourceData = renderData
   const resolvedBaselinePrice = isEventClosed
     ? referenceOpeningPrice
     : baselinePrice ?? referenceOpeningPrice
@@ -615,6 +633,8 @@ function EventLiveSeriesChartContent({
                 liveColor={liveColor}
                 shouldShowCountdown={shouldShowCountdown}
                 isEventClosed={isEventClosed}
+                liveMarketHref={liveMarketHref}
+                isMobile={isMobile}
                 isTradingWindowActive={isTradingWindowActive}
                 visibleCountdownUnits={visibleCountdownUnits}
                 countdownLeftLabel={countdownLeftLabel}
@@ -637,6 +657,7 @@ function EventLiveSeriesChartContent({
                 <PredictionChart
                   data={renderData}
                   series={series}
+                  dataSyncMode="replace"
                   width={chartWidth}
                   height={chartHeight}
                   margin={{

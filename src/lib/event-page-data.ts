@@ -9,6 +9,7 @@ import { cacheTag } from 'next/cache'
 import { loadMarketContextSettings } from '@/lib/ai/market-context-config'
 import { cacheTags } from '@/lib/cache-tags'
 import { EventRepository } from '@/lib/db/queries/event'
+import { resolveSportsEventGroupPayload } from '@/lib/sports-event-group'
 import { loadRuntimeThemeState } from '@/lib/theme-settings'
 import 'server-only'
 
@@ -69,10 +70,14 @@ export async function loadEventPagePublicContentData(
 
   const eventResult = await EventRepository.getEventBySlug(eventSlug, '', locale)
 
-  const { data: event, error } = eventResult
-  if (error || !event) {
+  const { data: rawEvent, error } = eventResult
+  if (error || !rawEvent) {
     return null
   }
+
+  const event = await resolveSportsEventGroupPayload(rawEvent, locale, {
+    warningLabel: 'event page sports event group',
+  })
 
   let seriesEvents: EventSeriesEntry[] = []
   let liveChartConfig: EventLiveChartConfig | null = null

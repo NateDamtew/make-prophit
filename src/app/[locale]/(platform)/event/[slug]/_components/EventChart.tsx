@@ -32,6 +32,7 @@ import {
   filterChartDataForSeries,
   getMaxSeriesCount,
   getOutcomeLabelForMarket,
+  getSportsMoneylineMarketIds,
   getTopMarketIds,
   resolveEventHistoryEndAt,
 } from '@/app/[locale]/(platform)/event/[slug]/_utils/EventChartUtils'
@@ -52,7 +53,6 @@ import {
 } from '../_utils/chartSettingsStorage'
 import EventChartCanvas from './EventChartCanvas'
 import EventChartControlsBar from './EventChartControlsBar'
-import EventChartEmbedDialog from './EventChartEmbedDialog'
 import EventChartExportDialog from './EventChartExportDialog'
 import EventChartHeader from './EventChartHeader'
 import EventChartLayout from './EventChartLayout'
@@ -140,9 +140,17 @@ function EventChartComponent({
   const user = useUser()
   const userAddress = getUserPublicAddress(user)
   const isSingleMarketFromOrder = useIsSingleMarket()
-  const isSingleMarket = isSingleMarketOverride ?? isSingleMarketFromOrder
+  const maxSeriesCount = getMaxSeriesCount()
+  const sportsMoneylineMarketIds = useMemo(
+    () => getSportsMoneylineMarketIds(event).slice(0, maxSeriesCount),
+    [event, maxSeriesCount],
+  )
+  const usesSportsMoneylineSeries = sportsMoneylineMarketIds.length > 1
+  const isSingleMarket = usesSportsMoneylineSeries
+    ? false
+    : (isSingleMarketOverride ?? isSingleMarketFromOrder)
   const isNegRiskEnabled = Boolean(event.enable_neg_risk || event.neg_risk)
-  const shouldHideChart = !forceVisible && !isSingleMarket && !isNegRiskEnabled
+  const shouldHideChart = !forceVisible && !isSingleMarket && !isNegRiskEnabled && !usesSportsMoneylineSeries
   const shouldFetchChartData = !shouldHideChart
   const chartSettings = useSyncExternalStore(
     subscribeToChartSettings,
@@ -162,7 +170,6 @@ function EventChartComponent({
     snapshot: null,
   })
   const [exportDialogOpen, setExportDialogOpen] = useState(false)
-  const [embedDialogOpen, setEmbedDialogOpen] = useState(false)
   const nowMs = useCurrentTimestamp({ intervalMs: 30_000 })
   const currentTimestampMs = nowMs ?? 0
 
@@ -244,7 +251,6 @@ function EventChartComponent({
     : yesPriceHistory
   const marketSnapshot = showBothOutcomes ? yesPriceHistory.latestSnapshot : chartHistory.latestSnapshot
 
-  const maxSeriesCount = getMaxSeriesCount()
   const allMarketIds = useMemo(
     () => event.markets
       .map(market => market.condition_id)
@@ -260,8 +266,10 @@ function EventChartComponent({
     [allMarketIds, maxSeriesCount],
   )
   const defaultMarketIds = useMemo(
-    () => (topMarketIds.length > 0 ? topMarketIds : fallbackMarketIds),
-    [topMarketIds, fallbackMarketIds],
+    () => (sportsMoneylineMarketIds.length > 1
+      ? sportsMoneylineMarketIds
+      : (topMarketIds.length > 0 ? topMarketIds : fallbackMarketIds)),
+    [fallbackMarketIds, sportsMoneylineMarketIds, topMarketIds],
   )
   const [customMarketSelection, setCustomMarketSelection] = useState<{
     eventId: string
@@ -405,13 +413,13 @@ function EventChartComponent({
     [site.logoImageUrl, site.logoSvg, site.name],
   )
   const visibleWatermark = showWatermark ? watermark : {}
-  const chartLogo = showWatermark && (watermark.iconSvg || watermark.label)
+  const chartLogo = showWatermark && (watermark.iconSvg || watermark.iconImageUrl || watermark.label)
     ? (
         <div className="flex items-center gap-1 text-xl text-muted-foreground opacity-50 select-none">
-          {watermark.iconSvg
+          {watermark.iconSvg || watermark.iconImageUrl
             ? (
                 <SiteLogoIcon
-                  logoSvg={watermark.iconSvg}
+                  logoSvg={watermark.iconSvg ?? ''}
                   logoImageUrl={watermark.iconImageUrl}
                   alt={`${watermark.label} logo`}
                   className="size-[1em] **:fill-current **:stroke-current"
@@ -649,7 +657,7 @@ function EventChartComponent({
     () => legendEntries.filter(entry => typeof entry.value === 'number' && Number.isFinite(entry.value)),
     [legendEntries],
   )
-  const shouldRenderLegendEntries = chartSeries.length > 0 && legendEntriesWithValues.length > 0
+  const shouldRenderLegendEntries = legendSeries.length > 0 && legendEntriesWithValues.length > 0
   const cursorActiveChance = typeof hoveredActiveChance === 'number' && Number.isFinite(hoveredActiveChance)
     ? hoveredActiveChance
     : null
@@ -763,7 +771,6 @@ function EventChartComponent({
                 settings={chartSettings}
                 onSettingsChange={handleChartSettingsChange}
                 onExportData={() => setExportDialogOpen(true)}
-                onEmbed={() => setEmbedDialogOpen(true)}
               />
             )
           : undefined}
@@ -774,12 +781,6 @@ function EventChartComponent({
         eventCreatedAt={event.created_at}
         markets={event.markets}
         isMultiMarket={event.total_markets_count > 1}
-      />
-      <EventChartEmbedDialog
-        open={embedDialogOpen}
-        onOpenChange={setEmbedDialogOpen}
-        markets={event.markets}
-        initialMarketId={primaryMarket?.condition_id ?? null}
       />
     </>
   )

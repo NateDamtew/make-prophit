@@ -11,6 +11,7 @@ vi.mock('viem', () => ({
 const {
   isRecoverableWalletConnectorError,
   isUserRejectedRequestError,
+  isWalletRpcRequestAbortedError,
   isWalletConnectorNotConnectedError,
   normalizeAddress,
   WALLET_CONNECTOR_NOT_CONNECTED_MESSAGE,
@@ -36,6 +37,21 @@ describe('wallet', () => {
       expect(isUserRejectedRequestError(undefined)).toBe(false)
       expect(isUserRejectedRequestError({ name: 'OtherError' })).toBe(false)
       expect(isUserRejectedRequestError({ message: 'something else' })).toBe(false)
+      expect(isUserRejectedRequestError({ message: 'Request was aborted' })).toBe(false)
+      expect(isUserRejectedRequestError({
+        message: 'An unknown RPC error occurred. Details: Request was aborted Version: viem@2.54.3',
+      })).toBe(false)
+    })
+  })
+
+  describe('isWalletRpcRequestAbortedError', () => {
+    it('detects viem RPC aborts without treating every abort as wallet-specific', () => {
+      expect(isWalletRpcRequestAbortedError({
+        message: 'An unknown RPC error occurred. Details: Request was aborted Version: viem@2.54.3',
+      })).toBe(true)
+      expect(isWalletRpcRequestAbortedError(new Error('RPC error: Request was aborted'))).toBe(true)
+      expect(isWalletRpcRequestAbortedError(new Error('Request was aborted'))).toBe(false)
+      expect(isWalletRpcRequestAbortedError({ message: 'User rejected the request' })).toBe(false)
     })
   })
 

@@ -50,9 +50,8 @@ vi.mock('@/app/[locale]/(platform)/settings/_actions/update-profile', () => ({
   updateUserAction: (formData: FormData) => mocks.updateUserAction(formData),
 }))
 
-vi.mock('@/components/AppLink', () => ({
-  __esModule: true,
-  default: ({ children, href, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => (
+vi.mock('@/i18n/navigation', () => ({
+  Link: ({ children, href, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => (
     <a href={String(href)} {...props}>{children}</a>
   ),
 }))
@@ -112,6 +111,14 @@ describe('settingsProfileContent', () => {
         avatar_url: 'https://community.example/avatar.png',
       }),
     })
+    Object.defineProperty(URL, 'createObjectURL', {
+      configurable: true,
+      value: vi.fn(() => 'blob:avatar-preview'),
+    })
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      configurable: true,
+      value: vi.fn(),
+    })
     vi.stubGlobal('fetch', mocks.fetch)
     process.env.COMMUNITY_URL = 'https://community.example'
   })
@@ -158,5 +165,66 @@ describe('settingsProfileContent', () => {
       username: 'newname',
     }))
     expect(updateUserState(previousUser)?.settings).toBe(previousUser.settings)
+  })
+
+  it('shows a generic upload error when avatar upload fails with a framework error', async () => {
+    const user = userEvent.setup()
+    mocks.parseCommunityError.mockResolvedValue(
+      'An error occurred in the Server Components render. The specific message is omitted in production builds.',
+    )
+    mocks.fetch.mockImplementation(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'POST') {
+        return {
+          ok: false,
+          status: 502,
+          json: async () => ({
+            error: 'An error occurred in the Server Components render.',
+          }),
+        }
+      }
+
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          username: 'oldname',
+          avatar_url: '',
+        }),
+      }
+    })
+    render(<SettingsProfileContent user={createUser()} />)
+
+    const usernameInput = screen.getByLabelText('Username')
+    await user.clear(usernameInput)
+    await user.type(usernameInput, 'newname')
+    const imageInput = document.querySelector<HTMLInputElement>('input[name="image"]')
+    expect(imageInput).not.toBeNull()
+    await user.upload(imageInput!, new File(['avatar'], 'avatar.png', { type: 'image/png' }))
+    await user.click(screen.getByRole('button', { name: 'Save changes' }))
+
+    await waitFor(() => {
+      expect(mocks.toastError).toHaveBeenCalledWith('Could not upload the profile image. Please try again later.')
+    })
+
+    expect(screen.getByText('Could not upload the profile image. Please try again later.')).toBeInTheDocument()
+    expect(mocks.updateUserAction).not.toHaveBeenCalled()
+  })
+
+  it('preserves actionable auth errors when an avatar is selected', async () => {
+    const user = userEvent.setup()
+    mocks.ensureCommunityToken.mockRejectedValue(new Error('Signature was rejected in your wallet.'))
+    render(<SettingsProfileContent user={createUser()} />)
+
+    const imageInput = document.querySelector<HTMLInputElement>('input[name="image"]')
+    expect(imageInput).not.toBeNull()
+    await user.upload(imageInput!, new File(['avatar'], 'avatar.png', { type: 'image/png' }))
+    await user.click(screen.getByRole('button', { name: 'Save changes' }))
+
+    await waitFor(() => {
+      expect(mocks.toastError).toHaveBeenCalledWith('Signature was rejected in your wallet.')
+    })
+
+    expect(screen.getByText('Signature was rejected in your wallet.')).toBeInTheDocument()
+    expect(mocks.updateUserAction).not.toHaveBeenCalled()
   })
 })

@@ -4,7 +4,6 @@ import type { IconName } from 'lucide-react/dynamic'
 import type { CSSProperties } from 'react'
 import type {
   LinePickerMarketType,
-  SportsGamesMarketType,
   SportsLinePickerOption,
 } from '@/app/[locale]/(platform)/sports/_components/_sports-games-center/sports-games-center-types'
 import type { SportsGamesButton, SportsGamesCard } from '@/app/[locale]/(platform)/sports/_utils/sports-games-data'
@@ -19,43 +18,53 @@ import type {
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
-  ExternalLinkIcon,
   FlameIcon,
 } from 'lucide-react'
 import { DynamicIcon } from 'lucide-react/dynamic'
-import { useExtracted } from 'next-intl'
+import { useExtracted, useLocale } from 'next-intl'
 import dynamic from 'next/dynamic'
+import Image from 'next/image'
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { flushSync } from 'react-dom'
 import EventBookmark from '@/app/[locale]/(platform)/event/[slug]/_components/EventBookmark'
 import EventChart from '@/app/[locale]/(platform)/event/[slug]/_components/EventChart'
 import EventMarketChannelProvider from '@/app/[locale]/(platform)/event/[slug]/_components/EventMarketChannelProvider'
+import EventShare from '@/app/[locale]/(platform)/event/[slug]/_components/EventShare'
 import { shouldUseLiveSeriesChart } from '@/app/[locale]/(platform)/event/[slug]/_utils/eventLiveSeriesChartEligibility'
-import { buildLinePickerOptions } from '@/app/[locale]/(platform)/sports/_components/_sports-games-center/sports-games-center-utils'
 import {
-  buildSportsGamesCards,
-  resolveSportsGamesCardCollapsedMarketType,
-} from '@/app/[locale]/(platform)/sports/_utils/sports-games-data'
-import AppLink from '@/components/AppLink'
+  buildLinePickerOptions,
+  resolveSportsGraphSelection,
+} from '@/app/[locale]/(platform)/sports/_components/_sports-games-center/sports-games-center-utils'
+import {
+  formatSportsEventLocalStartLabels,
+  formatSportsEventStartLabels,
+} from '@/app/[locale]/(platform)/sports/_components/sports-event-center-utils'
+import { buildSportsGamesCards } from '@/app/[locale]/(platform)/sports/_utils/sports-games-data'
 import EventIconImage from '@/components/EventIconImage'
 import SiteLogoIcon from '@/components/SiteLogoIcon'
 import { Button } from '@/components/ui/button'
+import { useHasHydrated } from '@/hooks/useHasHydrated'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { useSiteIdentity } from '@/hooks/useSiteIdentity'
+import { Link } from '@/i18n/navigation'
 import { ensureReadableTextColorOnDark } from '@/lib/color-contrast'
-import { resolveEventPagePath } from '@/lib/events-routing'
+import { resolveEventOutcomePath, resolveEventPagePath } from '@/lib/events-routing'
 import { formatDollarValueLabel, formatVolume } from '@/lib/formatters'
+import { resolveHomeFeaturedSportsScoreboardContent } from '@/lib/home-featured-sports-score'
 import { resolveSportsTeamFallbackClassName } from '@/lib/sports-team-colors'
 import { cn } from '@/lib/utils'
 
 interface HomeFeaturedEventsCarouselProps {
   items: HomeFeaturedEventCard[]
   hotTopics: HomeFeaturedHotTopic[]
+  currentTimestamp: number | null
   sideCard: HomeFeaturedSideCardSettings
 }
 
 const HOME_FEATURED_CHART_HEIGHT = 292
 const HOME_FEATURED_CHART_HEIGHT_OFFSET = 20
 const HOME_FEATURED_LIVE_CHART_WIDTH_OFFSET = 24
+const FEATURED_SPORTS_BUTTON_DARK_TEXT_VAR = '--featured-sports-button-dark-text'
 type FeaturedSportsButtonTone = 'home' | 'away' | 'draw' | 'neutral'
 interface FeaturedSportsButtonMarket {
   key: string
@@ -134,10 +143,6 @@ function formatChancePercent(chance: number) {
   return `${Math.round(chance)}%`
 }
 
-function formatVolumeLabel(volume: number) {
-  return `${formatVolume(volume)} Vol`
-}
-
 function normalizeText(value: string | null | undefined) {
   return value?.trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ') ?? ''
 }
@@ -180,7 +185,7 @@ function resolveSportsButtonAppearance(market: FeaturedSportsButtonMarket) {
     const normalizedLabel = normalizeText(market.label)
     if (normalizedLabel.startsWith('u ') || normalizedLabel.includes(' under')) {
       return {
-        className: 'group/team-button text-no hover:bg-transparent',
+        className: 'group/team-button text-no hover:bg-transparent hover:text-white',
         style: undefined,
         backgroundClassName: 'bg-no',
         backgroundStyle: undefined,
@@ -188,59 +193,38 @@ function resolveSportsButtonAppearance(market: FeaturedSportsButtonMarket) {
     }
     if (normalizedLabel.startsWith('o ') || normalizedLabel.includes(' over')) {
       return {
-        className: 'group/team-button text-yes hover:bg-transparent',
+        className: 'group/team-button text-yes hover:bg-transparent hover:text-white',
         style: undefined,
         backgroundClassName: 'bg-yes',
         backgroundStyle: undefined,
       }
     }
 
-    return {
-      ...resolveNeutralSportsButtonAppearance(),
-      className: 'border border-button-outline-border bg-transparent text-muted-foreground hover:bg-secondary/80 hover:text-foreground',
-    }
+    return resolveNeutralSportsButtonAppearance()
   }
 
   if (market.color) {
-    const textColor = ensureReadableTextColorOnDark(market.color)
+    const darkTextColor = ensureReadableTextColorOnDark(market.color)
 
     return {
-      className: 'group/team-button hover:bg-transparent',
-      style: textColor ? { color: textColor } : undefined,
+      className: `
+        group/team-button hover:bg-transparent hover:!text-white
+        dark:!text-[var(--featured-sports-button-dark-text)] dark:hover:!text-white
+      `,
+      style: {
+        color: market.color,
+        [FEATURED_SPORTS_BUTTON_DARK_TEXT_VAR]: darkTextColor ?? market.color,
+      } as CSSProperties,
       backgroundClassName: undefined,
       backgroundStyle: { backgroundColor: market.color },
     }
   }
 
   return {
-    className: 'group/team-button text-foreground hover:bg-transparent',
+    className: 'group/team-button text-foreground hover:bg-transparent hover:text-primary-foreground',
     style: undefined,
     backgroundClassName: resolveSportsTeamFallbackClassName(market.tone === 'home' ? 'team1' : 'team2'),
     backgroundStyle: undefined,
-  }
-}
-
-function resolveSportsGraphSelection(card: SportsGamesCard): {
-  selectedMarketType: SportsGamesMarketType
-  selectedConditionId: string | null
-} | null {
-  const moneylineButton = card.buttons.find(button => button.marketType === 'moneyline')
-  if (moneylineButton) {
-    return {
-      selectedMarketType: 'moneyline',
-      selectedConditionId: null,
-    }
-  }
-
-  const selectedMarketType = resolveSportsGamesCardCollapsedMarketType(card) ?? card.buttons[0]?.marketType
-  if (!selectedMarketType) {
-    return null
-  }
-
-  return {
-    selectedMarketType,
-    selectedConditionId: card.buttons.find(button => button.marketType === selectedMarketType)?.conditionId
-      ?? card.defaultConditionId,
   }
 }
 
@@ -258,6 +242,10 @@ function normalizePathSlug(value: string | null | undefined) {
 
 function isExternalHref(href: string) {
   return /^https?:\/\//i.test(href)
+}
+
+function requiresDocumentNavigation(href: string) {
+  return /^\/docs(?:[/?#]|$)/i.test(href)
 }
 
 function resolveFeaturedBreadcrumbItems(item: HomeFeaturedEventCard) {
@@ -313,13 +301,12 @@ function FeaturedBreadcrumb({ items }: { items: Array<{ label: string, href: str
       {items.map((breadcrumbItem, index) => (
         <span key={`${breadcrumbItem.href}:${breadcrumbItem.label}`} className="flex min-w-0 items-center gap-1.5">
           {index > 0 && <span className="shrink-0 text-muted-foreground/60">·</span>}
-          <AppLink
-            intentPrefetch
+          <Link
             href={breadcrumbItem.href}
             className="truncate underline-offset-2 transition-colors hover:text-foreground hover:underline"
           >
             {breadcrumbItem.label}
-          </AppLink>
+          </Link>
         </span>
       ))}
     </nav>
@@ -355,19 +342,10 @@ function FeaturedHeaderActions({
   event: HomeFeaturedEventCard['event']
   className?: string
 }) {
-  const t = useExtracted()
-  const eventHref = resolveEventPagePath(event)
-
   return (
     <div className={cn('flex shrink-0 items-center gap-2', className)}>
-      <Button type="button" variant="ghost" size="icon" asChild aria-label={t('Open market')}>
-        <AppLink intentPrefetch href={eventHref}>
-          <ExternalLinkIcon className="size-4" />
-        </AppLink>
-      </Button>
-      <div className="flex size-10 items-center justify-center">
-        <EventBookmark event={event} refreshStatusOnMount={false} />
-      </div>
+      <EventShare event={event} />
+      <EventBookmark event={event} refreshStatusOnMount={false} />
     </div>
   )
 }
@@ -379,17 +357,30 @@ function FeaturedHeader({
   item: HomeFeaturedEventCard
   showActions?: boolean
 }) {
+  const t = useExtracted()
   const event = item.event
   const eventHref = resolveEventPagePath(event)
-  const breadcrumbItems = resolveFeaturedBreadcrumbItems(item)
+  const breadcrumbItems = resolveFeaturedBreadcrumbItems(item).map(breadcrumbItem => ({
+    ...breadcrumbItem,
+    label: breadcrumbItem.label === 'Daily'
+      ? t('Daily')
+      : breadcrumbItem.label === 'Weekly'
+        ? t('Weekly')
+        : breadcrumbItem.label === 'Monthly'
+          ? t('Monthly')
+          : breadcrumbItem.label === 'Sports'
+            ? t('Sports')
+            : breadcrumbItem.label === 'Esports'
+              ? t('Esports')
+              : breadcrumbItem.label,
+  }))
   const displayTitle = resolveFeaturedDisplayTitle(item)
 
   return (
     <div className="flex min-w-0 items-start justify-between gap-3">
       <div className="group/header flex min-w-0 flex-1 items-start gap-3">
         {item.kind !== 'sports' && (
-          <AppLink
-            intentPrefetch
+          <Link
             href={eventHref}
             className="size-11 shrink-0 overflow-hidden rounded-lg bg-muted md:size-12"
           >
@@ -399,21 +390,20 @@ function FeaturedHeader({
               sizes="48px"
               containerClassName="size-full rounded-lg"
             />
-          </AppLink>
+          </Link>
         )}
         <div className="grid min-w-0 gap-1">
           <FeaturedBreadcrumb items={breadcrumbItems} />
-          <AppLink
-            intentPrefetch
+          <Link
             href={eventHref}
-            className="
+            className={cn(`
               line-clamp-2 text-lg font-semibold tracking-tight underline-offset-4
               group-hover/header:underline
               md:text-xl
-            "
+            `)}
           >
             {displayTitle}
-          </AppLink>
+          </Link>
         </div>
       </div>
 
@@ -422,7 +412,28 @@ function FeaturedHeader({
   )
 }
 
-function OutcomeRows({ outcomes, linkedHref }: { outcomes: HomeFeaturedOutcomeSummary[], linkedHref: string }) {
+function resolveFeaturedOutcomeHref(
+  event: HomeFeaturedEventCard['event'],
+  outcome: HomeFeaturedOutcomeSummary,
+  fallbackHref: string,
+) {
+  return resolveEventOutcomePath(event, {
+    marketSlug: outcome.marketSlug,
+    conditionId: outcome.conditionId,
+    outcomeIndex: outcome.outcomeIndex,
+  }) || fallbackHref
+}
+
+function OutcomeRows({
+  item,
+  linkedHref,
+}: {
+  item: HomeFeaturedEventCard
+  linkedHref: string
+}) {
+  const outcomes = item.topOutcomes
+  const shouldShowOutcomeImages = item.event.show_market_icons !== false
+
   if (outcomes.length === 0) {
     return null
   }
@@ -430,17 +441,16 @@ function OutcomeRows({ outcomes, linkedHref }: { outcomes: HomeFeaturedOutcomeSu
   return (
     <div className="grid gap-0">
       {outcomes.map(outcome => (
-        <AppLink
+        <Link
           key={outcome.key}
-          intentPrefetch
-          href={linkedHref}
-          className={`
+          href={resolveFeaturedOutcomeHref(item.event, outcome, linkedHref)}
+          className={cn(`
             group/outcome grid min-h-14 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-border/50 py-2
             last:border-b-0
-          `}
+          `)}
         >
           <span className="flex min-w-0 items-center gap-3">
-            {outcome.imageUrl && (
+            {shouldShowOutcomeImages && outcome.imageUrl && (
               <span className="size-9 shrink-0 overflow-hidden rounded-md bg-muted">
                 <EventIconImage
                   src={outcome.imageUrl}
@@ -457,7 +467,7 @@ function OutcomeRows({ outcomes, linkedHref }: { outcomes: HomeFeaturedOutcomeSu
           <span className="text-xl font-semibold tabular-nums">
             {formatChancePercent(outcome.chance)}
           </span>
-        </AppLink>
+        </Link>
       ))}
     </div>
   )
@@ -491,9 +501,9 @@ function StandardActions({ item, linkedHref }: { item: HomeFeaturedEventCard, li
               `,
             )}
           >
-            <AppLink intentPrefetch href={linkedHref}>
+            <Link href={resolveFeaturedOutcomeHref(item.event, outcome, linkedHref)}>
               <span className="truncate">{outcome.label}</span>
-            </AppLink>
+            </Link>
           </Button>
         )
       })}
@@ -504,27 +514,26 @@ function StandardActions({ item, linkedHref }: { item: HomeFeaturedEventCard, li
 function SportsMarketButton({
   groupLabel,
   market,
-  linkedHref,
+  href,
   className,
   forceNeutral = false,
 }: {
   groupLabel: string
   market: FeaturedSportsButtonMarket
-  linkedHref: string
+  href: string
   className?: string
   forceNeutral?: boolean
 }) {
   const appearance = forceNeutral ? resolveFilledNeutralSportsButtonAppearance() : resolveSportsButtonAppearance(market)
 
   return (
-    <AppLink
+    <Link
       key={`${groupLabel}:${market.key}`}
-      intentPrefetch
-      href={linkedHref}
+      href={href}
       className={cn(
         `
-          relative inline-flex min-w-0 items-center justify-center overflow-hidden rounded-lg px-3 text-center
-          font-semibold transition duration-150
+          group/sports-market-button relative inline-flex min-w-0 items-center justify-center overflow-hidden rounded-lg
+          px-3 text-center font-semibold transition duration-150
           active:scale-[98%]
         `,
         appearance.className,
@@ -532,25 +541,38 @@ function SportsMarketButton({
       )}
       style={appearance.style}
     >
-      <span className="relative z-1 truncate">{market.label}</span>
+      <span className={cn('relative z-1', market.tone === 'draw' ? 'whitespace-nowrap' : 'truncate')}>
+        {market.label}
+      </span>
       {(appearance.backgroundClassName || appearance.backgroundStyle)
         ? (
             <span
               className={cn(
-                `
-                  absolute inset-0 z-0 rounded-lg opacity-20 transition-opacity
-                  group-hover/team-button:opacity-40
-                  dark:opacity-30
-                  dark:group-hover/team-button:opacity-50
-                `,
+                'absolute inset-0 z-0 rounded-lg opacity-[0.15] transition-opacity group-hover/team-button:opacity-100',
                 appearance.backgroundClassName,
               )}
               style={appearance.backgroundStyle}
             />
           )
         : null}
-    </AppLink>
+    </Link>
   )
+}
+
+function resolveFeaturedSportsButtonHref(
+  card: SportsGamesCard,
+  button: SportsGamesButton,
+  fallbackHref: string,
+) {
+  const market = card.detailMarkets.find(market => market.condition_id === button.conditionId)
+    ?? card.event.markets.find(market => market.condition_id === button.conditionId)
+  const href = resolveEventOutcomePath(card.event, {
+    marketSlug: market?.slug,
+    conditionId: button.conditionId,
+    outcomeIndex: button.outcomeIndex,
+  })
+
+  return href || fallbackHref
 }
 
 function SportsMoneylineButtons({
@@ -560,6 +582,7 @@ function SportsMoneylineButtons({
   card: SportsGamesCard
   linkedHref: string
 }) {
+  const t = useExtracted()
   const moneylineButtons = card.buttons
     .filter(button => button.marketType === 'moneyline')
     .sort(compareSportsButtonsByTone)
@@ -569,22 +592,28 @@ function SportsMoneylineButtons({
   }
 
   return (
-    <div
-      className="grid gap-2"
-      style={{ gridTemplateColumns: `repeat(${Math.min(moneylineButtons.length, 3)}, minmax(0, 1fr))` }}
-    >
-      {moneylineButtons.slice(0, 3).map(button => (
-        <SportsMarketButton
-          key={button.key}
-          groupLabel="Moneyline"
-          market={toFeaturedSportsButtonMarket(
-            button,
-            resolveMoneylineButtonLabel(card, button),
-          )}
-          linkedHref={linkedHref}
-          className="h-14 text-sm md:text-base"
-        />
-      ))}
+    <div className="flex items-center gap-2">
+      {moneylineButtons.slice(0, 3).map((button) => {
+        const isDraw = button.tone === 'draw'
+
+        return (
+          <SportsMarketButton
+            key={button.key}
+            groupLabel={t('Moneyline')}
+            market={toFeaturedSportsButtonMarket(
+              button,
+              isDraw ? t('Draw') : resolveMoneylineButtonLabel(card, button),
+            )}
+            href={resolveFeaturedSportsButtonHref(card, button, linkedHref)}
+            className={cn(
+              'h-14',
+              isDraw
+                ? 'mx-1 w-20 shrink-0 px-3 text-sm tracking-wide'
+                : 'min-w-0 flex-1 text-sm md:text-base',
+            )}
+          />
+        )
+      })}
     </div>
   )
 }
@@ -614,10 +643,6 @@ function resolveMoneylineButtonLabel(card: SportsGamesCard, button: SportsGamesB
   if (button.tone === 'team2') {
     return card.teams[1]?.name ?? button.label
   }
-  if (button.tone === 'draw') {
-    return 'Draw'
-  }
-
   return button.label
 }
 
@@ -828,6 +853,7 @@ function LinePickerArrowButton({
   onClick: () => void
 }) {
   const Icon = direction === 'previous' ? ChevronLeftIcon : ChevronRightIcon
+  const t = useExtracted()
 
   return (
     <button
@@ -843,7 +869,7 @@ function LinePickerArrowButton({
           ? 'cursor-not-allowed opacity-35'
           : 'cursor-pointer hover:bg-muted/70 hover:text-foreground',
       )}
-      aria-label={direction === 'previous' ? 'Previous line' : 'Next line'}
+      aria-label={direction === 'previous' ? t('Previous line') : t('Next line')}
     >
       <Icon className="size-4.5" />
     </button>
@@ -893,9 +919,9 @@ function SportsFeaturedLineMarketCarousel({
     <div className="grid gap-2.5">
       <div className="grid min-h-8 grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
         <span className="min-w-0 truncate text-base font-semibold">{label}</span>
-        <div className="
+        <div className={cn(`
           grid grid-cols-[1.75rem_2.5rem_2.5rem_2.5rem_1.75rem] items-center gap-1 text-sm font-semibold tabular-nums
-        "
+        `)}
         >
           <LinePickerArrowButton
             direction="previous"
@@ -931,7 +957,7 @@ function SportsFeaturedLineMarketCarousel({
               button,
               resolveLineButtonLabel(card, activeOption, button, activeMarket, marketType),
             )}
-            linkedHref={linkedHref}
+            href={resolveFeaturedSportsButtonHref(card, button, linkedHref)}
             className="h-10 text-sm"
             forceNeutral
           />
@@ -942,6 +968,7 @@ function SportsFeaturedLineMarketCarousel({
 }
 
 function SportsFeaturedControls({ card, linkedHref }: { card: SportsGamesCard, linkedHref: string }) {
+  const t = useExtracted()
   const hasMoneyline = card.buttons.some(button => button.marketType === 'moneyline')
   const hasSpread = resolveFeaturedLinePickerOptions(card, 'spread').length > 0
   const hasTotal = resolveFeaturedLinePickerOptions(card, 'total').length > 0
@@ -959,7 +986,7 @@ function SportsFeaturedControls({ card, linkedHref }: { card: SportsGamesCard, l
         <SportsFeaturedLineMarketCarousel
           card={card}
           marketType="spread"
-          label="Spread"
+          label={t('Spread')}
           linkedHref={linkedHref}
         />
       )}
@@ -967,7 +994,7 @@ function SportsFeaturedControls({ card, linkedHref }: { card: SportsGamesCard, l
         <SportsFeaturedLineMarketCarousel
           card={card}
           marketType="total"
-          label="Total"
+          label={t('Total')}
           linkedHref={linkedHref}
         />
       )}
@@ -1013,17 +1040,17 @@ function ContextAvatar({ contextItem }: { contextItem: HomeFeaturedContextItem }
   )
 }
 
-function formatContextRelativeTime(value: string | null) {
-  if (!value) {
+function formatContextRelativeTime(value: string | null, currentTimestamp: number | null, locale: string) {
+  if (!value || currentTimestamp === null) {
     return null
   }
 
   const timestamp = new Date(value).getTime()
-  if (!Number.isFinite(timestamp)) {
+  if (!Number.isFinite(timestamp) || !Number.isFinite(currentTimestamp)) {
     return null
   }
 
-  const diffSeconds = Math.round((timestamp - Date.now()) / 1000)
+  const diffSeconds = Math.round((timestamp - currentTimestamp) / 1000)
   const divisions = [
     { amount: 60, unit: 'second' },
     { amount: 60, unit: 'minute' },
@@ -1037,7 +1064,7 @@ function formatContextRelativeTime(value: string | null) {
 
   for (const division of divisions) {
     if (Math.abs(duration) < division.amount) {
-      return new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' }).format(
+      return new Intl.RelativeTimeFormat(locale, { numeric: 'auto' }).format(
         Math.round(duration),
         division.unit,
       )
@@ -1051,26 +1078,32 @@ function formatContextRelativeTime(value: string | null) {
 
 function ContextTickerItem({
   contextItem,
+  currentTimestamp,
   index,
   linkedHref,
 }: {
   contextItem: HomeFeaturedContextItem
+  currentTimestamp: number | null
   index: number
   linkedHref: string
 }) {
-  const timeLabel = formatContextRelativeTime(contextItem.publishedAt ?? contextItem.selectedAt)
+  const locale = useLocale()
+  const timeLabel = formatContextRelativeTime(
+    contextItem.publishedAt ?? contextItem.selectedAt,
+    currentTimestamp,
+    locale,
+  )
   const isNews = contextItem.type === 'news'
 
   return (
-    <AppLink
+    <Link
       key={`${contextItem.id}:${index}`}
-      intentPrefetch
       href={linkedHref}
       className="flex h-14 min-w-0 items-center gap-2"
     >
       {(!isNews || !contextItem.faviconUrl) && <ContextAvatar contextItem={contextItem} />}
       <span className="grid min-w-0 gap-0.5">
-        <span className="flex min-w-0 items-center gap-1.5 text-xs font-medium text-muted-foreground">
+        <span className="flex min-w-0 items-center gap-1.5 text-xs font-medium text-muted-foreground/60">
           {isNews && contextItem.faviconUrl && (
             <EventIconImage
               src={contextItem.faviconUrl}
@@ -1083,20 +1116,28 @@ function ContextTickerItem({
           <span className="truncate">{contextItem.source}</span>
           {timeLabel && (
             <>
-              <span className="shrink-0 text-muted-foreground/70">·</span>
+              <span className="shrink-0 text-muted-foreground/50">·</span>
               <span className="shrink-0">{timeLabel}</span>
             </>
           )}
         </span>
-        <span className="line-clamp-2 text-xs/snug text-foreground">
+        <span className="line-clamp-2 text-xs/snug text-muted-foreground/75">
           {contextItem.title}
         </span>
       </span>
-    </AppLink>
+    </Link>
   )
 }
 
-function ContextTicker({ item, linkedHref }: { item: HomeFeaturedEventCard, linkedHref: string }) {
+function ContextTicker({
+  currentTimestamp,
+  item,
+  linkedHref,
+}: {
+  currentTimestamp: number | null
+  item: HomeFeaturedEventCard
+  linkedHref: string
+}) {
   if (item.contextItems.length === 0) {
     return null
   }
@@ -1113,11 +1154,16 @@ function ContextTicker({ item, linkedHref }: { item: HomeFeaturedEventCard, link
     : undefined
 
   return (
-    <div className="relative min-h-0 flex-1 overflow-hidden border-t border-border/50 pt-3">
+    <div className="group/context relative min-h-0 flex-1 overflow-hidden border-t border-border/50 pt-3">
       <div
         className={cn(
           item.contextItems.length > 1
-          && 'grid animate-[home-featured-context-ticker_16s_linear_infinite] gap-2 motion-reduce:animate-none',
+          && `
+            grid animate-[home-featured-context-ticker_16s_linear_infinite] gap-2
+            group-focus-within/context:paused
+            group-hover/context:paused
+            motion-reduce:animate-none
+          `,
         )}
         style={tickerStyle}
       >
@@ -1125,6 +1171,7 @@ function ContextTicker({ item, linkedHref }: { item: HomeFeaturedEventCard, link
           <ContextTickerItem
             key={`${contextItem.id}:${index}`}
             contextItem={contextItem}
+            currentTimestamp={currentTimestamp}
             index={index}
             linkedHref={linkedHref}
           />
@@ -1136,48 +1183,162 @@ function ContextTicker({ item, linkedHref }: { item: HomeFeaturedEventCard, link
   )
 }
 
-function SportsScoreboard({ item }: { item: HomeFeaturedEventCard }) {
-  const teams = item.event.sports_teams ?? []
-  const logos = item.event.sports_team_logo_urls ?? []
-  const score = item.event.sports_score?.trim()
+function useFeaturedTemporalLabel(item: HomeFeaturedEventCard) {
+  const locale = useLocale()
+  const t = useExtracted()
+
+  if (item.temporalStatus === 'live') {
+    return t('Live')
+  }
+  if (item.temporalStatus === 'daily') {
+    return t('Daily')
+  }
+  if (item.temporalStatus === 'monthly') {
+    return t('Monthly')
+  }
+
+  if (!item.event.end_date) {
+    return t('Ends later')
+  }
+
+  const endDate = new Date(item.event.end_date)
+  if (!Number.isFinite(endDate.getTime())) {
+    return t('Ends later')
+  }
+
+  const dateLabel = new Intl.DateTimeFormat(locale, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(endDate)
+  return t('Ends {date}', { date: dateLabel })
+}
+
+function SportsScoreboard({
+  card,
+  item,
+  linkedHref,
+}: {
+  card: SportsGamesCard | null
+  item: HomeFeaturedEventCard
+  linkedHref: string
+}) {
+  const hasHydrated = useHasHydrated()
+  const locale = useLocale()
+  const t = useExtracted()
+  const temporalLabel = useFeaturedTemporalLabel(item)
+  const teams = card?.teams.length
+    ? card.teams.map(team => ({
+        name: team.name,
+        logoUrl: team.logoUrl,
+      }))
+    : (item.event.sports_teams ?? []).map((team, index) => ({
+        name: team.name,
+        logoUrl: team.logo_url ?? item.event.sports_team_logo_urls?.[index] ?? null,
+      }))
+  const liveMeta = [item.event.sports_period, item.event.sports_elapsed].filter(Boolean).join(' · ')
+  const scoreboardContent = resolveHomeFeaturedSportsScoreboardContent({
+    score: item.event.sports_score,
+    temporalStatus: item.temporalStatus,
+    liveMeta,
+  })
+  const parsedStartTimestamp = item.event.sports_start_time
+    ? Date.parse(item.event.sports_start_time)
+    : item.event.start_date
+      ? Date.parse(item.event.start_date)
+      : Number.NaN
+  const startTimestamp = Number.isFinite(parsedStartTimestamp) ? parsedStartTimestamp : null
+  const startLabels = startTimestamp !== null
+    ? (
+        hasHydrated
+          ? formatSportsEventLocalStartLabels(startTimestamp, locale) ?? formatSportsEventStartLabels(startTimestamp, locale)
+          : formatSportsEventStartLabels(startTimestamp, locale)
+      )
+    : null
   if (item.kind !== 'sports' || teams.length < 2) {
     return null
   }
 
   const [homeTeam, awayTeam] = teams
-  const [homeLogo, awayLogo] = logos
+  const homeLogo = homeTeam?.logoUrl ?? null
+  const awayLogo = awayTeam?.logoUrl ?? null
+  const homeButton = card?.buttons.find(button => button.marketType === 'moneyline' && button.tone === 'team1') ?? null
+  const awayButton = card?.buttons.find(button => button.marketType === 'moneyline' && button.tone === 'team2') ?? null
+  const homeHref = card && homeButton ? resolveFeaturedSportsButtonHref(card, homeButton, linkedHref) : null
+  const awayHref = card && awayButton ? resolveFeaturedSportsButtonHref(card, awayButton, linkedHref) : null
+  const teamNameClassName = `
+    inline-block max-w-full truncate text-base font-medium text-muted-foreground/75 underline-offset-2
+    transition-colors hover:text-muted-foreground hover:underline
+  `
+  const shouldShowScheduledStart = !scoreboardContent.scoreLabel && !scoreboardContent.showLiveStatus
 
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 rounded-lg bg-secondary/60 p-3">
-      <div className="min-w-0 text-center">
+    <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-4 px-1 py-2">
+      <div className="min-w-0 justify-self-center text-center">
         {homeLogo && (
           <EventIconImage
             src={homeLogo}
             alt={homeTeam?.name ?? ''}
-            sizes="36px"
-            containerClassName="mx-auto mb-1 size-9 rounded-md"
+            sizes="48px"
+            containerClassName="mx-auto mb-1.5 size-12 rounded-lg"
           />
         )}
-        <p className="truncate text-sm font-medium">{homeTeam?.name}</p>
+        {homeHref
+          ? (
+              <Link href={homeHref} className={teamNameClassName}>
+                {homeTeam?.name}
+              </Link>
+            )
+          : <p className="truncate text-base font-medium text-foreground/90">{homeTeam?.name}</p>}
       </div>
       <div className="text-center">
-        <p className="text-3xl font-semibold tabular-nums">{score || '0 - 0'}</p>
-        {(item.event.sports_period || item.event.sports_elapsed) && (
+        {scoreboardContent.scoreLabel
+          ? (
+              <p className="text-3xl font-semibold tabular-nums">{scoreboardContent.scoreLabel}</p>
+            )
+          : shouldShowScheduledStart && startLabels
+            ? (
+                <>
+                  <p className="text-sm font-semibold text-foreground tabular-nums">{startLabels.timeLabel}</p>
+                  <p className="mt-2 text-sm font-medium text-muted-foreground">{startLabels.dayLabel}</p>
+                </>
+              )
+            : shouldShowScheduledStart
+              ? (
+                  <p className="text-sm font-semibold text-muted-foreground">{temporalLabel}</p>
+                )
+              : null}
+        {scoreboardContent.showLiveStatus && (
+          <p className={cn(
+            'text-xs font-semibold tracking-wide text-red-500 uppercase',
+            scoreboardContent.scoreLabel ? 'mt-1' : undefined,
+          )}
+          >
+            {t('Live')}
+          </p>
+        )}
+        {scoreboardContent.liveMeta && (
           <p className="text-sm font-medium text-red-500">
-            {[item.event.sports_period, item.event.sports_elapsed].filter(Boolean).join(' · ')}
+            {scoreboardContent.liveMeta}
           </p>
         )}
       </div>
-      <div className="min-w-0 text-center">
+      <div className="min-w-0 justify-self-center text-center">
         {awayLogo && (
           <EventIconImage
             src={awayLogo}
             alt={awayTeam?.name ?? ''}
-            sizes="36px"
-            containerClassName="mx-auto mb-1 size-9 rounded-md"
+            sizes="48px"
+            containerClassName="mx-auto mb-1.5 size-12 rounded-lg"
           />
         )}
-        <p className="truncate text-sm font-medium">{awayTeam?.name}</p>
+        {awayHref
+          ? (
+              <Link href={awayHref} className={teamNameClassName}>
+                {awayTeam?.name}
+              </Link>
+            )
+          : <p className="truncate text-base font-medium text-foreground/90">{awayTeam?.name}</p>}
       </div>
     </div>
   )
@@ -1185,42 +1346,46 @@ function SportsScoreboard({ item }: { item: HomeFeaturedEventCard }) {
 
 function FeaturedFooter({ item }: { item: HomeFeaturedEventCard }) {
   const site = useSiteIdentity()
+  const t = useExtracted()
+  const temporalLabel = useFeaturedTemporalLabel(item)
 
   return (
     <div
       className={`
-        absolute inset-x-4 bottom-3 z-20 flex h-10 shrink-0 items-center justify-between gap-3 bg-card text-xs
-        leading-none font-normal text-muted-foreground
-        md:inset-x-5 md:bottom-4 md:text-sm
+        absolute inset-x-4 bottom-2 z-20 flex h-8 shrink-0 items-center justify-between gap-3 bg-card/95 text-[13px]
+        leading-none font-normal text-muted-foreground/60
+        md:inset-x-5 md:text-sm
       `}
     >
-      <span className="shrink-0">{formatVolumeLabel(item.event.volume)}</span>
+      <span className="shrink-0">
+        {t('{amount} Vol.', { amount: formatVolume(item.event.volume) })}
+      </span>
       <span className="flex min-w-0 items-center justify-end gap-2">
         <span className={cn(
           'inline-flex items-center gap-1.5 whitespace-nowrap',
-          item.temporalStatus === 'live' && 'text-red-500',
+          item.temporalStatus === 'live' && 'text-red-500/70',
         )}
         >
           {item.temporalStatus === 'live' && (
             <span className="relative flex size-2">
-              <span className="absolute inline-flex size-2 animate-ping rounded-full bg-red-500 opacity-75" />
-              <span className="relative inline-flex size-2 rounded-full bg-red-500" />
+              <span className="absolute inline-flex size-2 animate-ping rounded-full bg-red-500 opacity-50" />
+              <span className="relative inline-flex size-2 rounded-full bg-red-500/70" />
             </span>
           )}
-          {item.temporalLabel}
+          {temporalLabel}
         </span>
-        <span className="text-muted-foreground">·</span>
-        <span className="flex min-w-0 items-center gap-1.5 leading-none">
+        <span className="text-muted-foreground/35">·</span>
+        <span className="flex min-w-0 items-center gap-1 leading-none">
           <SiteLogoIcon
             logoSvg={site.logoSvg}
             logoImageUrl={site.logoImageUrl}
             alt={`${site.name} logo`}
             className={cn(`
-              pointer-events-none size-4 shrink-0 text-current select-none
+              pointer-events-none size-4 shrink-0 text-current opacity-65 select-none
               [&_svg]:size-4
               [&_svg_*]:fill-current [&_svg_*]:stroke-current
             `)}
-            imageClassName="pointer-events-none size-4 object-contain select-none"
+            imageClassName="pointer-events-none size-4 object-contain opacity-65 select-none"
             size={16}
           />
           <span className="truncate select-none">{site.name}</span>
@@ -1230,75 +1395,117 @@ function FeaturedFooter({ item }: { item: HomeFeaturedEventCard }) {
   )
 }
 
-function FeaturedRightRail({
+function FeaturedRightRailSingle({
   hotTopics,
   sideCard,
+  hideSideCard = false,
 }: {
   hotTopics: HomeFeaturedHotTopic[]
   sideCard: HomeFeaturedSideCardSettings
+  hideSideCard?: boolean
 }) {
+  const t = useExtracted()
   const hasCta = Boolean(sideCard.ctaLabel.trim() && sideCard.ctaHref.trim())
   const sideCardHref = sideCard.ctaHref.trim()
-  const sideCardClassName = `
-    group/side-card relative flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-border/70
-    bg-card p-5 text-card-foreground shadow-md shadow-black/4 transition-all duration-200
-    hover:-translate-y-0.5 hover:border-border hover:shadow-black/8
-    focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-none
-  `
-  const sideCardContent = (
-    <>
-      <span className="
-        pointer-events-none absolute bottom-0 left-[30%] h-px w-[40%] bg-linear-to-r from-transparent via-primary/60
-        to-transparent
-      "
-      />
-      <DynamicIcon
-        name={sideCard.icon as IconName}
-        aria-hidden
-        className="
-          pointer-events-none absolute -top-6 -right-7 size-36 rotate-6 text-primary/8 transition-transform duration-300
-          group-hover/side-card:scale-105
-          motion-safe:animate-pulse
-        "
-      />
-
-      <div className="relative z-1 flex min-h-0 flex-1 flex-col pt-7 pb-4">
-        <span
-          className="
-            mb-3 h-1 w-10 rounded-full bg-primary/70
-            shadow-[0_0_18px_color-mix(in_oklab,var(--primary)_32%,transparent)]
-          "
-        />
-        <span className="line-clamp-2 max-w-[16rem] text-xl/tight font-semibold tracking-tight">
-          {sideCard.title}
-        </span>
-        <span className={cn(
-          'mt-5 text-sm/relaxed text-muted-foreground',
-          hasCta ? 'line-clamp-4' : 'line-clamp-5',
-        )}
-        >
-          {sideCard.text}
-        </span>
-
-        {hasCta && (
-          <span
-            className="
-              mt-auto ml-auto inline-flex h-9 max-w-full items-center gap-1.5 rounded-full border border-border/70
-              bg-background/70 px-3 text-sm font-medium text-foreground shadow-sm shadow-black/4 transition-colors
-              group-hover/side-card:border-primary/35 group-hover/side-card:text-primary
-            "
-          >
-            <span className="truncate">{sideCard.ctaLabel}</span>
-            <ChevronRightIcon className="size-4 shrink-0" />
-          </span>
-        )}
-      </div>
-    </>
+  const shouldUseDocumentNavigation = requiresDocumentNavigation(sideCardHref)
+  const useImage = Boolean(sideCard.useImage && sideCard.imageUrl.trim())
+  const isClickable = useImage ? Boolean(sideCardHref) : hasCta
+  const sideCardClassName = cn(
+    `
+      group/side-card relative flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-border/70 bg-card
+      text-card-foreground shadow-md shadow-black/4 transition-all duration-200
+      hover:-translate-y-0.5 hover:border-border hover:shadow-black/8
+      focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-none
+    `,
+    !useImage && 'p-5',
   )
+  const sideCardContent = useImage
+    ? (
+        <>
+          <Image
+            src={sideCard.imageUrl}
+            alt={sideCard.ctaLabel.trim()}
+            fill
+            loading="eager"
+            sizes="(min-width: 1024px) 32vw, 280px"
+            className="object-cover transition-transform duration-300 group-hover/side-card:scale-[1.02]"
+            unoptimized
+          />
+          {sideCard.ctaLabel.trim() && (
+            <span className={cn(`
+              absolute inset-0 z-1 flex items-end bg-linear-to-t from-black/75 via-black/20 to-transparent p-5
+              text-white opacity-0 transition-opacity duration-200
+              group-hover/side-card:opacity-100
+              group-focus-visible/side-card:opacity-100
+            `)}
+            >
+              <span className="inline-flex min-w-0 items-center gap-1.5 text-sm font-semibold">
+                <span className="line-clamp-2">{sideCard.ctaLabel}</span>
+                {sideCardHref && <ChevronRightIcon className="size-4 shrink-0 text-white/75" />}
+              </span>
+            </span>
+          )}
+        </>
+      )
+    : (
+        <>
+          <span className={cn(`
+            pointer-events-none absolute bottom-0 left-[30%] h-px w-[40%] bg-linear-to-r from-transparent via-primary/60
+            to-transparent
+          `)}
+          />
+          <DynamicIcon
+            name={sideCard.icon as IconName}
+            aria-hidden
+            className={cn(`
+              pointer-events-none absolute -top-6 -right-7 size-36 rotate-6 text-primary/8 transition-transform
+              duration-300
+              group-hover/side-card:scale-105
+              motion-safe:animate-pulse
+            `)}
+          />
+
+          <div className="relative z-1 flex min-h-0 flex-1 flex-col pt-7 pb-4">
+            <span
+              className={cn(`
+                mb-3 h-1 w-10 rounded-full bg-primary/70
+                shadow-[0_0_18px_color-mix(in_oklab,var(--primary)_32%,transparent)]
+              `)}
+            />
+            <span className="line-clamp-2 max-w-[16rem] text-xl/tight font-semibold tracking-tight">
+              {sideCard.title}
+            </span>
+            <span className={cn(
+              'mt-5 text-sm/relaxed text-muted-foreground',
+              hasCta ? 'line-clamp-4' : 'line-clamp-5',
+            )}
+            >
+              {sideCard.text}
+            </span>
+
+            {hasCta && (
+              <span
+                className={cn(`
+                  mt-auto ml-auto inline-flex h-9 max-w-full items-center gap-1.5 rounded-full border border-border/70
+                  bg-background/70 px-3 text-sm font-medium text-foreground shadow-sm shadow-black/4 transition-colors
+                  group-hover/side-card:border-primary/35 group-hover/side-card:text-primary
+                `)}
+              >
+                <span className="truncate">{sideCard.ctaLabel}</span>
+                <ChevronRightIcon className="size-4 shrink-0" />
+              </span>
+            )}
+          </div>
+        </>
+      )
 
   return (
-    <aside className="hidden h-[clamp(430px,38vw,480px)] min-w-0 grid-rows-[minmax(0,1fr)_minmax(0,1fr)] gap-4 lg:grid">
-      {hasCta
+    <aside className={cn(
+      'hidden h-[clamp(430px,38vw,480px)] min-w-0 gap-4 lg:grid',
+      hideSideCard ? 'grid-rows-[minmax(0,1fr)]' : 'grid-rows-[minmax(0,1fr)_minmax(0,1fr)]',
+    )}
+    >
+      {!hideSideCard && (isClickable
         ? isExternalHref(sideCardHref)
           ? (
               <a
@@ -1310,43 +1517,284 @@ function FeaturedRightRail({
                 {sideCardContent}
               </a>
             )
-          : (
-              <AppLink
-                intentPrefetch
-                href={sideCardHref}
-                className={sideCardClassName}
-              >
-                {sideCardContent}
-              </AppLink>
-            )
+          : shouldUseDocumentNavigation
+            ? (
+                <a
+                  href={sideCardHref}
+                  className={sideCardClassName}
+                >
+                  {sideCardContent}
+                </a>
+              )
+            : (
+                <Link
+                  href={sideCardHref}
+                  className={sideCardClassName}
+                >
+                  {sideCardContent}
+                </Link>
+              )
         : (
             <div className={sideCardClassName}>
               {sideCardContent}
             </div>
-          )}
+          ))}
 
       <div className="min-h-0 overflow-hidden p-1">
-        <div className="mb-3 flex items-center gap-2">
-          <FlameIcon className="size-4 text-no" />
-          <span className="text-lg font-semibold">Hot topics</span>
-        </div>
-        <div className="grid gap-3">
+        <Link
+          href="/predictions/trending?_sort=volume"
+          className="group/hot-topics mb-3 inline-flex items-center gap-2 text-foreground"
+        >
+          <FlameIcon className="size-4 text-no/85" />
+          <span className="text-lg font-semibold tracking-tight underline-offset-2 group-hover/hot-topics:underline">
+            {t('Hot topics')}
+          </span>
+          <ChevronRightIcon className="size-4 text-muted-foreground/50" />
+        </Link>
+        <div className="grid gap-2.5">
           {hotTopics.map((topic, index) => (
-            <AppLink
+            <Link
               key={topic.slug}
-              intentPrefetch
               href={topic.href}
-              className="group/topic grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-3 rounded-md py-0.5"
+              className="group/topic grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-2 rounded-md py-0.5"
             >
-              <span className="w-4 text-sm font-medium text-muted-foreground">{index + 1}</span>
-              <span className="truncate text-base font-medium underline-offset-2 group-hover/topic:underline">
+              <span className="w-3.5 text-xs font-medium text-muted-foreground/65 tabular-nums">{index + 1}</span>
+              <span className={cn(`
+                truncate text-sm font-medium text-foreground/90 underline-offset-2 transition-colors
+                group-hover/topic:text-foreground group-hover/topic:underline
+              `)}
+              >
                 {topic.label}
               </span>
-              <span className="text-sm text-muted-foreground">
-                {`${formatDollarValueLabel(topic.volume24h, { maximumFractionDigits: 0 })} Vol`}
+              <span className="text-xs text-muted-foreground/70 tabular-nums">
+                {t('{amount} Vol.', {
+                  amount: formatDollarValueLabel(topic.volume24h, { maximumFractionDigits: 0 }),
+                })}
               </span>
-              <ChevronRightIcon className="size-4 text-muted-foreground" />
-            </AppLink>
+              <ChevronRightIcon className={cn(`
+                size-3.5 text-muted-foreground/60 transition-transform
+                group-hover/topic:translate-x-0.5
+              `)}
+              />
+            </Link>
+          ))}
+        </div>
+      </div>
+    </aside>
+  )
+}
+
+function FeaturedSideCardSlide({
+  slide,
+  isActive,
+}: {
+  slide: HomeFeaturedSideCardSettings['slides'][number]
+  isActive: boolean
+}) {
+  const href = slide.ctaHref.trim()
+  const hasCta = Boolean(slide.ctaLabel.trim() && href)
+  const isClickable = slide.type === 'image' ? Boolean(href) : slide.type === 'text' && hasCta
+  const className = cn(
+    `
+      group/side-card relative flex h-full min-w-full flex-col overflow-hidden bg-card text-card-foreground
+      focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-none
+    `,
+    slide.type === 'text' && 'p-5',
+  )
+
+  const content = slide.type === 'video'
+    ? (
+        <iframe
+          src={isActive ? slide.videoEmbedUrl : undefined}
+          title={slide.title || 'Featured video'}
+          loading="lazy"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+          allowFullScreen
+          className="size-full border-0 bg-black"
+        />
+      )
+    : slide.type === 'image'
+      ? (
+          <>
+            <Image
+              src={slide.imageUrl}
+              alt={slide.ctaLabel.trim()}
+              fill
+              loading="eager"
+              sizes="(min-width: 1024px) 32vw, 280px"
+              className="object-cover transition-transform duration-300 group-hover/side-card:scale-[1.02]"
+              unoptimized
+            />
+            {slide.ctaLabel.trim() && (
+              <span className={cn(`
+                absolute inset-0 z-1 flex items-end bg-linear-to-t from-black/75 via-black/20 to-transparent p-5 pb-9
+                text-white opacity-0 transition-opacity duration-200
+                group-hover/side-card:opacity-100
+                group-focus-visible/side-card:opacity-100
+              `)}
+              >
+                <span className="inline-flex min-w-0 items-center gap-1.5 text-sm font-semibold">
+                  <span className="line-clamp-2">{slide.ctaLabel}</span>
+                  {href && <ChevronRightIcon className="size-4 shrink-0 text-white/75" />}
+                </span>
+              </span>
+            )}
+          </>
+        )
+      : (
+          <>
+            <span className="
+              pointer-events-none absolute bottom-0 left-[30%] h-px w-[40%] bg-linear-to-r from-transparent
+              via-primary/60 to-transparent
+            "
+            />
+            <DynamicIcon
+              name={slide.icon as IconName}
+              aria-hidden
+              className="
+                pointer-events-none absolute -top-6 -right-7 size-36 rotate-6 text-primary/8 transition-transform
+                duration-300
+                group-hover/side-card:scale-105
+                motion-safe:animate-pulse
+              "
+            />
+            <div className="relative z-1 flex min-h-0 flex-1 flex-col py-7">
+              <span className="
+                mb-3 h-1 w-10 rounded-full bg-primary/70
+                shadow-[0_0_18px_color-mix(in_oklab,var(--primary)_32%,transparent)]
+              "
+              />
+              <span className="line-clamp-2 max-w-[16rem] text-xl/tight font-semibold tracking-tight">{slide.title}</span>
+              <span className={cn('mt-5 text-sm/relaxed text-muted-foreground', hasCta ? 'line-clamp-3' : 'line-clamp-4')}>{slide.text}</span>
+              {hasCta && (
+                <span className="
+                  mt-auto ml-auto inline-flex h-9 max-w-full items-center gap-1.5 rounded-full border border-border/70
+                  bg-background/70 px-3 text-sm font-medium shadow-sm
+                "
+                >
+                  <span className="truncate">{slide.ctaLabel}</span>
+                  <ChevronRightIcon className="size-4 shrink-0" />
+                </span>
+              )}
+            </div>
+          </>
+        )
+
+  if (!isClickable) {
+    return <div className={className}>{content}</div>
+  }
+
+  return isExternalHref(href)
+    ? <a href={href} target="_blank" rel="noreferrer" className={className}>{content}</a>
+    : requiresDocumentNavigation(href)
+      ? <a href={href} className={className}>{content}</a>
+      : <Link href={href} className={className}>{content}</Link>
+}
+
+function FeaturedRightRail({ hotTopics, sideCard }: { hotTopics: HomeFeaturedHotTopic[], sideCard: HomeFeaturedSideCardSettings }) {
+  const t = useExtracted()
+  const activeSlides = sideCard.slides.filter(slide => slide.enabled)
+  const [activeIndex, setActiveIndex] = useState(0)
+  const [isPaused, setIsPaused] = useState(false)
+
+  if (activeSlides.length === 0) {
+    return <FeaturedRightRailSingle hotTopics={hotTopics} sideCard={sideCard} hideSideCard />
+  }
+
+  if (activeSlides.length <= 1 && (activeSlides[0]?.type ?? sideCard.type) !== 'video') {
+    const slide = activeSlides[0] ?? sideCard
+    return <FeaturedRightRailSingle hotTopics={hotTopics} sideCard={{ ...slide, slides: activeSlides }} />
+  }
+
+  const safeActiveIndex = activeIndex % activeSlides.length
+
+  return (
+    <aside className="hidden h-[clamp(430px,38vw,480px)] min-w-0 grid-rows-[minmax(0,1fr)_minmax(0,1fr)] gap-4 lg:grid">
+      <div
+        className="relative min-h-0 overflow-hidden rounded-xl border border-border/70 bg-card shadow-md shadow-black/4"
+        onMouseEnter={() => setIsPaused(true)}
+        onMouseLeave={() => setIsPaused(false)}
+        onFocusCapture={() => setIsPaused(true)}
+        onBlurCapture={() => setIsPaused(false)}
+      >
+        <div
+          className="
+            flex size-full transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]
+            motion-reduce:transition-none
+          "
+          style={{ transform: `translateX(-${safeActiveIndex * 100}%)` }}
+        >
+          {activeSlides.map((slide, index) => (
+            <FeaturedSideCardSlide key={slide.id} slide={slide} isActive={index === safeActiveIndex} />
+          ))}
+        </div>
+        {activeSlides.length > 1 && (
+          <div className="absolute inset-x-0 bottom-2 z-3 flex items-center justify-center gap-1.5" role="tablist" aria-label={t('Side card slides')}>
+            {activeSlides.map((slide, index) => (
+              <button
+                key={slide.id}
+                type="button"
+                role="tab"
+                aria-selected={index === safeActiveIndex}
+                aria-label={t('Show slide {number}', { number: String(index + 1) })}
+                onClick={() => setActiveIndex(index)}
+                className={cn('relative h-1.5 overflow-hidden rounded-full bg-white/55 shadow-sm ring-1 ring-black/10', index === safeActiveIndex
+                  ? `w-8`
+                  : `w-1.5 hover:bg-white/80`)}
+              >
+                {index === safeActiveIndex && (
+                  <span
+                    key={`${slide.id}-${safeActiveIndex}`}
+                    className="
+                      absolute inset-y-0 left-0 w-full origin-left
+                      animate-[home-featured-pagination-progress_7000ms_linear_forwards] rounded-full bg-primary
+                      motion-reduce:animate-none
+                    "
+                    style={{ animationPlayState: isPaused ? 'paused' : 'running' }}
+                    onAnimationEnd={() => {
+                      if (!isPaused) {
+                        setActiveIndex(current => (current + 1) % activeSlides.length)
+                      }
+                    }}
+                  />
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="min-h-0 overflow-hidden p-1">
+        <Link
+          href="/predictions/trending?_sort=volume"
+          className="group/hot-topics mb-3 inline-flex items-center gap-2 text-foreground"
+        >
+          <FlameIcon className="size-4 text-no/85" />
+          <span className="text-lg font-semibold tracking-tight underline-offset-2 group-hover/hot-topics:underline">{t('Hot topics')}</span>
+          <ChevronRightIcon className="size-4 text-muted-foreground/50" />
+        </Link>
+        <div className="grid gap-2.5">
+          {hotTopics.map((topic, index) => (
+            <Link
+              key={topic.slug}
+              href={topic.href}
+              className="group/topic grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-2 rounded-md py-0.5"
+            >
+              <span className="w-3.5 text-xs font-medium text-muted-foreground/65 tabular-nums">{index + 1}</span>
+              <span className="
+                truncate text-sm font-medium text-foreground/90 underline-offset-2
+                group-hover/topic:underline
+              "
+              >
+                {topic.label}
+              </span>
+              <span className="text-xs text-muted-foreground/70 tabular-nums">{t('{amount} Vol.', { amount: formatDollarValueLabel(topic.volume24h, { maximumFractionDigits: 0 }) })}</span>
+              <ChevronRightIcon className="
+                size-3.5 text-muted-foreground/60 transition-transform
+                group-hover/topic:translate-x-0.5
+              "
+              />
+            </Link>
           ))}
         </div>
       </div>
@@ -1361,16 +1809,16 @@ function FeaturedRightRailAction() {
         type="button"
         variant="outline"
         asChild
-        className="
+        className={cn(`
           h-10 w-full rounded-full bg-transparent text-muted-foreground shadow-none transition-colors
           hover:bg-secondary/80 hover:text-foreground
           dark:bg-transparent
           dark:hover:bg-secondary/80
-        "
+        `)}
       >
-        <AppLink intentPrefetch href="/predictions/trending">
+        <Link href="/predictions/trending">
           Expand all
-        </AppLink>
+        </Link>
       </Button>
     </div>
   )
@@ -1378,11 +1826,13 @@ function FeaturedRightRailAction() {
 
 function FeaturedSlide({
   item,
+  currentTimestamp,
   isActive,
   isNext,
   isChartEnabled,
 }: {
   item: HomeFeaturedEventCard
+  currentTimestamp: number | null
   isActive: boolean
   isNext: boolean
   isChartEnabled: boolean
@@ -1409,7 +1859,7 @@ function FeaturedSlide({
   const hasContextItems = item.contextItems.length > 0
   const featuredDetailsClassName = cn(
     'flex min-h-0 min-w-0 flex-col gap-3',
-    !hasContextItems && item.kind !== 'sports' && 'justify-center',
+    !hasContextItems && item.kind !== 'sports' && shouldRenderLiveSeriesChart && 'justify-center',
   )
 
   const chartNode = (
@@ -1419,7 +1869,7 @@ function FeaturedSlide({
         item.kind === 'sports'
           ? 'relative min-h-[190px] min-w-0 overflow-hidden md:min-h-[210px] lg:min-h-[230px]'
           : 'relative min-h-60 min-w-0 overflow-hidden md:min-h-[260px] lg:min-h-[280px]',
-        shouldRenderLiveSeriesChart && 'lg:-mt-1',
+        shouldRenderLiveSeriesChart && 'mt-4 md:mt-5 lg:mt-6',
       )}
     >
       {shouldRenderChart && (
@@ -1468,7 +1918,7 @@ function FeaturedSlide({
   const chartColumnNode = item.kind === 'sports'
     ? (
         <div className="grid min-h-0 content-start gap-3">
-          <SportsScoreboard item={item} />
+          <SportsScoreboard card={sportsGraphCard} item={item} linkedHref={linkedHref} />
           {chartNode}
         </div>
       )
@@ -1476,21 +1926,21 @@ function FeaturedSlide({
 
   if (item.kind === 'sports') {
     return (
-      <article className="
-        relative flex h-full min-w-full flex-col gap-4 overflow-hidden p-4 pb-[64px]
-        md:p-5 md:pb-[68px]
-      "
+      <article className={cn(`
+        relative flex h-full min-w-full flex-col gap-4 overflow-hidden p-4 pb-[52px]
+        md:p-5 md:pb-[56px]
+      `)}
       >
-        <div className="
+        <div className={cn(`
           grid min-h-0 flex-1 grid-cols-1 gap-4
           md:grid-cols-[minmax(260px,0.8fr)_minmax(320px,1fr)] md:gap-5
           lg:grid-cols-[minmax(320px,0.8fr)_minmax(420px,1fr)] lg:gap-6
-        "
+        `)}
         >
           <div className={featuredDetailsClassName}>
             <FeaturedHeader item={item} showActions={false} />
             {sportsGraphCard && <SportsFeaturedControls card={sportsGraphCard} linkedHref={linkedHref} />}
-            <ContextTicker item={item} linkedHref={linkedHref} />
+            <ContextTicker item={item} currentTimestamp={currentTimestamp} linkedHref={linkedHref} />
           </div>
 
           {chartColumnNode}
@@ -1502,25 +1952,25 @@ function FeaturedSlide({
 
   if (shouldRenderLiveSeriesChart) {
     return (
-      <article className="
-        relative flex h-full min-w-full flex-col gap-4 overflow-hidden p-4 pb-[64px]
-        md:p-5 md:pb-[68px]
-      "
+      <article className={cn(`
+        relative flex h-full min-w-full flex-col gap-4 overflow-hidden p-4 pb-[52px]
+        md:p-5 md:pb-[56px]
+      `)}
       >
-        <div className="
+        <div className={cn(`
           grid min-h-0 flex-1 grid-cols-1 gap-4
           md:grid-cols-[minmax(240px,0.68fr)_minmax(320px,1fr)] md:gap-5
           lg:grid-cols-[minmax(280px,0.68fr)_minmax(420px,1fr)] lg:gap-6
-        "
+        `)}
         >
           <div className={featuredDetailsClassName}>
             <FeaturedHeader item={item} showActions={false} />
 
             {item.kind === 'standard'
               ? <StandardActions item={item} linkedHref={linkedHref} />
-              : <OutcomeRows outcomes={item.topOutcomes} linkedHref={linkedHref} />}
+              : <OutcomeRows item={item} linkedHref={linkedHref} />}
 
-            <ContextTicker item={item} linkedHref={linkedHref} />
+            <ContextTicker item={item} currentTimestamp={currentTimestamp} linkedHref={linkedHref} />
           </div>
 
           {chartColumnNode}
@@ -1531,24 +1981,24 @@ function FeaturedSlide({
   }
 
   return (
-    <article className="
-      relative flex h-full min-w-full flex-col gap-4 overflow-hidden p-4 pb-[64px]
-      md:p-5 md:pb-[68px]
-    "
+    <article className={cn(`
+      relative flex h-full min-w-full flex-col gap-4 overflow-hidden p-4 pb-[52px]
+      md:p-5 md:pb-[56px]
+    `)}
     >
       <FeaturedHeader item={item} />
-      <div className="
+      <div className={cn(`
         grid min-h-0 flex-1 grid-cols-1 gap-4
         md:grid-cols-[minmax(260px,0.8fr)_minmax(320px,1fr)] md:gap-5
         lg:grid-cols-[minmax(320px,0.8fr)_minmax(420px,1fr)] lg:gap-6
-      "
+      `)}
       >
         <div className={featuredDetailsClassName}>
           {item.kind === 'standard'
             ? <StandardActions item={item} linkedHref={linkedHref} />
-            : <OutcomeRows outcomes={item.topOutcomes} linkedHref={linkedHref} />}
+            : <OutcomeRows item={item} linkedHref={linkedHref} />}
 
-          <ContextTicker item={item} linkedHref={linkedHref} />
+          <ContextTicker item={item} currentTimestamp={currentTimestamp} linkedHref={linkedHref} />
         </div>
 
         {chartColumnNode}
@@ -1558,7 +2008,12 @@ function FeaturedSlide({
   )
 }
 
-export default function HomeFeaturedEventsCarousel({ hotTopics, items, sideCard }: HomeFeaturedEventsCarouselProps) {
+export default function HomeFeaturedEventsCarousel({
+  currentTimestamp,
+  hotTopics,
+  items,
+  sideCard,
+}: HomeFeaturedEventsCarouselProps) {
   const t = useExtracted()
   const sectionRef = useRef<HTMLElement | null>(null)
   const [activeIndex, setActiveIndex] = useState(0)
@@ -1596,11 +2051,30 @@ export default function HomeFeaturedEventsCarousel({ hotTopics, items, sideCard 
       return
     }
 
-    setActiveIndex((nextIndex + items.length) % items.length)
+    function updateActiveIndex() {
+      setActiveIndex((nextIndex + items.length) % items.length)
+    }
+
+    if (!document.startViewTransition || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      updateActiveIndex()
+      return
+    }
+
+    document.startViewTransition({
+      update: () => {
+        // View Transitions must commit the new layout before the browser captures its destination size.
+        // eslint-disable-next-line react/dom-no-flush-sync
+        flushSync(updateActiveIndex)
+      },
+      types: ['home-featured-navigation'],
+    })
   }
 
   return (
-    <section ref={sectionRef} className="hidden gap-3 md:grid">
+    <section
+      ref={sectionRef}
+      className="hidden gap-3 md:grid [&_img]:pointer-events-none [&_img]:select-none"
+    >
       <div className="grid gap-x-8 gap-y-3 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.4fr)]">
         <div
           className="h-[clamp(430px,38vw,480px)] overflow-hidden rounded-xl border bg-card shadow-md shadow-black/4"
@@ -1610,16 +2084,17 @@ export default function HomeFeaturedEventsCarousel({ hotTopics, items, sideCard 
           onBlurCapture={() => setIsAutoAdvancePaused(false)}
         >
           <div
-            className={`
+            className={cn(`
               flex h-full transition-transform duration-420 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform
               motion-reduce:transition-none
-            `}
+            `)}
             style={{ transform: `translateX(-${activeIndex * 100}%)` }}
           >
             {items.map((item, index) => (
               <FeaturedSlide
                 key={item.featuredId}
                 item={item}
+                currentTimestamp={currentTimestamp}
                 isActive={index === activeIndex}
                 isNext={index === nextIndex}
                 isChartEnabled={isChartNearViewport}
@@ -1651,12 +2126,12 @@ export default function HomeFeaturedEventsCarousel({ hotTopics, items, sideCard 
                       {index === activeIndex && (
                         <span
                           key={`progress-${item.featuredId}-${activeIndex}`}
-                          className="
+                          className={cn(`
                             absolute inset-y-0 left-0 w-full origin-left
                             animate-[home-featured-pagination-progress_7000ms_linear_forwards] rounded-full
                             bg-foreground/80
                             motion-reduce:scale-x-100 motion-reduce:animate-none
-                          "
+                          `)}
                           style={{ animationPlayState: isAutoAdvancePaused ? 'paused' : 'running' }}
                           onAnimationEnd={() => {
                             if (!isAutoAdvancePaused) {
@@ -1679,20 +2154,58 @@ export default function HomeFeaturedEventsCarousel({ hotTopics, items, sideCard 
                   <Button
                     type="button"
                     variant="secondary"
-                    className="h-10 rounded-full px-3 text-muted-foreground hover:text-muted-foreground md:px-4"
+                    className="
+                      group h-10 overflow-visible rounded-full bg-transparent p-0 text-muted-foreground shadow-none
+                      hover:bg-transparent hover:text-muted-foreground
+                    "
                     onClick={() => goToIndex(activeIndex - 1)}
                   >
-                    <ChevronLeftIcon className="size-4" />
-                    <span className="hidden max-w-44 truncate text-xs md:inline">{activeItem.previousTitle}</span>
+                    <span
+                      data-featured-navigation-shell="previous"
+                      className="
+                        relative inline-flex h-10 max-w-60 min-w-10 items-center overflow-hidden rounded-full
+                        bg-secondary text-muted-foreground shadow-xs
+                        group-hover:bg-secondary/80
+                      "
+                    >
+                      <span className="inline-flex h-10 min-w-10 items-center gap-2 px-3 md:px-4">
+                        <ChevronLeftIcon className="size-4" />
+                        <span
+                          data-featured-navigation-text="previous"
+                          className="hidden max-w-44 truncate text-xs md:block"
+                        >
+                          {activeItem.previousTitle}
+                        </span>
+                      </span>
+                    </span>
                   </Button>
                   <Button
                     type="button"
                     variant="secondary"
-                    className="h-10 rounded-full px-3 text-muted-foreground hover:text-muted-foreground md:px-4"
+                    className="
+                      group h-10 overflow-visible rounded-full bg-transparent p-0 text-muted-foreground shadow-none
+                      hover:bg-transparent hover:text-muted-foreground
+                    "
                     onClick={() => goToIndex(activeIndex + 1)}
                   >
-                    <span className="hidden max-w-44 truncate text-xs md:inline">{activeItem.nextTitle}</span>
-                    <ChevronRightIcon className="size-4" />
+                    <span
+                      data-featured-navigation-shell="next"
+                      className="
+                        relative inline-flex h-10 max-w-60 min-w-10 items-center overflow-hidden rounded-full
+                        bg-secondary text-muted-foreground shadow-xs
+                        group-hover:bg-secondary/80
+                      "
+                    >
+                      <span className="inline-flex h-10 min-w-10 items-center gap-2 px-3 md:px-4">
+                        <span
+                          data-featured-navigation-text="next"
+                          className="hidden max-w-44 truncate text-xs md:block"
+                        >
+                          {activeItem.nextTitle}
+                        </span>
+                        <ChevronRightIcon className="size-4" />
+                      </span>
+                    </span>
                   </Button>
                 </div>
               </div>

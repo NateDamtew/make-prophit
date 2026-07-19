@@ -1,9 +1,4 @@
 minimumReleaseAge: 1440
-# TEMPORARY: Dynamic 4.89.0 (published 2026-06-16 ~21:43 UTC) is still inside the
-# 24h release-age window. Excluded so it installs locally and on Vercel.
-# REVERT this block once it clears (~2026-06-17 21:45 UTC).
-minimumReleaseAgeExclude:
-  - '@dynamic-labs/*'
 shellEmulator: true
 blockExoticSubdeps: true
 trustPolicy: no-downgrade
@@ -28,9 +23,19 @@ trustPolicyExclude:
   - '@tonconnect/ui@2.4.0'
   # ua-parser-js 1.0.41 (transitive via @tonconnect/ui) — provenance gap only.
   # The 2021 compromise was 0.7.29/0.8.0/1.0.0; 1.0.41 is a current clean release.
-  - 'ua-parser-js@1.0.41'
+  - ua-parser-js@1.0.41
+  # preact/ws pinned via upstream's Jul-2026 lockfile (dependabot #1316); npm
+  # registry metadata is missing the publish-time field for these versions,
+  # which the no-downgrade policy misreads as a downgrade. Versions verified
+  # current on npm.
+  - preact@10.29.7
+  - ws@7.5.12
+  - ws@8.21.1
 
 overrides:
+  # Force the CLOB client's nested viem onto the app's version — a second viem
+  # instance makes its ClobSigner type reject our WalletClient at tsc time.
+  '@polymarket/clob-client-v2>viem': 2.55.0
   '@wagmi/connectors': 6.2.0
   '@wagmi/core': 2.22.1
   '@walletconnect/relay-auth>@noble/curves': 1.8.1
@@ -49,5 +54,5 @@ allowBuilds:
   esbuild: true
   keccak: false
   protobufjs: true
-  sharp: false
+  sharp: true
   utf-8-validate: false

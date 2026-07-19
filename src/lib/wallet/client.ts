@@ -161,6 +161,8 @@ function shouldSplitDepositWalletCallFailure(result: SignAndSubmitDepositWalletC
   const normalized = result.error.toLowerCase()
   return normalized.includes('revert')
     || normalized.includes('transaction failed')
+    || (normalized.includes('estimated gas') && normalized.includes('tx_gas_limit'))
+    || (normalized.includes('gas') && normalized.includes('exceeds') && normalized.includes('cap'))
 }
 
 function getPreferredFailure(
@@ -184,19 +186,30 @@ export async function signAndSubmitDepositWalletCallItemsWithSplitFallback<T>({
   getCall,
   metadata,
   signTypedDataAsync,
+  maxChunkSize,
+  onProgress,
 }: {
   user: Pick<User, 'address' | 'deposit_wallet_address'>
   items: T[]
   getCall: (item: T) => WalletCall
   metadata?: string
   signTypedDataAsync: SignTypedDataFn
+  maxChunkSize?: number
+  onProgress?: (progress: { successfulItems: T[], failedItems: T[] }) => void
 }): Promise<SignAndSubmitDepositWalletCallItemsResult<T>> {
   const successfulItems: T[] = []
   const failedItems: T[] = []
   let lastSuccess: SignAndSubmitDepositWalletCallsResult | null = null
   let firstFailure: SignAndSubmitDepositWalletCallsResult | null = null
 
-  async function submitChunk(chunk: T[]): Promise<void> {
+  function notifyProgress() {
+    onProgress?.({
+      successfulItems: [...successfulItems],
+      failedItems: [...failedItems],
+    })
+  }
+
+  async function submitChunk(chunk: T[], unprocessedAfterChunk: T[]): Promise<boolean> {
     let result: SignAndSubmitDepositWalletCallsResult
     try {
       result = await signAndSubmitDepositWalletCalls({
@@ -211,6 +224,7 @@ export async function signAndSubmitDepositWalletCallItemsWithSplitFallback<T>({
         throw new DepositWalletCallItemsSplitFallbackError(error, successfulItems, [
           ...failedItems,
           ...chunk,
+          ...unprocessedAfterChunk,
         ])
       }
       throw error
@@ -219,21 +233,51 @@ export async function signAndSubmitDepositWalletCallItemsWithSplitFallback<T>({
     if (!result.error) {
       successfulItems.push(...chunk)
       lastSuccess = result
-      return
+      notifyProgress()
+      return true
     }
 
     firstFailure = getPreferredFailure(firstFailure, result)
+    if (isTradingAuthRequiredError(result.error)) {
+      failedItems.push(...chunk, ...unprocessedAfterChunk)
+      notifyProgress()
+      return false
+    }
+
     if (chunk.length <= 1 || !shouldSplitDepositWalletCallFailure(result)) {
       failedItems.push(...chunk)
-      return
+      notifyProgress()
+      return true
     }
 
     const midpoint = Math.ceil(chunk.length / 2)
-    await submitChunk(chunk.slice(0, midpoint))
-    await submitChunk(chunk.slice(midpoint))
+    const left = chunk.slice(0, midpoint)
+    const right = chunk.slice(midpoint)
+    const shouldContinueAfterLeft = await submitChunk(left, [...right, ...unprocessedAfterChunk])
+    if (!shouldContinueAfterLeft) {
+      return false
+    }
+
+    return await submitChunk(right, unprocessedAfterChunk)
   }
 
-  await submitChunk(items)
+  const initialChunkSize = Math.max(
+    1,
+    Math.min(
+      items.length || 1,
+      Number.isFinite(maxChunkSize) ? Math.floor(maxChunkSize as number) : items.length || 1,
+    ),
+  )
+
+  for (let index = 0; index < items.length; index += initialChunkSize) {
+    const shouldContinue = await submitChunk(
+      items.slice(index, index + initialChunkSize),
+      items.slice(index + initialChunkSize),
+    )
+    if (!shouldContinue) {
+      break
+    }
+  }
 
   if (successfulItems.length === 0) {
     return {

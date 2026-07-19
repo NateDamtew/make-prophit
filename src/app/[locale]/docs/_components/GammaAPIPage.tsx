@@ -1,7 +1,4 @@
-import { createAPIPage } from 'fumadocs-openapi/ui'
-import client from '@/app/[locale]/docs/_components/GammaAPIPage.client'
-import { openapi } from '@/lib/openapi'
+import { createOpenAPIPageComponent } from '@/app/[locale]/docs/_components/createOpenAPIPageComponent'
+import GammaOpenAPIPage from '@/app/[locale]/docs/_components/GammaAPIPage.client'
 
-export const GammaAPIPage = createAPIPage(openapi, {
-  client,
-})
+export const GammaAPIPage = createOpenAPIPageComponent(GammaOpenAPIPage)

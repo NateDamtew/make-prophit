@@ -8,13 +8,13 @@ import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { useSignMessage } from 'wagmi'
 import { updateUserAction } from '@/app/[locale]/(platform)/settings/_actions/update-profile'
-import AppLink from '@/components/AppLink'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { InputError } from '@/components/ui/input-error'
 import { Label } from '@/components/ui/label'
 import { usePublicRuntimeConfig } from '@/hooks/usePublicRuntimeConfig'
 import { useSignaturePromptRunner } from '@/hooks/useSignaturePromptRunner'
+import { Link } from '@/i18n/navigation'
 import { getAvatarPlaceholderStyle, shouldUseAvatarPlaceholder } from '@/lib/avatar'
 import {
   clearCommunityAuth,
@@ -54,6 +54,22 @@ function isSelectedImageFile(value: FormDataEntryValue | null): value is File {
   return typeof File !== 'undefined' && value instanceof File && value.size > 0
 }
 
+function isFrameworkRenderErrorMessage(message: string) {
+  const normalized = message.toLowerCase()
+  return normalized.includes('server components render')
+    || normalized.includes('production builds')
+    || normalized.includes('digest property')
+}
+
+function normalizeProfileErrorMessage(message: string | null | undefined, fallback: string) {
+  const normalized = message?.trim() ?? ''
+  if (!normalized || isFrameworkRenderErrorMessage(normalized)) {
+    return fallback
+  }
+
+  return normalized
+}
+
 export default function SettingsProfileContent({ user }: { user: User }) {
   const t = useExtracted()
   const queryClient = useQueryClient()
@@ -63,6 +79,7 @@ export default function SettingsProfileContent({ user }: { user: User }) {
   const communityApiUrl = communityUrl
   const { errors, setErrors, formError, setFormError, isPending, setIsPending, fileInputRef } = useProfileFormState()
   const { previewImage, setPreviewImage } = useAvatarPreview()
+  const [selectedAvatarFile, setSelectedAvatarFile] = useState<File | null>(null)
   const avatarUrl = user.image?.trim() ?? ''
   const avatarSeed = user.deposit_wallet_address || user.address || user.username || 'user'
   const showPlaceholder = !previewImage && shouldUseAvatarPlaceholder(avatarUrl)
@@ -79,6 +96,7 @@ export default function SettingsProfileContent({ user }: { user: User }) {
       URL.revokeObjectURL(previewImage)
       setPreviewImage(null)
     }
+    setSelectedAvatarFile(null)
   }
 
   function handleUploadClick() {
@@ -99,8 +117,13 @@ export default function SettingsProfileContent({ user }: { user: User }) {
     const email = (formData.get('email') as string | null)?.trim() ?? ''
     const emailValue = email.length > 0 ? email : undefined
     const username = (formData.get('username') as string | null)?.trim() || ''
-    const imageFile = formData.get('image')
+    const submittedImageFile = formData.get('image')
+    const imageFile = isSelectedImageFile(submittedImageFile)
+      ? submittedImageFile
+      : selectedAvatarFile || fileInputRef.current?.files?.[0] || null
     const selectedImageFile = isSelectedImageFile(imageFile) ? imageFile : null
+    const defaultProfileErrorMessage = t('Failed to update profile.')
+    const defaultAvatarUploadErrorMessage = t('Could not upload the profile image. Please try again later.')
     const currentUsername = user.username?.trim() ?? ''
     const hasUsernameChange = username.length > 0 && username !== currentUsername
 
@@ -155,7 +178,13 @@ export default function SettingsProfileContent({ user }: { user: User }) {
         }
 
         if (!response.ok) {
-          const message = await parseCommunityError(response, t('Failed to update profile.'))
+          const fallbackMessage = selectedImageFile
+            ? defaultAvatarUploadErrorMessage
+            : defaultProfileErrorMessage
+          const parsedMessage = await parseCommunityError(response, fallbackMessage)
+          const message = selectedImageFile && (response.status >= 500 || response.status === 402)
+            ? defaultAvatarUploadErrorMessage
+            : normalizeProfileErrorMessage(parsedMessage, fallbackMessage)
           setFormError(message)
           toast.error(message)
           return
@@ -209,7 +238,10 @@ export default function SettingsProfileContent({ user }: { user: User }) {
       toast.success(t('Profile updated successfully!'))
     }
     catch (err) {
-      const message = err instanceof Error ? err.message : t('Failed to update profile.')
+      const fallbackMessage = selectedImageFile
+        ? defaultAvatarUploadErrorMessage
+        : defaultProfileErrorMessage
+      const message = normalizeProfileErrorMessage(err instanceof Error ? err.message : null, fallbackMessage)
       setFormError(message)
       toast.error(message)
     }
@@ -286,6 +318,7 @@ export default function SettingsProfileContent({ user }: { user: User }) {
                 }
                 else {
                   clearPreview()
+                  setSelectedAvatarFile(file)
                   const previewUrl = generatePreviewUrl(file)
                   setPreviewImage(previewUrl)
                 }
@@ -331,12 +364,12 @@ export default function SettingsProfileContent({ user }: { user: User }) {
         </div>
 
         <div className="flex items-center justify-between gap-3">
-          <AppLink
+          <Link
             href={buildPublicProfilePath(user.username || user.deposit_wallet_address || '') || '#'}
             className="text-sm font-medium text-primary transition-colors hover:text-primary/80 hover:underline"
           >
             {t('View Public Profile')}
-          </AppLink>
+          </Link>
           <Button type="submit" disabled={isPending} className="w-36">
             {isPending ? t('Saving...') : t('Save changes')}
           </Button>

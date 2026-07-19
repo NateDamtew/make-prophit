@@ -25,6 +25,10 @@ const ORDER_TYPE_STORAGE_KEY = 'kuest:order-panel-type'
 const HOVER_MENU_CLOSE_DELAY_MS = 120
 
 interface EventOrderPanelBuySellTabsProps {
+  className?: string
+  edgeToEdge?: boolean
+  mode: 'trade' | 'arbitrage'
+  showArbitrage: boolean
   side: OrderSide
   type: OrderType
   availableMergeShares: number
@@ -40,6 +44,7 @@ interface EventOrderPanelBuySellTabsProps {
   marketIconUrl?: string | null
   onSideChange: (side: OrderSide) => void
   onTypeChange: (type: OrderType) => void
+  onModeChange: (mode: 'trade' | 'arbitrage') => void
   onAmountReset: () => void
   onFocusInput: () => void
 }
@@ -98,6 +103,10 @@ function useHoverCloseMenu() {
 }
 
 export default function EventOrderPanelBuySellTabs({
+  className,
+  edgeToEdge = false,
+  mode,
+  showArbitrage,
   side,
   type,
   availableMergeShares,
@@ -113,6 +122,7 @@ export default function EventOrderPanelBuySellTabs({
   marketIconUrl,
   onSideChange,
   onTypeChange,
+  onModeChange,
   onAmountReset,
   onFocusInput,
 }: EventOrderPanelBuySellTabsProps) {
@@ -129,54 +139,75 @@ export default function EventOrderPanelBuySellTabs({
     onFocusInput()
   }
 
-  const orderTypeLabel = type === ORDER_TYPE.MARKET ? t('Market') : t('Limit')
+  const orderTypeLabel = mode === 'arbitrage'
+    ? t('Arbitrage')
+    : type === ORDER_TYPE.MARKET ? t('Market') : t('Limit')
+
+  function handleModeValueChange(value: string) {
+    if (value === 'arbitrage') {
+      onModeChange('arbitrage')
+      return
+    }
+    onModeChange('trade')
+    onTypeChange(value as OrderType)
+  }
 
   return (
-    <div className="relative mb-4">
+    <div className={cn('relative mb-4', edgeToEdge && '-mx-4 px-4', className)}>
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-4 text-sm font-semibold">
-          <button
-            type="button"
-            className={cn(
-              `
-                cursor-pointer rounded-none border-b-3 border-transparent bg-transparent px-0 pb-2 text-base
-                font-semibold text-muted-foreground transition-colors duration-200
-                hover:bg-transparent! hover:text-foreground
-                focus:bg-transparent!
-                focus-visible:bg-transparent! focus-visible:outline-none
-                active:bg-transparent!
-                dark:hover:bg-transparent!
-                dark:focus:bg-transparent!
-                dark:focus-visible:bg-transparent!
-                dark:active:bg-transparent!
-              `,
-              { 'border-foreground text-foreground': side === ORDER_SIDE.BUY },
-            )}
-            onClick={() => handleSideChange(ORDER_SIDE.BUY)}
-          >
-            {t('Buy')}
-          </button>
-          <button
-            type="button"
-            className={cn(
-              `
-                cursor-pointer rounded-none border-b-3 border-transparent bg-transparent px-0 pb-2 text-base
-                font-semibold text-muted-foreground transition-colors duration-200
-                hover:bg-transparent! hover:text-foreground
-                focus:bg-transparent!
-                focus-visible:bg-transparent! focus-visible:outline-none
-                active:bg-transparent!
-                dark:hover:bg-transparent!
-                dark:focus:bg-transparent!
-                dark:focus-visible:bg-transparent!
-                dark:active:bg-transparent!
-              `,
-              { 'border-foreground text-foreground': side === ORDER_SIDE.SELL },
-            )}
-            onClick={() => handleSideChange(ORDER_SIDE.SELL)}
-          >
-            {t('Sell')}
-          </button>
+          {mode === 'arbitrage'
+            ? (
+                <div className="border-b-3 border-[#2E5CFF] pb-2 text-base font-semibold text-foreground">
+                  Polymarket
+                </div>
+              )
+            : (
+                <>
+                  <button
+                    type="button"
+                    className={cn(
+                      `
+                        cursor-pointer rounded-none border-b-3 border-transparent bg-transparent px-0 pb-2 text-base
+                        font-semibold text-muted-foreground transition-colors duration-200
+                        hover:bg-transparent! hover:text-foreground
+                        focus:bg-transparent!
+                        focus-visible:bg-transparent! focus-visible:outline-none
+                        active:bg-transparent!
+                        dark:hover:bg-transparent!
+                        dark:focus:bg-transparent!
+                        dark:focus-visible:bg-transparent!
+                        dark:active:bg-transparent!
+                      `,
+                      { 'border-foreground text-foreground': side === ORDER_SIDE.BUY },
+                    )}
+                    onClick={() => handleSideChange(ORDER_SIDE.BUY)}
+                  >
+                    {t('Buy')}
+                  </button>
+                  <button
+                    type="button"
+                    className={cn(
+                      `
+                        cursor-pointer rounded-none border-b-3 border-transparent bg-transparent px-0 pb-2 text-base
+                        font-semibold text-muted-foreground transition-colors duration-200
+                        hover:bg-transparent! hover:text-foreground
+                        focus:bg-transparent!
+                        focus-visible:bg-transparent! focus-visible:outline-none
+                        active:bg-transparent!
+                        dark:hover:bg-transparent!
+                        dark:focus:bg-transparent!
+                        dark:focus-visible:bg-transparent!
+                        dark:active:bg-transparent!
+                      `,
+                      { 'border-foreground text-foreground': side === ORDER_SIDE.SELL },
+                    )}
+                    onClick={() => handleSideChange(ORDER_SIDE.SELL)}
+                  >
+                    {t('Sell')}
+                  </button>
+                </>
+              )}
         </div>
 
         <div onPointerEnter={handleTypeMenuEnter} onPointerLeave={handleTypeMenuLeave}>
@@ -207,7 +238,7 @@ export default function EventOrderPanelBuySellTabs({
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="min-w-36" portalled={false}>
-              <DropdownMenuRadioGroup value={type} onValueChange={value => onTypeChange(value as OrderType)}>
+              <DropdownMenuRadioGroup value={mode === 'arbitrage' ? 'arbitrage' : type} onValueChange={handleModeValueChange}>
                 <DropdownMenuRadioItem
                   value={ORDER_TYPE.MARKET}
                   className={cn(`
@@ -228,6 +259,21 @@ export default function EventOrderPanelBuySellTabs({
                 >
                   {t('Limit')}
                 </DropdownMenuRadioItem>
+                {showArbitrage && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuRadioItem
+                      value="arbitrage"
+                      className={cn(`
+                        cursor-pointer pl-2 text-[#2E5CFF]
+                        data-[state=checked]:font-semibold data-[state=checked]:text-[#2E5CFF]
+                        [&>span:first-of-type]:hidden
+                      `)}
+                    >
+                      {t('Arbitrage')}
+                    </DropdownMenuRadioItem>
+                  </>
+                )}
               </DropdownMenuRadioGroup>
 
               <DropdownMenuSeparator />
@@ -274,7 +320,10 @@ export default function EventOrderPanelBuySellTabs({
       </div>
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute -inset-x-4 bottom-0 h-px bg-border"
+        className={cn(
+          'pointer-events-none absolute bottom-0 h-px bg-border',
+          edgeToEdge ? 'inset-x-0' : '-inset-x-4',
+        )}
       />
 
       <EventMergeSharesDialog

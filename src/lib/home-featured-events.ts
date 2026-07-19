@@ -13,7 +13,9 @@ import type {
   Market,
 } from '@/types'
 import { and, desc, eq, sql } from 'drizzle-orm'
+import { cacheLife, cacheTag } from 'next/cache'
 import { DEFAULT_LOCALE } from '@/i18n/locales'
+import { cacheTags } from '@/lib/cache-tags'
 import { buildCommunityApiUrl } from '@/lib/community-url'
 import { OUTCOME_INDEX } from '@/lib/constants'
 import { EventRepository } from '@/lib/db/queries/event'
@@ -26,14 +28,12 @@ import { buildPublicEventListVisibilityCondition } from '@/lib/event-visibility'
 import { resolveEventPagePath } from '@/lib/events-routing'
 import { formatDollarValueLabel } from '@/lib/formatters'
 import { getHomeFeaturedSettingsFromSettings } from '@/lib/home-featured-settings'
+import { HOME_INITIAL_EVENTS_CACHE_LIFE } from '@/lib/home-initial-events-cache'
 import { resolveDisplayPrice } from '@/lib/market-chance'
 import { resolvePublicRuntimeEnv } from '@/lib/public-runtime-config.shared'
-import {
-  mergeSportsEventGroupMarkets,
-  resolveSportsMarketsVolume,
-  sumFiniteSportsValues,
-} from '@/lib/sports-event-market-utils'
+import { isSportsEvent, resolveSportsEventGroupPayload } from '@/lib/sports-event-group'
 import { buildHomeSportsMoneylineModel, resolveHomeSportsButtonChance } from '@/lib/sports-home-card'
+import { getPublicAssetUrl } from '@/lib/storage'
 
 const CHART_COLORS = ['var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)', 'var(--chart-4)']
 const FEATURED_COMMENTS_LIMIT = 8
@@ -46,10 +46,6 @@ const FEATURED_HOT_TOPICS_FALLBACK_RESOLVED_WINDOW_MS = 7 * 24 * 60 * 60 * 1000
 
 function isNegRiskEvent(event: Event) {
   return Boolean(event.neg_risk || event.enable_neg_risk || event.neg_risk_augmented || event.neg_risk_market_id)
-}
-
-function isSportsEvent(event: Event) {
-  return Boolean(event.sports_sport_slug || event.sports_event_slug || event.sports_teams?.length)
 }
 
 function getActiveMarkets(event: Event) {
@@ -109,6 +105,12 @@ function resolveOutcomeImageUrl(market: Market) {
   return metadataImage || market.icon_url || null
 }
 
+function resolveFeaturedMarketOutcomeIndex(market: Market) {
+  return market.outcomes.find(outcome => outcome.outcome_index === OUTCOME_INDEX.YES)?.outcome_index
+    ?? market.outcomes[0]?.outcome_index
+    ?? OUTCOME_INDEX.YES
+}
+
 function buildTopOutcomes(event: Event, kind: HomeFeaturedCardKind): HomeFeaturedOutcomeSummary[] {
   const activeMarkets = getActiveMarkets(event)
 
@@ -125,6 +127,9 @@ function buildTopOutcomes(event: Event, kind: HomeFeaturedCardKind): HomeFeature
 
       return {
         key: `${primaryMarket.condition_id}:${outcome.outcome_index}`,
+        conditionId: primaryMarket.condition_id,
+        marketSlug: primaryMarket.slug,
+        outcomeIndex: outcome.outcome_index,
         label: outcome.outcome_text,
         chance,
         imageUrl: null,
@@ -136,6 +141,9 @@ function buildTopOutcomes(event: Event, kind: HomeFeaturedCardKind): HomeFeature
   return activeMarkets
     .map((market, index) => ({
       key: market.condition_id,
+      conditionId: market.condition_id,
+      marketSlug: market.slug,
+      outcomeIndex: resolveFeaturedMarketOutcomeIndex(market),
       label: market.short_title || market.title,
       chance: resolveMarketChance(market),
       imageUrl: resolveOutcomeImageUrl(market),
@@ -257,44 +265,53 @@ function buildSportsMarketGroups(event: Event): HomeFeaturedSportsMarketGroup[] 
   return groups.slice(0, 3)
 }
 
-function resolveMergedFeaturedSportsEvent(baseEvent: Event, eventsGroup: Event[]) {
-  const displayEvent = eventsGroup.find(event => event.sports_parent_event_id == null)
+function resolveFeaturedSportsDisplayEvent(baseEvent: Event, eventsGroup: Event[]) {
+  return eventsGroup.find(event => event.sports_parent_event_id == null)
     ?? eventsGroup.find(event => (event.sports_teams?.length ?? 0) >= 2)
     ?? baseEvent
-  const mergedMarkets = mergeSportsEventGroupMarkets(eventsGroup)
-  if (mergedMarkets.length === 0) {
-    return baseEvent
-  }
-
-  const totalMarketsCount = sumFiniteSportsValues(eventsGroup.map(event => event.total_markets_count))
-  const activeMarketsCount = mergedMarkets.filter(
-    market => market.is_active && !market.is_resolved && !market.condition?.resolved,
-  ).length
-
-  return {
-    ...displayEvent,
-    markets: mergedMarkets,
-    volume: resolveSportsMarketsVolume(mergedMarkets),
-    active_markets_count: activeMarketsCount,
-    total_markets_count: totalMarketsCount > 0 ? totalMarketsCount : mergedMarkets.length,
-  }
 }
 
 async function resolveFeaturedSportsEventPayload(event: Event, locale: SupportedLocale) {
-  if (!isSportsEvent(event)) {
-    return event
-  }
+  return resolveSportsEventGroupPayload(event, locale, {
+    warningLabel: 'featured sports event group',
+    resolveDisplayEvent: resolveFeaturedSportsDisplayEvent,
+  })
+}
 
-  const { data: sportsEventsGroup, error } = await EventRepository.getSportsEventGroupBySlug(event.slug, '', locale)
-  if (error) {
-    console.warn('Failed to load featured sports event group:', error)
-    return event
-  }
-  if (!sportsEventsGroup || sportsEventsGroup.length <= 1) {
-    return event
-  }
+async function loadHomeFeaturedEvent(eventSlug: string, locale: SupportedLocale) {
+  'use cache'
+  cacheLife(HOME_INITIAL_EVENTS_CACHE_LIFE)
+  cacheTag(cacheTags.event(eventSlug), cacheTags.eventsList, cacheTags.homeFeaturedEvents)
 
-  return resolveMergedFeaturedSportsEvent(event, sportsEventsGroup)
+  const { data } = await EventRepository.getEventBySlug(eventSlug, '', locale)
+  return data ? resolveFeaturedSportsEventPayload(data, locale) : null
+}
+
+async function loadHomeFeaturedLiveChartConfig(seriesSlug: string) {
+  'use cache'
+  cacheLife(HOME_INITIAL_EVENTS_CACHE_LIFE)
+  cacheTag(cacheTags.eventsList, cacheTags.homeFeaturedEvents)
+
+  return EventRepository.getLiveChartConfigBySeriesSlug(seriesSlug)
+}
+
+async function loadHomeFeaturedContextItems(
+  featuredEventIds: string[],
+  locale: SupportedLocale,
+  eventIdsByFeaturedIdEntries: [string, string][],
+) {
+  'use cache'
+  cacheLife(HOME_INITIAL_EVENTS_CACHE_LIFE)
+  cacheTag(cacheTags.eventsList, cacheTags.homeFeaturedEvents)
+
+  return HomeFeaturedEventsRepository.listContextItems(
+    featuredEventIds,
+    locale,
+    {
+      includeDefaultFallback: true,
+      eventIdsByFeaturedId: new Map(eventIdsByFeaturedIdEntries),
+    },
+  )
 }
 
 function resolveHotTopicHref(slug: string) {
@@ -304,6 +321,10 @@ function resolveHotTopicHref(slug: string) {
 export async function listHomeFeaturedHotTopics(
   locale: SupportedLocale = DEFAULT_LOCALE,
 ): Promise<HomeFeaturedHotTopic[]> {
+  'use cache'
+  cacheLife(HOME_INITIAL_EVENTS_CACHE_LIFE)
+  cacheTag(cacheTags.events('guest'), cacheTags.eventsList)
+
   const volume24h = sql<number>`COALESCE(SUM(${markets.volume_24h}), 0)::double precision`
   const fallbackVolume = sql<number>`
     COALESCE(
@@ -466,65 +487,94 @@ function buildHomeFeaturedSideCard(input: {
 }): HomeFeaturedSideCardSettings {
   const { configured, featuredEvents, hotTopics } = input
 
-  if (!configured.useAi) {
-    return configured
-  }
-
-  const liveEvent = featuredEvents.find(item => item.temporalStatus === 'live')
-  if (liveEvent) {
-    return {
-      ...configured,
-      title: 'Live market focus',
-      text: `${liveEvent.event.title} is live now with ${formatDollarValueLabel(liveEvent.event.volume, { maximumFractionDigits: 0 })} total volume.`,
-      ctaLabel: configured.ctaLabel || 'Open market',
-      ctaHref: configured.ctaHref || resolveEventPagePath(liveEvent.event),
-      icon: 'flame',
+  function buildSlide(slide: HomeFeaturedSideCardSettings['slides'][number]) {
+    if (slide.type !== 'text' || !slide.useAi) {
+      return slide
     }
-  }
 
-  const topTopic = hotTopics[0]
-  if (topTopic) {
-    return {
-      ...configured,
-      title: `${topTopic.label} leads volume`,
-      text: `${formatDollarValueLabel(topTopic.volume24h, { maximumFractionDigits: 0 })} tracked across active and recently settled markets.`,
-      ctaLabel: configured.ctaLabel || 'Explore topic',
-      ctaHref: configured.ctaHref || topTopic.href,
-      icon: 'trending-up',
+    const liveEvent = featuredEvents.find(item => item.temporalStatus === 'live')
+    if (liveEvent) {
+      return {
+        ...slide,
+        title: 'Live market focus',
+        text: `${liveEvent.event.title} is live now with ${formatDollarValueLabel(liveEvent.event.volume, { maximumFractionDigits: 0 })} total volume.`,
+        ctaLabel: slide.ctaLabel || 'Open market',
+        ctaHref: slide.ctaHref || resolveEventPagePath(liveEvent.event),
+        icon: 'flame' as const,
+      }
     }
-  }
 
-  const firstEvent = featuredEvents[0]
-  if (firstEvent) {
-    return {
-      ...configured,
-      title: 'Featured market',
-      text: firstEvent.event.title,
-      ctaLabel: configured.ctaLabel || 'Open market',
-      ctaHref: configured.ctaHref || resolveEventPagePath(firstEvent.event),
-      icon: 'sparkles',
+    const topTopic = hotTopics[0]
+    if (topTopic) {
+      return {
+        ...slide,
+        title: `${topTopic.label} leads volume`,
+        text: `${formatDollarValueLabel(topTopic.volume24h, { maximumFractionDigits: 0 })} tracked across active and recently settled markets.`,
+        ctaLabel: slide.ctaLabel || 'Explore topic',
+        ctaHref: slide.ctaHref || topTopic.href,
+        icon: 'trending-up' as const,
+      }
     }
+
+    const firstEvent = featuredEvents[0]
+    if (firstEvent) {
+      return {
+        ...slide,
+        title: 'Featured market',
+        text: firstEvent.event.title,
+        ctaLabel: slide.ctaLabel || 'Open market',
+        ctaHref: slide.ctaHref || resolveEventPagePath(firstEvent.event),
+        icon: 'sparkles' as const,
+      }
+    }
+
+    return slide
   }
 
-  return configured
+  const slides = configured.slides.map(buildSlide)
+  return {
+    ...(slides[0] ?? configured),
+    slides,
+  }
+}
+
+async function loadHomeFeaturedSettings() {
+  'use cache'
+  cacheLife(HOME_INITIAL_EVENTS_CACHE_LIFE)
+  cacheTag(cacheTags.settings)
+
+  return SettingsRepository.getSettings()
 }
 
 export async function getHomeFeaturedSideCard(
   featuredEvents: HomeFeaturedEventCard[],
   hotTopics: HomeFeaturedHotTopic[],
 ): Promise<HomeFeaturedSideCardSettings> {
-  const { data: allSettings, error: settingsError } = await SettingsRepository.getSettings()
+  const { data: allSettings, error: settingsError } = await loadHomeFeaturedSettings()
   if (settingsError) {
     console.error('Failed to load home featured side card settings', settingsError)
     return getHomeFeaturedSettingsFromSettings(undefined).sideCard
   }
 
   const settings = getHomeFeaturedSettingsFromSettings(allSettings ?? undefined)
-  return buildHomeFeaturedSideCard({
+  const sideCard = buildHomeFeaturedSideCard({
     configured: settings.sideCard,
     featuredEvents,
     hotTopics,
   })
+  const slides = sideCard.slides
+    .filter(slide => slide.enabled)
+    .map(slide => ({
+      ...slide,
+      imageUrl: getPublicAssetUrl(slide.imagePath) ?? '',
+    }))
+    .filter(slide => slide.type !== 'image' || Boolean(slide.imageUrl))
+
+  return {
+    ...sideCard,
+    imageUrl: getPublicAssetUrl(sideCard.imagePath) ?? '',
+    slides,
+  }
 }
 
 function formatEndDateLabel(endDate: string | null, locale: SupportedLocale) {
@@ -622,6 +672,10 @@ async function fetchCompactComments(
   eventSlug: string,
   blacklist: string[],
 ): Promise<{ hasEnoughSeriesComments: boolean, items: HomeFeaturedContextItem[] }> {
+  'use cache'
+  cacheLife(HOME_INITIAL_EVENTS_CACHE_LIFE)
+  cacheTag(cacheTags.event(eventSlug), cacheTags.homeFeaturedEvents)
+
   const { communityUrl } = resolvePublicRuntimeEnv(process.env)
   if (!communityUrl) {
     return { hasEnoughSeriesComments: false, items: [] }
@@ -711,7 +765,7 @@ function resolveContextItems(input: {
 }
 
 export async function listHomeFeaturedEvents(locale: SupportedLocale = DEFAULT_LOCALE): Promise<HomeFeaturedEventCard[]> {
-  const { data: allSettings, error: settingsError } = await SettingsRepository.getSettings()
+  const { data: allSettings, error: settingsError } = await loadHomeFeaturedSettings()
   if (settingsError) {
     console.error('Failed to load home featured settings', settingsError)
     return []
@@ -735,8 +789,8 @@ export async function listHomeFeaturedEvents(locale: SupportedLocale = DEFAULT_L
   }
 
   const events = await Promise.all(targets.map(async (target) => {
-    const { data } = await EventRepository.getEventBySlug(target.eventSlug, '', locale)
-    return data ? { target, event: await resolveFeaturedSportsEventPayload(data, locale) } : null
+    const event = await loadHomeFeaturedEvent(target.eventSlug, locale)
+    return event ? { target, event } : null
   }))
   const resolvedEvents = events.filter((entry): entry is NonNullable<typeof entry> => entry !== null)
   if (resolvedEvents.length === 0) {
@@ -751,7 +805,7 @@ export async function listHomeFeaturedEvents(locale: SupportedLocale = DEFAULT_L
       return [event.id, null] as const
     }
 
-    const result = await EventRepository.getLiveChartConfigBySeriesSlug(event.series_slug)
+    const result = await loadHomeFeaturedLiveChartConfig(event.series_slug)
     if (result.error) {
       console.warn('Failed to load featured event live chart config:', result.error)
       return [event.id, null] as const
@@ -761,13 +815,10 @@ export async function listHomeFeaturedEvents(locale: SupportedLocale = DEFAULT_L
   }))
   const liveChartConfigByEventId = new Map(liveChartConfigEntries)
 
-  const contextResult = await HomeFeaturedEventsRepository.listContextItems(
+  const contextResult = await loadHomeFeaturedContextItems(
     resolvedEvents.map(entry => entry.target.featuredId),
     locale,
-    {
-      includeDefaultFallback: true,
-      eventIdsByFeaturedId: new Map(resolvedEvents.map(entry => [entry.target.featuredId, entry.target.eventId])),
-    },
+    resolvedEvents.map(entry => [entry.target.featuredId, entry.target.eventId]),
   )
   const newsItemsByFeaturedId = contextResult.data ?? new Map()
   const commentsByEventSlug = new Map<string, { hasEnoughSeriesComments: boolean, items: HomeFeaturedContextItem[] }>()

@@ -2,6 +2,7 @@
 
 import type { Route } from 'next'
 import type { FilterState } from '@/app/[locale]/(platform)/_providers/FilterProvider'
+import type { EventFaqItem } from '@/lib/event-faq'
 import type { Event, HomeFeaturedEventCard, HomeFeaturedHotTopic, HomeFeaturedSideCardSettings } from '@/types'
 import { useExtracted } from 'next-intl'
 import dynamic from 'next/dynamic'
@@ -10,8 +11,10 @@ import EventsGrid from '@/app/[locale]/(platform)/(home)/_components/EventsGrid'
 import FilterToolbar from '@/app/[locale]/(platform)/(home)/_components/FilterToolbar'
 import HomeFeaturedEventsCarousel from '@/app/[locale]/(platform)/(home)/_components/HomeFeaturedEventsCarousel'
 import HomeSecondaryNavigation from '@/app/[locale]/(platform)/(home)/_components/HomeSecondaryNavigation'
+import PlatformFooter from '@/app/[locale]/(platform)/(home)/_components/PlatformFooter'
 import { DEFAULT_FILTERS, useFilters } from '@/app/[locale]/(platform)/_providers/FilterProvider'
 import { usePlatformNavigationData } from '@/app/[locale]/(platform)/_providers/PlatformNavigationProvider'
+import EventFaq from '@/app/[locale]/(platform)/event/[slug]/_components/EventFaq'
 import { usePathname, useRouter } from '@/i18n/navigation'
 import { getDefaultHomeRouteSortBy } from '@/lib/home-route-sort'
 import { parsePlatformPathname, resolvePlatformNavigationSelection } from '@/lib/platform-navigation'
@@ -29,7 +32,10 @@ const HomeHero = dynamic(
 )
 
 interface HomeClientProps {
+  categoryFaqItems: EventFaqItem[]
   initialEvents: Event[]
+  initialHasMore: boolean
+  initialNewEvents: Event[]
   initialFeaturedEvents: HomeFeaturedEventCard[]
   initialFeaturedHotTopics: HomeFeaturedHotTopic[]
   initialFeaturedSideCard: HomeFeaturedSideCardSettings
@@ -101,7 +107,10 @@ function useHomeClientState({
 }
 
 export default function HomeClient({
+  categoryFaqItems,
   initialEvents,
+  initialHasMore,
+  initialNewEvents,
   initialFeaturedEvents,
   initialFeaturedHotTopics,
   initialFeaturedSideCard,
@@ -129,9 +138,12 @@ export default function HomeClient({
     <HomeClientContent
       key={targetFilterKey}
       childParentMap={childParentMap}
+      categoryFaqItems={categoryFaqItems}
       dynamicHomeCategorySlugSet={dynamicHomeCategorySlugSet}
       initialCurrentTimestamp={initialCurrentTimestamp}
       initialEvents={initialEvents}
+      initialHasMore={initialHasMore}
+      initialNewEvents={initialNewEvents}
       initialFeaturedEvents={initialFeaturedEvents}
       initialFeaturedHotTopics={initialFeaturedHotTopics}
       initialFeaturedSideCard={initialFeaturedSideCard}
@@ -147,10 +159,13 @@ export default function HomeClient({
 }
 
 interface HomeClientContentProps {
+  categoryFaqItems: EventFaqItem[]
   childParentMap: ReturnType<typeof usePlatformNavigationData>['childParentMap']
   dynamicHomeCategorySlugSet: Set<string>
   initialCurrentTimestamp: number | null
   initialEvents: Event[]
+  initialHasMore: boolean
+  initialNewEvents: Event[]
   initialFeaturedEvents: HomeFeaturedEventCard[]
   initialFeaturedHotTopics: HomeFeaturedHotTopic[]
   initialFeaturedSideCard: HomeFeaturedSideCardSettings
@@ -312,10 +327,13 @@ function useHomeClientContentState({
 }
 
 function HomeClientContent({
+  categoryFaqItems,
   childParentMap,
   dynamicHomeCategorySlugSet,
   initialCurrentTimestamp,
   initialEvents,
+  initialHasMore,
+  initialNewEvents,
   initialFeaturedEvents,
   initialFeaturedHotTopics,
   initialFeaturedSideCard,
@@ -370,6 +388,7 @@ function HomeClientContent({
         <div className="min-w-0 flex-1 space-y-4 lg:space-y-5">
           {hasFeaturedEvents && (
             <HomeFeaturedEventsCarousel
+              currentTimestamp={initialCurrentTimestamp}
               hotTopics={initialFeaturedHotTopics}
               items={initialFeaturedEvents}
               sideCard={initialFeaturedSideCard}
@@ -380,11 +399,11 @@ function HomeClientContent({
             ? (
                 <div className="grid gap-3">
                   <div className="flex min-w-0 flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                    <h1 className="shrink-0 text-2xl font-semibold tracking-tight">
+                    <h1 className="hidden shrink-0 text-2xl font-semibold tracking-tight md:block">
                       {t('All markets')}
                     </h1>
 
-                    <div className="min-w-0 md:max-w-xl">
+                    <div className="min-w-0">
                       <FilterToolbar
                         filters={homeFilters}
                         onFiltersChange={handleFiltersChange}
@@ -410,6 +429,7 @@ function HomeClientContent({
           <EventsGrid
             filters={homeFilters}
             initialEvents={canUseServerInitialEvents ? initialEvents : []}
+            initialHasMore={canUseServerInitialEvents && initialHasMore}
             initialCurrentTimestamp={initialCurrentTimestamp}
             onClearFilters={handleClearFilters}
             routeMainTag={targetMainTag}
@@ -418,6 +438,14 @@ function HomeClientContent({
           />
         </div>
       </div>
+
+      <EventFaq items={categoryFaqItems} />
+
+      <PlatformFooter
+        categoryPopularEvents={initialEvents}
+        categoryNewEvents={initialNewEvents}
+        categorySlug={pathState.isMainTagPathPage ? targetMainTag : null}
+      />
     </div>
   )
 }

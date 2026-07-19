@@ -1,9 +1,8 @@
 'use client'
 
-import type { InfiniteData, QueryClient } from '@tanstack/react-query'
+import type { InfiniteData } from '@tanstack/react-query'
 import type { RefObject } from 'react'
 import type { PortfolioOpenOrdersSort, PortfolioUserOpenOrder } from '@/app/[locale]/(platform)/portfolio/_types/PortfolioOpenOrdersTypes'
-import type { UserOpenOrder } from '@/types'
 import { useQueryClient } from '@tanstack/react-query'
 import { useExtracted } from 'next-intl'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -15,7 +14,8 @@ import { usePortfolioOpenOrdersQuery } from '@/app/[locale]/(platform)/portfolio
 import { matchesOpenOrdersSearchQuery, resolveOpenOrdersSearchParams, sortOpenOrders } from '@/app/[locale]/(platform)/portfolio/_utils/PortfolioOpenOrdersUtils'
 import { Button } from '@/components/ui/button'
 import { useDebounce } from '@/hooks/useDebounce'
-import { removeOpenOrdersFromInfiniteData, updateQueryDataWhere } from '@/lib/optimistic-trading'
+import { useInfiniteLoadMore } from '@/hooks/useInfiniteLoadMore'
+import { useOpenOrdersCacheInvalidation } from '@/hooks/useOpenOrdersCacheInvalidation'
 import { isTradingAuthRequiredError } from '@/lib/trading-auth/errors'
 import { useUser } from '@/stores/useUser'
 import PortfolioOpenOrdersFilters from './PortfolioOpenOrdersFilters'
@@ -26,36 +26,6 @@ interface PortfolioOpenOrdersListProps {
 }
 
 type OpenTradeRequirements = ReturnType<typeof useTradingOnboarding>['openTradeRequirements']
-
-interface LoadMoreStateValue {
-  key: string
-  infiniteScrollError: string | null
-  isLoadingMore: boolean
-}
-
-function useRemoveOpenOrdersFromCache({
-  queryClient,
-  openOrdersQueryKey,
-}: {
-  queryClient: QueryClient
-  openOrdersQueryKey: (string | undefined)[]
-}) {
-  return useCallback(function removeOrdersFromCache(orderIds: string[]) {
-    if (!orderIds.length) {
-      return
-    }
-
-    queryClient.setQueryData<InfiniteData<{ data: PortfolioUserOpenOrder[], next_cursor: string }>>(openOrdersQueryKey, current =>
-      removeOpenOrdersFromInfiniteData(current, orderIds))
-
-    updateQueryDataWhere<InfiniteData<{ data: UserOpenOrder[], next_cursor: string }>>(
-      queryClient,
-      ['user-open-orders'],
-      () => true,
-      current => removeOpenOrdersFromInfiniteData(current, orderIds),
-    )
-  }, [openOrdersQueryKey, queryClient])
-}
 
 function useOpenOrdersFilterState(userAddress: string) {
   const [searchQuery, setSearchQuery] = useState('')
@@ -84,27 +54,6 @@ function useOpenOrdersFilterState(userAddress: string) {
   }
 }
 
-function useLoadMoreState(loadMoreScopeKey: string) {
-  const [loadMoreState, setLoadMoreState] = useState<LoadMoreStateValue>({
-    key: loadMoreScopeKey,
-    infiniteScrollError: null,
-    isLoadingMore: false,
-  })
-  const scopedLoadMoreState = loadMoreState.key === loadMoreScopeKey
-    ? loadMoreState
-    : {
-        key: loadMoreScopeKey,
-        infiniteScrollError: null,
-        isLoadingMore: false,
-      }
-
-  return {
-    infiniteScrollError: scopedLoadMoreState.infiniteScrollError,
-    isLoadingMore: scopedLoadMoreState.isLoadingMore,
-    setLoadMoreState,
-  }
-}
-
 function useVisibleOpenOrders({
   data,
   searchQuery,
@@ -124,16 +73,14 @@ function useVisibleOpenOrders({
 }
 
 function useCancelAllOpenOrders({
-  userAddress,
   orders,
-  queryClient,
   removeOrdersFromCache,
+  invalidateAfterCancel,
   openTradeRequirements,
 }: {
-  userAddress: string
   orders: PortfolioUserOpenOrder[]
-  queryClient: QueryClient
   removeOrdersFromCache: (orderIds: string[]) => void
+  invalidateAfterCancel: () => Promise<void>
   openTradeRequirements: OpenTradeRequirements
 }) {
   const t = useExtracted()
@@ -167,7 +114,7 @@ function useCancelAllOpenOrders({
         removeOrdersFromCache(result.cancelled)
       }
 
-      await queryClient.invalidateQueries({ queryKey: ['public-open-orders', userAddress] })
+      await invalidateAfterCancel()
     }
     catch (error: any) {
       const message = typeof error?.message === 'string'
@@ -183,20 +130,18 @@ function useCancelAllOpenOrders({
     finally {
       setIsCancellingAll(false)
     }
-  }, [isCancellingAll, openTradeRequirements, orders.length, queryClient, removeOrdersFromCache, t, userAddress])
+  }, [invalidateAfterCancel, isCancellingAll, openTradeRequirements, orders.length, removeOrdersFromCache, t])
 
   return { isCancellingAll, handleCancelAll }
 }
 
 function useCancelOpenOrder({
-  userAddress,
-  queryClient,
   removeOrdersFromCache,
+  invalidateAfterCancel,
   openTradeRequirements,
 }: {
-  userAddress: string
-  queryClient: QueryClient
   removeOrdersFromCache: (orderIds: string[]) => void
+  invalidateAfterCancel: () => Promise<void>
   openTradeRequirements: OpenTradeRequirements
 }) {
   const t = useExtracted()
@@ -222,8 +167,7 @@ function useCancelOpenOrder({
       toast.success(t('Order cancelled'))
 
       removeOrdersFromCache([order.id])
-      await queryClient.invalidateQueries({ queryKey: ['public-open-orders', userAddress] })
-      void queryClient.invalidateQueries({ queryKey: ['orderbook-summary'] })
+      await invalidateAfterCancel()
     }
     catch (error: any) {
       const message = typeof error?.message === 'string'
@@ -243,81 +187,9 @@ function useCancelOpenOrder({
         return next
       })
     }
-  }, [openTradeRequirements, pendingCancelIds, queryClient, removeOrdersFromCache, t, userAddress])
+  }, [invalidateAfterCancel, openTradeRequirements, pendingCancelIds, removeOrdersFromCache, t])
 
   return { pendingCancelIds, handleCancelOrder }
-}
-
-function useLoadMoreOpenOrders({
-  fetchNextPage,
-  loadMoreErrorMessage,
-  loadMoreScopeKey,
-  setLoadMoreState,
-}: {
-  fetchNextPage: () => Promise<unknown>
-  loadMoreErrorMessage: string
-  loadMoreScopeKey: string
-  setLoadMoreState: (value: LoadMoreStateValue) => void
-}) {
-  return useCallback(() => {
-    setLoadMoreState({
-      key: loadMoreScopeKey,
-      infiniteScrollError: null,
-      isLoadingMore: true,
-    })
-
-    fetchNextPage()
-      .then(() => {
-        setLoadMoreState({
-          key: loadMoreScopeKey,
-          infiniteScrollError: null,
-          isLoadingMore: false,
-        })
-      })
-      .catch((error: any) => {
-        setLoadMoreState({
-          key: loadMoreScopeKey,
-          infiniteScrollError: error?.name === 'AbortError' ? null : error?.message || loadMoreErrorMessage,
-          isLoadingMore: false,
-        })
-      })
-  }, [fetchNextPage, loadMoreErrorMessage, loadMoreScopeKey, setLoadMoreState])
-}
-
-function useInfiniteScrollSentinel({
-  hasNextPage,
-  infiniteScrollError,
-  isFetchingNextPage,
-  isLoadingMore,
-  loadMoreOpenOrders,
-}: {
-  hasNextPage: boolean
-  infiniteScrollError: string | null
-  isFetchingNextPage: boolean
-  isLoadingMore: boolean
-  loadMoreOpenOrders: () => void
-}): { loadMoreRef: RefObject<HTMLDivElement | null> } {
-  const loadMoreRef = useRef<HTMLDivElement | null>(null)
-
-  useEffect(function observeLoadMoreSentinel() {
-    if (!hasNextPage || !loadMoreRef.current) {
-      return undefined
-    }
-
-    const observer = new IntersectionObserver((entries) => {
-      const [entry] = entries
-      if (entry?.isIntersecting && !isFetchingNextPage && !isLoadingMore && !infiniteScrollError) {
-        loadMoreOpenOrders()
-      }
-    }, { rootMargin: '200px' })
-
-    observer.observe(loadMoreRef.current)
-    return function disconnectLoadMoreObserver() {
-      observer.disconnect()
-    }
-  }, [hasNextPage, infiniteScrollError, isFetchingNextPage, isLoadingMore, loadMoreOpenOrders])
-
-  return { loadMoreRef }
 }
 
 function promptTradingAuthForOpenOrdersError({
@@ -360,7 +232,6 @@ export default function PortfolioOpenOrdersList({ userAddress }: PortfolioOpenOr
     openOrdersQueryKey,
   } = useOpenOrdersFilterState(userAddress)
   const loadMoreScopeKey = `${userAddress}:${apiSearchKey}:${searchQuery}:${sortBy}`
-  const { infiniteScrollError, isLoadingMore, setLoadMoreState } = useLoadMoreState(loadMoreScopeKey)
 
   const {
     status,
@@ -392,38 +263,45 @@ export default function PortfolioOpenOrdersList({ userAddress }: PortfolioOpenOr
     && userAddress
     && user.deposit_wallet_address.toLowerCase() === userAddress.toLowerCase(),
   )
-  const removeOrdersFromCache = useRemoveOpenOrdersFromCache({
+  const openOrdersCacheQueryKeys = useMemo(
+    () => [openOrdersQueryKey],
+    [openOrdersQueryKey],
+  )
+  const openOrdersInvalidateQueryKeys = useMemo(
+    () => [['public-open-orders', userAddress]],
+    [userAddress],
+  )
+  const matchingOpenOrdersQueryKey = useMemo(() => ['user-open-orders'], [])
+  const { removeOrdersFromCache, invalidateAfterCancel } = useOpenOrdersCacheInvalidation({
     queryClient,
-    openOrdersQueryKey,
+    queryKeys: openOrdersCacheQueryKeys,
+    invalidateQueryKeys: openOrdersInvalidateQueryKeys,
+    matchingQueryKey: matchingOpenOrdersQueryKey,
   })
   const { pendingCancelIds, handleCancelOrder } = useCancelOpenOrder({
-    userAddress,
-    queryClient,
     removeOrdersFromCache,
+    invalidateAfterCancel,
     openTradeRequirements,
   })
 
   const { isCancellingAll, handleCancelAll } = useCancelAllOpenOrders({
-    userAddress,
     orders,
-    queryClient,
     removeOrdersFromCache,
+    invalidateAfterCancel,
     openTradeRequirements,
   })
 
-  const loadMoreOpenOrders = useLoadMoreOpenOrders({
-    fetchNextPage,
-    loadMoreErrorMessage: t('Failed to load more open orders'),
-    loadMoreScopeKey,
-    setLoadMoreState,
-  })
-
-  const { loadMoreRef } = useInfiniteScrollSentinel({
-    hasNextPage,
+  const {
     infiniteScrollError,
-    isFetchingNextPage,
     isLoadingMore,
-    loadMoreOpenOrders,
+    loadMoreRef,
+    loadMore,
+  } = useInfiniteLoadMore({
+    loadMoreScopeKey,
+    hasNextPage,
+    isFetchingNextPage,
+    fetchNextPage,
+    errorMessage: t('Failed to load more open orders'),
   })
 
   const emptyText = userAddress
@@ -462,7 +340,7 @@ export default function PortfolioOpenOrdersList({ userAddress }: PortfolioOpenOr
         infiniteScrollError={infiniteScrollError}
         isLoadingMore={isLoadingMore}
         loadMoreRef={loadMoreRef}
-        onRetryLoadMore={loadMoreOpenOrders}
+        onRetryLoadMore={loadMore}
         onCancelOrder={handleCancelOrder}
         pendingCancelIds={pendingCancelIds}
       />

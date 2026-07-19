@@ -1,8 +1,6 @@
 'use client'
 
 import type { InfiniteData, QueryClient } from '@tanstack/react-query'
-import type { RefObject } from 'react'
-import type { MergeableMarket } from './MergePositionsDialog'
 import type { PublicPosition } from './PublicPositionItem'
 import type { SortDirection, SortOption } from '@/app/[locale]/(platform)/profile/_types/PublicPositionsTypes'
 import type { NormalizedBookLevel } from '@/lib/order-panel-utils'
@@ -20,15 +18,16 @@ import { usePublicPositionsQuery } from '@/app/[locale]/(platform)/profile/_hook
 import {
   buildMergeableMarkets,
   calculatePositionsTotals,
-  fetchLockedSharesByCondition,
   getDefaultSortDirection,
   getOutcomeLabel,
+  isActiveUserPositionsQueryKeyForAddress,
   matchesPositionsSearchQuery,
   sortPositions,
 } from '@/app/[locale]/(platform)/profile/_utils/PublicPositionsUtils'
 import { useAppKit } from '@/hooks/useAppKit'
 import { useAppKitAccount } from '@/hooks/useAppKitAccount'
 import { useDebounce } from '@/hooks/useDebounce'
+import { useInfiniteLoadMore } from '@/hooks/useInfiniteLoadMore'
 import { usePublicRuntimeConfig } from '@/hooks/usePublicRuntimeConfig'
 import { useSignaturePromptRunner } from '@/hooks/useSignaturePromptRunner'
 import { fetchOrderBookSummary } from '@/lib/clob'
@@ -60,12 +59,6 @@ interface SellModalPayload {
   sellBids: NormalizedBookLevel[]
   tokenId: string | null
   isNegRisk: boolean
-}
-
-interface LoadMoreStateValue {
-  key: string
-  infiniteScrollError: string | null
-  isLoadingMore: boolean
 }
 
 function useUserTradingContext(userAddress: string) {
@@ -124,27 +117,6 @@ function useSearchAndSortState(userAddress: string) {
   }
 }
 
-function useLoadMoreState(loadMoreScopeKey: string) {
-  const [loadMoreState, setLoadMoreState] = useState<LoadMoreStateValue>({
-    key: loadMoreScopeKey,
-    infiniteScrollError: null,
-    isLoadingMore: false,
-  })
-  const scopedLoadMoreState = loadMoreState.key === loadMoreScopeKey
-    ? loadMoreState
-    : {
-        key: loadMoreScopeKey,
-        infiniteScrollError: null,
-        isLoadingMore: false,
-      }
-
-  return {
-    infiniteScrollError: scopedLoadMoreState.infiniteScrollError,
-    isLoadingMore: scopedLoadMoreState.isLoadingMore,
-    setLoadMoreState,
-  }
-}
-
 function useRetryCountState(userAddress: string) {
   const [retryCountState, setRetryCountState] = useState<{ key: string, value: number }>({
     key: userAddress,
@@ -157,36 +129,20 @@ function useRetryCountState(userAddress: string) {
 
 function useSearchChangeHandler({
   userAddress,
-  loadMoreScopeKey,
-  setLoadMoreState,
+  resetLoadMoreState,
   setRetryCountState,
   setSearchQueryState,
 }: {
   userAddress: string
-  loadMoreScopeKey: string
-  setLoadMoreState: (value: LoadMoreStateValue) => void
+  resetLoadMoreState: () => void
   setRetryCountState: (value: { key: string, value: number }) => void
   setSearchQueryState: (value: { key: string, value: string }) => void
 }) {
   return useCallback((query: string) => {
-    setLoadMoreState({
-      key: loadMoreScopeKey,
-      infiniteScrollError: null,
-      isLoadingMore: false,
-    })
+    resetLoadMoreState()
     setRetryCountState({ key: userAddress, value: 0 })
     setSearchQueryState({ key: userAddress, value: query })
-  }, [loadMoreScopeKey, setLoadMoreState, setRetryCountState, setSearchQueryState, userAddress])
-}
-
-function useMergeButtonVisibility(userAddress: string) {
-  const [hideMergeButtonState, setHideMergeButtonState] = useState<{ key: string, value: boolean }>({
-    key: userAddress,
-    value: false,
-  })
-  const hideMergeButton = hideMergeButtonState.key === userAddress ? hideMergeButtonState.value : false
-
-  return { hideMergeButton, setHideMergeButtonState }
+  }, [resetLoadMoreState, setRetryCountState, setSearchQueryState, userAddress])
 }
 
 function useShareDialog() {
@@ -232,25 +188,16 @@ function useShareCardPayload({
   }, [sharePosition, user?.image, user?.username])
 }
 
-function useMergeDialog({
-  userAddress,
-  setHideMergeButtonState,
-}: {
-  userAddress: string
-  setHideMergeButtonState: (value: { key: string, value: boolean }) => void
-}) {
+function useMergeDialog() {
   const [isMergeDialogOpen, setIsMergeDialogOpen] = useState(false)
   const [mergeSuccess, setMergeSuccess] = useState(false)
 
   const handleMergeDialogChange = useCallback((open: boolean) => {
     setIsMergeDialogOpen(open)
     if (!open) {
-      if (mergeSuccess) {
-        setHideMergeButtonState({ key: userAddress, value: true })
-      }
       setMergeSuccess(false)
     }
-  }, [mergeSuccess, setHideMergeButtonState, userAddress])
+  }, [])
 
   return {
     isMergeDialogOpen,
@@ -337,7 +284,7 @@ function usePositionsDerivations({
   }
 }
 
-function useMergeableMarketsAvailability({
+function useMergeableMarkets({
   canSell,
   positionsWithIcons,
 }: {
@@ -349,136 +296,7 @@ function useMergeableMarketsAvailability({
     [positionsWithIcons],
   )
 
-  const positionsByCondition = useMemo(() => {
-    const map: Record<string, Record<string, number>> = {}
-
-    positionsWithIcons
-      .filter(position =>
-        position.status === 'active'
-        && position.conditionId
-        && position.asset,
-      )
-      .forEach((position) => {
-        const conditionId = position.conditionId as string
-        const assetKey = typeof position.asset === 'string' ? position.asset.trim() : ''
-        if (!assetKey) {
-          return
-        }
-        const size = typeof position.size === 'number' ? position.size : 0
-        if (!map[conditionId]) {
-          map[conditionId] = {}
-        }
-        map[conditionId][assetKey] = (map[conditionId][assetKey] ?? 0) + size
-      })
-
-    return map
-  }, [positionsWithIcons])
-
-  const mergeableScopeKey = useMemo(() => {
-    if (!canSell || mergeableMarkets.length === 0) {
-      return 'inactive'
-    }
-
-    const marketsKey = mergeableMarkets
-      .map(market => `${market.conditionId}:${market.mergeAmount}`)
-      .sort()
-      .join('|')
-    const lockedSharesKey = Object.entries(positionsByCondition)
-      .map(([conditionId, sharesByAsset]) => `${conditionId}:${Object.values(sharesByAsset).join(',')}`)
-      .sort()
-      .join('|')
-
-    return `${marketsKey}::${lockedSharesKey}`
-  }, [canSell, mergeableMarkets, positionsByCondition])
-
-  const [availableMergeableMarketsState, setAvailableMergeableMarketsState] = useState<{
-    key: string
-    markets: MergeableMarket[]
-  }>({
-    key: 'inactive',
-    markets: [],
-  })
-  const availableMergeableMarkets = availableMergeableMarketsState.key === mergeableScopeKey
-    ? availableMergeableMarketsState.markets
-    : []
-
-  useEffect(function resolveAvailableMergeableMarkets() {
-    let cancelled = false
-
-    if (!canSell || mergeableMarkets.length === 0) {
-      return function cancelAvailabilityLookup() {
-        cancelled = true
-      }
-    }
-
-    fetchLockedSharesByCondition(mergeableMarkets)
-      .then((availabilityByCondition) => {
-        if (cancelled) {
-          return
-        }
-
-        const eligible = mergeableMarkets
-          .map((market) => {
-            const conditionId = market.conditionId
-            if (!conditionId || !Array.isArray(market.outcomeAssets) || market.outcomeAssets.length !== 2) {
-              return null
-            }
-
-            const positionShares = positionsByCondition[conditionId]
-            if (!positionShares) {
-              return null
-            }
-
-            const [firstOutcome, secondOutcome] = market.outcomeAssets
-            const availability = availabilityByCondition[conditionId]
-            const locked = availability?.lockedShares ?? {}
-            const availableFirst = Math.max(
-              0,
-              (positionShares[firstOutcome] ?? 0) - (locked[firstOutcome] ?? 0),
-            )
-            const availableSecond = Math.max(
-              0,
-              (positionShares[secondOutcome] ?? 0) - (locked[secondOutcome] ?? 0),
-            )
-            const safeMergeAmount = Math.min(market.mergeAmount, availableFirst, availableSecond)
-
-            if (!Number.isFinite(safeMergeAmount) || safeMergeAmount <= 0) {
-              return null
-            }
-
-            return {
-              ...market,
-              mergeAmount: safeMergeAmount,
-              isNegRisk: availability?.isNegRisk ?? market.isNegRisk,
-            }
-          })
-          .filter((entry): entry is MergeableMarket => Boolean(entry))
-
-        setAvailableMergeableMarketsState({
-          key: mergeableScopeKey,
-          markets: eligible,
-        })
-      })
-      .catch((error) => {
-        if (cancelled) {
-          return
-        }
-        console.error('Failed to check merge availability.', error)
-        setAvailableMergeableMarketsState({
-          key: mergeableScopeKey,
-          markets: [],
-        })
-      })
-
-    return function cancelAvailabilityLookup() {
-      cancelled = true
-    }
-  }, [canSell, mergeableMarkets, positionsByCondition, mergeableScopeKey])
-
-  return {
-    positionsByCondition,
-    availableMergeableMarkets,
-  }
+  return canSell ? mergeableMarkets : []
 }
 
 function useScrollToTopOnFilterChange({
@@ -501,109 +319,30 @@ function useScrollToTopOnFilterChange({
   }, [debouncedSearchQuery, minAmountFilter, marketStatusFilter, sortBy, sortDirection])
 }
 
-function useInfiniteScrollSentinel({
-  hasNextPage,
-  isFetchingNextPage,
-  isLoadingMore,
-  infiniteScrollError,
-  fetchNextPage,
-  loadMoreScopeKey,
-  userAddress,
-  setLoadMoreState,
-  setRetryCountState,
-}: {
-  hasNextPage: boolean
-  isFetchingNextPage: boolean
-  isLoadingMore: boolean
-  infiniteScrollError: string | null
-  fetchNextPage: () => Promise<unknown>
-  loadMoreScopeKey: string
-  userAddress: string
-  setLoadMoreState: (value: LoadMoreStateValue) => void
-  setRetryCountState: (value: { key: string, value: number }) => void
-}): { loadMoreRef: RefObject<HTMLDivElement | null> } {
-  const loadMoreRef = useRef<HTMLDivElement | null>(null)
-
-  useEffect(function observeLoadMoreSentinel() {
-    if (!hasNextPage || !loadMoreRef.current) {
-      return undefined
-    }
-
-    const observer = new IntersectionObserver((entries) => {
-      const [entry] = entries
-      if (entry?.isIntersecting && !isFetchingNextPage && !isLoadingMore && !infiniteScrollError) {
-        setLoadMoreState({
-          key: loadMoreScopeKey,
-          infiniteScrollError: null,
-          isLoadingMore: true,
-        })
-        fetchNextPage()
-          .then(() => {
-            setLoadMoreState({
-              key: loadMoreScopeKey,
-              infiniteScrollError: null,
-              isLoadingMore: false,
-            })
-            setRetryCountState({ key: userAddress, value: 0 })
-          })
-          .catch((error) => {
-            if (error.name !== 'AbortError') {
-              setLoadMoreState({
-                key: loadMoreScopeKey,
-                infiniteScrollError: error.message || 'Failed to load more positions',
-                isLoadingMore: false,
-              })
-              return
-            }
-            setLoadMoreState({
-              key: loadMoreScopeKey,
-              infiniteScrollError: null,
-              isLoadingMore: false,
-            })
-          })
-      }
-    }, { rootMargin: '200px' })
-
-    observer.observe(loadMoreRef.current)
-
-    return function disconnectLoadMoreObserver() {
-      observer.disconnect()
-    }
-  }, [fetchNextPage, hasNextPage, infiniteScrollError, isFetchingNextPage, isLoadingMore, loadMoreScopeKey, setLoadMoreState, setRetryCountState, userAddress])
-
-  return { loadMoreRef }
-}
-
 function useRetryInitialLoad({
   userAddress,
-  loadMoreScopeKey,
   retryCount,
   refetch,
   setRetryCountState,
-  setLoadMoreState,
+  resetLoadMoreState,
 }: {
   userAddress: string
-  loadMoreScopeKey: string
   retryCount: number
   refetch: () => Promise<unknown>
   setRetryCountState: (value: { key: string, value: number }) => void
-  setLoadMoreState: (value: LoadMoreStateValue) => void
+  resetLoadMoreState: () => void
 }) {
   return useCallback(() => {
     const currentRetryCount = retryCount + 1
     setRetryCountState({ key: userAddress, value: currentRetryCount })
-    setLoadMoreState({
-      key: loadMoreScopeKey,
-      infiniteScrollError: null,
-      isLoadingMore: false,
-    })
+    resetLoadMoreState()
 
     const delay = Math.min(1000 * 2 ** (currentRetryCount - 1), 8000)
 
     setTimeout(() => {
       void refetch()
     }, delay)
-  }, [loadMoreScopeKey, refetch, retryCount, setLoadMoreState, setRetryCountState, userAddress])
+  }, [refetch, resetLoadMoreState, retryCount, setRetryCountState, userAddress])
 }
 
 function useResolveOutcomeIndex() {
@@ -923,8 +662,8 @@ function useSellPositionFlow({
 
       updateQueryDataWhere<InfiniteData<PublicPosition[]>>(
         queryClient,
-        ['user-positions', userAddress, 'active'],
-        currentQueryKey => currentQueryKey[1] === userAddress && currentQueryKey[2] === 'active',
+        ['user-positions'],
+        currentQueryKey => isActiveUserPositionsQueryKeyForAddress(currentQueryKey, userAddress),
         current => current
           ? {
               ...current,
@@ -943,11 +682,11 @@ function useSellPositionFlow({
       )
 
       setTimeout(() => {
-        void queryClient.invalidateQueries({ queryKey: ['user-positions', userAddress, 'active'] })
+        void queryClient.invalidateQueries({ queryKey: ['user-positions'] })
         void queryClient.invalidateQueries({ queryKey: ['portfolio-value'] })
       }, 4_000)
       setTimeout(() => {
-        void queryClient.invalidateQueries({ queryKey: ['user-positions', userAddress, 'active'] })
+        void queryClient.invalidateQueries({ queryKey: ['user-positions'] })
         void queryClient.invalidateQueries({ queryKey: ['portfolio-value'] })
       }, 12_000)
 
@@ -1016,18 +755,7 @@ export default function PublicPositionsList({ userAddress }: PublicPositionsList
 
   const loadMoreScopeKey = `${userAddress}:${debouncedSearchQuery}:${minAmountFilter}:${marketStatusFilter}:${sortBy}:${sortDirection}`
 
-  const { infiniteScrollError, isLoadingMore, setLoadMoreState } = useLoadMoreState(loadMoreScopeKey)
   const { retryCount, setRetryCountState } = useRetryCountState(userAddress)
-
-  const handleSearchChange = useSearchChangeHandler({
-    userAddress,
-    loadMoreScopeKey,
-    setLoadMoreState,
-    setRetryCountState,
-    setSearchQueryState,
-  })
-
-  const { hideMergeButton, setHideMergeButtonState } = useMergeButtonVisibility(userAddress)
 
   const {
     isShareDialogOpen,
@@ -1042,7 +770,7 @@ export default function PublicPositionsList({ userAddress }: PublicPositionsList
     mergeSuccess,
     setMergeSuccess,
     handleMergeDialogChange,
-  } = useMergeDialog({ userAddress, setHideMergeButtonState })
+  } = useMergeDialog()
 
   const {
     status,
@@ -1071,14 +799,12 @@ export default function PublicPositionsList({ userAddress }: PublicPositionsList
     sortDirection,
   })
 
-  const {
-    availableMergeableMarkets,
-  } = useMergeableMarketsAvailability({ canSell, positionsWithIcons })
+  const mergeableMarkets = useMergeableMarkets({ canSell, positionsWithIcons })
 
-  const hasMergeableMarkets = availableMergeableMarkets.length > 0
+  const hasMergeableMarkets = mergeableMarkets.length > 0
 
   const { isMergeProcessing, mergeBatchCount, handleMergeAll } = useMergePositionsAction({
-    mergeableMarkets: availableMergeableMarkets,
+    mergeableMarkets,
     hasMergeableMarkets,
     user,
     ensureTradingReady,
@@ -1122,25 +848,38 @@ export default function PublicPositionsList({ userAddress }: PublicPositionsList
     sortDirection,
   })
 
-  const { loadMoreRef } = useInfiniteScrollSentinel({
+  const handleLoadMoreSuccess = useCallback(() => {
+    setRetryCountState({ key: userAddress, value: 0 })
+  }, [setRetryCountState, userAddress])
+
+  const {
+    infiniteScrollError,
+    isLoadingMore,
+    loadMoreRef,
+    loadMore,
+    resetLoadMoreState,
+  } = useInfiniteLoadMore({
+    loadMoreScopeKey,
     hasNextPage,
     isFetchingNextPage,
-    isLoadingMore,
-    infiniteScrollError,
     fetchNextPage,
-    loadMoreScopeKey,
+    errorMessage: 'Failed to load more positions',
+    onSuccess: handleLoadMoreSuccess,
+  })
+
+  const handleSearchChange = useSearchChangeHandler({
     userAddress,
-    setLoadMoreState,
+    resetLoadMoreState,
     setRetryCountState,
+    setSearchQueryState,
   })
 
   const retryInitialLoad = useRetryInitialLoad({
     userAddress,
-    loadMoreScopeKey,
     retryCount,
     refetch,
     setRetryCountState,
-    setLoadMoreState,
+    resetLoadMoreState,
   })
 
   const hasUserAddress = Boolean(userAddress)
@@ -1155,7 +894,7 @@ export default function PublicPositionsList({ userAddress }: PublicPositionsList
         sortBy={sortBy}
         onSearchChange={handleSearchChange}
         onSortChange={handleSortChange}
-        showMergeButton={hasMergeableMarkets && marketStatusFilter === 'active' && !hideMergeButton}
+        showMergeButton={hasMergeableMarkets && marketStatusFilter === 'active'}
         onMergeClick={() => {
           setMergeSuccess(false)
           setIsMergeDialogOpen(true)
@@ -1189,7 +928,7 @@ export default function PublicPositionsList({ userAddress }: PublicPositionsList
         <div className="py-4 text-center text-xs text-no">
           {infiniteScrollError}
           {' '}
-          <button type="button" onClick={retryInitialLoad} className="underline underline-offset-2">
+          <button type="button" onClick={loadMore} className="underline underline-offset-2">
             Retry
           </button>
         </div>
@@ -1198,7 +937,7 @@ export default function PublicPositionsList({ userAddress }: PublicPositionsList
       <MergePositionsDialog
         open={isMergeDialogOpen}
         onOpenChange={handleMergeDialogChange}
-        markets={availableMergeableMarkets}
+        markets={mergeableMarkets}
         isProcessing={isMergeProcessing}
         mergeCount={mergeBatchCount}
         isSuccess={mergeSuccess}

@@ -1,22 +1,28 @@
 // Trigger Vercel build
 import type { SupportedLocale } from '@/i18n/locales'
+import type { CategoryFaqContext } from '@/lib/category-faq'
 import type { Event, HomeFeaturedEventCard, HomeFeaturedHotTopic, HomeFeaturedSideCardSettings } from '@/types'
 import HomeClient from '@/app/[locale]/(platform)/(home)/_components/HomeClient'
+import FaqStructuredData from '@/components/seo/FaqStructuredData'
+import { buildTranslatedCategoryFaqItems } from '@/lib/category-faq-server'
 import { listHomeEventsPage } from '@/lib/home-events-page'
 import { getHomeFeaturedSideCard, listHomeFeaturedEvents, listHomeFeaturedHotTopics } from '@/lib/home-featured-events'
 import { DEFAULT_HOME_FEATURED_SETTINGS } from '@/lib/home-featured-settings'
 import { getInitialHomeEventsSortBy } from '@/lib/home-route-sort'
+import { loadRuntimeThemeSiteName } from '@/lib/theme-settings'
 
 interface HomeContentProps {
+  categoryFaqContext?: CategoryFaqContext
   locale: string
-  currentTimestamp?: number | null
+  currentTimestamp: number | null
   initialTag?: string
   initialMainTag?: string
 }
 
 export default async function HomeContent({
+  categoryFaqContext,
   locale,
-  currentTimestamp = null,
+  currentTimestamp,
   initialTag,
   initialMainTag,
 }: HomeContentProps) {
@@ -26,8 +32,10 @@ export default async function HomeContent({
   const shouldLoadFeaturedEvents = initialTagSlug === 'trending' && initialMainTagSlug === 'trending'
   const initialSortBy = getInitialHomeEventsSortBy(initialTagSlug)
   let initialCurrentTimestamp: number | null = null
+  let initialHasMore = false
 
   let initialEvents: Event[] = []
+  let initialNewEvents: Event[] = []
   let initialFeaturedEvents: HomeFeaturedEventCard[] = []
   let initialFeaturedHotTopics: HomeFeaturedHotTopic[] = []
   let initialFeaturedSideCard: HomeFeaturedSideCardSettings = DEFAULT_HOME_FEATURED_SETTINGS.sideCard
@@ -42,13 +50,14 @@ export default async function HomeContent({
     currentTimestamp,
     ...(initialSortBy && { sortBy: initialSortBy }),
   })
-    .then(({ data: events, error, currentTimestamp: resolvedCurrentTimestamp }) => ({
+    .then(({ data: events, error, currentTimestamp: resolvedCurrentTimestamp, hasMore }) => ({
       events: error ? [] : events ?? [],
       currentTimestamp: resolvedCurrentTimestamp ?? null,
+      hasMore: !error && hasMore === true,
     }))
     .catch((error) => {
       console.error('Failed to load initial home events', error)
-      return { events: [], currentTimestamp: null }
+      return { events: [], currentTimestamp: null, hasMore: false }
     })
 
   const featuredEventsPromise = shouldLoadFeaturedEvents
@@ -97,28 +106,65 @@ export default async function HomeContent({
         featuredSideCard: DEFAULT_HOME_FEATURED_SETTINGS.sideCard,
       })
 
-  const [initialEventsResult, featuredEventsResult] = await Promise.all([
+  const categoryNewEventsPromise = initialMainTagSlug !== 'trending' && initialTagSlug !== 'new'
+    ? listHomeEventsPage({
+        tag: initialTagSlug,
+        mainTag: initialMainTagSlug,
+        search: '',
+        userId: '',
+        bookmarked: false,
+        locale: resolvedLocale,
+        currentTimestamp,
+        sortBy: 'created_at',
+      })
+        .then(({ data: events, error }) => error ? [] : events ?? [])
+        .catch((error) => {
+          console.error('Failed to load new category events for the footer', error)
+          return []
+        })
+    : Promise.resolve([])
+
+  const [initialEventsResult, featuredEventsResult, categoryNewEvents, siteName] = await Promise.all([
     initialEventsPromise,
     featuredEventsPromise,
+    categoryNewEventsPromise,
+    categoryFaqContext ? loadRuntimeThemeSiteName() : Promise.resolve(''),
   ])
 
   initialEvents = initialEventsResult.events
+  initialNewEvents = categoryNewEvents
   initialCurrentTimestamp = initialEventsResult.currentTimestamp
+  initialHasMore = initialEventsResult.hasMore
   initialFeaturedEvents = featuredEventsResult.featuredEvents
   initialFeaturedHotTopics = featuredEventsResult.featuredHotTopics
   initialFeaturedSideCard = featuredEventsResult.featuredSideCard
 
+  const categoryFaqItems = categoryFaqContext
+    ? await buildTranslatedCategoryFaqItems({
+        ...categoryFaqContext,
+        popularEventTitles: initialEvents.slice(0, 3).map(event => event.title),
+        locale: resolvedLocale,
+        siteName,
+      })
+    : []
+
   return (
-    <main className="container flex min-w-0 flex-col gap-4 py-4">
-      <HomeClient
-        initialFeaturedEvents={initialFeaturedEvents}
-        initialFeaturedHotTopics={initialFeaturedHotTopics}
-        initialFeaturedSideCard={initialFeaturedSideCard}
-        initialEvents={initialEvents}
-        initialCurrentTimestamp={initialCurrentTimestamp}
-        initialTag={initialTagSlug}
-        initialMainTag={initialMainTagSlug}
-      />
-    </main>
+    <>
+      <FaqStructuredData items={categoryFaqItems} />
+      <main className="container flex min-w-0 flex-col gap-4 py-4">
+        <HomeClient
+          categoryFaqItems={categoryFaqItems}
+          initialFeaturedEvents={initialFeaturedEvents}
+          initialFeaturedHotTopics={initialFeaturedHotTopics}
+          initialFeaturedSideCard={initialFeaturedSideCard}
+          initialEvents={initialEvents}
+          initialHasMore={initialHasMore}
+          initialNewEvents={initialNewEvents}
+          initialCurrentTimestamp={initialCurrentTimestamp}
+          initialTag={initialTagSlug}
+          initialMainTag={initialMainTagSlug}
+        />
+      </main>
+    </>
   )
 }

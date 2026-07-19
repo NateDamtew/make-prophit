@@ -1,16 +1,17 @@
 import { ArrowLeftIcon } from 'lucide-react'
 import { setRequestLocale } from 'next-intl/server'
-import { connection } from 'next/server'
 import { Suspense } from 'react'
 import AdminCreateEventForm from '@/app/[locale]/admin/events/calendar/_components/AdminCreateEventForm'
-import AppLink from '@/components/AppLink'
 import { Button } from '@/components/ui/button'
+import { Link } from '@/i18n/navigation'
 import { buildAdminSportsSlugCatalog, EMPTY_ADMIN_SPORTS_SLUG_CATALOG } from '@/lib/admin-sports-create'
 import { normalizeDateTimeLocalValue } from '@/lib/datetime-local'
 import { EventCreationRepository } from '@/lib/db/queries/event-creations'
 import { SportsMenuRepository } from '@/lib/db/queries/sports-menu'
 import { UserRepository } from '@/lib/db/queries/user'
 import { loadEventCreationSignersFromEnv } from '@/lib/event-creation-signers'
+import { getConfiguredSportsSourceProviders } from '@/lib/sports-source/providers'
+import { loadSportsSourceProviderSettings } from '@/lib/sports-source/settings'
 
 type CreationMode = 'single' | 'recurring'
 
@@ -18,7 +19,7 @@ interface AdminCreateEventNewPageProps {
   params: Promise<{
     locale: string
   }>
-  searchParams?: Promise<Record<string, string | string[] | undefined>>
+  searchParams: Promise<Record<string, string | string[] | undefined>>
 }
 
 function resolveCreationMode(value: string | string[] | undefined): CreationMode {
@@ -38,19 +39,21 @@ function resolveBooleanSearchParam(value: string | string[] | undefined) {
 async function AdminCreateEventNewContent({
   searchParams,
 }: Pick<AdminCreateEventNewPageProps, 'searchParams'>) {
-  await connection()
-  const resolvedSearchParams = searchParams ? await searchParams : undefined
+  const resolvedSearchParams = await searchParams
   const mode = resolveCreationMode(resolvedSearchParams?.mode)
   const draftId = resolveSearchParam(resolvedSearchParams?.draftId) ?? ''
   const startAtValue = resolveSearchParam(resolvedSearchParams?.startAt) ?? ''
   const isEditingExistingDraft = resolveBooleanSearchParam(resolvedSearchParams?.edit)
 
-  const sportsMenuResult = await SportsMenuRepository.getMenuEntries()
+  const [sportsMenuResult, sportsSourceSettings, currentUser] = await Promise.all([
+    SportsMenuRepository.getMenuEntries(),
+    loadSportsSourceProviderSettings(),
+    UserRepository.getCurrentUser({ minimal: true }),
+  ])
   const sportsSlugCatalog = sportsMenuResult.data
     ? buildAdminSportsSlugCatalog(sportsMenuResult.data)
     : EMPTY_ADMIN_SPORTS_SLUG_CATALOG
 
-  const currentUser = await UserRepository.getCurrentUser({ minimal: true })
   const draftResult = (draftId && currentUser?.is_admin)
     ? await EventCreationRepository.getDraftByIdForUser({
         draftId,
@@ -85,10 +88,10 @@ async function AdminCreateEventNewContent({
           <p className="text-sm text-muted-foreground">{description}</p>
         </div>
         <Button type="button" variant="outline" asChild>
-          <AppLink href="/admin/events/calendar">
+          <Link href="/admin/events/calendar">
             <ArrowLeftIcon className="size-4" />
             Back to calendar
-          </AppLink>
+          </Link>
         </Button>
       </div>
 
@@ -106,6 +109,7 @@ async function AdminCreateEventNewContent({
           allowPastResolutionDate={effectiveMode === 'recurring' && isEditingExistingDraft}
           serverDraftPayload={draftResult.data?.draftPayload ?? null}
           serverAssetPayload={draftResult.data?.assetPayload ?? null}
+          configuredSportsSourceProviders={getConfiguredSportsSourceProviders(sportsSourceSettings)}
         />
       </div>
     </>
@@ -130,10 +134,10 @@ export default async function AdminCreateEventNewPage({
                 <p className="text-sm text-muted-foreground">Loading event form...</p>
               </div>
               <Button type="button" variant="outline" asChild>
-                <AppLink href="/admin/events/calendar">
+                <Link href="/admin/events/calendar">
                   <ArrowLeftIcon className="size-4" />
                   Back to calendar
-                </AppLink>
+                </Link>
               </Button>
             </div>
 

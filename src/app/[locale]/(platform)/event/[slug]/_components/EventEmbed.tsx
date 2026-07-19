@@ -2,26 +2,26 @@
 
 import type { Event } from '@/types'
 import { CodeXmlIcon } from 'lucide-react'
-import { useState } from 'react'
+import { useExtracted } from 'next-intl'
+import { useMemo, useState } from 'react'
 import EventChartEmbedDialog from '@/app/[locale]/(platform)/event/[slug]/_components/EventChartEmbedDialog'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-
-const headerIconButtonClass = 'size-10 rounded-sm border border-transparent bg-transparent text-foreground transition-colors hover:bg-muted/80 focus-visible:ring-1 focus-visible:ring-ring md:h-9 md:w-9'
+import { useOrder } from '@/stores/useOrder'
 
 interface EventEmbedProps {
   event: Event
 }
 
-/**
- * Header-level "Embed" button. Opens the same embed dialog used in the chart
- * toolbar, so the embed action is discoverable right next to Share. Embeds are
- * a passive referral channel — the generated snippet carries the user's
- * affiliate code, so anyone embedding this market plants a referral link.
- */
 export default function EventEmbed({ event }: EventEmbedProps) {
+  const t = useExtracted()
   const [open, setOpen] = useState(false)
-  const initialMarketId = event.markets[0]?.condition_id ?? null
+  const selectedMarketConditionId = useOrder(state => state.market?.condition_id)
+  const initialMarketId = useMemo(() => {
+    return event.markets.some(market => market.condition_id === selectedMarketConditionId)
+      ? selectedMarketConditionId
+      : event.markets[0]?.condition_id ?? null
+  }, [event.markets, selectedMarketConditionId])
 
   return (
     <>
@@ -29,13 +29,18 @@ export default function EventEmbed({ event }: EventEmbedProps) {
         type="button"
         variant="ghost"
         size="icon"
-        className={cn(headerIconButtonClass, 'size-auto p-0')}
+        className={cn(`
+          size-auto rounded-sm border border-transparent bg-transparent p-0 text-foreground transition-colors
+          hover:bg-muted/80
+          focus-visible:ring-1 focus-visible:ring-ring
+          md:size-9
+        `)}
         onClick={() => setOpen(true)}
-        aria-label="Embed this market"
+        aria-label={t('Embed')}
+        title={t('Embed')}
       >
         <CodeXmlIcon className="size-4" />
       </Button>
-
       <EventChartEmbedDialog
         open={open}
         onOpenChange={setOpen}

@@ -1,12 +1,12 @@
-import { and, eq, inArray, lt, ne, or } from 'drizzle-orm'
+import type { SportsSourceCandidate } from '@/lib/sports-source'
+import type { SportsSourceProviderSettings } from '@/lib/sports-source/settings'
+import { and, eq, inArray, isNotNull, sql } from 'drizzle-orm'
 import { revalidateTag } from 'next/cache'
-import { NextResponse } from 'next/server'
 import { SUPPORTED_LOCALES } from '@/i18n/locales'
 import {
   loadAllowedMarketCreatorWallets,
   refreshAllowedMarketCreatorSiteSources,
 } from '@/lib/allowed-market-creators-server'
-import { isCronAuthorized } from '@/lib/auth-cron'
 import { cacheTags } from '@/lib/cache-tags'
 import {
   conditions as conditionsTable,
@@ -24,15 +24,29 @@ import { loadAutoDeployNewEventsEnabled } from '@/lib/event-sync-settings'
 import { setEventHiddenFromNew } from '@/lib/event-visibility'
 import { syncMissingOnChainResolvedPayouts } from '@/lib/resolution-payout-sync'
 import { slugifyText } from '@/lib/slug'
+import { findSportsEvents } from '@/lib/sports-source'
+import { normalizeSingleSportsSourceProvider } from '@/lib/sports-source/providers'
+import { loadSportsSourceProviderSettings } from '@/lib/sports-source/settings'
 import { uploadPublicAsset } from '@/lib/storage'
+import {
+  buildCronErrorResponse,
+  buildSyncAlreadyRunningResponse,
+  handleCronRoute,
+  tryAcquireSyncLock,
+  updateSyncStatus,
+} from '@/lib/sync/cron-route'
 
 export const maxDuration = 300
 
 const PNL_SUBGRAPH_URL = 'https://subgraphs.kuest.com/pnl-subgraph'
 const IRYS_GATEWAY = process.env.IRYS_GATEWAY || 'https://gateway.irys.xyz'
 const SYNC_TIME_LIMIT_MS = 250_000
-const SYNC_RUNNING_STALE_MS = 15 * 60 * 1000
 const PNL_PAGE_SIZE = 200
+const MARKET_SYNC_STATE = {
+  serviceName: 'market_sync',
+  subgraphName: 'pnl',
+} as const
+const AUTO_SPORTS_SOURCE_CONFIDENCE_THRESHOLD = 0.72
 const SPORTS_LOGO_STORAGE_PREFIX = 'sports/team-logos'
 const sportsLogoStorageCache = new Map<string, string>()
 const MAIN_CATEGORY_TAGS = [
@@ -98,6 +112,14 @@ interface EventSportsMetadataInput {
   sports_tags: string[] | null
   sports_teams: Record<string, unknown>[] | null
   sports_team_logo_urls: string[] | null
+  sports_source_provider: string | null
+  sports_source_event_id: string | null
+  sports_source_game_id: string | null
+  sports_source_league_id: string | null
+  sports_source_league_label: string | null
+  sports_source_match_confidence: string | null
+  sports_source_payload: Record<string, unknown> | null
+  sports_source_selected_at: Date | null
 }
 
 interface MarketSportsMetadataInput {
@@ -116,6 +138,14 @@ interface MarketSportsMetadataInput {
   sports_event_slug: string | null
   sports_teams: Record<string, unknown>[] | null
   sports_team_logo_urls: string[] | null
+  sports_source_provider: string | null
+  sports_source_event_id: string | null
+  sports_source_game_id: string | null
+  sports_source_league_id: string | null
+  sports_source_league_label: string | null
+  sports_source_market_id: string | null
+  sports_source_match_confidence: string | null
+  sports_source_payload: Record<string, unknown> | null
 }
 
 interface SyncStats {
@@ -132,6 +162,7 @@ interface SyncOptions {
 
 interface SyncRuntimeState {
   eventTagSlugsByEventId: Map<string, Set<string>>
+  sportsSourceSettingsPromise?: Promise<SportsSourceProviderSettings>
 }
 
 interface NormalizedEventTag {
@@ -153,6 +184,7 @@ interface ProcessEventResult {
   eventChanged: boolean
   listAffectingChange: boolean
   urlSetChanged: boolean
+  sportsSourceCandidate: SportsSourceCandidate | null
 }
 
 interface ProcessMarketDataResult {
@@ -160,6 +192,15 @@ interface ProcessMarketDataResult {
   eventIdsForHiddenSync: string[]
   marketChanged: boolean
   urlSetChanged: boolean
+}
+
+type MarketMappingDatabase = Pick<typeof db, 'insert' | 'select' | 'update'>
+
+class RetryableMarketSyncError extends Error {
+  constructor(message: string, cause: unknown) {
+    super(message, { cause })
+    this.name = 'RetryableMarketSyncError'
+  }
 }
 
 export function resolveAdditionalContextUpdatedAtIso(params: {
@@ -281,82 +322,79 @@ async function refreshCreatorSourcesBeforeSync(force: boolean) {
  * - Stores everything in the database and configured object storage
  */
 export async function GET(request: Request) {
-  const auth = request.headers.get('authorization')
-  if (!isCronAuthorized(auth, process.env.CRON_SECRET)) {
-    return NextResponse.json({ error: 'Unauthenticated.' }, { status: 401 })
-  }
+  return handleCronRoute({
+    request,
+    jobName: 'market-sync',
+    handler: async () => {
+      const lockAcquired = await tryAcquireSyncLock(MARKET_SYNC_STATE)
+      if (!lockAcquired) {
+        console.log('🚫 Sync already running, skipping...')
+        return buildSyncAlreadyRunningResponse()
+      }
 
-  try {
-    const lockAcquired = await tryAcquireSyncLock()
-    if (!lockAcquired) {
-      console.log('🚫 Sync already running, skipping...')
-      return NextResponse.json({
-        success: false,
-        message: 'Sync already running',
-        skipped: true,
-      }, { status: 409 })
-    }
+      console.log('🚀 Starting incremental market synchronization...')
 
-    console.log('🚀 Starting incremental market synchronization...')
+      const forceCreatorSourceRefresh = shouldForceCreatorSourceRefresh(request)
+      const creatorSourceRefreshPromise = refreshCreatorSourcesBeforeSync(forceCreatorSourceRefresh)
+      const autoDeployNewEventsPromise = loadAutoDeployNewEventsEnabled()
+      const lastCursor = await getLastPnLCursor()
+      if (lastCursor) {
+        console.log(
+          `📊 Last PnL cursor: ${lastCursor.conditionId} @ ${new Date(lastCursor.updatedAt * 1000).toISOString()}`,
+        )
+      }
+      else {
+        console.log('📊 Last PnL cursor: none (full scan from subgraph start)')
+      }
 
-    const forceCreatorSourceRefresh = shouldForceCreatorSourceRefresh(request)
-    const creatorSourceRefreshPromise = refreshCreatorSourcesBeforeSync(forceCreatorSourceRefresh)
-    const autoDeployNewEventsPromise = loadAutoDeployNewEventsEnabled()
-    const lastCursor = await getLastPnLCursor()
-    if (lastCursor) {
-      console.log(
-        `📊 Last PnL cursor: ${lastCursor.conditionId} @ ${new Date(lastCursor.updatedAt * 1000).toISOString()}`,
-      )
-    }
-    else {
-      console.log('📊 Last PnL cursor: none (full scan from subgraph start)')
-    }
+      await creatorSourceRefreshPromise
+      const [allowedCreators, autoDeployNewEvents] = await Promise.all([
+        getAllowedCreators(),
+        autoDeployNewEventsPromise,
+      ])
+      const syncResult = await syncMarkets(new Set(allowedCreators), { autoDeployNewEvents })
 
-    await creatorSourceRefreshPromise
-    const [allowedCreators, autoDeployNewEvents] = await Promise.all([
-      getAllowedCreators(),
-      autoDeployNewEventsPromise,
-    ])
-    const syncResult = await syncMarkets(new Set(allowedCreators), { autoDeployNewEvents })
-
-    await updateSyncStatus('completed', null, syncResult.processedCount)
-
-    if (syncResult.fetchedCount === 0) {
-      console.log('📭 No markets fetched from PnL subgraph')
-      return NextResponse.json({
-        success: true,
-        message: 'No new markets to process',
-        processed: 0,
-        fetched: 0,
+      await updateSyncStatus({
+        ...MARKET_SYNC_STATE,
+        status: 'completed',
+        errorMessage: null,
+        totalProcessed: syncResult.processedCount,
       })
-    }
 
-    const responsePayload = {
-      success: true,
-      processed: syncResult.processedCount,
-      fetched: syncResult.fetchedCount,
-      skippedCreators: syncResult.skippedCreatorCount,
-      errors: syncResult.errors.length,
-      errorDetails: syncResult.errors,
-      timeLimitReached: syncResult.timeLimitReached,
-    }
+      if (syncResult.fetchedCount === 0) {
+        console.log('📭 No markets fetched from PnL subgraph')
+        return {
+          success: true,
+          message: 'No new markets to process',
+          processed: 0,
+          fetched: 0,
+        }
+      }
 
-    console.log('🎉 Incremental synchronization completed:', responsePayload)
-    return NextResponse.json(responsePayload)
-  }
-  catch (error: any) {
-    console.error('💥 Sync failed:', error)
+      const responsePayload = {
+        success: true,
+        processed: syncResult.processedCount,
+        fetched: syncResult.fetchedCount,
+        skippedCreators: syncResult.skippedCreatorCount,
+        errors: syncResult.errors.length,
+        errorDetails: syncResult.errors,
+        timeLimitReached: syncResult.timeLimitReached,
+      }
 
-    await updateSyncStatus('error', error.message)
+      console.log('🎉 Incremental synchronization completed:', responsePayload)
+      return responsePayload
+    },
+    onError: async (error) => {
+      console.error('💥 Sync failed:', error)
+      await updateSyncStatus({
+        ...MARKET_SYNC_STATE,
+        status: 'error',
+        errorMessage: error instanceof Error ? error.message : String(error),
+      })
 
-    return NextResponse.json(
-      {
-        success: false,
-        error: error.message,
-      },
-      { status: 500 },
-    )
-  }
+      return buildCronErrorResponse(error)
+    },
+  })
 }
 
 async function syncMarkets(allowedCreators: Set<string>, options: SyncOptions): Promise<SyncStats> {
@@ -465,6 +503,9 @@ async function syncMarkets(allowedCreators: Set<string>, options: SyncOptions): 
       }
       catch (error: any) {
         console.error(`❌ Error processing market ${condition.id}:`, error)
+        if (error instanceof RetryableMarketSyncError) {
+          throw error
+        }
         errors.push({
           conditionId: condition.id,
           error: error.message ?? String(error),
@@ -664,12 +705,13 @@ async function processMarket(
     metadata.event,
     metadata.sports?.event,
     metadata.sports?.market,
+    metadata,
     market.creator!,
     timestamps.createdAtIso,
     options.autoDeployNewEvents,
     runtimeState,
   )
-  const marketResult = await processMarketData(market, metadata, eventResult.eventId, timestamps)
+  const marketResult = await processMarketData(market, metadata, eventResult.eventId, timestamps, eventResult.sportsSourceCandidate)
   const hiddenSyncResults = await Promise.all(
     marketResult.eventIdsForHiddenSync.map(async eventId => ({
       eventId,
@@ -867,6 +909,7 @@ async function processEvent(
   eventData: any,
   sportsEventData: any,
   sportsMarketData: any,
+  metadata: any,
   creatorAddress: string,
   createdAtIso: string,
   autoDeployNewEvents: boolean,
@@ -895,6 +938,10 @@ async function processEvent(
   const eventSeriesId = normalizeStringField(eventData.series_id)
   const eventSeriesRecurrence = normalizeStringField(eventData.series_recurrence)
     ?? normalizeStringField(eventData.recurrence)
+  const isPolymarketMirror = Boolean(
+    normalizeStringField(metadata?.mirror_condition_id)
+    && Array.isArray(metadata?.mirror_outcome_token_ids),
+  )
   const hasAdditionalContextField = Object.hasOwn(eventData, 'additional_context')
   const hasAdditionalContextTimeField = Object.hasOwn(eventData, 'additional_context_time')
     || Object.hasOwn(eventData, 'additional_context_updated_at')
@@ -915,15 +962,18 @@ async function processEvent(
   const sportsParentEventId = normalizeIntegerField(sportsEventData?.parent_event_id)
   const sportsGameId = normalizeIntegerField(sportsEventData?.game_id)
   const sportsEventDate = normalizeDateField(sportsEventData?.event_date)
-  const sportsStartTime = resolveEventStartTimestamp(sportsEventData, sportsMarketData)
+  let sportsStartTime = resolveEventStartTimestamp(sportsEventData, sportsMarketData)
   const sportsSeriesSlug = normalizeStringField(sportsEventData?.series_slug)
   const sportsSeriesId = normalizeStringField(sportsEventData?.series_id)
   const sportsSeriesRecurrence = normalizeStringField(sportsEventData?.series_recurrence)
   const sportsSeriesColor = normalizeStringField(sportsEventData?.series_color)
-  const sportsSportSlug = normalizeStringField(sportsEventData?.sport_slug)
-  const sportsLeagueLabel = normalizeStringField(eventData.league)
+  let sportsSportSlug = normalizeStringField(sportsEventData?.sport_slug)
+  let sportsLeagueLabel = normalizeStringField(eventData.league)
     ?? normalizeStringField(sportsEventData?.league)
-  const sportsLeagueSlug = sportsLeagueLabel ? slugifyText(sportsLeagueLabel) || null : null
+    ?? normalizeStringField(sportsEventData?.league_label)
+    ?? normalizeStringField(sportsEventData?.source_league_label)
+  let sportsLeagueSlug = normalizeStringField(sportsEventData?.league_slug)
+    ?? (sportsLeagueLabel ? slugifyText(sportsLeagueLabel) || null : null)
   const sportsEventWeek = normalizeIntegerField(sportsEventData?.event_week)
   const sportsScore = normalizeStringField(sportsEventData?.score)
   const sportsPeriod = normalizeStringField(sportsEventData?.period)
@@ -931,15 +981,27 @@ async function processEvent(
   const sportsLive = normalizeOptionalBooleanField(sportsEventData?.live)
   const sportsEnded = normalizeOptionalBooleanField(sportsEventData?.ended)
   const sportsTags = normalizeStringArrayField(sportsEventData?.tags)
+  let sportsSourceProvider = normalizeSingleSportsSourceProvider(normalizeStringField(sportsEventData?.source_provider))
+  let sportsSourceEventId = normalizeStringIdField(sportsEventData?.source_event_id)
+  let sportsSourceGameId = normalizeStringIdField(sportsEventData?.source_game_id)
+  let sportsSourceLeagueId = normalizeStringIdField(sportsEventData?.source_league_id)
+  let sportsSourceLeagueLabel = normalizeStringField(sportsEventData?.source_league_label)
+  let sportsSourceMatchConfidence = normalizeConfidenceField(sportsEventData?.source_match_confidence)
+  let sportsSourcePayload = normalizeObjectField(sportsEventData?.source_payload)
+  let incomingLivestreamUrl = normalizeLivestreamUrl(
+    eventData.livestream_url
+    ?? eventData.livestream
+    ?? sportsEventData?.livestream_url
+    ?? sportsEventData?.livestreamUrl
+    ?? sportsEventData?.stream_url
+    ?? sportsEventData?.streamUrl,
+  )
   const normalizedEventTags = normalizeIncomingTags([
     ...(Array.isArray(eventData.tags) ? eventData.tags : []),
-    ...(sportsEventData ? ['Sports'] : []),
+    ...(sportsEventData || sportsMarketData ? ['Sports'] : []),
     ...(sportsTags ?? []),
   ])
-  const normalizedSportsTeams = normalizeSportsTeamsField(sportsEventData?.teams)
-  const sportsAssets = await normalizeSportsTeamAssets(normalizedSportsTeams)
-  const sportsTeams = sportsAssets.teams
-  const sportsTeamLogoUrls = sportsAssets.logo_urls
+  let normalizedSportsTeams = normalizeSportsTeamsField(sportsEventData?.teams)
   const existingEventRows = await db
     .select({
       id: eventsTable.id,
@@ -956,11 +1018,96 @@ async function processEvent(
       series_slug: eventsTable.series_slug,
       series_id: eventsTable.series_id,
       series_recurrence: eventsTable.series_recurrence,
+      livestream_url: eventsTable.livestream_url,
+      is_polymarket_mirror: eventsTable.is_polymarket_mirror,
     })
     .from(eventsTable)
     .where(eq(eventsTable.slug, eventSlug))
     .limit(1)
   const existingEvent = existingEventRows[0]
+  const existingEventSportsRows = existingEvent
+    ? await db
+        .select({
+          sports_source_provider: eventSportsTable.sports_source_provider,
+          sports_source_event_id: eventSportsTable.sports_source_event_id,
+          sports_source_game_id: eventSportsTable.sports_source_game_id,
+          sports_source_league_id: eventSportsTable.sports_source_league_id,
+          sports_source_league_label: eventSportsTable.sports_source_league_label,
+          sports_source_match_confidence: eventSportsTable.sports_source_match_confidence,
+          sports_source_payload: eventSportsTable.sports_source_payload,
+          sports_source_selected_at: eventSportsTable.sports_source_selected_at,
+        })
+        .from(eventSportsTable)
+        .where(eq(eventSportsTable.event_id, existingEvent.id))
+        .limit(1)
+    : []
+  const existingEventSports = existingEventSportsRows[0]
+  const existingSportsSourceProvider = normalizeSingleSportsSourceProvider(
+    existingEventSports?.sports_source_provider ?? null,
+  )
+  const hasStoredSportsSourceIdentity = Boolean(
+    existingSportsSourceProvider
+    && (existingEventSports.sports_source_event_id || existingEventSports.sports_source_game_id),
+  )
+  const sportsSourceCandidate = await maybeInferSportsSourceCandidate({
+    metadata,
+    eventData,
+    sportsEventData,
+    sportsMarketData,
+    normalizedEventTags,
+    teams: normalizedSportsTeams,
+    hasSourceIdentity: Boolean(sportsSourceEventId || sportsSourceGameId || hasStoredSportsSourceIdentity),
+    eventTitle: normalizedEventTitle,
+    eventSlug,
+    eventDate: normalizedEventTags.has('esports')
+      ? sportsStartTime ?? sportsEventDate ?? normalizedEndDate
+      : sportsEventDate ?? sportsStartTime ?? normalizedEndDate,
+    runtimeState,
+  })
+  if (sportsSourceCandidate) {
+    sportsSourceProvider = sportsSourceProvider ?? sportsSourceCandidate.provider
+    sportsSourceEventId = sportsSourceEventId ?? sportsSourceCandidate.eventId
+    sportsSourceGameId = sportsSourceGameId ?? sportsSourceCandidate.gameId
+    sportsSourceLeagueId = sportsSourceLeagueId ?? sportsSourceCandidate.leagueId
+    sportsSourceLeagueLabel = sportsSourceLeagueLabel ?? sportsSourceCandidate.leagueName
+    sportsSourceMatchConfidence = sportsSourceMatchConfidence ?? formatSportsSourceConfidence(sportsSourceCandidate.confidence)
+    sportsSourcePayload = sportsSourcePayload ?? buildSportsSourcePayload(sportsSourceCandidate, 'automatic')
+    sportsStartTime = sportsStartTime ?? sportsSourceCandidate.startTime
+    sportsSportSlug = sportsSportSlug ?? sportsSourceCandidate.sportSlug
+    sportsLeagueLabel = sportsLeagueLabel ?? sportsSourceCandidate.leagueName
+    sportsLeagueSlug = sportsLeagueSlug
+      ?? sportsSourceCandidate.leagueSlug
+      ?? (sportsSourceCandidate.leagueName ? slugifyText(sportsSourceCandidate.leagueName) || null : null)
+    incomingLivestreamUrl = incomingLivestreamUrl ?? sportsSourceCandidate.livestreamUrl
+    normalizedSportsTeams = normalizedSportsTeams ?? buildSportsSourceTeamRecords(sportsSourceCandidate)
+  }
+  if (existingEventSports) {
+    const mergedSportsSource = mergeSportsSourceFieldsWithExisting({
+      current: {
+        provider: sportsSourceProvider,
+        eventId: sportsSourceEventId,
+        gameId: sportsSourceGameId,
+        leagueId: sportsSourceLeagueId,
+        leagueLabel: sportsSourceLeagueLabel,
+        matchConfidence: sportsSourceMatchConfidence,
+        payload: sportsSourcePayload,
+      },
+      existing: existingEventSports,
+    })
+    sportsSourceProvider = mergedSportsSource.provider
+    sportsSourceEventId = mergedSportsSource.eventId
+    sportsSourceGameId = mergedSportsSource.gameId
+    sportsSourceLeagueId = mergedSportsSource.leagueId
+    sportsSourceLeagueLabel = mergedSportsSource.leagueLabel
+    sportsSourceMatchConfidence = mergedSportsSource.matchConfidence
+    sportsSourcePayload = mergedSportsSource.payload
+  }
+  const sportsSourceSelectedAt = sportsSourceProvider || sportsSourceEventId || sportsSourceGameId
+    ? existingEventSports?.sports_source_selected_at ?? new Date()
+    : null
+  const sportsAssets = await normalizeSportsTeamAssets(normalizedSportsTeams)
+  const sportsTeams = sportsAssets.teams
+  const sportsTeamLogoUrls = sportsAssets.logo_urls
 
   if (existingEvent) {
     const updatePayload: Record<string, any> = {}
@@ -1048,6 +1195,10 @@ async function processEvent(
       eventChanged = true
       listAffectingChange = true
     }
+    if (incomingLivestreamUrl && !(existingEvent.livestream_url ?? '').trim()) {
+      updatePayload.livestream_url = incomingLivestreamUrl
+      eventChanged = true
+    }
 
     if (Object.keys(updatePayload).length > 0) {
       try {
@@ -1097,6 +1248,14 @@ async function processEvent(
       sports_tags: sportsTags,
       sports_teams: sportsTeams,
       sports_team_logo_urls: sportsTeamLogoUrls,
+      sports_source_provider: sportsSourceProvider,
+      sports_source_event_id: sportsSourceEventId,
+      sports_source_game_id: sportsSourceGameId,
+      sports_source_league_id: sportsSourceLeagueId,
+      sports_source_league_label: sportsSourceLeagueLabel,
+      sports_source_match_confidence: sportsSourceMatchConfidence,
+      sports_source_payload: sportsSourcePayload,
+      sports_source_selected_at: sportsSourceSelectedAt,
     })
 
     console.log(`Event ${eventSlug} already exists, using existing ID: ${existingEvent.id}`)
@@ -1105,6 +1264,7 @@ async function processEvent(
       eventChanged,
       listAffectingChange,
       urlSetChanged: false,
+      sportsSourceCandidate,
     }
   }
 
@@ -1125,6 +1285,7 @@ async function processEvent(
     creator: creatorAddress,
     icon_url: iconUrl,
     show_market_icons: eventData.show_market_icons !== false,
+    is_polymarket_mirror: isPolymarketMirror,
     enable_neg_risk: enableNegRiskFlag,
     neg_risk_augmented: negRiskAugmentedFlag,
     neg_risk: eventNegRiskFlag,
@@ -1136,6 +1297,7 @@ async function processEvent(
     additional_context_updated_at: nextAdditionalContextUpdatedAtIso
       ? new Date(nextAdditionalContextUpdatedAtIso)
       : null,
+    livestream_url: incomingLivestreamUrl,
     rules: eventData.rules || null,
     start_date: sportsStartTime ? new Date(sportsStartTime) : null,
     end_date: normalizedEndDate ? new Date(normalizedEndDate) : null,
@@ -1186,6 +1348,14 @@ async function processEvent(
     sports_tags: sportsTags,
     sports_teams: sportsTeams,
     sports_team_logo_urls: sportsTeamLogoUrls,
+    sports_source_provider: sportsSourceProvider,
+    sports_source_event_id: sportsSourceEventId,
+    sports_source_game_id: sportsSourceGameId,
+    sports_source_league_id: sportsSourceLeagueId,
+    sports_source_league_label: sportsSourceLeagueLabel,
+    sports_source_match_confidence: sportsSourceMatchConfidence,
+    sports_source_payload: sportsSourcePayload,
+    sports_source_selected_at: sportsSourceSelectedAt,
   })
 
   return {
@@ -1193,6 +1363,7 @@ async function processEvent(
     eventChanged: true,
     listAffectingChange: true,
     urlSetChanged: true,
+    sportsSourceCandidate,
   }
 }
 
@@ -1201,16 +1372,25 @@ async function processMarketData(
   metadata: any,
   eventId: string,
   timestamps: MarketTimestamps,
+  sportsSourceCandidate: SportsSourceCandidate | null,
 ): Promise<ProcessMarketDataResult> {
   if (!eventId) {
     throw new Error(`Invalid eventId: ${eventId}. Event must be created first.`)
   }
+
+  const hasPolymarketConditionIdField = Object.hasOwn(metadata, 'mirror_condition_id')
+  const hasPolymarketTokenIdsField = Object.hasOwn(metadata, 'mirror_outcome_token_ids')
+  const polymarketConditionId = normalizeHexField(metadata.mirror_condition_id)
+  const polymarketTokenIds = normalizePolymarketOutcomeTokenIds(metadata.mirror_outcome_token_ids)
+  const shouldSyncPolymarketTokenIds = hasPolymarketTokenIdsField
+    || (hasPolymarketConditionIdField && polymarketConditionId == null)
 
   const existingMarketRows = await db
     .select({
       condition_id: marketsTable.condition_id,
       event_id: marketsTable.event_id,
       is_resolved: marketsTable.is_resolved,
+      polymarket_condition_id: marketsTable.polymarket_condition_id,
       metadata: marketsTable.metadata,
       updated_at: marketsTable.updated_at,
       slug: marketsTable.slug,
@@ -1219,6 +1399,18 @@ async function processMarketData(
     .where(eq(marketsTable.condition_id, market.id))
     .limit(1)
   const existingMarket = existingMarketRows[0]
+  const existingOutcomeRows = existingMarket && shouldSyncPolymarketTokenIds
+    ? await db
+        .select({
+          outcomeIndex: outcomesTable.outcome_index,
+          polymarketTokenId: outcomesTable.polymarket_token_id,
+          tokenId: outcomesTable.token_id,
+        })
+        .from(outcomesTable)
+        .where(eq(outcomesTable.condition_id, market.id))
+    : []
+  const polymarketTokenIdsChanged = shouldSyncPolymarketTokenIds
+    && hasPolymarketOutcomeTokenMappingChanged(polymarketTokenIds, existingOutcomeRows)
   const acceptingOrdersFlag = resolveMetadataStatusFlag(
     metadata,
     ['acceptingOrders', 'accepting_orders'],
@@ -1243,6 +1435,11 @@ async function processMarketData(
     || incomingUpdatedAtMs > existingUpdatedAtMs
     || existingMarket.event_id !== eventId
     || existingMarket.is_resolved !== market.resolved
+    || (
+      hasPolymarketConditionIdField
+      && (existingMarket.polymarket_condition_id ?? null) !== (polymarketConditionId ?? null)
+    )
+    || polymarketTokenIdsChanged
     || existingAcceptingOrdersFlag !== acceptingOrdersFlag
     || existingArchivedFlag !== archivedFlag
 
@@ -1267,11 +1464,23 @@ async function processMarketData(
     const payoutsChanged = market.resolved
       ? await syncMissingOnChainResolvedPayouts(market.id)
       : false
+    let mirrorStatusChanged: boolean
+    try {
+      mirrorStatusChanged = await db.transaction(
+        transaction => syncEventPolymarketMirrorStatus(eventId, transaction),
+      )
+    }
+    catch (error) {
+      throw new RetryableMarketSyncError(
+        `Failed to synchronize Polymarket mirror status for event ${eventId}.`,
+        error,
+      )
+    }
 
     return {
       eventIdForStatusUpdate,
       eventIdsForHiddenSync: [],
-      marketChanged: payoutsChanged,
+      marketChanged: payoutsChanged || mirrorStatusChanged,
       urlSetChanged: false,
     }
   }
@@ -1322,11 +1531,26 @@ async function processMarketData(
   const sportsStartTime = normalizeTimestamp(sportsMarketData?.start_time)
   const sportsSeriesColor = normalizeStringField(sportsMarketData?.series_color)
   const sportsEventSlug = normalizeStringField(sportsMarketData?.event_slug)
+  const sportsSourceProvider = normalizeSingleSportsSourceProvider(normalizeStringField(sportsMarketData?.source_provider))
+    ?? sportsSourceCandidate?.provider
+    ?? null
+  const sportsSourceEventId = normalizeStringIdField(sportsMarketData?.source_event_id) ?? sportsSourceCandidate?.eventId ?? null
+  const sportsSourceGameId = normalizeStringIdField(sportsMarketData?.source_game_id) ?? sportsSourceCandidate?.gameId ?? null
+  const sportsSourceLeagueId = normalizeStringIdField(sportsMarketData?.source_league_id) ?? sportsSourceCandidate?.leagueId ?? null
+  const sportsSourceLeagueLabel = normalizeStringField(sportsMarketData?.source_league_label) ?? sportsSourceCandidate?.leagueName ?? null
+  const sportsSourceMarketId = normalizeStringIdField(sportsMarketData?.source_market_id)
+  const sportsSourceMatchConfidence = normalizeConfidenceField(sportsMarketData?.source_match_confidence)
+    ?? (sportsSourceCandidate ? formatSportsSourceConfidence(sportsSourceCandidate.confidence) : null)
+  const sportsSourcePayload = normalizeObjectField(sportsMarketData?.source_payload)
+    ?? (sportsSourceCandidate ? buildSportsSourcePayload(sportsSourceCandidate, 'automatic') : null)
   const normalizedSportsTeams = normalizeSportsTeamsField(sportsMarketData?.teams)
   const sportsAssets = await normalizeSportsTeamAssets(normalizedSportsTeams)
   const sportsTeams = sportsAssets.teams
   const sportsTeamLogoUrls = sportsAssets.logo_urls
   const normalizedMarketEndTime = normalizeTimestamp(metadata.end_time)
+  const storedMetadata = { ...metadata }
+  delete storedMetadata.mirror_condition_id
+  delete storedMetadata.mirror_outcome_token_ids
 
   const conditionUpdate: Record<string, any> = {}
   if (umaRequestTxHash) {
@@ -1356,6 +1580,9 @@ async function processMarketData(
 
   const marketData: typeof marketsTable.$inferInsert = {
     condition_id: market.id,
+    polymarket_condition_id: hasPolymarketConditionIdField
+      ? polymarketConditionId ?? null
+      : existingMarket?.polymarket_condition_id ?? null,
     event_id: eventId,
     is_resolved: market.resolved,
     is_active: !market.resolved && !archivedFlag,
@@ -1363,7 +1590,7 @@ async function processMarketData(
     slug: String(metadata.slug),
     short_title: normalizeStringField(metadata.short_title),
     icon_url: iconUrl,
-    metadata: JSON.stringify(metadata),
+    metadata: JSON.stringify(storedMetadata),
     question: question ?? null,
     market_rules: marketRules ?? null,
     resolution_source: resolutionSource ?? null,
@@ -1383,13 +1610,60 @@ async function processMarketData(
     marketData.end_time = new Date(normalizedMarketEndTime)
   }
 
-  await db
-    .insert(marketsTable)
-    .values(marketData)
-    .onConflictDoUpdate({
-      target: [marketsTable.condition_id],
-      set: marketData,
+  try {
+    await db.transaction(async (transaction) => {
+      await transaction
+        .insert(marketsTable)
+        .values(marketData)
+        .onConflictDoUpdate({
+          target: [marketsTable.condition_id],
+          set: marketData,
+        })
+
+      if (metadata.outcomes?.length > 0) {
+        await processOutcomes(
+          market.id,
+          metadata.outcomes,
+          polymarketTokenIds,
+          shouldSyncPolymarketTokenIds,
+          transaction,
+        )
+        if (shouldSyncPolymarketTokenIds) {
+          for (const row of existingOutcomeRows) {
+            if (row.outcomeIndex >= metadata.outcomes.length && row.polymarketTokenId != null) {
+              await transaction
+                .update(outcomesTable)
+                .set({ polymarket_token_id: null, updated_at: new Date() })
+                .where(eq(outcomesTable.token_id, row.tokenId))
+            }
+          }
+        }
+      }
+      else if (shouldSyncPolymarketTokenIds) {
+        for (const row of existingOutcomeRows) {
+          await transaction
+            .update(outcomesTable)
+            .set({
+              polymarket_token_id: polymarketTokenIds[row.outcomeIndex] ?? null,
+              updated_at: new Date(),
+            })
+            .where(eq(outcomesTable.token_id, row.tokenId))
+        }
+      }
+
+      for (const mirrorEventId of Array.from(
+        new Set([eventId, existingMarket?.event_id].filter((value): value is string => Boolean(value))),
+      )) {
+        await syncEventPolymarketMirrorStatus(mirrorEventId, transaction)
+      }
     })
+  }
+  catch (error) {
+    throw new RetryableMarketSyncError(
+      `Failed to atomically synchronize Polymarket mappings for market ${market.id}.`,
+      error,
+    )
+  }
 
   await upsertMarketSportsMetadata(market.id, {
     event_id: eventId,
@@ -1407,11 +1681,16 @@ async function processMarketData(
     sports_event_slug: sportsEventSlug,
     sports_teams: sportsTeams,
     sports_team_logo_urls: sportsTeamLogoUrls,
+    sports_source_provider: sportsSourceProvider,
+    sports_source_event_id: sportsSourceEventId,
+    sports_source_game_id: sportsSourceGameId,
+    sports_source_league_id: sportsSourceLeagueId,
+    sports_source_league_label: sportsSourceLeagueLabel,
+    sports_source_market_id: sportsSourceMarketId,
+    sports_source_match_confidence: sportsSourceMatchConfidence,
+    sports_source_payload: sportsSourcePayload,
   })
 
-  if (!marketAlreadyExists && metadata.outcomes?.length > 0) {
-    await processOutcomes(market.id, metadata.outcomes)
-  }
   if (market.resolved) {
     await syncMissingOnChainResolvedPayouts(market.id)
   }
@@ -1474,13 +1753,12 @@ async function updateEventStatusesFromMarketsBatch(eventIds: string[]) {
     const bucket = countsByEventId.get(eventId)!
     bucket.total += 1
 
-    const isActiveMarket = market.is_active === true
-      || (market.is_active == null && market.is_resolved === false)
+    const isActiveMarket = market.is_active || (market.is_active == null && !market.is_resolved)
     if (isActiveMarket) {
       bucket.active += 1
     }
 
-    const isUnresolvedMarket = market.is_resolved === false || market.is_resolved == null
+    const isUnresolvedMarket = !market.is_resolved
     if (isUnresolvedMarket) {
       bucket.unresolved += 1
     }
@@ -1609,15 +1887,398 @@ function getMarketTimestamps(market: SubgraphCondition): MarketTimestamps {
   }
 }
 
-async function processOutcomes(conditionId: string, outcomes: any[]) {
+async function loadRuntimeSportsSourceSettings(runtimeState: SyncRuntimeState) {
+  runtimeState.sportsSourceSettingsPromise ??= loadSportsSourceProviderSettings().catch((error) => {
+    console.error('Failed to load sports source provider settings:', error)
+    return { configured: false } satisfies SportsSourceProviderSettings
+  })
+  return runtimeState.sportsSourceSettingsPromise
+}
+
+function hasSportsOrEsportsTag(normalizedEventTags: Map<string, NormalizedEventTag>) {
+  return normalizedEventTags.has('sports') || normalizedEventTags.has('esports')
+}
+
+function readOutcomeTexts(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [] as string[]
+  }
+
+  const out: string[] = []
+  for (const item of value) {
+    const normalized = typeof item === 'string'
+      ? normalizeStringField(item)
+      : item && typeof item === 'object' && !Array.isArray(item)
+        ? normalizeStringField((item as Record<string, unknown>).outcome)
+        ?? normalizeStringField((item as Record<string, unknown>).name)
+        ?? normalizeStringField((item as Record<string, unknown>).title)
+        ?? normalizeStringField((item as Record<string, unknown>).label)
+        : null
+    if (normalized) {
+      out.push(normalized)
+    }
+  }
+  return out
+}
+
+export function mergeSportsSourceFieldsWithExisting(input: {
+  current: {
+    provider: string | null
+    eventId: string | null
+    gameId: string | null
+    leagueId: string | null
+    leagueLabel: string | null
+    matchConfidence: string | null
+    payload: Record<string, unknown> | null
+  }
+  existing: {
+    sports_source_provider: string | null
+    sports_source_event_id: string | null
+    sports_source_game_id: string | null
+    sports_source_league_id: string | null
+    sports_source_league_label: string | null
+    sports_source_match_confidence: string | null
+    sports_source_payload: unknown
+  }
+}) {
+  const currentProvider = normalizeSingleSportsSourceProvider(input.current.provider)
+  const existingProvider = normalizeSingleSportsSourceProvider(input.existing.sports_source_provider)
+  const existingSourceIdentityKey = buildSportsSourceIdentityKey({
+    provider: existingProvider,
+    eventId: input.existing.sports_source_event_id ?? null,
+    gameId: input.existing.sports_source_game_id ?? null,
+    leagueId: input.existing.sports_source_league_id ?? null,
+  })
+  const hasCurrentSourceIdentity = Boolean(
+    currentProvider || input.current.eventId || input.current.gameId || input.current.leagueId,
+  )
+  const canReuseExistingSourceIdentity = Boolean(existingProvider && (!currentProvider || currentProvider === existingProvider))
+  const mergedProvider = currentProvider ?? existingProvider
+  const provisionalEventId = input.current.eventId ?? (
+    canReuseExistingSourceIdentity ? input.existing.sports_source_event_id ?? null : null
+  )
+  const provisionalGameId = input.current.gameId ?? (
+    canReuseExistingSourceIdentity ? input.existing.sports_source_game_id ?? null : null
+  )
+  const provisionalLeagueId = input.current.leagueId ?? (
+    canReuseExistingSourceIdentity ? input.existing.sports_source_league_id ?? null : null
+  )
+  const mergedSourceIdentityKey = buildSportsSourceIdentityKey({
+    provider: mergedProvider,
+    eventId: provisionalEventId,
+    gameId: provisionalGameId,
+    leagueId: provisionalLeagueId,
+  })
+  const sourceIdentityChanged = hasCurrentSourceIdentity && mergedSourceIdentityKey !== existingSourceIdentityKey
+  const mayReuseExistingSourceDetails = !sourceIdentityChanged && canReuseExistingSourceIdentity
+  const mergedEventId = input.current.eventId ?? (
+    mayReuseExistingSourceDetails ? input.existing.sports_source_event_id ?? null : null
+  )
+  const mergedGameId = input.current.gameId ?? (
+    mayReuseExistingSourceDetails ? input.existing.sports_source_game_id ?? null : null
+  )
+  const mergedLeagueId = input.current.leagueId ?? (
+    mayReuseExistingSourceDetails ? input.existing.sports_source_league_id ?? null : null
+  )
+
+  return {
+    provider: mergedProvider,
+    eventId: mergedEventId,
+    gameId: mergedGameId,
+    leagueId: mergedLeagueId,
+    leagueLabel: input.current.leagueLabel ?? (
+      mayReuseExistingSourceDetails ? input.existing.sports_source_league_label ?? null : null
+    ),
+    matchConfidence: input.current.matchConfidence ?? (
+      mayReuseExistingSourceDetails ? input.existing.sports_source_match_confidence ?? null : null
+    ),
+    payload: input.current.payload ?? (
+      mayReuseExistingSourceDetails ? normalizeObjectField(input.existing.sports_source_payload) : null
+    ),
+  }
+}
+
+function formatSportsSourceConfidence(value: number) {
+  return Math.min(1, Math.max(0, value)).toFixed(4)
+}
+
+function buildSportsSourcePayload(candidate: SportsSourceCandidate, selection: 'automatic' | 'manual') {
+  return {
+    selection,
+    provider: candidate.provider,
+    eventId: candidate.eventId,
+    eventName: candidate.eventName ?? null,
+    gameId: candidate.gameId,
+    leagueId: candidate.leagueId,
+    leagueName: candidate.leagueName,
+    startTime: candidate.startTime,
+    confidence: candidate.confidence,
+    matchReason: candidate.matchReason,
+    livestreamUrl: candidate.livestreamUrl,
+    livestreamEmbedUrl: candidate.livestreamEmbedUrl,
+    livestreamProvider: candidate.livestreamProvider,
+    livestreamOfficial: candidate.livestreamOfficial,
+    raw: candidate.raw,
+  }
+}
+
+function buildSportsSourceIdentityKey(input: {
+  provider: string | null
+  eventId: string | null
+  gameId: string | null
+  leagueId: string | null
+}) {
+  return [
+    input.provider?.trim().toLowerCase() ?? '',
+    input.eventId?.trim() ?? '',
+    input.gameId?.trim() ?? '',
+    input.leagueId?.trim() ?? '',
+  ].join('\u0000')
+}
+
+export function buildEventSportsSourceUpsertPayload(input: Pick<EventSportsMetadataInput, | 'sports_source_provider'
+  | 'sports_source_event_id'
+  | 'sports_source_game_id'
+  | 'sports_source_league_id'
+  | 'sports_source_league_label'
+  | 'sports_source_match_confidence'
+  | 'sports_source_payload'
+  | 'sports_source_selected_at'>) {
+  const hasSportsSourceData = [
+    input.sports_source_provider,
+    input.sports_source_event_id,
+    input.sports_source_game_id,
+    input.sports_source_league_id,
+    input.sports_source_league_label,
+    input.sports_source_match_confidence,
+    input.sports_source_payload,
+    input.sports_source_selected_at,
+  ].some(value => value !== null)
+
+  if (!hasSportsSourceData) {
+    return null
+  }
+
+  return {
+    sports_source_provider: input.sports_source_provider,
+    sports_source_event_id: input.sports_source_event_id,
+    sports_source_game_id: input.sports_source_game_id,
+    sports_source_league_id: input.sports_source_league_id,
+    sports_source_league_label: input.sports_source_league_label,
+    sports_source_match_confidence: input.sports_source_match_confidence,
+    sports_source_payload: input.sports_source_payload,
+    sports_source_selected_at: input.sports_source_selected_at,
+  }
+}
+
+export function buildMarketSportsSourceUpsertPayload(input: Pick<MarketSportsMetadataInput, | 'sports_source_provider'
+  | 'sports_source_event_id'
+  | 'sports_source_game_id'
+  | 'sports_source_league_id'
+  | 'sports_source_league_label'
+  | 'sports_source_market_id'
+  | 'sports_source_match_confidence'
+  | 'sports_source_payload'>) {
+  const hasSportsSourceData = [
+    input.sports_source_provider,
+    input.sports_source_event_id,
+    input.sports_source_game_id,
+    input.sports_source_league_id,
+    input.sports_source_league_label,
+    input.sports_source_market_id,
+    input.sports_source_match_confidence,
+    input.sports_source_payload,
+  ].some(value => value !== null)
+
+  if (!hasSportsSourceData) {
+    return null
+  }
+
+  return {
+    sports_source_provider: input.sports_source_provider,
+    sports_source_event_id: input.sports_source_event_id,
+    sports_source_game_id: input.sports_source_game_id,
+    sports_source_league_id: input.sports_source_league_id,
+    sports_source_league_label: input.sports_source_league_label,
+    sports_source_market_id: input.sports_source_market_id,
+    sports_source_match_confidence: input.sports_source_match_confidence,
+    sports_source_payload: input.sports_source_payload,
+  }
+}
+
+function buildSportsSourceTeamRecords(candidate: SportsSourceCandidate): Record<string, unknown>[] | null {
+  const teams: Record<string, unknown>[] = []
+  for (const team of [candidate.homeTeam, candidate.awayTeam]) {
+    if (!team?.name) {
+      continue
+    }
+    const record: Record<string, unknown> = { name: team.name }
+    if (team.abbreviation) {
+      record.abbreviation = team.abbreviation
+    }
+    if (team.slug) {
+      record.slug = team.slug
+    }
+    if (team.logo) {
+      record.logo = team.logo
+    }
+    if (team.hostStatus) {
+      record.hostStatus = team.hostStatus
+    }
+    teams.push(record)
+  }
+  return teams.length > 0 ? teams : null
+}
+
+async function maybeInferSportsSourceCandidate(args: {
+  metadata: any
+  eventData: any
+  sportsEventData: any
+  sportsMarketData: any
+  normalizedEventTags: Map<string, NormalizedEventTag>
+  teams: Array<{ name?: string | null, abbreviation?: string | null }> | null
+  hasSourceIdentity: boolean
+  eventTitle: string
+  eventSlug: string
+  eventDate: string | null
+  runtimeState: SyncRuntimeState
+}) {
+  if (args.hasSourceIdentity || !hasSportsOrEsportsTag(args.normalizedEventTags)) {
+    return null
+  }
+
+  const settings = await loadRuntimeSportsSourceSettings(args.runtimeState)
+  if (!settings.configured) {
+    return null
+  }
+
+  const tags = Array.from(args.normalizedEventTags.values()).map(tag => tag.name)
+  const description = [
+    normalizeStringField(args.metadata?.description),
+    normalizeStringField(args.metadata?.market_rules),
+    normalizeStringField(args.metadata?.resolution_source),
+    normalizeStringField(args.eventData?.rules),
+  ].filter(Boolean).join('\n')
+
+  try {
+    const candidates = await findSportsEvents({
+      title: args.eventTitle,
+      question: normalizeStringField(args.metadata?.question),
+      outcomes: readOutcomeTexts(args.metadata?.outcomes),
+      teams: args.teams,
+      description,
+      slug: normalizeStringField(args.metadata?.slug) ?? args.eventSlug,
+      tags,
+      date: args.eventDate,
+      sport: normalizeStringField(args.sportsEventData?.sport_slug) ?? normalizeStringField(args.sportsMarketData?.sport_slug),
+      league: normalizeStringField(args.sportsEventData?.league_slug)
+        ?? normalizeStringField(args.sportsEventData?.league)
+        ?? normalizeStringField(args.sportsMarketData?.league_slug)
+        ?? normalizeStringField(args.sportsMarketData?.league)
+        ?? normalizeStringField(args.eventData?.league),
+      series: normalizeStringField(args.eventData?.series_slug),
+      limit: 5,
+      auth: settings,
+    })
+    const best = candidates[0]
+    if (!best || best.confidence < AUTO_SPORTS_SOURCE_CONFIDENCE_THRESHOLD) {
+      return null
+    }
+    return best
+  }
+  catch (error) {
+    console.error('Failed to infer sports source candidate:', error)
+    return null
+  }
+}
+
+async function syncEventPolymarketMirrorStatus(
+  eventId: string,
+  database: MarketMappingDatabase = db,
+) {
+  const mirrorMarketRows = await database
+    .select({ conditionId: marketsTable.condition_id })
+    .from(marketsTable)
+    .where(and(
+      eq(marketsTable.event_id, eventId),
+      isNotNull(marketsTable.polymarket_condition_id),
+    ))
+    .limit(1)
+  const eventRows = await database
+    .select({ isPolymarketMirror: eventsTable.is_polymarket_mirror })
+    .from(eventsTable)
+    .where(eq(eventsTable.id, eventId))
+    .limit(1)
+  const shouldBePolymarketMirror = mirrorMarketRows.length > 0
+  const currentValue = eventRows[0]?.isPolymarketMirror
+  if (currentValue == null || currentValue === shouldBePolymarketMirror) {
+    return false
+  }
+
+  await database
+    .update(eventsTable)
+    .set({ is_polymarket_mirror: shouldBePolymarketMirror, updated_at: new Date() })
+    .where(eq(eventsTable.id, eventId))
+
+  return true
+}
+
+async function processOutcomes(
+  conditionId: string,
+  outcomes: any[],
+  polymarketTokenIds: unknown,
+  syncPolymarketTokenIds: boolean,
+  database: MarketMappingDatabase = db,
+) {
   const outcomeData = outcomes.map((outcome, index) => ({
     condition_id: conditionId,
     outcome_text: outcome.outcome,
     outcome_index: index,
     token_id: outcome.token_id || (`${conditionId}${index}`),
+    polymarket_token_id: normalizeStringIdField(
+      Array.isArray(polymarketTokenIds) ? polymarketTokenIds[index] : null,
+    ),
   }))
 
-  await db.insert(outcomesTable).values(outcomeData)
+  const updatePayload: Record<string, any> = {
+    outcome_text: sql`EXCLUDED.outcome_text`,
+    outcome_index: sql`EXCLUDED.outcome_index`,
+    updated_at: new Date(),
+  }
+  if (syncPolymarketTokenIds) {
+    updatePayload.polymarket_token_id = sql`EXCLUDED.polymarket_token_id`
+  }
+
+  await database
+    .insert(outcomesTable)
+    .values(outcomeData)
+    .onConflictDoUpdate({
+      target: outcomesTable.token_id,
+      set: updatePayload,
+    })
+}
+
+export function normalizePolymarketOutcomeTokenIds(value: unknown) {
+  return Array.isArray(value)
+    ? value.map(normalizeStringIdField)
+    : []
+}
+
+export function hasPolymarketOutcomeTokenMappingChanged(
+  incomingTokenIds: Array<string | null>,
+  existingOutcomes: Array<{ outcomeIndex: number, polymarketTokenId: string | null }>,
+) {
+  const existingByIndex = new Map(
+    existingOutcomes.map(outcome => [outcome.outcomeIndex, outcome.polymarketTokenId]),
+  )
+  const indexes = new Set([
+    ...incomingTokenIds.keys(),
+    ...existingByIndex.keys(),
+  ])
+
+  return Array.from(indexes).some(index => (
+    (incomingTokenIds[index] ?? null) !== (existingByIndex.get(index) ?? null)
+  ))
 }
 
 function normalizeIncomingTags(tagNames: any[] | null | undefined) {
@@ -2010,6 +2671,11 @@ async function upsertEventSportsMetadata(eventId: string, input: EventSportsMeta
     payload.sports_team_logo_urls = input.sports_team_logo_urls
     hasSportsData = true
   }
+  const sportsSourcePayload = buildEventSportsSourceUpsertPayload(input)
+  if (sportsSourcePayload) {
+    Object.assign(payload, sportsSourcePayload)
+    hasSportsData = true
+  }
 
   if (!hasSportsData) {
     return
@@ -2091,6 +2757,11 @@ async function upsertMarketSportsMetadata(conditionId: string, input: MarketSpor
     payload.sports_team_logo_urls = input.sports_team_logo_urls
     hasSportsData = true
   }
+  const sportsSourcePayload = buildMarketSportsSourceUpsertPayload(input)
+  if (sportsSourcePayload) {
+    Object.assign(payload, sportsSourcePayload)
+    hasSportsData = true
+  }
 
   if (!hasSportsData) {
     return
@@ -2113,6 +2784,57 @@ function normalizeStringField(value: unknown): string | null {
   }
   const trimmed = value.trim()
   return trimmed.length > 0 ? trimmed : null
+}
+
+function normalizeStringIdField(value: unknown): string | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return String(Math.trunc(value))
+  }
+  return normalizeStringField(value)
+}
+
+function normalizeConfidenceField(value: unknown): string | null {
+  if (value === null || value === undefined || value === '') {
+    return null
+  }
+
+  const numericValue = typeof value === 'number'
+    ? value
+    : typeof value === 'string'
+      ? Number(value.trim())
+      : Number.NaN
+
+  if (!Number.isFinite(numericValue) || numericValue < 0 || numericValue > 1) {
+    return null
+  }
+
+  return numericValue.toFixed(4)
+}
+
+function normalizeObjectField(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null
+  }
+
+  return value as Record<string, unknown>
+}
+
+function normalizeLivestreamUrl(value: unknown): string | null {
+  const normalized = normalizeStringField(value)
+  if (!normalized) {
+    return null
+  }
+
+  try {
+    const url = new URL(normalized)
+    if (url.protocol !== 'https:') {
+      return null
+    }
+    return url.toString()
+  }
+  catch {
+    return null
+  }
 }
 
 function normalizeSportsTeamsField(value: unknown): Record<string, unknown>[] | null {
@@ -2470,88 +3192,4 @@ function normalizeBooleanField(value: unknown): boolean {
     return value !== 0
   }
   return Boolean(value)
-}
-
-async function tryAcquireSyncLock(): Promise<boolean> {
-  const staleThreshold = new Date(Date.now() - SYNC_RUNNING_STALE_MS)
-  const runningPayload = {
-    service_name: 'market_sync',
-    subgraph_name: 'pnl',
-    status: 'running' as const,
-    error_message: null,
-  }
-
-  try {
-    const claimedRows = await db
-      .update(subgraph_syncs)
-      .set(runningPayload)
-      .where(and(
-        eq(subgraph_syncs.service_name, 'market_sync'),
-        eq(subgraph_syncs.subgraph_name, 'pnl'),
-        or(
-          ne(subgraph_syncs.status, 'running'),
-          lt(subgraph_syncs.updated_at, staleThreshold),
-        ),
-      ))
-      .returning({ id: subgraph_syncs.id })
-
-    if (claimedRows.length > 0) {
-      return true
-    }
-    const existingRows = await db
-      .select({ id: subgraph_syncs.id })
-      .from(subgraph_syncs)
-      .where(and(
-        eq(subgraph_syncs.service_name, 'market_sync'),
-        eq(subgraph_syncs.subgraph_name, 'pnl'),
-      ))
-      .limit(1)
-
-    if (existingRows.length > 0) {
-      return false
-    }
-
-    throw new Error('Missing sync state row for market_sync/pnl. Run the latest database migrations.')
-  }
-  catch (claimError: any) {
-    throw new Error(`Failed to claim sync lock: ${claimError?.message ?? String(claimError)}`)
-  }
-}
-
-async function updateSyncStatus(
-  status: 'running' | 'completed' | 'error',
-  errorMessage?: string | null,
-  totalProcessed?: number,
-) {
-  const updateData: any = {
-    service_name: 'market_sync',
-    subgraph_name: 'pnl',
-    status,
-  }
-
-  if (errorMessage !== undefined) {
-    updateData.error_message = errorMessage
-  }
-
-  if (totalProcessed !== undefined) {
-    updateData.total_processed = totalProcessed
-  }
-
-  try {
-    const updatedRows = await db
-      .update(subgraph_syncs)
-      .set(updateData)
-      .where(and(
-        eq(subgraph_syncs.service_name, 'market_sync'),
-        eq(subgraph_syncs.subgraph_name, 'pnl'),
-      ))
-      .returning({ id: subgraph_syncs.id })
-
-    if (updatedRows.length === 0) {
-      console.error('Failed to update sync status: missing sync state row for market_sync/pnl')
-    }
-  }
-  catch (error: any) {
-    console.error(`Failed to update sync status to ${status}:`, error)
-  }
 }

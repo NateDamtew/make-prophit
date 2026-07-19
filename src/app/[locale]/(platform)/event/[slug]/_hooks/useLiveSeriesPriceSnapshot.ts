@@ -40,7 +40,7 @@ interface LiveSeriesPriceSnapshotRequest {
   topic: string
   subscriptionSymbol: string
   activeWindowMinutes: number
-  explicitEndTimestamp: number
+  explicitEndTimestamp: number | null
   startTimestamp: number | null
 }
 
@@ -65,7 +65,7 @@ function buildLiveSeriesPriceSnapshotStoreKey({
     topic.trim().toLowerCase(),
     subscriptionSymbol.trim().toLowerCase(),
     activeWindowMinutes,
-    explicitEndTimestamp,
+    explicitEndTimestamp ?? 'live',
     startTimestamp ?? '',
   ].join(':')
 }
@@ -76,13 +76,14 @@ function buildLiveSeriesPriceSnapshotQuery({
   explicitEndTimestamp,
   startTimestamp,
 }: LiveSeriesPriceSnapshotRequest) {
+  const eventEndTimestamp = explicitEndTimestamp ?? Date.now()
   const query = new URLSearchParams({
     seriesSlug,
-    eventEndMs: String(explicitEndTimestamp),
+    eventEndMs: String(eventEndTimestamp),
     activeWindowMinutes: String(activeWindowMinutes),
   })
 
-  if (startTimestamp != null && startTimestamp > 0 && startTimestamp < explicitEndTimestamp) {
+  if (startTimestamp != null && startTimestamp > 0 && startTimestamp < eventEndTimestamp) {
     query.set('eventStartMs', String(startTimestamp))
   }
 
@@ -265,6 +266,23 @@ function subscribeToLiveSeriesPriceSnapshot(
   }
   void fetchLiveSeriesPriceSnapshot(storeKey, request)
 
+  function refreshSnapshotAfterResume() {
+    if (document.hidden) {
+      return
+    }
+
+    if (syncPersistedLivePriceSnapshot(storeKey, request)) {
+      onStoreChange()
+    }
+    void fetchLiveSeriesPriceSnapshot(storeKey, request)
+  }
+
+  function handleVisibilityChange() {
+    if (!document.hidden) {
+      refreshSnapshotAfterResume()
+    }
+  }
+
   function handleStorage(event: StorageEvent) {
     const storageKey = event.key
     if (!storageKey) {
@@ -285,6 +303,8 @@ function subscribeToLiveSeriesPriceSnapshot(
   }
 
   window.addEventListener('storage', handleStorage)
+  window.addEventListener('pageshow', refreshSnapshotAfterResume)
+  document.addEventListener('visibilitychange', handleVisibilityChange)
 
   return function unsubscribeFromLiveSeriesPriceSnapshot() {
     entry.listeners.delete(onStoreChange)
@@ -296,6 +316,8 @@ function subscribeToLiveSeriesPriceSnapshot(
       pruneLiveSeriesPriceSnapshotStores()
     }
     window.removeEventListener('storage', handleStorage)
+    window.removeEventListener('pageshow', refreshSnapshotAfterResume)
+    document.removeEventListener('visibilitychange', handleVisibilityChange)
   }
 }
 
@@ -322,8 +344,10 @@ export function useLiveSeriesPriceSnapshot({
       return null
     }
 
-    const snapshotEventEndMs = explicitEndTimestamp ?? Date.now()
-    if (!Number.isFinite(snapshotEventEndMs) || snapshotEventEndMs <= 0) {
+    if (
+      explicitEndTimestamp != null
+      && (!Number.isFinite(explicitEndTimestamp) || explicitEndTimestamp <= 0)
+    ) {
       return null
     }
 
@@ -332,7 +356,7 @@ export function useLiveSeriesPriceSnapshot({
       topic: config.topic,
       subscriptionSymbol,
       activeWindowMinutes: config.active_window_minutes,
-      explicitEndTimestamp: snapshotEventEndMs,
+      explicitEndTimestamp,
       startTimestamp,
     }
   }, [config.active_window_minutes, config.topic, explicitEndTimestamp, seriesSlug, startTimestamp, subscriptionSymbol])

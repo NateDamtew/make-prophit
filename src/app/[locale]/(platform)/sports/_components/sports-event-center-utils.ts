@@ -7,9 +7,9 @@ import type { OddsFormat } from '@/lib/odds-format'
 import type { SportsVertical } from '@/lib/sports-vertical'
 import type { UserPosition } from '@/types'
 import {
-  FULL_COMPETITOR_NAME_HERO_LABEL_SPORT_SLUGS,
   SPORTS_EVENT_ODDS_FORMAT_STORAGE_KEY,
 } from '@/app/[locale]/(platform)/sports/_components/sports-event-center-types'
+import { resolveHexToRgbComponents } from '@/lib/color'
 import { ensureReadableTextColorOnDark } from '@/lib/color-contrast'
 import { ORDER_SIDE, OUTCOME_INDEX } from '@/lib/constants'
 import { resolveOutcomeSelectionPriceCents } from '@/lib/market-pricing'
@@ -45,6 +45,65 @@ export function formatSportsEventStartLabels(timestamp: number, locale: string) 
     timeLabel: `${timeLabel} ${SPORTS_EVENT_DISPLAY_TIME_ZONE_LABEL}`,
     dayLabel,
   }
+}
+
+export function formatSportsEventLocalStartLabels(timestamp: number, locale: string, timeZone?: string) {
+  const resolvedTimeZone = timeZone ?? new Intl.DateTimeFormat().resolvedOptions().timeZone
+  if (!resolvedTimeZone) {
+    return null
+  }
+
+  const date = new Date(timestamp)
+  const timeLabel = new Intl.DateTimeFormat(locale, {
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZone: resolvedTimeZone,
+  }).format(date)
+  const dayLabel = new Intl.DateTimeFormat(locale, {
+    month: 'long',
+    day: 'numeric',
+    timeZone: resolvedTimeZone,
+  }).format(date)
+
+  return {
+    timeLabel,
+    dayLabel,
+  }
+}
+
+export function formatSportsRelatedGameStartLabel(
+  date: Date,
+  locale: string,
+  options?: { timeZone?: string, timeZoneLabel?: string | null },
+) {
+  const timeZone = options?.timeZone ?? SPORTS_EVENT_DISPLAY_TIME_ZONE
+  const timeZoneLabel = options?.timeZoneLabel === undefined
+    ? SPORTS_EVENT_DISPLAY_TIME_ZONE_LABEL
+    : options.timeZoneLabel
+  const dateLabel = new Intl.DateTimeFormat(locale, {
+    month: 'short',
+    day: 'numeric',
+    timeZone,
+  }).format(date)
+  const timeLabel = new Intl.DateTimeFormat(locale, {
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZone,
+  }).format(date)
+
+  return `${dateLabel}, ${timeLabel}${timeZoneLabel ? ` ${timeZoneLabel}` : ''}`
+}
+
+export function formatSportsRelatedGameLocalStartLabel(date: Date, locale: string, timeZone?: string) {
+  const resolvedTimeZone = timeZone ?? new Intl.DateTimeFormat().resolvedOptions().timeZone
+  if (!resolvedTimeZone) {
+    return null
+  }
+
+  return formatSportsRelatedGameStartLabel(date, locale, {
+    timeZone: resolvedTimeZone,
+    timeZoneLabel: null,
+  })
 }
 
 export function subscribeToOddsFormatStorage(listener: () => void) {
@@ -289,22 +348,6 @@ export function resolveTeamShortLabel(team: SportsGamesCard['teams'][number] | n
     .slice(0, 3)
 
   return initials || name.slice(0, 3).toUpperCase()
-}
-
-function shouldUseFullCompetitorHeroLabels(sportSlug: string | null | undefined) {
-  return FULL_COMPETITOR_NAME_HERO_LABEL_SPORT_SLUGS.has(
-    normalizeComparableToken(sportSlug),
-  )
-}
-
-export function shouldUseFullScoreboardHeroLabels({
-  sportSlug,
-  vertical,
-}: {
-  sportSlug: string | null | undefined
-  vertical: SportsVertical
-}) {
-  return vertical === 'esports' || shouldUseFullCompetitorHeroLabels(sportSlug)
 }
 
 export function parseSportsScore(value: string | null | undefined) {
@@ -662,22 +705,6 @@ function normalizeHexColor(value: string | null | undefined) {
   }
 
   return null
-}
-
-function resolveHexToRgbComponents(value: string) {
-  const hex = value.replace('#', '')
-  const expandedHex = hex.length === 3
-    ? hex.split('').map(char => `${char}${char}`).join('')
-    : hex
-
-  const red = Number.parseInt(expandedHex.slice(0, 2), 16)
-  const green = Number.parseInt(expandedHex.slice(2, 4), 16)
-  const blue = Number.parseInt(expandedHex.slice(4, 6), 16)
-  if ([red, green, blue].some(component => Number.isNaN(component))) {
-    return null
-  }
-
-  return `${red} ${green} ${blue}`
 }
 
 export function resolveRedeemTagAccent(

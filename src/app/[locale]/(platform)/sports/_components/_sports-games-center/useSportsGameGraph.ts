@@ -1,5 +1,5 @@
 import type { SportsPositionedLegendLayout } from './sports-games-center-constants'
-import type { SportsGameGraphVariant, SportsGraphSeriesTarget, SportsTradeFlowLabelItem } from './sports-games-center-types'
+import type { SportsGameGraphVariant, SportsGamesMarketType, SportsGraphSeriesTarget, SportsTradeFlowLabelItem } from './sports-games-center-types'
 import type { TIME_RANGES } from '@/app/[locale]/(platform)/event/[slug]/_hooks/useEventPriceHistory'
 import type { SportsGamesCard } from '@/app/[locale]/(platform)/sports/_utils/sports-games-data'
 import type { DataPoint, PredictionChartCursorSnapshot } from '@/types/PredictionChartTypes'
@@ -17,7 +17,7 @@ import {
   TRADE_FLOW_CLEANUP_INTERVAL_MS,
 } from './sports-games-center-constants'
 import {
-  buildCompositeMoneylineGraphTargets,
+  buildMoneylineGraphTargets,
   buildTradeFlowLabel,
   normalizeOutcomePriceCents,
   pruneTradeFlowItems,
@@ -90,27 +90,37 @@ export function useSportsGameGraphChartDimensions({
 
 export function useSportsGameGraphSeries({
   card,
+  selectedMarketType,
   selectedConditionId,
+  selectedOutcomeIndex,
   isSportsEventHeroVariant,
 }: {
   card: SportsGamesCard
+  selectedMarketType: SportsGamesMarketType
   selectedConditionId: string | null
+  selectedOutcomeIndex: number | null
   isSportsEventHeroVariant: boolean
 }) {
+  const shouldUseCompositeMoneyline = selectedMarketType === 'moneyline' && isSportsEventHeroVariant
+  const graphSelectedConditionId = shouldUseCompositeMoneyline ? null : selectedConditionId
   const graphSeriesTargets = useMemo<SportsGraphSeriesTarget[]>(
     () => {
       if (
-        selectedConditionId
+        graphSelectedConditionId
       ) {
         const selectedMarket = card.detailMarkets.find(
-          market => market.condition_id === selectedConditionId,
+          market => market.condition_id === graphSelectedConditionId,
         )
         if (selectedMarket) {
           const fallbackColors = ['var(--yes)', 'var(--no)']
           const orderedOutcomes = [...selectedMarket.outcomes]
             .sort((a, b) => a.outcome_index - b.outcome_index)
+          const selectedMoneylineOutcomeIndexes = selectedMarketType === 'moneyline' && selectedOutcomeIndex != null
+            ? new Set([selectedOutcomeIndex])
+            : null
 
           const outcomeTargets = orderedOutcomes
+            .filter(outcome => !selectedMoneylineOutcomeIndexes?.size || selectedMoneylineOutcomeIndexes.has(outcome.outcome_index))
             .map((outcome, index) => {
               const relatedButton = card.buttons.find(
                 button => button.conditionId === selectedMarket.condition_id
@@ -136,9 +146,9 @@ export function useSportsGameGraphSeries({
 
       const fallbackColors = ['var(--yes)', 'var(--primary)', 'var(--no)']
 
-      const compositeMoneylineTargets = buildCompositeMoneylineGraphTargets(card)
-      if (compositeMoneylineTargets.length > 0) {
-        return compositeMoneylineTargets
+      const moneylineGraphTargets = buildMoneylineGraphTargets(card)
+      if (moneylineGraphTargets.length > 0) {
+        return moneylineGraphTargets
       }
 
       const moneylineConditionIds = Array.from(new Set(
@@ -209,7 +219,7 @@ export function useSportsGameGraphSeries({
 
       return fallbackTargets
     },
-    [card, selectedConditionId],
+    [card, graphSelectedConditionId, selectedMarketType, selectedOutcomeIndex],
   )
 
   const tradeFlowSeriesByTokenId = useMemo(() => {
@@ -248,7 +258,7 @@ export function useSportsGameGraphSeries({
     }))
   }, [graphSeriesTargets])
 
-  return { graphSeriesTargets, tradeFlowSeriesByTokenId, marketTargets, chartSeries }
+  return { graphSeriesTargets, tradeFlowSeriesByTokenId, marketTargets, chartSeries, graphSelectedConditionId }
 }
 
 export function useSportsGameGraphHistory({
@@ -734,7 +744,6 @@ export function useSportsGameGraphInteractionState(defaultTimeRange: (typeof TIM
   const [cursorSnapshot, setCursorSnapshot] = useState<PredictionChartCursorSnapshot | null>(null)
   const [activeTimeRange, setActiveTimeRange] = useState<(typeof TIME_RANGES)[number]>(defaultTimeRange)
   const [exportDialogOpen, setExportDialogOpen] = useState(false)
-  const [embedDialogOpen, setEmbedDialogOpen] = useState(false)
 
   return {
     cursorSnapshot,
@@ -743,8 +752,6 @@ export function useSportsGameGraphInteractionState(defaultTimeRange: (typeof TIM
     setActiveTimeRange,
     exportDialogOpen,
     setExportDialogOpen,
-    embedDialogOpen,
-    setEmbedDialogOpen,
   }
 }
 

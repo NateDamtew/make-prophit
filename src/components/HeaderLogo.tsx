@@ -1,8 +1,8 @@
 'use client'
 
-import AppLink from '@/components/AppLink'
 import SiteLogoIcon from '@/components/SiteLogoIcon'
 import { useSiteIdentity } from '@/hooks/useSiteIdentity'
+import { Link } from '@/i18n/navigation'
 import { cn } from '@/lib/utils'
 
 interface HeaderLogoProps {
@@ -14,8 +14,7 @@ export default function HeaderLogo({ labelSuffix }: HeaderLogoProps) {
   const label = labelSuffix ? `${site.name} ${labelSuffix}` : site.name
 
   return (
-    <AppLink
-      intentPrefetch
+    <Link
       href="/"
       className={cn(`
         flex h-10 shrink-0 items-center gap-2 text-2xl font-medium text-foreground transition-opacity
@@ -34,15 +33,13 @@ export default function HeaderLogo({ labelSuffix }: HeaderLogoProps) {
         {label}
         <span
           className={cn(`
-            absolute -top-2.5 right-0
-            inline-flex items-center rounded-full
-            bg-primary/15 px-1.5 py-0.5
-            text-[0.35em] font-semibold uppercase leading-none tracking-wider text-primary
+            absolute -top-2.5 right-0 inline-flex items-center rounded-full bg-primary/15 px-1.5 py-0.5 text-[0.35em]
+            leading-none font-semibold tracking-wider text-primary uppercase
           `)}
         >
           Beta
         </span>
       </span>
-    </AppLink>
+    </Link>
   )
 }

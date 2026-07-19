@@ -35,6 +35,8 @@ import {
   stopRevealAnimation,
   TOOLTIP_LABEL_GAP,
   TOOLTIP_LABEL_HEIGHT,
+  TOOLTIP_PANEL_LABEL_GAP,
+  TOOLTIP_PANEL_LABEL_HEIGHT,
 } from '@/lib/prediction-chart'
 import { normalizeTicks, resolvePointFromPaths, sanitizeSvgId, toDomainTimestamp } from '@/lib/prediction-chart-helpers'
 
@@ -63,6 +65,7 @@ export default function PredictionChart({
   height = 400,
   margin = defaultMargin,
   dataSignature,
+  dataSyncMode = 'append',
   onCursorDataChange,
   cursorStepMs,
   xAxisTickCount = DEFAULT_X_AXIS_TICKS,
@@ -102,6 +105,7 @@ export default function PredictionChart({
   tooltipValueFormatter,
   tooltipDateFormatter,
   showTooltipSeriesLabels = true,
+  tooltipLabelVariant = 'filled',
   clampCursorToDataExtent = false,
   tooltipHeader,
   watermark,
@@ -111,6 +115,7 @@ export default function PredictionChart({
   const { data, isClient, lastDataUpdateTypeRef, previousDataRef } = usePredictionChartData(
     providedData,
     normalizedSignature,
+    dataSyncMode,
   )
   const isDarkMode = useDarkMode()
   const annotationHoverScopeKey = `${normalizedSignature}:${showAnnotations ? '1' : '0'}`
@@ -182,7 +187,7 @@ export default function PredictionChart({
   const rightClipId = `${clipId}-right`
   const shouldRenderLegend = showLegend && Boolean(legendContent)
   const shouldRenderWatermark = Boolean(
-    watermark && (watermark.iconSvg || watermark.label),
+    watermark && (watermark.iconSvg || watermark.iconImageUrl || watermark.label),
   )
   const resolvedLineStrokeWidth = Number.isFinite(lineStrokeWidth) && lineStrokeWidth > 0
     ? lineStrokeWidth
@@ -765,6 +770,13 @@ export default function PredictionChart({
   }
   type PositionedTooltipEntry = TooltipEntry & { top: number }
 
+  const tooltipLabelHeight = tooltipLabelVariant === 'panel'
+    ? TOOLTIP_PANEL_LABEL_HEIGHT
+    : TOOLTIP_LABEL_HEIGHT
+  const tooltipLabelGap = tooltipLabelVariant === 'panel'
+    ? TOOLTIP_PANEL_LABEL_GAP
+    : TOOLTIP_LABEL_GAP
+
   const tooltipEntries: TooltipEntry[] = tooltipActive && effectiveTooltipData
     ? series
         .map((seriesItem) => {
@@ -780,7 +792,7 @@ export default function PredictionChart({
             value,
             initialTop: resolvedMargin.top
               + yScale(value)
-              - TOOLTIP_LABEL_HEIGHT,
+              - tooltipLabelHeight,
           }
         })
         .filter((entry): entry is TooltipEntry => entry !== null)
@@ -793,9 +805,9 @@ export default function PredictionChart({
     )
 
     const minTop = resolvedMargin.top
-    const rawMaxTop = resolvedMargin.top + innerHeight - TOOLTIP_LABEL_HEIGHT
+    const rawMaxTop = resolvedMargin.top + innerHeight - tooltipLabelHeight
     const maxTop = rawMaxTop < minTop ? minTop : rawMaxTop
-    const step = TOOLTIP_LABEL_HEIGHT + TOOLTIP_LABEL_GAP
+    const step = tooltipLabelHeight + tooltipLabelGap
 
     const positioned: PositionedTooltipEntry[] = []
     sorted.forEach((entry, index) => {
@@ -1174,6 +1186,7 @@ export default function PredictionChart({
           valueFormatter={tooltipValueFormatter}
           dateFormatter={tooltipDateFormatter}
           showSeriesLabels={showTooltipSeriesLabels}
+          labelVariant={tooltipLabelVariant}
           header={tooltipHeader}
         />
 
