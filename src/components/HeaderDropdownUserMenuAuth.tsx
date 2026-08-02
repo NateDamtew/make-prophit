@@ -1,11 +1,20 @@
 'use client'
 
-import { BadgePercentIcon, ChevronDownIcon, DownloadIcon, SettingsIcon, ShieldIcon, TrophyIcon, UnplugIcon, UsersIcon } from 'lucide-react'
+import {
+  BadgePercentIcon,
+  ChevronDownIcon,
+  DownloadIcon,
+  SettingsIcon,
+  ShieldIcon,
+  TrophyIcon,
+  UnplugIcon,
+  UsersIcon,
+} from 'lucide-react'
 import { useExtracted } from 'next-intl'
 import Image from 'next/image'
 import { useEffect, useRef, useState } from 'react'
-import { toast } from 'sonner'
 import AppLink from '@/components/AppLink'
+
 import HeaderPortfolio from '@/components/HeaderPortfolio'
 import LocaleSwitcherMenuItem from '@/components/LocaleSwitcherMenuItem'
 import PwaInstallIosInstructions from '@/components/PwaInstallIosInstructions'
@@ -15,9 +24,11 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLinkItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { toast } from '@/components/ui/toast'
 import UserInfoSection from '@/components/UserInfoSection'
 import { useAppKit } from '@/hooks/useAppKit'
 import { useIsMobile } from '@/hooks/useIsMobile'
@@ -94,7 +105,15 @@ function useHoverMenu(enableHoverOpen: boolean) {
     setMenuOpen(false)
   }
 
-  return { menuOpen, setMenuOpen, wrapperRef, clearCloseTimeout, handleWrapperPointerEnter, handleWrapperPointerLeave, handleMenuClose }
+  return {
+    menuOpen,
+    setMenuOpen,
+    wrapperRef,
+    clearCloseTimeout,
+    handleWrapperPointerEnter,
+    handleWrapperPointerLeave,
+    handleMenuClose,
+  }
 }
 
 export default function HeaderDropdownUserMenuAuth() {
@@ -107,13 +126,19 @@ export default function HeaderDropdownUserMenuAuth() {
   const isAdmin = pathname.startsWith('/admin')
   const isMobile = useIsMobile()
   const enableHoverOpen = !isMobile
-  const { menuOpen, setMenuOpen, wrapperRef, clearCloseTimeout, handleWrapperPointerEnter, handleWrapperPointerLeave, handleMenuClose } = useHoverMenu(enableHoverOpen)
+  const {
+    menuOpen,
+    setMenuOpen,
+    wrapperRef,
+    clearCloseTimeout,
+    handleWrapperPointerEnter,
+    handleWrapperPointerLeave,
+    handleMenuClose,
+  } = useHoverMenu(enableHoverOpen)
   const avatarUrl = user?.image?.trim() ?? ''
   const avatarSeed = user?.deposit_wallet_address || user?.address || user?.username || 'user'
   const showPlaceholder = shouldUseAvatarPlaceholder(avatarUrl)
-  const placeholderStyle = showPlaceholder
-    ? getAvatarPlaceholderStyle(avatarSeed)
-    : undefined
+  const placeholderStyle = showPlaceholder ? getAvatarPlaceholderStyle(avatarSeed) : undefined
 
   async function handleInstallAction() {
     handleMenuClose()
@@ -121,17 +146,14 @@ export default function HeaderDropdownUserMenuAuth() {
     if (isIos) {
       toast.info(t('Install app'), {
         duration: 10_000,
-        description: (
-          <PwaInstallIosInstructions className="max-w-sm pt-1" />
-        ),
+        description: <PwaInstallIosInstructions className="max-w-sm pt-1" />,
       })
       return
     }
 
     try {
       await requestInstall()
-    }
-    catch {
+    } catch {
       toast.error(t('An unexpected error occurred. Please try again.'))
     }
   }
@@ -144,8 +166,7 @@ export default function HeaderDropdownUserMenuAuth() {
         await signOutAndRedirect({
           currentPathname: window.location.pathname,
         })
-      }
-      catch {
+      } catch {
         toast.error(t('Could not log out. Please try again.'))
       }
       return
@@ -154,8 +175,7 @@ export default function HeaderDropdownUserMenuAuth() {
     try {
       await logout()
       return
-    }
-    catch {
+    } catch {
       //
     }
 
@@ -163,8 +183,7 @@ export default function HeaderDropdownUserMenuAuth() {
       await signOutAndRedirect({
         currentPathname: window.location.pathname,
       })
-    }
-    catch {
+    } catch {
       toast.error(t('Could not log out. Please try again.'))
     }
   }
@@ -189,43 +208,36 @@ export default function HeaderDropdownUserMenuAuth() {
         }}
         modal={false}
       >
-        <DropdownMenuTrigger asChild>
-          <Button
-            type="button"
-            variant="ghost"
-            size="header"
-            aria-label="User menu"
-            className={cn(`
-              group flex cursor-pointer items-center gap-2 px-2 transition-colors
-              hover:bg-accent/70 hover:text-accent-foreground
-              data-[state=open]:bg-accent/70 data-[state=open]:text-accent-foreground
-            `)}
-            data-testid="header-menu-button"
-          >
-            {showPlaceholder
-              ? (
-                  <div
-                    aria-hidden="true"
-                    className="aspect-square size-8 shrink-0 rounded-full"
-                    style={placeholderStyle}
-                  />
-                )
-              : (
-                  <Image
-                    src={avatarUrl}
-                    alt="User avatar"
-                    width={32}
-                    height={32}
-                    className="aspect-square shrink-0 rounded-full object-cover"
-                  />
-                )}
-            <ChevronDownIcon className={cn(`
-              size-4 transition-transform duration-150
-              group-hover:rotate-180
-              group-data-[state=open]:rotate-180
-            `)}
+        <DropdownMenuTrigger
+          render={
+            <Button
+              type="button"
+              variant="ghost"
+              size="header"
+              aria-label="User menu"
+              className={cn(
+                `group flex cursor-pointer items-center gap-2 px-2 transition-colors hover:bg-accent/70 hover:text-accent-foreground data-popup-open:bg-accent/70 data-popup-open:text-accent-foreground`,
+              )}
+              data-testid="header-menu-button"
             />
-          </Button>
+          }
+        >
+          {showPlaceholder ? (
+            <div aria-hidden="true" className="aspect-square size-8 shrink-0 rounded-full" style={placeholderStyle} />
+          ) : (
+            <Image
+              src={avatarUrl}
+              alt="User avatar"
+              width={32}
+              height={32}
+              className="aspect-square shrink-0 rounded-full object-cover"
+            />
+          )}
+          <ChevronDownIcon
+            className={cn(
+              `size-4 transition-transform duration-150 group-hover:rotate-180 group-data-popup-open:rotate-180`,
+            )}
+          />
         </DropdownMenuTrigger>
         <DropdownMenuContent
           className="z-70 w-64"
@@ -233,26 +245,23 @@ export default function HeaderDropdownUserMenuAuth() {
           sideOffset={0}
           collisionPadding={16}
           portalled={isMobile}
-          onInteractOutside={() => setMenuOpen(false)}
-          onEscapeKeyDown={() => setMenuOpen(false)}
         >
-          <DropdownMenuItem asChild>
-            <UserInfoSection />
-          </DropdownMenuItem>
+          <DropdownMenuItem render={<UserInfoSection />} />
 
           <DropdownMenuSeparator />
 
-          <DropdownMenuItem asChild className="py-2 text-sm font-semibold">
-            <Link href="/settings" className="flex w-full items-center gap-1.5">
-              <SettingsIcon className="size-4 text-orange-500" />
-              {t('Settings')}
-            </Link>
-          </DropdownMenuItem>
+          <DropdownMenuLinkItem
+            render={<Link href="/settings" className="flex w-full items-center gap-1.5" />}
+            className="py-2 text-sm font-semibold"
+          >
+            <SettingsIcon className="size-4 text-orange-500" />
+            {t('Settings')}
+          </DropdownMenuLinkItem>
 
           {canShowInstallUi && (
             <DropdownMenuItem
               className="py-2 text-sm font-semibold"
-              onSelect={() => {
+              onClick={() => {
                 void handleInstallAction()
               }}
               disabled={isPrompting}
@@ -264,47 +273,54 @@ export default function HeaderDropdownUserMenuAuth() {
             </DropdownMenuItem>
           )}
 
-          <DropdownMenuItem asChild className="py-2 text-sm font-semibold">
-            <Link href="/leaderboard" className="flex w-full items-center gap-1.5">
-              <TrophyIcon className="size-4 text-amber-500" />
-              {t('Leaderboard')}
-            </Link>
-          </DropdownMenuItem>
+          <DropdownMenuLinkItem
+            render={<Link href="/leaderboard" className="flex w-full items-center gap-1.5" />}
+            className="py-2 text-sm font-semibold"
+          >
+            <TrophyIcon className="size-4 text-amber-500" />
+            {t('Leaderboard')}
+          </DropdownMenuLinkItem>
 
-          <DropdownMenuItem asChild className="py-2 text-sm font-semibold">
-            <AppLink intentPrefetch href="/me/communities" className="flex w-full items-center gap-1.5">
-              <UsersIcon className="size-4 text-violet-500" />
-              {t('My Communities')}
-            </AppLink>
-          </DropdownMenuItem>
+          <DropdownMenuLinkItem
+            render={<AppLink intentPrefetch href="/me/communities" className="flex w-full items-center gap-1.5" />}
+            className="py-2 text-sm font-semibold"
+          >
+            <UsersIcon className="size-4 text-violet-500" />
+            {t('My Communities')}
+          </DropdownMenuLinkItem>
 
-          <DropdownMenuItem asChild className="py-2 text-sm font-semibold">
-            <Link href="/settings/affiliate" className="flex w-full items-center gap-1.5">
-              <BadgePercentIcon className="size-4 text-emerald-600" />
-              {t('Affiliate')}
-            </Link>
-          </DropdownMenuItem>
+          <DropdownMenuLinkItem
+            render={<Link href="/settings/affiliate" className="flex w-full items-center gap-1.5" />}
+            className="py-2 text-sm font-semibold"
+          >
+            <BadgePercentIcon className="size-4 text-emerald-600" />
+            {t('Affiliate')}
+          </DropdownMenuLinkItem>
 
-          <DropdownMenuItem asChild className="py-2 text-sm font-semibold">
-            <Link
-              href="/docs/api-reference"
-              target="_blank"
-              prefetch={false}
-              rel="noreferrer"
-              className="flex w-full items-center gap-1.5"
-            >
-              <UnplugIcon className="size-4 text-pink-500" />
-              {t('APIs')}
-            </Link>
-          </DropdownMenuItem>
+          <DropdownMenuLinkItem
+            render={
+              <Link
+                href="/docs/api-reference"
+                target="_blank"
+                prefetch={false}
+                rel="noreferrer"
+                className="flex w-full items-center gap-1.5"
+              />
+            }
+            className="py-2 text-sm font-semibold"
+          >
+            <UnplugIcon className="size-4 text-pink-500" />
+            {t('APIs')}
+          </DropdownMenuLinkItem>
 
           {user?.is_admin && (
-            <DropdownMenuItem asChild className="py-2 text-sm font-semibold">
-              <Link href="/admin" className="flex w-full items-center gap-1.5">
-                <ShieldIcon className="size-4 text-current" />
-                {t('Admin')}
-              </Link>
-            </DropdownMenuItem>
+            <DropdownMenuLinkItem
+              render={<Link href="/admin" className="flex w-full items-center gap-1.5" />}
+              className="py-2 text-sm font-semibold"
+            >
+              <ShieldIcon className="size-4 text-current" />
+              {t('Admin')}
+            </DropdownMenuLinkItem>
           )}
 
           {themeMode === 'both' && (
@@ -315,29 +331,39 @@ export default function HeaderDropdownUserMenuAuth() {
           )}
 
           {isMobile && (
-            <DropdownMenuItem asChild className="py-2 text-sm font-semibold">
-              <div className="flex justify-center" onClickCapture={handleMenuClose}>
-                <HeaderPortfolio />
-              </div>
+            <DropdownMenuItem
+              render={<div className="flex justify-center" onClickCapture={handleMenuClose} />}
+              className="py-2 text-sm font-semibold"
+            >
+              <HeaderPortfolio />
             </DropdownMenuItem>
           )}
 
           <DropdownMenuSeparator />
 
-          <DropdownMenuItem asChild className="py-2 text-sm font-semibold text-muted-foreground">
-            <Link href="/docs" target="_blank" prefetch={false} data-testid="header-docs-link">{t('Documentation')}</Link>
-          </DropdownMenuItem>
+          <DropdownMenuLinkItem
+            render={<Link href="/docs" target="_blank" prefetch={false} data-testid="header-docs-link" />}
+            className="py-2 text-sm font-semibold text-muted-foreground"
+          >
+            {t('Documentation')}
+          </DropdownMenuLinkItem>
 
-          <DropdownMenuItem asChild className="py-2 text-sm font-semibold text-muted-foreground">
-            <Link href="/tos" data-testid="header-terms-link">{t('Terms of Use')}</Link>
-          </DropdownMenuItem>
+          <DropdownMenuLinkItem
+            render={<Link href="/tos" data-testid="header-terms-link" />}
+            className="py-2 text-sm font-semibold text-muted-foreground"
+          >
+            {t('Terms of Use')}
+          </DropdownMenuLinkItem>
 
           <LocaleSwitcherMenuItem />
 
-          <DropdownMenuItem asChild className="py-2 text-sm font-semibold">
-            <button type="button" className="w-full text-destructive" onClick={() => void handleLogout()}>
-              {t('Logout')}
-            </button>
+          <DropdownMenuItem
+            render={<button type="button" className="w-full text-destructive" />}
+            className="py-2 text-sm font-semibold"
+            nativeButton
+            onClick={() => void handleLogout()}
+          >
+            {t('Logout')}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

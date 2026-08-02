@@ -2,8 +2,8 @@
 
 import type { CommentReactionKind } from '@/lib/db/schema/communities/engagement'
 import { useState } from 'react'
-import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
+import { toast } from '@/components/ui/toast'
 
 interface ReactionState {
   count: number

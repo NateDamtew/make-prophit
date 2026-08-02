@@ -1,9 +1,17 @@
 import { act, renderHook } from '@testing-library/react'
+
 import { useSearch } from '@/hooks/useSearch'
+
+function getRequestUrl(input: RequestInfo | URL) {
+  if (typeof input === 'string') {
+    return input
+  }
+  return input instanceof URL ? input.href : input.url
+}
 
 describe('useSearch', () => {
   const fetchMock = vi.fn((input: RequestInfo | URL, _init?: RequestInit) => {
-    const url = typeof input === 'string' ? input : input.toString()
+    const url = getRequestUrl(input)
 
     if (url.includes('/api/events')) {
       const parsedUrl = new URL(url, 'http://localhost')
@@ -11,18 +19,20 @@ describe('useSearch', () => {
 
       return Promise.resolve({
         ok: true,
-        json: async () => (
+        json: async () =>
           searchQuery === 'resolved'
-            ? [{
-                id: 'event-1',
-                slug: 'resolved-event',
-                status: 'resolved',
-                title: 'Resolved Event',
-                end_date: '2026-03-20T12:00:00.000Z',
-                resolved_at: '2026-03-21T12:00:00.000Z',
-                created_at: '2026-03-10T12:00:00.000Z',
-                markets: [{ probability: 63 }],
-              }]
+            ? [
+                {
+                  id: 'event-1',
+                  slug: 'resolved-event',
+                  status: 'resolved',
+                  title: 'Resolved Event',
+                  end_date: '2026-03-20T12:00:00.000Z',
+                  resolved_at: '2026-03-21T12:00:00.000Z',
+                  created_at: '2026-03-10T12:00:00.000Z',
+                  markets: [{ probability: 63 }],
+                },
+              ]
             : searchQuery === 'mixed'
               ? [
                   {
@@ -66,8 +76,7 @@ describe('useSearch', () => {
                     markets: [{ probability: 63, is_resolved: false }],
                   },
                 ]
-              : []
-        ),
+              : [],
       })
     }
 
@@ -131,8 +140,8 @@ describe('useSearch', () => {
     })
 
     const eventsRequestUrl = fetchMock.mock.calls
-      .map(([input]) => typeof input === 'string' ? input : input.toString())
-      .find(url => url.includes('/api/events'))
+      .map(([input]) => getRequestUrl(input))
+      .find((url) => url.includes('/api/events'))
     const eventsRequest = new URL(eventsRequestUrl!, 'http://localhost')
 
     expect(eventsRequest.searchParams.get('search')).toBe('resolved')
@@ -161,7 +170,7 @@ describe('useSearch', () => {
       await Promise.resolve()
     })
 
-    expect(result.current.results.events.map(event => event.slug)).toEqual([
+    expect(result.current.results.events.map((event) => event.slug)).toEqual([
       'sooner-active-event',
       'later-active-event',
       'newer-resolved-event',
@@ -179,9 +188,13 @@ describe('useSearch', () => {
           return
         }
 
-        signal?.addEventListener('abort', () => {
-          reject(new DOMException('Aborted', 'AbortError'))
-        }, { once: true })
+        signal?.addEventListener(
+          'abort',
+          () => {
+            reject(new DOMException('Aborted', 'AbortError'))
+          },
+          { once: true },
+        )
       }) as Promise<Response>
     })
 
@@ -201,12 +214,12 @@ describe('useSearch', () => {
       .filter((signal): signal is AbortSignal => Boolean(signal))
 
     expect(initialSignals).toHaveLength(2)
-    expect(initialSignals.every(signal => signal.aborted)).toBe(false)
+    expect(initialSignals.every((signal) => signal.aborted)).toBe(false)
 
     act(() => {
       result.current.handleQueryChange('trump')
     })
 
-    expect(initialSignals.every(signal => signal.aborted)).toBe(true)
+    expect(initialSignals.every((signal) => signal.aborted)).toBe(true)
   })
 })

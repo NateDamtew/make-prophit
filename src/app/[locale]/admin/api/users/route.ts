@@ -1,11 +1,15 @@
 import type { NextRequest } from 'next/server'
+
 import { NextResponse } from 'next/server'
+
 import { isAdminWallet } from '@/lib/admin'
 import { DEFAULT_ERROR_MESSAGE } from '@/lib/constants'
+import { SumsubRepository } from '@/lib/db/queries/sumsub'
 import { UserRepository } from '@/lib/db/queries/user'
 import { buildPublicProfilePath, buildUsernameProfilePath } from '@/lib/platform-routing'
 import resolveSiteUrl from '@/lib/site-url'
 import { getPublicAssetUrl } from '@/lib/storage'
+import { getSumsubSettings } from '@/lib/sumsub/settings'
 
 export async function GET(request: NextRequest) {
   try {
@@ -42,12 +46,23 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: DEFAULT_ERROR_MESSAGE }, { status: 500 })
     }
 
-    const referredIds = Array.from(new Set((data ?? [])
-      .map(user => user.referred_by_user_id)
-      .filter((id): id is string => Boolean(id))))
+    const sumsubSettings = await getSumsubSettings()
+    const sumsubActive = sumsubSettings.effective
+    const sumsubStatuses = sumsubActive
+      ? await SumsubRepository.getStatusesForUsers(
+          (data ?? []).map((user) => user.id),
+          sumsubSettings.levelName,
+        )
+      : new Map()
+
+    const referredIds = Array.from(
+      new Set((data ?? []).map((user) => user.referred_by_user_id).filter((id): id is string => Boolean(id))),
+    )
 
     const { data: referredUsers } = await UserRepository.getUsersByIds(referredIds)
-    const referredEntries = (referredUsers ?? []).filter((ref): ref is typeof ref & { username: string } => Boolean(ref.username))
+    const referredEntries = (referredUsers ?? []).filter((ref): ref is typeof ref & { username: string } =>
+      Boolean(ref.username),
+    )
 
     const referredMap = new Map<string, { username: string, address: string | null, deposit_wallet_address?: string | null, image?: string | null }>(
       referredEntries.map(referred => [referred.id, {
@@ -73,9 +88,7 @@ export async function GET(request: NextRequest) {
       const depositWalletAddress = user.deposit_wallet_address
       const profilePath = buildPublicProfilePath(user.username || depositWalletAddress || user.address || '')
 
-      const referredSource = user.referred_by_user_id
-        ? referredMap.get(user.referred_by_user_id)
-        : undefined
+      const referredSource = user.referred_by_user_id ? referredMap.get(user.referred_by_user_id) : undefined
       let referredDisplay: string | null = null
       let referredProfile: string | null = null
 
@@ -85,13 +98,10 @@ export async function GET(request: NextRequest) {
         referredProfile = referredPath ? `${baseProfileUrl}${referredPath}` : null
       }
 
-      const searchText = [
-        user.username,
-        user.email,
-        user.address,
-        depositWalletAddress,
-        referredDisplay,
-      ].filter(Boolean).join(' ').toLowerCase()
+      const searchText = [user.username, user.email, user.address, depositWalletAddress, referredDisplay]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
 
       return {
         ...user,
@@ -103,6 +113,7 @@ export async function GET(request: NextRequest) {
         profileUrl: profilePath ? `${baseProfileUrl}${profilePath}` : null,
         created_at: user.created_at,
         search_text: searchText,
+        sumsub_status: sumsubStatuses.get(user.id) ?? 'not_started',
       }
     })
 
@@ -110,9 +121,9 @@ export async function GET(request: NextRequest) {
       data: transformedUsers,
       count: count || 0,
       totalCount: count || 0,
+      sumsubActive,
     })
-  }
-  catch (error) {
+  } catch (error) {
     console.error('API Error:', error)
     return NextResponse.json({ error: DEFAULT_ERROR_MESSAGE }, { status: 500 })
   }

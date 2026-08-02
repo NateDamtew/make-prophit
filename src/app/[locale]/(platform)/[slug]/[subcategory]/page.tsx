@@ -1,7 +1,10 @@
 import type { Metadata } from 'next'
-import type { SupportedLocale } from '@/i18n/locales'
+
 import { setRequestLocale } from 'next-intl/server'
 import { notFound } from 'next/navigation'
+
+import type { SupportedLocale } from '@/i18n/locales'
+
 import {
   buildDynamicHomeSubcategoryMetadata,
   DynamicHomeSubcategoryPageContent,
@@ -11,6 +14,8 @@ import { hasDatabaseEnv } from '@/lib/db/env'
 import { isPlatformReservedRootSlug, normalizePublicProfileSlug } from '@/lib/platform-routing'
 import { deferPublicShellPrerenderIfNeeded, shouldPrerenderPublicShell } from '@/lib/public-shell-rendering'
 import { shouldBypassPublicShellPlaceholder, STATIC_PARAMS_PLACEHOLDER } from '@/lib/static-params'
+
+export const instant = false
 
 export const generateStaticParams = generateDynamicHomeSubcategoryStaticParams
 

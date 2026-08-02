@@ -1,6 +1,8 @@
-import type { ActivitySort, ActivityTypeFilter } from '@/app/[locale]/(platform)/profile/_types/PublicActivityTypes'
 import { ArrowDownNarrowWideIcon, DownloadIcon, ListFilterIcon } from 'lucide-react'
 import { useExtracted } from 'next-intl'
+
+import type { ActivitySort, ActivityTypeFilter } from '@/app/[locale]/(platform)/profile/_types/PublicActivityTypes'
+
 import SearchSortToolbar, { SearchSortSelect } from '@/app/[locale]/(platform)/_components/SearchSortToolbar'
 import { Button } from '@/components/ui/button'
 import { SelectItem } from '@/components/ui/select'
@@ -33,13 +35,20 @@ export default function PublicActivityFilters({
       searchQuery={searchQuery}
       searchPlaceholder={t('Search activity...')}
       onSearchChange={onSearchChange}
-      controls={(
+      controls={
         <>
           <SearchSortSelect
+            items={{
+              all: t('All'),
+              trades: t('Trades'),
+              buy: t('Buy'),
+              merge: t('Merge'),
+              redeem: t('Redeem'),
+            }}
             value={typeFilter}
             ariaLabel={t('Filter activity type')}
             icon={<ListFilterIcon className="size-4 text-muted-foreground" />}
-            onValueChange={value => onTypeChange(value as ActivityTypeFilter)}
+            onValueChange={(value) => onTypeChange(value as ActivityTypeFilter)}
           >
             <SelectItem value="all">{t('All')}</SelectItem>
             <SelectItem value="trades">{t('Trades')}</SelectItem>
@@ -49,10 +58,11 @@ export default function PublicActivityFilters({
           </SearchSortSelect>
 
           <SearchSortSelect
+            items={{ newest: t('Newest'), oldest: t('Oldest'), value: t('Value'), shares: t('Shares') }}
             value={sortFilter}
             ariaLabel={t('Sort activity')}
             icon={<ArrowDownNarrowWideIcon className="size-4 text-muted-foreground" />}
-            onValueChange={value => onSortChange(value as ActivitySort)}
+            onValueChange={(value) => onSortChange(value as ActivitySort)}
           >
             <SelectItem value="newest">{t('Newest')}</SelectItem>
             <SelectItem value="oldest">{t('Oldest')}</SelectItem>
@@ -60,8 +70,8 @@ export default function PublicActivityFilters({
             <SelectItem value="shares">{t('Shares')}</SelectItem>
           </SearchSortSelect>
         </>
-      )}
-      action={(
+      }
+      action={
         <Button
           type="button"
           variant="outline"
@@ -73,7 +83,7 @@ export default function PublicActivityFilters({
         >
           <DownloadIcon className="size-4" />
         </Button>
-      )}
+      }
     />
   )
 }

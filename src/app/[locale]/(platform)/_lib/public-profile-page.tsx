@@ -1,9 +1,15 @@
 import type { Metadata } from 'next'
+
+import { notFound } from 'next/navigation'
+import { connection } from 'next/server'
+import { Suspense } from 'react'
+
 import type { SupportedLocale } from '@/i18n/locales'
 import type { CommunityProfile } from '@/lib/community-profile'
-import { notFound } from 'next/navigation'
+
 import PublicProfileHeroCards from '@/app/[locale]/(platform)/profile/_components/PublicProfileHeroCards'
 import PublicProfileTabs from '@/app/[locale]/(platform)/profile/_components/PublicProfileTabs'
+import { Skeleton } from '@/components/ui/skeleton'
 import { DEFAULT_LOCALE } from '@/i18n/locales'
 import {
   COMMUNITY_PROFILE_LOOKUP_TIMEOUT_MS,
@@ -87,13 +93,35 @@ function resolveProfileTitleLabel(slug: string, profileUsername: string | null |
   return slug
 }
 
-function buildFallbackChartEndDate() {
+async function buildFallbackChartEndDate() {
+  await connection()
   return new Date().toISOString()
 }
 
-async function fetchCommunityProfileForSlug(
-  normalized: ReturnType<typeof normalizePublicProfileSlug>,
-) {
+function PublicProfileTabsFallback() {
+  return (
+    <div className="overflow-hidden rounded-2xl border" aria-busy="true">
+      <div className="flex items-center gap-6 border-b p-4 sm:px-6">
+        <Skeleton className="h-5 w-20" />
+        <Skeleton className="h-5 w-16" />
+      </div>
+      <div className="space-y-3 px-3 py-4">
+        <Skeleton className="h-9 w-full" />
+        <Skeleton className="h-48 w-full" />
+      </div>
+    </div>
+  )
+}
+
+function PublicProfileTabsSection({ userAddress, userId }: { userAddress: string, userId: string | null }) {
+  return (
+    <Suspense fallback={<PublicProfileTabsFallback />}>
+      <PublicProfileTabs userAddress={userAddress} userId={userId} />
+    </Suspense>
+  )
+}
+
+async function fetchCommunityProfileForSlug(normalized: ReturnType<typeof normalizePublicProfileSlug>) {
   const { communityUrl: communityApiUrl } = resolvePublicRuntimeEnv(process.env)
   if (!communityApiUrl || normalized.type === 'invalid') {
     return null
@@ -111,9 +139,11 @@ async function fetchCommunityProfileForSlug(
           username: normalized.value,
           signal: AbortSignal.timeout(COMMUNITY_PROFILE_LOOKUP_TIMEOUT_MS),
         })
-  }
-  catch (error) {
-    console.error('Failed to load community public profile', error)
+  } catch (error) {
+    const errorName = error && typeof error === 'object' && 'name' in error ? String(error.name) : ''
+    if (errorName !== 'AbortError' && errorName !== 'TimeoutError') {
+      console.error('Failed to load community public profile', error)
+    }
     return null
   }
 }
@@ -149,9 +179,7 @@ function resolvePublicProfileDisplayUsername(profile: {
   return depositWalletAddress ? truncateAddress(depositWalletAddress) : 'Anon'
 }
 
-async function resolvePublicProfileForSlug(
-  normalized: ReturnType<typeof normalizePublicProfileSlug>,
-) {
+async function resolvePublicProfileForSlug(normalized: ReturnType<typeof normalizePublicProfileSlug>) {
   const communityProfile = mapCommunityPublicProfile(await fetchCommunityProfileForSlug(normalized))
   // Always try to resolve the local user (for id) so features like Communities work
   const { data: localProfile } = await UserRepository.getProfileByUsernameOrDepositWalletAddress(normalized.value)
@@ -175,19 +203,14 @@ export async function buildPublicProfileMetadata({
   const normalized = normalizePublicProfileSlug(slug)
   const [runtimeTheme, profileResult] = await Promise.all([
     loadRuntimeThemeState(),
-    normalized.type !== 'invalid'
-      ? resolvePublicProfileForSlug(normalized)
-      : Promise.resolve(null),
+    normalized.type !== 'invalid' ? resolvePublicProfileForSlug(normalized) : Promise.resolve(null),
   ])
   const profile = profileResult
   const siteName = runtimeTheme.site.name
 
   const titleLabel = resolveProfileTitleLabel(slug, profile?.username ?? null)
   const canonicalSlug = resolveProfileCanonicalSlug(slug, profile?.username ?? null)
-  const pageUrl = new URL(
-    buildLocalizedPagePath(`/${canonicalSlug}`, locale),
-    resolveSiteUrl(process.env),
-  ).toString()
+  const pageUrl = new URL(buildLocalizedPagePath(`/${canonicalSlug}`, locale), resolveSiteUrl(process.env)).toString()
   const imageUrl = buildPublicProfileOgImageUrl({
     locale,
     slug: canonicalSlug,
@@ -236,7 +259,7 @@ export async function PublicProfilePageContent({ slug }: { slug: string }) {
     }
 
     const snapshot = await fetchPortfolioSnapshot(normalized.value)
-    const fallbackChartEndDate = buildFallbackChartEndDate()
+    const fallbackChartEndDate = await buildFallbackChartEndDate()
 
     return (
       <>
@@ -250,14 +273,14 @@ export async function PublicProfilePageContent({ slug }: { slug: string }) {
           snapshot={snapshot}
           fallbackChartEndDate={fallbackChartEndDate}
         />
-        <PublicProfileTabs userAddress={normalized.value} userId={null} />
+        <PublicProfileTabsSection userAddress={normalized.value} userId={null} />
       </>
     )
   }
 
   const userAddress = profile.deposit_wallet_address!
   const snapshot = await fetchPortfolioSnapshot(userAddress)
-  const fallbackChartEndDate = buildFallbackChartEndDate()
+  const fallbackChartEndDate = await buildFallbackChartEndDate()
 
   return (
     <>
@@ -271,7 +294,7 @@ export async function PublicProfilePageContent({ slug }: { slug: string }) {
         snapshot={snapshot}
         fallbackChartEndDate={fallbackChartEndDate}
       />
-      <PublicProfileTabs userAddress={userAddress} userId={(profile as { id?: string }).id ?? null} />
+      <PublicProfileTabsSection userAddress={userAddress} userId={(profile as { id?: string }).id ?? null} />
     </>
   )
 }

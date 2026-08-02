@@ -1,5 +1,6 @@
 import type { SportsSourceProvider } from '@/lib/sports-source/providers'
 import type { SportsSourceSearchTeam } from '@/lib/sports-source/search-query'
+
 import { loadOpenRouterProviderSettings } from '@/lib/ai/market-context-config'
 import { requestOpenRouterCompletion } from '@/lib/ai/openrouter'
 import { slugifyText } from '@/lib/slug'
@@ -106,99 +107,107 @@ const YOUTUBE_OR_TWITCH_HOST_PATTERN = /(?:^|\.)(?:youtube\.com|youtu\.be|twitch
 const THE_SPORTS_DB_FALLBACK_LIMIT = 100
 const PANDASCORE_DATE_SEARCH_LIMIT = 100
 const PANDASCORE_VIDEOGAME_ENDPOINTS: Record<string, string> = {
-  'call': 'codmw',
+  call: 'codmw',
   'call-of-duty': 'codmw',
   'call-of-duty-modern-warfare': 'codmw',
-  'cod': 'codmw',
-  'codmw': 'codmw',
+  cod: 'codmw',
+  codmw: 'codmw',
   'counter-strike': 'csgo',
   'counter-strike-2': 'csgo',
-  'counter': 'csgo',
-  'cs': 'csgo',
-  'cs2': 'csgo',
+  counter: 'csgo',
+  cs: 'csgo',
+  cs2: 'csgo',
   'cs-go': 'csgo',
-  'csgo': 'csgo',
-  'dota': 'dota2',
+  csgo: 'csgo',
+  dota: 'dota2',
   'dota-2': 'dota2',
-  'dota2': 'dota2',
+  dota2: 'dota2',
   'ea-sports-fc': 'fifa',
-  'fifa': 'fifa',
-  'honor': 'kog',
+  fifa: 'fifa',
+  honor: 'kog',
   'honor-of-kings': 'kog',
   'king-of-glory': 'kog',
-  'kog': 'kog',
-  'league': 'lol',
+  kog: 'kog',
+  league: 'lol',
   'league-of-legends': 'lol',
-  'lol': 'lol',
+  lol: 'lol',
   'lol-wild-rift': 'lol-wild-rift',
   'mobile-legends': 'mlbb',
   'mobile-legends-bang-bang': 'mlbb',
-  'mlbb': 'mlbb',
-  'overwatch': 'ow',
-  'ow': 'ow',
-  'pubg': 'pubg',
-  'rainbow': 'r6siege',
+  mlbb: 'mlbb',
+  overwatch: 'ow',
+  ow: 'ow',
+  pubg: 'pubg',
+  rainbow: 'r6siege',
   'rainbow-six': 'r6siege',
   'rainbow-six-siege': 'r6siege',
-  'r6': 'r6siege',
-  'r6siege': 'r6siege',
+  r6: 'r6siege',
+  r6siege: 'r6siege',
   'rocket-league': 'rl',
-  'rl': 'rl',
-  'valorant': 'valorant',
-  'val': 'valorant',
+  rl: 'rl',
+  valorant: 'valorant',
+  val: 'valorant',
   'wild-rift': 'lol-wild-rift',
 }
 
 const THE_SPORTS_DB_SPORTS: Record<string, string> = {
   'american-football': 'American Football',
-  'atp': 'Tennis',
+  atp: 'Tennis',
   'atp-doubles': 'Tennis',
-  'baseball': 'Baseball',
-  'basketball': 'Basketball',
-  'bkbbl': 'Basketball',
-  'boxing': 'Fighting',
-  'cba': 'Basketball',
-  'cfl': 'American Football',
-  'cricket': 'Cricket',
-  'fifa': 'Soccer',
-  'football': 'American Football',
-  'golf': 'Golf',
-  'hockey': 'Ice Hockey',
+  baseball: 'Baseball',
+  basketball: 'Basketball',
+  bkbbl: 'Basketball',
+  boxing: 'Fighting',
+  cba: 'Basketball',
+  cfl: 'American Football',
+  clf: 'Soccer',
+  cricket: 'Cricket',
+  fifa: 'Soccer',
+  football: 'American Football',
+  golf: 'Golf',
+  hockey: 'Ice Hockey',
   'ice-hockey': 'Ice Hockey',
   'international-cricket': 'Cricket',
-  'itf': 'Tennis',
-  'kbo': 'Baseball',
-  'mlb': 'Baseball',
-  'mma': 'Fighting',
-  'motorsport': 'Motorsport',
-  'nba': 'Basketball',
+  itf: 'Tennis',
+  kbo: 'Baseball',
+  lib: 'Soccer',
+  mlb: 'Baseball',
+  mma: 'Fighting',
+  motorsport: 'Motorsport',
+  nba: 'Basketball',
   'nba-summer-league': 'Basketball',
   'ncaa-cbb': 'Basketball',
-  'nfl': 'American Football',
-  'npb': 'Baseball',
+  nfl: 'American Football',
+  npb: 'Baseball',
   'pga-tour': 'Golf',
   'power-slap': 'Fighting',
-  'rugby': 'Rugby',
-  'soccer': 'Soccer',
-  'tennis': 'Tennis',
-  'ufc': 'Fighting',
-  'wimbledon': 'Tennis',
-  'wnba': 'Basketball',
-  'wta': 'Tennis',
+  rugby: 'Rugby',
+  soccer: 'Soccer',
+  tennis: 'Tennis',
+  ufc: 'Fighting',
+  wimbledon: 'Tennis',
+  wnba: 'Basketball',
+  wta: 'Tennis',
   'wta-doubles': 'Tennis',
 }
 
 const THE_SPORTS_DB_SERIES_LEAGUES: Record<string, string> = {
-  'cfl': 'CFL',
-  'mlb': 'MLB',
+  cfl: 'CFL',
+  'clf-games': 'Club Friendlies',
+  'lib-2025': 'Copa Libertadores',
+  mlb: 'MLB',
   'nba-2026': 'NBA',
-  'npb': 'Japanese NPB',
+  npb: 'Japanese NPB',
   'soccer-fifwc': 'FIFA World Cup',
-  'ufc': 'UFC',
-  'wnba': 'WNBA',
+  ufc: 'UFC',
+  wnba: 'WNBA',
 }
 
 const THE_SPORTS_DB_DAY_FIRST_SERIES = new Set(['cfl', 'ufc', 'wnba'])
+const THE_SPORTS_DB_CARD_SERIES = new Set(['ufc'])
+const THE_SPORTS_DB_TEAM_NAME_ALIASES: Record<string, string> = {
+  'real-sociedad-san-sebastian': 'Real Sociedad',
+}
 
 function clampLimit(value: number | null | undefined) {
   if (!value || !Number.isFinite(value)) {
@@ -246,6 +255,13 @@ function normalizeStringId(value: unknown): string | null {
   return null
 }
 
+function normalizeStringValue(value: unknown, fallback = '') {
+  if (typeof value === 'string') {
+    return value
+  }
+  return typeof value === 'number' && Number.isFinite(value) ? String(value) : fallback
+}
+
 function normalizeHttpsUrl(value: unknown): string | null {
   if (typeof value !== 'string') {
     return null
@@ -254,8 +270,7 @@ function normalizeHttpsUrl(value: unknown): string | null {
   try {
     const url = new URL(value.trim())
     return url.protocol === 'https:' ? url.toString() : null
-  }
-  catch {
+  } catch {
     return null
   }
 }
@@ -274,8 +289,7 @@ function detectLivestreamProvider(value: string | null) {
       return 'youtube'
     }
     return hostname
-  }
-  catch {
+  } catch {
     return null
   }
 }
@@ -287,8 +301,7 @@ function isPreferredLivestreamUrl(value: string | null) {
 
   try {
     return YOUTUBE_OR_TWITCH_HOST_PATTERN.test(new URL(value).hostname)
-  }
-  catch {
+  } catch {
     return false
   }
 }
@@ -311,14 +324,18 @@ function normalizeBoolean(value: unknown): boolean | null {
 
 function normalizeTokenText(value: string | null | undefined) {
   return normalizeText(value)
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
     .toLowerCase()
     .replace(/\b(?:united states|u\.?s\.?a\.?|usmnt|uswnt)\b/g, 'usa')
 }
 
 function tokenSet(value: string | null | undefined) {
-  return new Set(normalizeTokenText(value)
-    .split(/[^a-z0-9]+/)
-    .filter(token => token.length >= 2 && token !== 'vs'))
+  return new Set(
+    normalizeTokenText(value)
+      .split(/[^a-z0-9]+/)
+      .filter((token) => token.length >= 2 && token !== 'vs'),
+  )
 }
 
 function tokenOverlap(left: string | null | undefined, right: string | null | undefined) {
@@ -373,7 +390,7 @@ function tokenCoverage(value: string | null | undefined, candidateText: string |
 }
 
 function hasTextualMatch(matchReason: string[]) {
-  return matchReason.includes('content') || matchReason.includes('team')
+  return matchReason.includes('content') || matchReason.includes('team') || matchReason.includes('series')
 }
 
 function buildCandidateText(candidate: SportsSourceCandidate) {
@@ -383,15 +400,18 @@ function buildCandidateText(candidate: SportsSourceCandidate) {
     candidate.eventName,
     candidate.leagueName,
     candidate.sportSlug,
-  ].filter(Boolean).join(' ')
+  ]
+    .filter(Boolean)
+    .join(' ')
 }
 
 function buildTeamsFromMatchupText(value: string | null | undefined) {
   const matchup = buildSportsSourceMatchupSearchQuery(null, value)
-  const teams = matchup
-    ?.split(/\s+vs\s+/i)
-    .map(team => normalizeTheSportsDbTeamSearchText(team))
-    .filter(Boolean) ?? []
+  const teams =
+    matchup
+      ?.split(/\s+vs\s+/i)
+      .map((team) => normalizeTheSportsDbTeamSearchText(team))
+      .filter(Boolean) ?? []
   return teams.length >= 2 ? teams.slice(0, 2) : []
 }
 
@@ -402,24 +422,30 @@ function buildHintsFromParams(input: SportsSourceSuggestParams): SportsMatchHint
     input.description,
     input.slug?.replace(/-/g, ' '),
     ...(input.outcomes ?? []),
-  ].map(value => normalizeText(value ?? '')).filter(Boolean)
+  ]
+    .map((value) => normalizeText(value ?? ''))
+    .filter(Boolean)
 
   const query = normalizeText(contentParts.join(' '))
-  const rawOutcomeTeams = normalizeText((input.outcomes ?? []).join(' vs ')).split(/\s+(?:vs\.?|v\.?|at|@)\s+/i).filter(Boolean)
+  const rawOutcomeTeams = normalizeText((input.outcomes ?? []).join(' vs '))
+    .split(/\s+(?:vs\.?|v\.?|at|@)\s+/i)
+    .filter(Boolean)
   const outcomeTeams = rawOutcomeTeams.length >= 2 ? rawOutcomeTeams : []
   const structuredTeams = (input.teams ?? [])
-    .map(team => normalizeText(team.name) || normalizeText(team.abbreviation))
+    .map((team) => normalizeText(team.name) || normalizeText(team.abbreviation))
     .filter(Boolean)
-  const matchupTeams = [input.title, input.question, input.slug?.replace(/-/g, ' ')]
-    .map(buildTeamsFromMatchupText)
-    .find(teams => teams.length >= 2) ?? []
+  const matchupTeams =
+    [input.title, input.question, input.slug?.replace(/-/g, ' ')]
+      .map(buildTeamsFromMatchupText)
+      .find((teams) => teams.length >= 2) ?? []
   return {
     query,
-    teams: structuredTeams.length >= 2
-      ? structuredTeams.slice(0, 2)
-      : matchupTeams.length >= 2
-        ? matchupTeams
-        : outcomeTeams,
+    teams:
+      structuredTeams.length >= 2
+        ? structuredTeams.slice(0, 2)
+        : matchupTeams.length >= 2
+          ? matchupTeams
+          : outcomeTeams,
     sport: normalizeText(input.sport ?? '') || null,
     league: normalizeText(input.league ?? '') || null,
     date: normalizeDate(input.date ?? null),
@@ -433,11 +459,12 @@ function mergeHints(base: SportsMatchHints, aiHints: Partial<SportsMatchHints> |
 
   return {
     query: normalizeText(aiHints.query ?? '') || base.query,
-    teams: base.teams.length >= 2
-      ? base.teams
-      : Array.isArray(aiHints.teams) && aiHints.teams.length > 0
-        ? aiHints.teams.map(team => normalizeText(team)).filter(Boolean)
-        : base.teams,
+    teams:
+      base.teams.length >= 2
+        ? base.teams
+        : Array.isArray(aiHints.teams) && aiHints.teams.length > 0
+          ? aiHints.teams.map((team) => normalizeText(team)).filter(Boolean)
+          : base.teams,
     sport: (base.sport ?? normalizeText(aiHints.sport ?? '')) || null,
     league: (base.league ?? normalizeText(aiHints.league ?? '')) || null,
     date: base.date ?? normalizeDate(aiHints.date ?? null),
@@ -454,36 +481,39 @@ async function extractHintsWithAi(input: SportsSourceSuggestParams, baseHints: S
   }
 
   try {
-    const content = await requestOpenRouterCompletion([
+    const content = await requestOpenRouterCompletion(
+      [
+        {
+          role: 'system',
+          content:
+            'Extract sports match search hints. Return compact JSON only with keys query, teams, sport, league, date. Do not include creator identity, wallet, or platform origin.',
+        },
+        {
+          role: 'user',
+          content: JSON.stringify({
+            title: input.title,
+            question: input.question,
+            outcomes: input.outcomes,
+            teams: input.teams,
+            description: input.description,
+            slug: input.slug,
+            tags: input.tags,
+            date: input.date,
+          }),
+        },
+      ],
       {
-        role: 'system',
-        content: 'Extract sports match search hints. Return compact JSON only with keys query, teams, sport, league, date. Do not include creator identity, wallet, or platform origin.',
+        apiKey,
+        model,
+        temperature: 0,
+        maxTokens: 220,
       },
-      {
-        role: 'user',
-        content: JSON.stringify({
-          title: input.title,
-          question: input.question,
-          outcomes: input.outcomes,
-          teams: input.teams,
-          description: input.description,
-          slug: input.slug,
-          tags: input.tags,
-          date: input.date,
-        }),
-      },
-    ], {
-      apiKey,
-      model,
-      temperature: 0,
-      maxTokens: 220,
-    })
+    )
 
     const jsonText = content.match(/\{[\s\S]*\}/)?.[0] ?? content
     const parsed = JSON.parse(jsonText) as Partial<SportsMatchHints>
     return mergeHints(baseHints, parsed)
-  }
-  catch (error) {
+  } catch (error) {
     console.error('Sports match AI hint extraction failed:', error)
     return baseHints
   }
@@ -508,9 +538,7 @@ function scoreSportsCandidate(
   for (const team of hints.teams) {
     const homeScore = tokenOverlap(team, candidate.homeTeam?.name)
     const awayScore = tokenOverlap(team, candidate.awayTeam?.name)
-    const eventNameTeamScore = !candidate.homeTeam && !candidate.awayTeam
-      ? tokenCoverage(team, candidate.eventName)
-      : 0
+    const eventNameTeamScore = !candidate.homeTeam && !candidate.awayTeam ? tokenCoverage(team, candidate.eventName) : 0
     const bestTeamScore = Math.max(homeScore, awayScore, eventNameTeamScore)
     if (bestTeamScore > 0) {
       score += Math.min(0.18, bestTeamScore * 0.18)
@@ -524,16 +552,29 @@ function scoreSportsCandidate(
     reasons.push('sport')
   }
 
-  const leagueSlug = slugifyText(hints.league ?? '')
+  const series = slugifyText(input.series ?? '')
+  const seriesLeague = THE_SPORTS_DB_SERIES_LEAGUES[series]
+  const leagueSlug = slugifyText(hints.league ?? seriesLeague ?? '')
   if (leagueSlug && candidate.leagueSlug === leagueSlug) {
     score += 0.12
     reasons.push('league')
   }
 
   const targetDate = hints.date ?? normalizeDate(input.date ?? null)
-  if (targetDate && (candidate.eventDate === targetDate || candidate.startTime?.slice(0, 10) === targetDate)) {
-    score += 0.13
+  const dateDistance = targetDate ? sportsCandidateDateDistance(candidate, targetDate) : null
+  if (dateDistance !== null && dateDistance <= 1) {
+    score += dateDistance === 0 ? 0.13 : 0.1
     reasons.push('date')
+  }
+
+  if (
+    dateDistance === 0 &&
+    THE_SPORTS_DB_CARD_SERIES.has(series) &&
+    candidate.provider === 'thesportsdb' &&
+    candidate.leagueSlug === slugifyText(seriesLeague ?? series)
+  ) {
+    score += 0.25
+    reasons.push('series')
   }
 
   return {
@@ -565,9 +606,7 @@ function normalizeTheSportsDbTeamSearchText(value: string) {
 }
 
 function trimTheSportsDbMatchupSuffix(value: string) {
-  const indexes = [':', '|', ',', ';', '?']
-    .map(separator => value.indexOf(separator))
-    .filter(index => index >= 0)
+  const indexes = [':', '|', ',', ';', '?'].map((separator) => value.indexOf(separator)).filter((index) => index >= 0)
 
   return indexes.length > 0 ? value.slice(0, Math.min(...indexes)) : value
 }
@@ -585,7 +624,9 @@ function buildTheSportsDbMatchupQuery(value: string) {
 
   const separator = parts[separatorIndex]?.toLowerCase()
   const left = normalizeTheSportsDbTeamSearchText(parts.slice(0, separatorIndex).join(' '))
-  const right = normalizeTheSportsDbTeamSearchText(trimTheSportsDbMatchupSuffix(parts.slice(separatorIndex + 1).join(' ')))
+  const right = normalizeTheSportsDbTeamSearchText(
+    trimTheSportsDbMatchupSuffix(parts.slice(separatorIndex + 1).join(' ')),
+  )
   const home = separator === 'at' || separator === '@' ? right : left
   const away = separator === 'at' || separator === '@' ? left : right
   return home && away ? `${home} vs ${away}` : null
@@ -599,8 +640,101 @@ function applyTheSportsDbTeamAliases(value: string) {
     .trim()
 }
 
+function simplifyTheSportsDbTeamName(value: string) {
+  const normalized = normalizeTheSportsDbTeamSearchText(value)
+  const alias = THE_SPORTS_DB_TEAM_NAME_ALIASES[slugifyText(normalized)]
+  if (alias) {
+    return alias
+  }
+
+  const clubDesignator = '(?:AFC|AC|CA|CD|CF|CR|EC|FC|FK|SC|SE|SK)'
+  return normalized
+    .replace(new RegExp(`^${clubDesignator}\\s+`, 'i'), '')
+    .replace(new RegExp(`\\s+${clubDesignator}$`, 'i'), '')
+    .trim()
+}
+
+function buildSimplifiedTheSportsDbMatchupQuery(matchup: string | null) {
+  const teams = matchup?.split(/\s+vs\s+/i).map(simplifyTheSportsDbTeamName) ?? []
+  return teams.length === 2 && teams[0] && teams[1] ? `${teams[0]} vs ${teams[1]}` : null
+}
+
+function readTheSportsDbTeamName(payload: unknown, expectedSport: string | null, query: string) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return null
+  }
+
+  const teams = (payload as Record<string, unknown>).teams
+  if (!Array.isArray(teams)) {
+    return null
+  }
+
+  for (const item of teams) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      continue
+    }
+    const team = item as Record<string, unknown>
+    const name = normalizeText(normalizeStringValue(team.strTeam))
+    const alternateNames = normalizeText(normalizeStringValue(team.strTeamAlternate))
+    const sport = normalizeText(normalizeStringValue(team.strSport))
+    const nameScore = Math.max(tokenContainment(query, name), tokenCoverage(query, alternateNames))
+    if (name && nameScore >= 0.75 && (!expectedSport || !sport || sport === expectedSport)) {
+      return name
+    }
+  }
+
+  return null
+}
+
+async function resolveTheSportsDbTeamName(apiKey: string, value: string, sport: string | null) {
+  const simplified = simplifyTheSportsDbTeamName(value)
+  const parts = simplified.split(' ').filter(Boolean)
+  const queries = [simplified]
+  for (let length = parts.length - 1; length >= 2; length -= 1) {
+    queries.push(parts.slice(0, length).join(' '))
+  }
+
+  for (const query of Array.from(new Set(queries)).slice(0, 3)) {
+    const url = new URL(`https://www.thesportsdb.com/api/v1/json/${encodeURIComponent(apiKey)}/searchteams.php`)
+    url.searchParams.set('t', query)
+    const teamName = readTheSportsDbTeamName(await fetchJson(url), sport, query)
+    if (teamName) {
+      return teamName
+    }
+  }
+
+  return simplified
+}
+
+async function buildCanonicalTheSportsDbMatchupQuery(apiKey: string, matchup: string | null, sport: string | null) {
+  const teams = matchup?.split(/\s+vs\s+/i) ?? []
+  if (teams.length !== 2 || !teams[0] || !teams[1]) {
+    return null
+  }
+
+  const canonicalTeams = await Promise.all(teams.map((team) => resolveTheSportsDbTeamName(apiKey, team, sport)))
+  return canonicalTeams[0] && canonicalTeams[1] ? `${canonicalTeams[0]} vs ${canonicalTeams[1]}` : null
+}
+
 function formatTheSportsDbFilenameSegment(value: string | null | undefined) {
-  const acronyms = new Set(['afc', 'caf', 'cba', 'cfl', 'concacaf', 'fifa', 'kbo', 'mlb', 'mls', 'nba', 'nfl', 'nhl', 'npb', 'uefa', 'ufc', 'wnba'])
+  const acronyms = new Set([
+    'afc',
+    'caf',
+    'cba',
+    'cfl',
+    'concacaf',
+    'fifa',
+    'kbo',
+    'mlb',
+    'mls',
+    'nba',
+    'nfl',
+    'nhl',
+    'npb',
+    'uefa',
+    'ufc',
+    'wnba',
+  ])
   return normalizeText(value)
     .replace(/[-_]+/g, ' ')
     .split(' ')
@@ -616,9 +750,7 @@ function buildTheSportsDbFilenameQuery(params: SportsSourceSearchParams, matchup
   const date = normalizeDate(params.date)
   const seriesLeague = THE_SPORTS_DB_SERIES_LEAGUES[slugifyText(params.series ?? '')]
   const league = formatTheSportsDbFilenameSegment(normalizeText(params.league) || seriesLeague)
-  return date && league && matchup
-    ? applyTheSportsDbTeamAliases(`${league} ${date} ${matchup}`)
-    : null
+  return date && league && matchup ? applyTheSportsDbTeamAliases(`${league} ${date} ${matchup}`) : null
 }
 
 function isTheSportsDbLiveStatus(status: string) {
@@ -645,7 +777,9 @@ function chooseBestStream(streams: unknown): {
   }
 
   const candidates = streams
-    .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object' && !Array.isArray(item))
+    .filter(
+      (item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object' && !Array.isArray(item),
+    )
     .map((stream) => {
       const rawUrl = normalizeHttpsUrl(stream.raw_url ?? stream.url)
       const embedUrl = normalizeHttpsUrl(stream.embed_url)
@@ -657,7 +791,7 @@ function chooseBestStream(streams: unknown): {
         preferred: isPreferredLivestreamUrl(rawUrl) || isPreferredLivestreamUrl(embedUrl),
       }
     })
-    .filter(stream => stream.rawUrl || stream.embedUrl)
+    .filter((stream) => stream.rawUrl || stream.embedUrl)
     .sort((left, right) => {
       const leftScore = (left.main ? 4 : 0) + (left.official ? 3 : 0) + (left.preferred ? 2 : 0)
       const rightScore = (right.main ? 4 : 0) + (right.official ? 3 : 0) + (right.preferred ? 2 : 0)
@@ -692,12 +826,11 @@ function resolvePandaScoreVideogameSlug(value: string | null | undefined) {
 
   const tokenMatch = normalized
     .split('-')
-    .map(token => PANDASCORE_VIDEOGAME_ENDPOINTS[token])
+    .map((token) => PANDASCORE_VIDEOGAME_ENDPOINTS[token])
     .find(Boolean)
 
   if (tokenMatch) {
-    return Object.entries(PANDASCORE_VIDEOGAME_ENDPOINTS)
-      .find(([, endpoint]) => endpoint === tokenMatch)?.[0] ?? null
+    return Object.entries(PANDASCORE_VIDEOGAME_ENDPOINTS).find(([, endpoint]) => endpoint === tokenMatch)?.[0] ?? null
   }
 
   if (normalized.includes('valorant')) {
@@ -753,15 +886,11 @@ function buildPandaScoreSearchUrl(params: SportsSourceSearchParams) {
   const videogameSlug = resolvePandaScoreVideogameSlug(params.sport) ?? resolvePandaScoreVideogameSlug(q)
   const videogameEndpoint = videogameSlug ? PANDASCORE_VIDEOGAME_ENDPOINTS[videogameSlug] : null
   const pathname = videogameEndpoint ? `/${videogameEndpoint}/matches` : '/matches'
-  const url = buildPandaScoreMatchesUrl(
-    pathname,
-    date ? PANDASCORE_DATE_SEARCH_LIMIT : clampLimit(params.limit),
-  )
+  const url = buildPandaScoreMatchesUrl(pathname, date ? PANDASCORE_DATE_SEARCH_LIMIT : clampLimit(params.limit))
 
   if (date) {
     appendPandaScoreDateRange(url, date)
-  }
-  else if (q) {
+  } else if (q) {
     url.searchParams.set('search[name]', q)
   }
 
@@ -791,45 +920,50 @@ function normalizePandaScoreMatch(raw: Record<string, unknown>): SportsSourceCan
 
   const opponents = Array.isArray(raw.opponents) ? raw.opponents : []
   const normalizedOpponents = opponents
-    .map(item => (item && typeof item === 'object' && !Array.isArray(item)) ? item as Record<string, unknown> : null)
+    .map((item) =>
+      item && typeof item === 'object' && !Array.isArray(item) ? (item as Record<string, unknown>) : null,
+    )
     .filter((item): item is Record<string, unknown> => Boolean(item))
     .map((item, index) => {
-      const opponent = item.opponent && typeof item.opponent === 'object' && !Array.isArray(item.opponent)
-        ? item.opponent as Record<string, unknown>
-        : item
-      const name = normalizeText(String(opponent.name ?? ''))
+      const opponent =
+        item.opponent && typeof item.opponent === 'object' && !Array.isArray(item.opponent)
+          ? (item.opponent as Record<string, unknown>)
+          : item
+      const name = normalizeText(normalizeStringValue(opponent.name))
       return {
         name,
         abbreviation: normalizeStringId(opponent.acronym),
-        slug: normalizeText(String(opponent.slug ?? '')) || slugifyText(name),
+        slug: normalizeText(normalizeStringValue(opponent.slug)) || slugifyText(name),
         logo: normalizeHttpsUrl(opponent.image_url),
-        hostStatus: index === 0 ? 'home' as const : 'away' as const,
+        hostStatus: index === 0 ? ('home' as const) : ('away' as const),
       }
     })
-    .filter(team => team.name)
+    .filter((team) => team.name)
 
-  const league = raw.league && typeof raw.league === 'object' && !Array.isArray(raw.league)
-    ? raw.league as Record<string, unknown>
-    : null
-  const videogame = raw.videogame && typeof raw.videogame === 'object' && !Array.isArray(raw.videogame)
-    ? raw.videogame as Record<string, unknown>
-    : null
+  const league =
+    raw.league && typeof raw.league === 'object' && !Array.isArray(raw.league)
+      ? (raw.league as Record<string, unknown>)
+      : null
+  const videogame =
+    raw.videogame && typeof raw.videogame === 'object' && !Array.isArray(raw.videogame)
+      ? (raw.videogame as Record<string, unknown>)
+      : null
   const results = Array.isArray(raw.results) ? raw.results : []
-  const homeResult = results[0] && typeof results[0] === 'object' ? results[0] as Record<string, unknown> : null
-  const awayResult = results[1] && typeof results[1] === 'object' ? results[1] as Record<string, unknown> : null
+  const homeResult = results[0] && typeof results[0] === 'object' ? (results[0] as Record<string, unknown>) : null
+  const awayResult = results[1] && typeof results[1] === 'object' ? (results[1] as Record<string, unknown>) : null
   const stream = chooseBestStream(raw.streams_list)
-  const status = normalizeText(String(raw.status ?? '')).toLowerCase()
+  const status = normalizeText(normalizeStringValue(raw.status)).toLowerCase()
 
   return {
     provider: 'pandascore',
     eventId,
-    eventName: normalizeText(String(raw.name ?? '')) || null,
+    eventName: normalizeText(normalizeStringValue(raw.name)) || null,
     gameId: null,
     leagueId: normalizeStringId(league?.id),
-    leagueName: normalizeText(String(league?.name ?? '')) || null,
-    leagueSlug: normalizeText(String(league?.slug ?? '')) || null,
-    sportSlug: normalizeText(String(videogame?.slug ?? '')) || null,
-    eventDate: normalizeDate(normalizeText(String(raw.begin_at ?? ''))),
+    leagueName: normalizeText(normalizeStringValue(league?.name)) || null,
+    leagueSlug: normalizeText(normalizeStringValue(league?.slug)) || null,
+    sportSlug: normalizeText(normalizeStringValue(videogame?.slug)) || null,
+    eventDate: normalizeDate(normalizeText(normalizeStringValue(raw.begin_at))),
     startTime: normalizeIso(raw.begin_at),
     homeTeam: normalizedOpponents[0] ?? null,
     awayTeam: normalizedOpponents[1] ?? null,
@@ -853,7 +987,11 @@ async function searchPandaScore(params: SportsSourceSearchParams): Promise<Sport
 
   const payload = await fetchJson(buildPandaScoreSearchUrl(params), { Authorization: `Bearer ${token}` })
   return (Array.isArray(payload) ? payload : [])
-    .map(item => (item && typeof item === 'object' && !Array.isArray(item)) ? normalizePandaScoreMatch(item as Record<string, unknown>) : null)
+    .map((item) =>
+      item && typeof item === 'object' && !Array.isArray(item)
+        ? normalizePandaScoreMatch(item as Record<string, unknown>)
+        : null,
+    )
     .filter((item): item is SportsSourceCandidate => Boolean(item))
 }
 
@@ -877,33 +1015,38 @@ function normalizeTheSportsDbEvent(raw: Record<string, unknown>): SportsSourceCa
     return null
   }
 
-  const homeName = normalizeText(String(raw.strHomeTeam ?? ''))
-  const awayName = normalizeText(String(raw.strAwayTeam ?? ''))
-  const rawTimestamp = normalizeText(String(raw.strTimestamp ?? ''))
-  const timestamp = rawTimestamp && !/(?:z|[+-]\d{2}:?\d{2})$/i.test(rawTimestamp)
-    ? `${rawTimestamp}Z`
-    : rawTimestamp
-  const startTime = normalizeIso(timestamp)
-    ?? normalizeIso(`${normalizeText(String(raw.dateEvent ?? ''))}T${normalizeText(String(raw.strTime ?? '00:00:00'))}Z`)
-  const status = normalizeText(String(raw.strStatus ?? ''))
+  const homeName = normalizeText(normalizeStringValue(raw.strHomeTeam))
+  const awayName = normalizeText(normalizeStringValue(raw.strAwayTeam))
+  const rawTimestamp = normalizeText(normalizeStringValue(raw.strTimestamp))
+  const timestamp = rawTimestamp && !/(?:z|[+-]\d{2}:?\d{2})$/i.test(rawTimestamp) ? `${rawTimestamp}Z` : rawTimestamp
+  const startTime =
+    normalizeIso(timestamp) ??
+    normalizeIso(
+      `${normalizeText(normalizeStringValue(raw.dateEvent))}T${normalizeText(
+        normalizeStringValue(raw.strTime, '00:00:00'),
+      )}Z`,
+    )
+  const status = normalizeText(normalizeStringValue(raw.strStatus))
   const ended = isTheSportsDbEndedStatus(status)
-  const stream = chooseBestStream([
-    raw.strLiveStream ? { raw_url: raw.strLiveStream, official: true, main: true } : null,
-    raw.strStream ? { raw_url: raw.strStream, official: true, main: true } : null,
-    raw.strYoutube ? { raw_url: raw.strYoutube, official: true, main: false } : null,
-    raw.strTwitch ? { raw_url: raw.strTwitch, official: true, main: false } : null,
-  ].filter(Boolean))
+  const stream = chooseBestStream(
+    [
+      raw.strLiveStream ? { raw_url: raw.strLiveStream, official: true, main: true } : null,
+      raw.strStream ? { raw_url: raw.strStream, official: true, main: true } : null,
+      raw.strYoutube ? { raw_url: raw.strYoutube, official: true, main: false } : null,
+      raw.strTwitch ? { raw_url: raw.strTwitch, official: true, main: false } : null,
+    ].filter(Boolean),
+  )
 
   return {
     provider: 'thesportsdb',
     eventId,
-    eventName: normalizeText(String(raw.strEvent ?? '')) || null,
+    eventName: normalizeText(normalizeStringValue(raw.strEvent)) || null,
     gameId: null,
     leagueId: normalizeStringId(raw.idLeague),
-    leagueName: normalizeText(String(raw.strLeague ?? '')) || null,
-    leagueSlug: slugifyText(String(raw.strLeague ?? '')) || null,
-    sportSlug: slugifyText(String(raw.strSport ?? '')) || null,
-    eventDate: normalizeDate(normalizeText(String(raw.dateEvent ?? ''))),
+    leagueName: normalizeText(normalizeStringValue(raw.strLeague)) || null,
+    leagueSlug: slugifyText(normalizeStringValue(raw.strLeague)) || null,
+    sportSlug: slugifyText(normalizeStringValue(raw.strSport)) || null,
+    eventDate: normalizeDate(normalizeText(normalizeStringValue(raw.dateEvent))),
     startTime,
     homeTeam: homeName ? { name: homeName, slug: slugifyText(homeName), hostStatus: 'home' } : null,
     awayTeam: awayName ? { name: awayName, slug: slugifyText(awayName), hostStatus: 'away' } : null,
@@ -929,16 +1072,50 @@ function readTheSportsDbEvents(payload: unknown, limit: number) {
     ? record.event
     : Array.isArray(record.events)
       ? record.events
-      : []
+      : Array.isArray(record.search)
+        ? record.search
+        : []
 
   return events
     .slice(0, limit)
-    .map(item => (item && typeof item === 'object' && !Array.isArray(item)) ? normalizeTheSportsDbEvent(item as Record<string, unknown>) : null)
+    .map((item) =>
+      item && typeof item === 'object' && !Array.isArray(item)
+        ? normalizeTheSportsDbEvent(item as Record<string, unknown>)
+        : null,
+    )
     .filter((item): item is SportsSourceCandidate => Boolean(item))
 }
 
+function sportsCandidateDateDistance(candidate: SportsSourceCandidate, date: string) {
+  const targetTime = Date.parse(`${date}T00:00:00Z`)
+  const candidateDates = [candidate.eventDate, candidate.startTime?.slice(0, 10)].filter((value): value is string =>
+    Boolean(value),
+  )
+  if (Number.isNaN(targetTime) || candidateDates.length === 0) {
+    return null
+  }
+
+  return Math.min(
+    ...candidateDates.map((candidateDate) =>
+      Math.round(Math.abs(Date.parse(`${candidateDate}T00:00:00Z`) - targetTime) / 86_400_000),
+    ),
+  )
+}
+
 function candidateMatchesDate(candidate: SportsSourceCandidate, date: string) {
-  return candidate.eventDate === date || candidate.startTime?.slice(0, 10) === date
+  const distance = sportsCandidateDateDistance(candidate, date)
+  return distance !== null && distance <= 1
+}
+
+function buildNearbySportsDates(date: string) {
+  const timestamp = Date.parse(`${date}T00:00:00Z`)
+  if (Number.isNaN(timestamp)) {
+    return [date]
+  }
+
+  return [timestamp, timestamp - 86_400_000, timestamp + 86_400_000].map((value) =>
+    new Date(value).toISOString().slice(0, 10),
+  )
 }
 
 function formatTheSportsDbSportParam(value: string | null | undefined) {
@@ -947,10 +1124,13 @@ function formatTheSportsDbSportParam(value: string | null | undefined) {
     return null
   }
 
-  return THE_SPORTS_DB_SPORTS[normalized] ?? normalized
-    .split('-')
-    .map(part => part ? `${part[0]?.toUpperCase() ?? ''}${part.slice(1)}` : '')
-    .join(' ')
+  return (
+    THE_SPORTS_DB_SPORTS[normalized] ??
+    normalized
+      .split('-')
+      .map((part) => (part ? `${part[0]?.toUpperCase() ?? ''}${part.slice(1)}` : ''))
+      .join(' ')
+  )
 }
 
 async function searchTheSportsDb(params: SportsSourceSearchParams): Promise<SportsSourceCandidate[]> {
@@ -968,20 +1148,53 @@ async function searchTheSportsDb(params: SportsSourceSearchParams): Promise<Spor
   const series = slugifyText(params.series ?? '')
   const eventQuery = applyTheSportsDbTeamAliases(matchup ?? normalizeTheSportsDbSearchText(q))
 
-  async function searchDay() {
-    if (!date) {
+  async function searchDay(day: string | null) {
+    if (!day) {
       return []
     }
     const dayUrl = new URL(`https://www.thesportsdb.com/api/v1/json/${encodeURIComponent(apiKey)}/eventsday.php`)
-    dayUrl.searchParams.set('d', date)
+    dayUrl.searchParams.set('d', day)
     if (sport) {
       dayUrl.searchParams.set('s', sport)
     }
     return readTheSportsDbEvents(await fetchJson(dayUrl), Math.max(limit, THE_SPORTS_DB_FALLBACK_LIMIT))
   }
 
+  async function searchNearbyDays() {
+    if (!date) {
+      return []
+    }
+
+    const fallbackCandidates: SportsSourceCandidate[] = []
+    const expectedLeague = THE_SPORTS_DB_SERIES_LEAGUES[series]
+    for (const day of buildNearbySportsDates(date)) {
+      const candidates = (await searchDay(day)).filter((candidate) => candidateMatchesDate(candidate, date))
+      const relevantCandidates = candidates.filter(
+        (candidate) =>
+          tokenOverlap(eventQuery, buildCandidateText(candidate)) > 0 ||
+          (expectedLeague && candidate.leagueSlug === slugifyText(expectedLeague)),
+      )
+      if (relevantCandidates.length > 0) {
+        return relevantCandidates
+      }
+      fallbackCandidates.push(...candidates)
+    }
+
+    return fallbackCandidates
+  }
+
   if (date && (sport === 'Fighting' || THE_SPORTS_DB_DAY_FIRST_SERIES.has(series))) {
-    return (await searchDay()).filter(candidate => candidateMatchesDate(candidate, date))
+    return searchNearbyDays()
+  }
+
+  async function searchEvent(query: string) {
+    const eventUrl = new URL(`https://www.thesportsdb.com/api/v1/json/${encodeURIComponent(apiKey)}/searchevents.php`)
+    eventUrl.searchParams.set('e', query)
+    return readTheSportsDbEvents(await fetchJson(eventUrl), limit)
+  }
+
+  function candidatesForDate(candidates: SportsSourceCandidate[]) {
+    return date ? candidates.filter((candidate) => candidateMatchesDate(candidate, date)) : candidates
   }
 
   const filenameQuery = buildTheSportsDbFilenameQuery(params, matchup)
@@ -993,31 +1206,66 @@ async function searchTheSportsDb(params: SportsSourceSearchParams): Promise<Spor
   let primaryCandidates: SportsSourceCandidate[] = []
   try {
     primaryCandidates = readTheSportsDbEvents(await fetchJson(searchUrl), limit)
-  }
-  catch (error) {
+  } catch (error) {
     if (!date) {
       throw error
     }
     console.error('TheSportsDB primary search failed:', error)
   }
 
-  if (!date) {
+  if (!date && primaryCandidates.length > 0) {
     return primaryCandidates
   }
 
-  const datedPrimaryCandidates = primaryCandidates.filter(candidate => candidateMatchesDate(candidate, date))
+  const datedPrimaryCandidates = candidatesForDate(primaryCandidates)
   if (datedPrimaryCandidates.length > 0) {
     return datedPrimaryCandidates
   }
 
+  let searchedEventQuery = !filenameQuery
   if (filenameQuery) {
-    const eventUrl = new URL(`https://www.thesportsdb.com/api/v1/json/${encodeURIComponent(apiKey)}/searchevents.php`)
-    eventUrl.searchParams.set('e', eventQuery)
-    const eventCandidates = readTheSportsDbEvents(await fetchJson(eventUrl), limit)
-    return eventCandidates.filter(candidate => candidateMatchesDate(candidate, date))
+    const eventCandidates = candidatesForDate(await searchEvent(eventQuery))
+    searchedEventQuery = true
+    if (eventCandidates.length > 0) {
+      return eventCandidates
+    }
   }
 
-  return (await searchDay()).filter(candidate => candidateMatchesDate(candidate, date))
+  const simplifiedQuery = applyTheSportsDbTeamAliases(buildSimplifiedTheSportsDbMatchupQuery(matchup) ?? '')
+  if (simplifiedQuery && simplifiedQuery !== eventQuery) {
+    const simplifiedCandidates = candidatesForDate(await searchEvent(simplifiedQuery))
+    if (simplifiedCandidates.length > 0) {
+      return simplifiedCandidates
+    }
+  }
+
+  const shouldResolveCanonicalTeams = Boolean(simplifiedQuery && simplifiedQuery !== eventQuery)
+  const canonicalQuery = shouldResolveCanonicalTeams
+    ? applyTheSportsDbTeamAliases((await buildCanonicalTheSportsDbMatchupQuery(apiKey, matchup, sport)) ?? '')
+    : simplifiedQuery
+  const fallbackQueries = [
+    !searchedEventQuery ? eventQuery : null,
+    canonicalQuery && canonicalQuery !== eventQuery && canonicalQuery !== simplifiedQuery ? canonicalQuery : null,
+    canonicalQuery
+      ? canonicalQuery
+          .split(/\s+vs\s+/i)
+          .reverse()
+          .join(' vs ')
+      : null,
+  ].filter((query): query is string => Boolean(query))
+
+  for (const fallbackQuery of Array.from(new Set(fallbackQueries))) {
+    const fallbackCandidates = candidatesForDate(await searchEvent(fallbackQuery))
+    if (fallbackCandidates.length > 0) {
+      return fallbackCandidates
+    }
+  }
+
+  if (!date) {
+    return []
+  }
+
+  return searchNearbyDays()
 }
 
 async function resolveTheSportsDb(params: SportsSourceResolveParams): Promise<SportsSourceCandidate | null> {
@@ -1030,9 +1278,10 @@ async function resolveTheSportsDb(params: SportsSourceResolveParams): Promise<Sp
   const url = new URL(`https://www.thesportsdb.com/api/v1/json/${encodeURIComponent(key)}/lookupevent.php`)
   url.searchParams.set('id', id)
   const payload = await fetchJson(url)
-  const events = payload && typeof payload === 'object' && !Array.isArray(payload)
-    ? (payload as Record<string, unknown>).events
-    : null
+  const events =
+    payload && typeof payload === 'object' && !Array.isArray(payload)
+      ? (payload as Record<string, unknown>).events
+      : null
   const first = Array.isArray(events) ? events[0] : null
   return first && typeof first === 'object' && !Array.isArray(first)
     ? normalizeTheSportsDbEvent(first as Record<string, unknown>)
@@ -1042,15 +1291,12 @@ async function resolveTheSportsDb(params: SportsSourceResolveParams): Promise<Sp
 function providerList(provider?: string | null, auth?: SportsSourceAuth | null): SportsSourceProvider[] {
   const hasExplicitProvider = Boolean(provider?.trim())
   const providers = normalizeSportsSourceProviderTokens(provider)
-  const requestedProviders = providers.length > 0
-    ? providers
-    : hasExplicitProvider
-      ? []
-      : [...DEFAULT_SPORTS_SOURCE_PROVIDER_ORDER]
+  const requestedProviders =
+    providers.length > 0 ? providers : hasExplicitProvider ? [] : [...DEFAULT_SPORTS_SOURCE_PROVIDER_ORDER]
   const configuredProviders = auth ? getConfiguredSportsSourceProviders(auth) : []
 
   return configuredProviders.length > 0
-    ? requestedProviders.filter(provider => configuredProviders.includes(provider))
+    ? requestedProviders.filter((provider) => configuredProviders.includes(provider))
     : requestedProviders
 }
 
@@ -1074,7 +1320,7 @@ async function runProviderResolve(provider: SportsSourceProvider, params: Sports
 
 export async function searchSportsEvents(params: SportsSourceSearchParams) {
   const providers = providerList(params.provider, params.auth)
-  const results = await Promise.allSettled(providers.map(provider => runProviderSearch(provider, params)))
+  const results = await Promise.allSettled(providers.map((provider) => runProviderSearch(provider, params)))
   return results
     .flatMap((result) => {
       if (result.status === 'fulfilled') {
@@ -1084,19 +1330,23 @@ export async function searchSportsEvents(params: SportsSourceSearchParams) {
       return []
     })
     .map((candidate) => {
-      const scored = scoreSportsCandidate({
-        title: params.q ?? '',
-        sport: params.sport,
-        league: params.league,
-        date: params.date,
-      }, candidate)
+      const scored = scoreSportsCandidate(
+        {
+          title: params.q ?? '',
+          sport: params.sport,
+          league: params.league,
+          series: params.series,
+          date: params.date,
+        },
+        candidate,
+      )
       return {
         ...candidate,
         confidence: scored.confidence,
         matchReason: scored.matchReason,
       }
     })
-    .filter(candidate => !normalizeText(params.q) || hasTextualMatch(candidate.matchReason))
+    .filter((candidate) => !normalizeText(params.q) || hasTextualMatch(candidate.matchReason))
     .sort((left, right) => right.confidence - left.confidence)
     .slice(0, clampLimit(params.limit))
 }
@@ -1109,8 +1359,7 @@ export async function resolveSportsEvent(params: SportsSourceResolveParams) {
       if (candidate) {
         return candidate
       }
-    }
-    catch (error) {
+    } catch (error) {
       console.error('Sports provider resolve failed:', error)
     }
   }
@@ -1126,9 +1375,7 @@ export async function findSportsEvents(params: SportsSourceSuggestParams) {
   if (!query) {
     return []
   }
-  const searchQuery = hints.teams.length >= 2
-    ? `${hints.teams[0]} vs ${hints.teams[1]}`
-    : query
+  const searchQuery = hints.teams.length >= 2 ? `${hints.teams[0]} vs ${hints.teams[1]}` : query
 
   const candidates = await searchSportsEvents({
     q: searchQuery,

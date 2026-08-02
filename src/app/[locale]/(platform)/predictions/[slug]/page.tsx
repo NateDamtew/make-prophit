@@ -1,16 +1,22 @@
 import type { Metadata } from 'next'
-import type { SupportedLocale } from '@/i18n/locales'
+
 import { setRequestLocale } from 'next-intl/server'
 import { notFound } from 'next/navigation'
+
+import type { SupportedLocale } from '@/i18n/locales'
+
 import {
   generatePredictionResultsMetadata,
   renderPredictionResultsPage,
 } from '@/app/[locale]/(platform)/predictions/[slug]/_lib/prediction-results-page'
+import { resolvePredictionResultsFiltersFromSearchParams } from '@/lib/prediction-results-filters'
 import {
-  DEFAULT_PREDICTION_RESULTS_SORT,
-  DEFAULT_PREDICTION_RESULTS_STATUS,
-} from '@/lib/prediction-results-filters'
-import { getPublicShellStaticParams, shouldBypassPublicShellPlaceholder, STATIC_PARAMS_PLACEHOLDER } from '@/lib/static-params'
+  getPublicShellStaticParams,
+  shouldBypassPublicShellPlaceholder,
+  STATIC_PARAMS_PLACEHOLDER,
+} from '@/lib/static-params'
+
+export const instant = false
 
 export async function generateStaticParams() {
   return getPublicShellStaticParams({ slug: STATIC_PARAMS_PLACEHOLDER })
@@ -33,8 +39,12 @@ export async function generateMetadata({ params }: PageProps<'/[locale]/predicti
 
 export default async function PredictionResultsPage({
   params,
+  searchParams,
 }: PageProps<'/[locale]/predictions/[slug]'>) {
-  const { locale, slug } = await params
+  const [{ locale, slug }, filters] = await Promise.all([
+    params,
+    searchParams.then(resolvePredictionResultsFiltersFromSearchParams),
+  ])
   const resolvedLocale = locale as SupportedLocale
   setRequestLocale(resolvedLocale)
 
@@ -46,8 +56,8 @@ export default async function PredictionResultsPage({
   }
 
   return renderPredictionResultsPage({
-    initialSort: DEFAULT_PREDICTION_RESULTS_SORT,
-    initialStatus: DEFAULT_PREDICTION_RESULTS_STATUS,
+    initialSort: filters.sort,
+    initialStatus: filters.status,
     locale: resolvedLocale,
     slug,
   })

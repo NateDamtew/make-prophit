@@ -1,10 +1,6 @@
 {
   "title": "WebSocket",
-  "description": "WebSocket channels for market, user, and sports live updates.",
+  "description": "WebSocket channels for public markets, private accounts, and live-data topics.",
   "icon": "Radio",
-  "pages": [
-    "market",
-    "sports",
-    "user"
-  ]
+  "pages": ["market", "user", "sports"]
 }

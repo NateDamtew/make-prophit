@@ -50,14 +50,10 @@ export default function SettingsSidebar() {
                 lg:h-11 lg:min-w-0 lg:flex-row lg:justify-start lg:gap-2 lg:px-4 lg:py-2
               `,
               { 'bg-accent hover:bg-accent': active === item.id },
-            )}
-            asChild
-          >
-            <Link href={item.href}>
+            )} nativeButton={false} render={<Link href={item.href} />}>
               <item.icon className="size-6 text-muted-foreground lg:size-5" />
               <span>{item.label}</span>
-            </Link>
-          </Button>
+            </Button>
         ))}
       </nav>
     </aside>

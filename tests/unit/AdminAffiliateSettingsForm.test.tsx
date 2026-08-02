@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import * as React from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+
 import AdminAffiliateSettingsForm from '@/app/[locale]/admin/affiliate/_components/AdminAffiliateSettingsForm'
 
 const mocks = vi.hoisted(() => ({
@@ -25,7 +26,7 @@ vi.mock('next/form', () => ({
   default: ({ children, ...props }: any) => React.createElement('form', props, children),
 }))
 
-vi.mock('sonner', () => ({
+vi.mock('@/components/ui/toast', () => ({
   toast: {
     success: vi.fn(),
     error: vi.fn(),

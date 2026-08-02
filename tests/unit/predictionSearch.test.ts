@@ -1,33 +1,25 @@
 import { describe, expect, it } from 'vitest'
+
 import {
-  buildPredictionResultsInternalRoutePath,
   buildPredictionResultsUrlSearchParams,
-  hasPredictionResultsFilterSearchParams,
   parsePredictionResultsSort,
   parsePredictionResultsStatus,
   resolvePredictionResultsApiSort,
   resolvePredictionResultsFiltersFromSearchParams,
   resolvePredictionResultsRequestedApiSort,
 } from '@/lib/prediction-results-filters'
-import {
-  buildPredictionResultsPath,
-  resolvePredictionSearchContext,
-} from '@/lib/prediction-search'
+import { buildPredictionResultsPath, resolvePredictionSearchContext } from '@/lib/prediction-search'
 
 const navigationTags = [
   {
     slug: 'politics',
     name: 'Politics',
-    childs: [
-      { slug: 'brazil', name: 'Brazil' },
-    ],
+    childs: [{ slug: 'brazil', name: 'Brazil' }],
   },
   {
     slug: 'science',
     name: 'Science',
-    childs: [
-      { slug: 'space', name: 'Space' },
-    ],
+    childs: [{ slug: 'space', name: 'Space' }],
   },
 ] as const
 
@@ -75,47 +67,34 @@ describe('prediction search helpers', () => {
   })
 
   it('preserves unrelated params when writing prediction result filters', () => {
-    const params = buildPredictionResultsUrlSearchParams(
-      new URLSearchParams('foo=bar'),
-      { sort: 'volume', status: 'resolved' },
-    )
+    const params = buildPredictionResultsUrlSearchParams(new URLSearchParams('foo=bar'), {
+      sort: 'volume',
+      status: 'resolved',
+    })
 
     expect(params.toString()).toBe('foo=bar&_sort=volume&_status=resolved')
   })
 
   it('omits default prediction filters from the url', () => {
-    const params = buildPredictionResultsUrlSearchParams(
-      new URLSearchParams('foo=bar&_sort=trending&_status=active'),
-      { sort: 'trending', status: 'active' },
-    )
+    const params = buildPredictionResultsUrlSearchParams(new URLSearchParams('foo=bar&_sort=trending&_status=active'), {
+      sort: 'trending',
+      status: 'active',
+    })
 
     expect(params.toString()).toBe('foo=bar')
   })
 
   it('resolves prediction result filters from route search params', () => {
-    expect(resolvePredictionResultsFiltersFromSearchParams({
-      foo: 'bar',
-      _sort: 'competitive',
-      _status: 'resolved',
-    })).toEqual({
-      searchParamsString: 'foo=bar&_sort=competitive&_status=resolved',
+    expect(
+      resolvePredictionResultsFiltersFromSearchParams({
+        foo: 'bar',
+        _sort: 'competitive',
+        _status: 'resolved',
+      }),
+    ).toEqual({
       sort: 'trending',
       status: 'resolved',
     })
-  })
-
-  it('detects and rewrites prediction filter params into an internal route path', () => {
-    const searchParams = new URLSearchParams('_status=resolved&_sort=volume')
-
-    expect(hasPredictionResultsFilterSearchParams(searchParams)).toBe(true)
-    expect(buildPredictionResultsInternalRoutePath('/predictions/bitcoin', {
-      sort: 'volume',
-      status: 'resolved',
-    })).toBe('/predictions/bitcoin/route-filters/resolved/volume')
-  })
-
-  it('ignores unrelated search params when checking for prediction result filters', () => {
-    expect(hasPredictionResultsFilterSearchParams(new URLSearchParams('foo=bar'))).toBe(false)
   })
 
   it('maps prediction sorts to API sorts', () => {
@@ -125,19 +104,25 @@ describe('prediction search helpers', () => {
   })
 
   it('uses search ordering for free-text queries on the default trending sort', () => {
-    expect(resolvePredictionResultsRequestedApiSort({
-      query: 'meta',
-      sort: 'trending',
-    })).toBeUndefined()
+    expect(
+      resolvePredictionResultsRequestedApiSort({
+        query: 'meta',
+        sort: 'trending',
+      }),
+    ).toBeUndefined()
 
-    expect(resolvePredictionResultsRequestedApiSort({
-      query: '',
-      sort: 'trending',
-    })).toBe('trending')
+    expect(
+      resolvePredictionResultsRequestedApiSort({
+        query: '',
+        sort: 'trending',
+      }),
+    ).toBe('trending')
 
-    expect(resolvePredictionResultsRequestedApiSort({
-      query: 'meta',
-      sort: 'volume',
-    })).toBe('volume')
+    expect(
+      resolvePredictionResultsRequestedApiSort({
+        query: 'meta',
+        sort: 'volume',
+      }),
+    ).toBe('volume')
   })
 })

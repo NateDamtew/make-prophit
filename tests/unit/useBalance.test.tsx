@@ -1,30 +1,28 @@
 import type { ReactNode } from 'react'
+
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
 import { useBalance } from '@/hooks/useBalance'
 import { useUser } from '@/stores/useUser'
 
 const mocks = vi.hoisted(() => ({
   createPublicClient: vi.fn(),
+  createViemTransport: vi.fn(),
   getContract: vi.fn(),
-  http: vi.fn((url: string) => ({ url })),
+  resolveViemRpcUrls: vi.fn(),
 }))
 
 vi.mock('viem', () => ({
   createPublicClient: mocks.createPublicClient,
   getContract: mocks.getContract,
-  http: mocks.http,
 }))
 
-vi.mock('@/lib/appkit', () => ({
-  defaultNetwork: {
-    rpcUrls: {
-      default: {
-        http: ['https://rpc.local'],
-      },
-    },
-  },
+vi.mock('@/lib/viem-network', () => ({
+  createViemTransport: (...args: unknown[]) => mocks.createViemTransport(...args),
+  defaultViemNetwork: { id: 80002, name: 'Polygon Amoy' },
+  resolveViemRpcUrls: (...args: unknown[]) => mocks.resolveViemRpcUrls(...args),
 }))
 
 vi.mock('@/lib/contracts', () => ({
@@ -41,11 +39,7 @@ function createWrapper() {
   })
 
   return function Wrapper({ children }: { children: ReactNode }) {
-    return (
-      <QueryClientProvider client={queryClient}>
-        {children}
-      </QueryClientProvider>
-    )
+    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   }
 }
 
@@ -53,13 +47,29 @@ describe('useBalance', () => {
   beforeEach(() => {
     useUser.setState(null)
     mocks.createPublicClient.mockReset()
+    mocks.createViemTransport.mockReset()
     mocks.getContract.mockReset()
-    mocks.http.mockClear()
+    mocks.resolveViemRpcUrls.mockReset()
+    mocks.createViemTransport.mockReturnValue({ transport: 'fallback' })
     mocks.createPublicClient.mockReturnValue({})
+    mocks.resolveViemRpcUrls.mockReturnValue(['https://rpc-1.local', 'https://rpc-2.local'])
   })
 
   afterEach(() => {
     useUser.setState(null)
+  })
+
+  it('creates a public client with the ordered RPC fallback transport', () => {
+    renderHook(() => useBalance(), {
+      wrapper: createWrapper(),
+    })
+
+    expect(mocks.resolveViemRpcUrls).toHaveBeenCalledWith('')
+    expect(mocks.createViemTransport).toHaveBeenCalledWith(['https://rpc-1.local', 'https://rpc-2.local'])
+    expect(mocks.createPublicClient).toHaveBeenCalledWith({
+      chain: { id: 80002, name: 'Polygon Amoy' },
+      transport: { transport: 'fallback' },
+    })
   })
 
   it('loads the Deposit Wallet balance without requiring a live wallet connection', async () => {
@@ -117,11 +127,15 @@ describe('useBalance', () => {
       deposit_wallet_status: 'deployed',
     })
 
-    const { result } = renderHook(() => useBalance({
-      depositWalletAddress: '0x00000000000000000000000000000000000000dd',
-    }), {
-      wrapper: createWrapper(),
-    })
+    const { result } = renderHook(
+      () =>
+        useBalance({
+          depositWalletAddress: '0x00000000000000000000000000000000000000dd',
+        }),
+      {
+        wrapper: createWrapper(),
+      },
+    )
 
     await waitFor(() => {
       expect(result.current.isLoadingBalance).toBe(false)

@@ -1,5 +1,3 @@
-/* eslint-disable perfectionist/sort-exports */
-
 // tables
 export * from './affiliates/tables'
 export * from './agents/tables'
@@ -11,6 +9,7 @@ export * from './notifications/tables'
 export * from './orders/tables'
 export * from './settings/tables'
 export * from './subgraph/tables'
+export * from './sumsub/tables'
 export * from './waitlist/tables'
 
 // relations

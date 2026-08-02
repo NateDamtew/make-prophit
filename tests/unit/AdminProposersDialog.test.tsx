@@ -2,7 +2,15 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { getAddress } from 'viem'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+
 import AdminProposersDialog from '@/app/[locale]/admin/events/calendar/_components/AdminProposersDialog'
+
+function getRequestUrl(input: RequestInfo | URL) {
+  if (typeof input === 'string') {
+    return input
+  }
+  return input instanceof URL ? input.href : input.url
+}
 
 const CREATOR = getAddress('0x00000000000000000000000000000000000000aa')
 const EMBEDDED_ACCOUNT = getAddress('0x00000000000000000000000000000000000000bb')
@@ -10,6 +18,11 @@ const REGISTRY = getAddress('0x00000000000000000000000000000000000000cc')
 const WHITELIST = getAddress('0x00000000000000000000000000000000000000dd')
 const PROPOSER = getAddress('0x00000000000000000000000000000000000000ee')
 const DEPLOYER = getAddress('0x00000000000000000000000000000000000000ff')
+
+import { DEFAULT_CHAIN_ID, POLYGON_MAINNET_CHAIN_ID } from '@/lib/network'
+
+const CHAIN_HEX = `0x${DEFAULT_CHAIN_ID.toString(16)}`
+const CHAIN_NAME = DEFAULT_CHAIN_ID === POLYGON_MAINNET_CHAIN_ID ? 'Polygon' : 'Polygon Amoy'
 
 const mocks = vi.hoisted(() => ({
   useAppKitAccount: vi.fn(),
@@ -28,6 +41,7 @@ const mocks = vi.hoisted(() => ({
   getGasPrice: vi.fn(),
   getCode: vi.fn(),
   fetch: vi.fn(),
+  useIsMobile: vi.fn(() => false),
 }))
 
 vi.mock('next-intl', () => ({
@@ -58,7 +72,7 @@ vi.mock('@/hooks/useSignaturePromptRunner', () => ({
   }),
 }))
 
-vi.mock('sonner', () => ({
+vi.mock('@/components/ui/toast', () => ({
   toast: {
     success: (...args: unknown[]) => mocks.toastSuccess(...args),
     error: (...args: unknown[]) => mocks.toastError(...args),
@@ -66,15 +80,24 @@ vi.mock('sonner', () => ({
 }))
 
 vi.mock('@/components/ui/button', () => ({
-  Button: ({ children, ...props }: any) => <button {...props}>{children}</button>,
+  Button: ({ children, nativeButton: _nativeButton, render, ...props }: any) =>
+    render ?? <button {...props}>{children}</button>,
 }))
 
 vi.mock('@/components/ui/dialog', () => ({
-  Dialog: ({ open, children }: any) => open ? <div>{children}</div> : null,
+  Dialog: ({ open, children }: any) => (open ? <div>{children}</div> : null),
   DialogContent: ({ children }: any) => <div>{children}</div>,
   DialogDescription: ({ children }: any) => <p>{children}</p>,
   DialogHeader: ({ children }: any) => <div>{children}</div>,
   DialogTitle: ({ children }: any) => <h2>{children}</h2>,
+}))
+
+vi.mock('@/components/ui/drawer', () => ({
+  Drawer: ({ open, children }: any) => (open ? <div data-testid="proposers-drawer">{children}</div> : null),
+  DrawerContent: ({ children }: any) => <div>{children}</div>,
+  DrawerDescription: ({ children }: any) => <p>{children}</p>,
+  DrawerHeader: ({ children }: any) => <div>{children}</div>,
+  DrawerTitle: ({ children }: any) => <h2>{children}</h2>,
 }))
 
 vi.mock('@/components/ui/label', () => ({
@@ -93,10 +116,14 @@ vi.mock('@/components/ui/textarea', () => ({
   Textarea: ({ ...props }: any) => <textarea {...props} />,
 }))
 
+vi.mock('@/hooks/useIsMobile', () => ({
+  useIsMobile: mocks.useIsMobile,
+}))
+
 describe('adminProposersDialog', () => {
   beforeEach(() => {
     mocks.useAppKitAccount.mockReturnValue({ address: CREATOR })
-    mocks.useAppKitNetworkCore.mockReturnValue({ chainId: 80002 })
+    mocks.useAppKitNetworkCore.mockReturnValue({ chainId: DEFAULT_CHAIN_ID })
     mocks.useAppKitProvider.mockReturnValue({ walletProvider: { request: mocks.walletRequest } })
     mocks.useUser.mockReturnValue({ address: null })
     mocks.sendTransaction.mockReset()
@@ -105,6 +132,8 @@ describe('adminProposersDialog', () => {
     mocks.estimateFeesPerGas.mockReset()
     mocks.getGasPrice.mockReset()
     mocks.getCode.mockReset()
+    mocks.useIsMobile.mockReset()
+    mocks.useIsMobile.mockReturnValue(false)
     mocks.runWithSignaturePrompt.mockReset()
     mocks.toastSuccess.mockReset()
     mocks.toastError.mockReset()
@@ -112,7 +141,7 @@ describe('adminProposersDialog', () => {
 
     mocks.useWalletClient.mockReturnValue({
       account: { address: EMBEDDED_ACCOUNT },
-      chain: { id: 80002, name: 'Polygon Amoy' },
+      chain: { id: DEFAULT_CHAIN_ID, name: CHAIN_NAME },
       sendTransaction: mocks.sendTransaction,
       request: mocks.walletRequest,
     })
@@ -136,9 +165,7 @@ describe('adminProposersDialog', () => {
       .mockResolvedValueOnce('0xdeploy')
       .mockResolvedValueOnce('0xadd')
       .mockResolvedValueOnce('0xregister')
-    mocks.getCode
-      .mockResolvedValueOnce('0x')
-      .mockResolvedValueOnce('0x1234')
+    mocks.getCode.mockResolvedValueOnce('0x').mockResolvedValueOnce('0x1234')
     mocks.waitForTransactionReceipt
       .mockResolvedValueOnce({
         status: 'success',
@@ -152,16 +179,18 @@ describe('adminProposersDialog', () => {
       })
 
     mocks.fetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input)
+      const url = getRequestUrl(input)
       if (url.includes('/admin/api/event-creations/signers')) {
         return {
           ok: true,
           json: async () => ({
-            data: [{
-              address: DEPLOYER,
-              displayName: 'Server deployer',
-              shortAddress: '0x0000...00FF',
-            }],
+            data: [
+              {
+                address: DEPLOYER,
+                displayName: 'Server deployer',
+                shortAddress: '0x0000...00FF',
+              },
+            ],
           }),
         }
       }
@@ -179,12 +208,14 @@ describe('adminProposersDialog', () => {
           ok: true,
           json: async () => ({
             registryAddress: REGISTRY,
-            creators: [{
-              address: CREATOR,
-              displayName: 'EOA wallet',
-              shortAddress: '0x0000...00AA',
-              hasServerSigner: false,
-            }],
+            creators: [
+              {
+                address: CREATOR,
+                displayName: 'EOA wallet',
+                shortAddress: '0x0000...00AA',
+                hasServerSigner: false,
+              },
+            ],
             status: {
               creator: CREATOR,
               registryAddress: REGISTRY,
@@ -201,6 +232,15 @@ describe('adminProposersDialog', () => {
     vi.stubGlobal('fetch', mocks.fetch)
   })
 
+  it('uses a drawer on mobile', () => {
+    mocks.useIsMobile.mockReturnValue(true)
+
+    render(<AdminProposersDialog open onOpenChange={vi.fn()} />)
+
+    expect(screen.getByTestId('proposers-drawer')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Proposers' })).toBeInTheDocument()
+  })
+
   it('uses the Better Auth EOA through the AppKit RPC provider when walletClient account differs', async () => {
     const user = userEvent.setup()
     mocks.useAppKitAccount.mockReturnValue({ address: null, embeddedWalletInfo: { provider: 'auth' } })
@@ -210,12 +250,7 @@ describe('adminProposersDialog', () => {
     })
     mocks.useUser.mockReturnValue({ address: CREATOR })
 
-    render(
-      <AdminProposersDialog
-        open
-        onOpenChange={vi.fn()}
-      />,
-    )
+    render(<AdminProposersDialog open onOpenChange={vi.fn()} />)
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Create whitelist' })).toBeEnabled()
@@ -228,21 +263,31 @@ describe('adminProposersDialog', () => {
       expect(mocks.walletRequest).toHaveBeenCalledTimes(3)
     })
 
-    expect(mocks.fetch).not.toHaveBeenCalledWith('/admin/api/proposer-whitelists', expect.objectContaining({
-      method: 'POST',
-      body: expect.stringContaining('"action":"deploy"'),
-    }))
+    expect(mocks.fetch).not.toHaveBeenCalledWith(
+      '/admin/api/proposer-whitelists',
+      expect.objectContaining({
+        method: 'POST',
+        body: expect.stringContaining('"action":"deploy"'),
+      }),
+    )
     expect(mocks.sendTransaction).not.toHaveBeenCalled()
-    expect(mocks.walletRequest).toHaveBeenNthCalledWith(1, expect.objectContaining({
-      method: 'eth_sendTransaction',
-      params: [expect.objectContaining({
-        from: CREATOR,
-        to: expect.any(String),
-        data: expect.stringMatching(/^0x/i),
-        value: '0x0',
-      })],
-    }))
-    expect(mocks.toastError).not.toHaveBeenCalledWith('Use the selected creator EOA in your wallet to sign this action.')
+    expect(mocks.walletRequest).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        method: 'eth_sendTransaction',
+        params: [
+          expect.objectContaining({
+            from: CREATOR,
+            to: expect.any(String),
+            data: expect.stringMatching(/^0x/i),
+            value: '0x0',
+          }),
+        ],
+      }),
+    )
+    expect(mocks.toastError).not.toHaveBeenCalledWith(
+      'Use the selected creator EOA in your wallet to sign this action.',
+    )
     expect(mocks.toastSuccess).toHaveBeenCalledWith('Proposer whitelist updated.')
   })
 
@@ -250,17 +295,12 @@ describe('adminProposersDialog', () => {
     const user = userEvent.setup()
     mocks.useWalletClient.mockReturnValue({
       account: { address: CREATOR },
-      chain: { id: 80002, name: 'Polygon Amoy' },
+      chain: { id: DEFAULT_CHAIN_ID, name: CHAIN_NAME },
       sendTransaction: mocks.sendTransaction,
       request: mocks.walletRequest,
     })
 
-    render(
-      <AdminProposersDialog
-        open
-        onOpenChange={vi.fn()}
-      />,
-    )
+    render(<AdminProposersDialog open onOpenChange={vi.fn()} />)
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Create whitelist' })).toBeEnabled()
@@ -273,10 +313,13 @@ describe('adminProposersDialog', () => {
       expect(mocks.sendTransaction).toHaveBeenCalledTimes(3)
     })
 
-    expect(mocks.fetch).not.toHaveBeenCalledWith('/admin/api/proposer-whitelists', expect.objectContaining({
-      method: 'POST',
-      body: expect.stringContaining('"action":"deploy"'),
-    }))
+    expect(mocks.fetch).not.toHaveBeenCalledWith(
+      '/admin/api/proposer-whitelists',
+      expect.objectContaining({
+        method: 'POST',
+        body: expect.stringContaining('"action":"deploy"'),
+      }),
+    )
     expect(mocks.walletRequest).not.toHaveBeenCalled()
     expect(mocks.toastSuccess).toHaveBeenCalledWith('Proposer whitelist updated.')
   })
@@ -284,7 +327,7 @@ describe('adminProposersDialog', () => {
   it('validates the AppKit provider network when social-wallet transport is used', async () => {
     const user = userEvent.setup()
     mocks.useAppKitAccount.mockReturnValue({ address: null, embeddedWalletInfo: { provider: 'auth' } })
-    mocks.useAppKitNetworkCore.mockReturnValue({ chainId: 80002 })
+    mocks.useAppKitNetworkCore.mockReturnValue({ chainId: DEFAULT_CHAIN_ID })
     mocks.useAppKitProvider.mockReturnValue({
       walletProvider: { request: mocks.walletRequest },
       walletProviderType: 'AUTH',
@@ -297,12 +340,7 @@ describe('adminProposersDialog', () => {
       request: mocks.walletRequest,
     })
 
-    render(
-      <AdminProposersDialog
-        open
-        onOpenChange={vi.fn()}
-      />,
-    )
+    render(<AdminProposersDialog open onOpenChange={vi.fn()} />)
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Create whitelist' })).toBeEnabled()
@@ -316,7 +354,9 @@ describe('adminProposersDialog', () => {
     })
 
     expect(mocks.sendTransaction).not.toHaveBeenCalled()
-    expect(mocks.toastError).not.toHaveBeenCalledWith('Switch wallet to Polygon Amoy before updating proposer whitelist.')
+    expect(mocks.toastError).not.toHaveBeenCalledWith(
+      'Switch wallet to Polygon Amoy before updating proposer whitelist.',
+    )
     expect(mocks.toastSuccess).toHaveBeenCalledWith('Proposer whitelist updated.')
   })
 
@@ -329,7 +369,7 @@ describe('adminProposersDialog', () => {
     })
     mocks.useUser.mockReturnValue({ address: CREATOR })
     mocks.fetch.mockImplementation(async (input: RequestInfo | URL) => {
-      const url = String(input)
+      const url = getRequestUrl(input)
       if (url.includes('/admin/api/event-creations/signers')) {
         return {
           ok: true,
@@ -341,12 +381,14 @@ describe('adminProposersDialog', () => {
           ok: true,
           json: async () => ({
             registryAddress: REGISTRY,
-            creators: [{
-              address: CREATOR,
-              displayName: 'EOA wallet',
-              shortAddress: '0x0000...00AA',
-              hasServerSigner: false,
-            }],
+            creators: [
+              {
+                address: CREATOR,
+                displayName: 'EOA wallet',
+                shortAddress: '0x0000...00AA',
+                hasServerSigner: false,
+              },
+            ],
             status: {
               creator: CREATOR,
               registryAddress: REGISTRY,
@@ -361,12 +403,7 @@ describe('adminProposersDialog', () => {
       throw new Error(`Unexpected fetch: ${url}`)
     })
 
-    render(
-      <AdminProposersDialog
-        open
-        onOpenChange={vi.fn()}
-      />,
-    )
+    render(<AdminProposersDialog open onOpenChange={vi.fn()} />)
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Create whitelist' })).toBeEnabled()
@@ -388,7 +425,7 @@ describe('adminProposersDialog', () => {
     mocks.walletRequest.mockReset()
     mocks.walletRequest.mockImplementation(async (args: { method: string }) => {
       if (args.method === 'eth_chainId') {
-        return '0x13882'
+        return CHAIN_HEX
       }
       if (args.method === 'eth_sendTransaction') {
         return '0xadd'
@@ -397,7 +434,7 @@ describe('adminProposersDialog', () => {
     })
 
     mocks.fetch.mockImplementation(async (input: RequestInfo | URL) => {
-      const url = String(input)
+      const url = getRequestUrl(input)
       if (url.includes('/admin/api/event-creations/signers')) {
         return {
           ok: true,
@@ -409,12 +446,14 @@ describe('adminProposersDialog', () => {
           ok: true,
           json: async () => ({
             registryAddress: REGISTRY,
-            creators: [{
-              address: CREATOR,
-              displayName: 'EOA wallet',
-              shortAddress: '0x0000...00AA',
-              hasServerSigner: false,
-            }],
+            creators: [
+              {
+                address: CREATOR,
+                displayName: 'EOA wallet',
+                shortAddress: '0x0000...00AA',
+                hasServerSigner: false,
+              },
+            ],
             status: {
               creator: CREATOR,
               registryAddress: REGISTRY,
@@ -429,12 +468,7 @@ describe('adminProposersDialog', () => {
       throw new Error(`Unexpected fetch: ${url}`)
     })
 
-    render(
-      <AdminProposersDialog
-        open
-        onOpenChange={vi.fn()}
-      />,
-    )
+    render(<AdminProposersDialog open onOpenChange={vi.fn()} />)
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Add proposers' })).toBeEnabled()
@@ -444,25 +478,33 @@ describe('adminProposersDialog', () => {
     await user.click(screen.getByRole('button', { name: 'Add proposers' }))
 
     await waitFor(() => {
-      const sendCall = mocks.walletRequest.mock.calls.find(([request]) =>
-        request && typeof request === 'object' && (request as { method?: string }).method === 'eth_sendTransaction',
+      const sendCall = mocks.walletRequest.mock.calls.find(
+        ([request]) =>
+          request && typeof request === 'object' && (request as { method?: string }).method === 'eth_sendTransaction',
       )
 
       expect(sendCall).toBeDefined()
-      expect(sendCall?.[0]).toEqual(expect.objectContaining({
-        method: 'eth_sendTransaction',
-        params: [expect.objectContaining({
-          from: CREATOR,
-          to: WHITELIST,
-          data: expect.stringContaining('0666419d'),
-          value: '0x0',
-        })],
-      }))
+      expect(sendCall?.[0]).toEqual(
+        expect.objectContaining({
+          method: 'eth_sendTransaction',
+          params: [
+            expect.objectContaining({
+              from: CREATOR,
+              to: WHITELIST,
+              data: expect.stringContaining('0666419d'),
+              value: '0x0',
+            }),
+          ],
+        }),
+      )
     })
 
-    expect(mocks.fetch).not.toHaveBeenCalledWith('/admin/api/proposer-whitelists', expect.objectContaining({
-      method: 'POST',
-    }))
+    expect(mocks.fetch).not.toHaveBeenCalledWith(
+      '/admin/api/proposer-whitelists',
+      expect.objectContaining({
+        method: 'POST',
+      }),
+    )
     expect(mocks.toastSuccess).toHaveBeenCalledWith('Proposer whitelist updated.')
   })
 
@@ -475,16 +517,18 @@ describe('adminProposersDialog', () => {
     mocks.useWalletClient.mockReturnValue(null)
     mocks.usePublicClient.mockReturnValue(null)
     mocks.fetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input)
+      const url = getRequestUrl(input)
       if (url.includes('/admin/api/event-creations/signers')) {
         return {
           ok: true,
           json: async () => ({
-            data: [{
-              address: CREATOR,
-              displayName: 'Server signer',
-              shortAddress: '0x0000...00AA',
-            }],
+            data: [
+              {
+                address: CREATOR,
+                displayName: 'Server signer',
+                shortAddress: '0x0000...00AA',
+              },
+            ],
           }),
         }
       }
@@ -493,12 +537,14 @@ describe('adminProposersDialog', () => {
           ok: true,
           json: async () => ({
             registryAddress: REGISTRY,
-            creators: [{
-              address: CREATOR,
-              displayName: 'Server signer',
-              shortAddress: '0x0000...00AA',
-              hasServerSigner: true,
-            }],
+            creators: [
+              {
+                address: CREATOR,
+                displayName: 'Server signer',
+                shortAddress: '0x0000...00AA',
+                hasServerSigner: true,
+              },
+            ],
             status: {
               creator: CREATOR,
               registryAddress: REGISTRY,
@@ -528,12 +574,7 @@ describe('adminProposersDialog', () => {
       throw new Error(`Unexpected fetch: ${url}`)
     })
 
-    render(
-      <AdminProposersDialog
-        open
-        onOpenChange={vi.fn()}
-      />,
-    )
+    render(<AdminProposersDialog open onOpenChange={vi.fn()} />)
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Create whitelist' })).toBeEnabled()
@@ -543,9 +584,12 @@ describe('adminProposersDialog', () => {
     await user.click(screen.getByRole('button', { name: 'Create whitelist' }))
 
     await waitFor(() => {
-      expect(mocks.fetch).toHaveBeenCalledWith('/admin/api/proposer-whitelists', expect.objectContaining({
-        method: 'POST',
-      }))
+      expect(mocks.fetch).toHaveBeenCalledWith(
+        '/admin/api/proposer-whitelists',
+        expect.objectContaining({
+          method: 'POST',
+        }),
+      )
     })
 
     expect(mocks.sendTransaction).not.toHaveBeenCalled()
@@ -556,16 +600,18 @@ describe('adminProposersDialog', () => {
     const user = userEvent.setup()
 
     mocks.fetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input)
+      const url = getRequestUrl(input)
       if (url.includes('/admin/api/event-creations/signers')) {
         return {
           ok: true,
           json: async () => ({
-            data: [{
-              address: CREATOR,
-              displayName: 'Server signer',
-              shortAddress: '0x0000...00AA',
-            }],
+            data: [
+              {
+                address: CREATOR,
+                displayName: 'Server signer',
+                shortAddress: '0x0000...00AA',
+              },
+            ],
           }),
         }
       }
@@ -574,12 +620,14 @@ describe('adminProposersDialog', () => {
           ok: true,
           json: async () => ({
             registryAddress: REGISTRY,
-            creators: [{
-              address: CREATOR,
-              displayName: 'Server signer',
-              shortAddress: '0x0000...00AA',
-              hasServerSigner: true,
-            }],
+            creators: [
+              {
+                address: CREATOR,
+                displayName: 'Server signer',
+                shortAddress: '0x0000...00AA',
+                hasServerSigner: true,
+              },
+            ],
             status: {
               creator: CREATOR,
               registryAddress: REGISTRY,
@@ -609,12 +657,7 @@ describe('adminProposersDialog', () => {
       throw new Error(`Unexpected fetch: ${url}`)
     })
 
-    render(
-      <AdminProposersDialog
-        open
-        onOpenChange={vi.fn()}
-      />,
-    )
+    render(<AdminProposersDialog open onOpenChange={vi.fn()} />)
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Create whitelist' })).toBeEnabled()
@@ -624,9 +667,12 @@ describe('adminProposersDialog', () => {
     await user.click(screen.getByRole('button', { name: 'Create whitelist' }))
 
     await waitFor(() => {
-      expect(mocks.fetch).toHaveBeenCalledWith('/admin/api/proposer-whitelists', expect.objectContaining({
-        method: 'POST',
-      }))
+      expect(mocks.fetch).toHaveBeenCalledWith(
+        '/admin/api/proposer-whitelists',
+        expect.objectContaining({
+          method: 'POST',
+        }),
+      )
     })
 
     expect(mocks.walletRequest).not.toHaveBeenCalled()
@@ -641,16 +687,18 @@ describe('adminProposersDialog', () => {
     mocks.useAppKitProvider.mockReturnValue({ walletProvider: null })
     mocks.useUser.mockReturnValue({ address: CREATOR })
     mocks.fetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input)
+      const url = getRequestUrl(input)
       if (url.includes('/admin/api/event-creations/signers')) {
         return {
           ok: true,
           json: async () => ({
-            data: [{
-              address: CREATOR,
-              displayName: 'Server signer',
-              shortAddress: '0x0000...00AA',
-            }],
+            data: [
+              {
+                address: CREATOR,
+                displayName: 'Server signer',
+                shortAddress: '0x0000...00AA',
+              },
+            ],
           }),
         }
       }
@@ -659,12 +707,14 @@ describe('adminProposersDialog', () => {
           ok: true,
           json: async () => ({
             registryAddress: REGISTRY,
-            creators: [{
-              address: CREATOR,
-              displayName: 'Server signer',
-              shortAddress: '0x0000...00AA',
-              hasServerSigner: true,
-            }],
+            creators: [
+              {
+                address: CREATOR,
+                displayName: 'Server signer',
+                shortAddress: '0x0000...00AA',
+                hasServerSigner: true,
+              },
+            ],
             status: {
               creator: CREATOR,
               registryAddress: REGISTRY,
@@ -694,12 +744,7 @@ describe('adminProposersDialog', () => {
       throw new Error(`Unexpected fetch: ${url}`)
     })
 
-    render(
-      <AdminProposersDialog
-        open
-        onOpenChange={vi.fn()}
-      />,
-    )
+    render(<AdminProposersDialog open onOpenChange={vi.fn()} />)
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Create whitelist' })).toBeEnabled()
@@ -709,9 +754,12 @@ describe('adminProposersDialog', () => {
     await user.click(screen.getByRole('button', { name: 'Create whitelist' }))
 
     await waitFor(() => {
-      expect(mocks.fetch).toHaveBeenCalledWith('/admin/api/proposer-whitelists', expect.objectContaining({
-        method: 'POST',
-      }))
+      expect(mocks.fetch).toHaveBeenCalledWith(
+        '/admin/api/proposer-whitelists',
+        expect.objectContaining({
+          method: 'POST',
+        }),
+      )
     })
 
     expect(mocks.walletRequest).not.toHaveBeenCalled()

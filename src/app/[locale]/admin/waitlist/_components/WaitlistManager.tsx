@@ -37,12 +37,10 @@ export function WaitlistManager() {
         title="Waitlist"
         description="Review signups, send early-access invites, and track who has joined."
         actions={(
-          <Button asChild variant="outline">
-            <a href={exportHref} download>
+          <Button variant="outline" nativeButton={false} render={<a href={exportHref} download />}>
               <DownloadIcon className="size-4" />
               Export CSV
-            </a>
-          </Button>
+            </Button>
         )}
       />
 

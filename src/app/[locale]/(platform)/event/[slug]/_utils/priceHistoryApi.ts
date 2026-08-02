@@ -45,9 +45,7 @@ function normalizePriceHistoryPoints(points: unknown): PriceHistoryPoint[] {
       }
     })
     .filter((point): point is PriceHistoryPoint => {
-      return point !== null
-        && Number.isFinite(point.t)
-        && Number.isFinite(point.p)
+      return point !== null && Number.isFinite(point.t) && Number.isFinite(point.p)
     })
 }
 
@@ -89,43 +87,35 @@ export async function fetchBatchPriceHistoryByTokenIds(
   const tokenIdChunks = chunkValues(uniqueTokenIds, MAX_BATCH_PRICE_HISTORY_MARKETS)
   const historyByChunk = await Promise.all(
     tokenIdChunks.map(async (tokenIdChunk) => {
-      try {
-        const response = await fetch(`${clobUrl}/batch-prices-history`, {
-          method: 'POST',
-          headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(buildBatchPriceHistoryRequestBody(tokenIdChunk, filters)),
-        })
+      const response = await fetch(`${clobUrl}/batch-prices-history`, {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(buildBatchPriceHistoryRequestBody(tokenIdChunk, filters)),
+      })
 
-        if (!response.ok) {
-          throw new Error('Failed to fetch price history')
-        }
+      if (!response.ok) {
+        throw new Error(`Failed to fetch price history (${response.status} ${response.statusText}).`)
+      }
 
-        const payload = await response.json() as BatchPriceHistoryResponse
-        return tokenIdChunk.reduce<PriceHistoryByKey>((acc, tokenId) => {
-          acc[tokenId] = normalizePriceHistoryPoints(payload.history?.[tokenId])
-          return acc
-        }, {})
-      }
-      catch {
-        return tokenIdChunk.reduce<PriceHistoryByKey>((acc, tokenId) => {
-          acc[tokenId] = []
-          return acc
-        }, {})
-      }
+      const payload = (await response.json()) as BatchPriceHistoryResponse
+      return tokenIdChunk.reduce<PriceHistoryByKey>((acc, tokenId) => {
+        acc[tokenId] = normalizePriceHistoryPoints(payload.history?.[tokenId])
+        return acc
+      }, {})
     }),
   )
 
   return Object.assign({}, ...historyByChunk)
 }
 
-export function mapTokenHistoryToConditionHistory<T extends { conditionId: string, tokenId: string }>(
+export function mapTokenHistoryToConditionHistory<T extends { conditionId: string; tokenId: string }>(
   targets: T[],
   historyByToken: PriceHistoryByKey,
 ): PriceHistoryByKey {
   return Object.fromEntries(
-    targets.map(target => [target.conditionId, historyByToken[target.tokenId] ?? []] as const),
+    targets.map((target) => [target.conditionId, historyByToken[target.tokenId] ?? []] as const),
   )
 }

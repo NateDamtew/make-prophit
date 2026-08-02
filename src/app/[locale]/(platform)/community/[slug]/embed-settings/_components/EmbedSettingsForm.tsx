@@ -4,7 +4,7 @@ import type { CommunityEmbedConfigRow, CommunityEmbedTheme } from '@/lib/db/sche
 import { ChevronLeftIcon, SaveIcon, XIcon } from 'lucide-react'
 import Link from 'next/link'
 import { useState } from 'react'
-import { toast } from 'sonner'
+import { toast } from '@/components/ui/toast'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'

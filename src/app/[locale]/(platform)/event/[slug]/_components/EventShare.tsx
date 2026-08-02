@@ -1,7 +1,9 @@
-import type { Event } from '@/types'
 import { useQueryClient } from '@tanstack/react-query'
 import { CheckIcon, ShareIcon } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+
+import type { Event } from '@/types'
+
 import { getMarketSeriesLabel } from '@/app/[locale]/(platform)/event/[slug]/_utils/EventChartUtils'
 import { Button } from '@/components/ui/button'
 import {
@@ -19,7 +21,8 @@ import { shareOrCopy } from '@/lib/native-share'
 import { cn } from '@/lib/utils'
 import { useUser } from '@/stores/useUser'
 
-const headerIconButtonClass = 'size-10 rounded-sm border border-transparent bg-transparent text-foreground transition-colors hover:bg-muted/80 focus-visible:ring-1 focus-visible:ring-ring md:h-9 md:w-9'
+const headerIconButtonClass =
+  'size-10 rounded-sm border border-transparent bg-transparent text-foreground transition-colors hover:bg-muted/80 focus-visible:ring-1 focus-visible:ring-ring md:h-9 md:w-9'
 
 interface EventShareProps {
   event: Event
@@ -37,7 +40,10 @@ function getEmptyAffiliateToastData(): AffiliateToastData {
   }
 }
 
-function parseAffiliateToastData(result: { affiliateSharePercent: string, builderTakerFeePercent: string }): AffiliateToastData {
+function parseAffiliateToastData(result: {
+  affiliateSharePercent: string
+  builderTakerFeePercent: string
+}): AffiliateToastData {
   const shareParsed = Number.parseFloat(result.affiliateSharePercent)
   const feeParsed = Number.parseFloat(result.builderTakerFeePercent)
 
@@ -105,28 +111,24 @@ function useShareMenuHover() {
     return current.contains(relatedTarget)
   }
 
+  function scheduleClose() {
+    clearCloseTimeout()
+    closeTimeoutRef.current = setTimeout(function closeMenuAfterDelay() {
+      setShareMenuOpen(false)
+    }, MENU_CLOSE_DELAY_MS)
+  }
+
   return {
     shareMenuOpen,
     setShareMenuOpen,
     wrapperRef,
     clearCloseTimeout,
-    scheduleClose() {
-      clearCloseTimeout()
-      closeTimeoutRef.current = setTimeout(function closeMenuAfterDelay() {
-        setShareMenuOpen(false)
-      }, MENU_CLOSE_DELAY_MS)
-    },
+    scheduleClose,
     relatedTargetIsInsideWrapper,
   }
 }
 
-function useAffiliateToastData({
-  affiliateCode,
-  siteName,
-}: {
-  affiliateCode: string
-  siteName: string
-}) {
+function useAffiliateToastData({ affiliateCode, siteName }: { affiliateCode: string; siteName: string }) {
   const queryClient = useQueryClient()
 
   const ensureAffiliateToastData = useCallback(async (): Promise<AffiliateToastData> => {
@@ -146,8 +148,7 @@ function useAffiliateToastData({
         },
         staleTime: Number.POSITIVE_INFINITY,
       })
-    }
-    catch {
+    } catch {
       return getEmptyAffiliateToastData()
     }
   }, [affiliateCode, queryClient])
@@ -176,62 +177,71 @@ function useAffiliateToastData({
 }
 
 function useDebugCopy(event: Event) {
-  const debugPayload = useMemo(function buildDebugPayload() {
-    return {
-      event: {
-        id: event.id,
-        slug: event.slug,
-        title: event.title,
-      },
-      markets: event.markets.map(market => ({
-        slug: market.slug,
-        condition_id: market.condition_id,
-        question_id: market.question_id,
-        metadata_hash: market.condition?.metadata_hash ?? null,
-        short_title: market.short_title ?? null,
-        title: market.title,
-        outcomes: market.outcomes.map(outcome => ({
-          outcome_index: outcome.outcome_index,
-          outcome_text: outcome.outcome_text,
-          token_id: outcome.token_id,
+  const debugPayload = useMemo(
+    function buildDebugPayload() {
+      return {
+        event: {
+          id: event.id,
+          slug: event.slug,
+          title: event.title,
+        },
+        markets: event.markets.map((market) => ({
+          slug: market.slug,
+          condition_id: market.condition_id,
+          question_id: market.question_id,
+          metadata_hash: market.condition?.metadata_hash ?? null,
+          short_title: market.short_title ?? null,
+          title: market.title,
+          outcomes: market.outcomes.map((outcome) => ({
+            outcome_index: outcome.outcome_index,
+            outcome_text: outcome.outcome_text,
+            token_id: outcome.token_id,
+          })),
         })),
-      })),
-    }
-  }, [event.id, event.markets, event.slug, event.title])
+      }
+    },
+    [event.id, event.markets, event.slug, event.title],
+  )
 
-  const handleDebugCopy = useCallback(async function handleDebugCopy() {
-    try {
-      await navigator.clipboard.writeText(JSON.stringify(debugPayload, null, 2))
-    }
-    catch (error) {
-      console.error('Error copying debug payload:', error)
-    }
-  }, [debugPayload])
+  const handleDebugCopy = useCallback(
+    async function handleDebugCopy() {
+      try {
+        await navigator.clipboard.writeText(JSON.stringify(debugPayload, null, 2))
+      } catch (error) {
+        console.error('Error copying debug payload:', error)
+      }
+    },
+    [debugPayload],
+  )
 
-  const maybeHandleDebugCopy = useCallback((
-    triggerEvent: React.MouseEvent | React.PointerEvent,
-  ) => {
-    if (!triggerEvent.altKey) {
-      return false
-    }
+  const maybeHandleDebugCopy = useCallback(
+    (triggerEvent: React.MouseEvent | React.PointerEvent) => {
+      if (!triggerEvent.altKey) {
+        return false
+      }
 
-    triggerEvent.preventDefault()
-    triggerEvent.stopPropagation()
-    void handleDebugCopy()
-    return true
-  }, [handleDebugCopy])
+      triggerEvent.preventDefault()
+      triggerEvent.stopPropagation()
+      void handleDebugCopy()
+      return true
+    },
+    [handleDebugCopy],
+  )
 
   return { maybeHandleDebugCopy }
 }
 
 function useShareUrlBuilder(affiliateCode: string) {
-  return useCallback((path: string) => {
-    const url = new URL(path, window.location.origin)
-    if (affiliateCode) {
-      url.searchParams.set('r', affiliateCode)
-    }
-    return url.toString()
-  }, [affiliateCode])
+  return useCallback(
+    (path: string) => {
+      const url = new URL(path, window.location.origin)
+      if (affiliateCode) {
+        url.searchParams.set('r', affiliateCode)
+      }
+      return url.toString()
+    },
+    [affiliateCode],
+  )
 }
 
 export default function EventShare({ event }: EventShareProps) {
@@ -305,11 +315,7 @@ export default function EventShare({ event }: EventShareProps) {
 
   if (isMultiMarket) {
     return (
-      <div
-        ref={wrapperRef}
-        onPointerEnter={handleWrapperPointerEnter}
-        onPointerLeave={handleWrapperPointerLeave}
-      >
+      <div ref={wrapperRef} onPointerEnter={handleWrapperPointerEnter} onPointerLeave={handleWrapperPointerLeave}>
         <DropdownMenu
           open={shareMenuOpen}
           onOpenChange={(open) => {
@@ -321,17 +327,19 @@ export default function EventShare({ event }: EventShareProps) {
           }}
           modal={false}
         >
-          <DropdownMenuTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className={cn(headerIconButtonClass, 'size-auto p-0')}
-              aria-label="Copy event link"
-              onPointerDown={maybeHandleDebugCopy}
-            >
-              <ShareIcon className="size-4" />
-            </Button>
+          <DropdownMenuTrigger
+            render={
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className={cn(headerIconButtonClass, 'size-auto p-0')}
+                aria-label="Copy event link"
+                onPointerDown={maybeHandleDebugCopy}
+              />
+            }
+          >
+            <ShareIcon className="size-4" />
           </DropdownMenuTrigger>
           <DropdownMenuContent
             side="bottom"
@@ -341,8 +349,8 @@ export default function EventShare({ event }: EventShareProps) {
             className="max-h-80 w-48 border border-border bg-background p-0 text-foreground shadow-xl"
           >
             <DropdownMenuItem
-              onSelect={(menuEvent) => {
-                menuEvent.preventDefault()
+              closeOnClick={false}
+              onClick={() => {
                 void handleCopy('event', eventPath)
               }}
               className={cn(
@@ -355,23 +363,19 @@ export default function EventShare({ event }: EventShareProps) {
             </DropdownMenuItem>
             <DropdownMenuSeparator className="my-0 bg-border" />
             {event.markets
-              .filter(market => market.slug)
+              .filter((market) => market.slug)
               .map((market) => {
                 const label = getMarketSeriesLabel(market)
                 const key = `market-${market.condition_id}`
                 return (
                   <DropdownMenuItem
                     key={market.condition_id}
-                    onSelect={(menuEvent) => {
-                      menuEvent.preventDefault()
+                    closeOnClick={false}
+                    onClick={() => {
                       void handleCopy(key, resolveEventMarketPath(event, market.slug))
                     }}
                     className={cn(
-                      `
-                        rounded-none px-3 py-2.5 text-sm font-semibold transition-colors
-                        first:rounded-t-md
-                        last:rounded-b-md
-                      `,
+                      `rounded-none px-3 py-2.5 text-sm font-semibold transition-colors first:rounded-t-md last:rounded-b-md`,
                       copiedKey === key ? 'text-foreground' : 'text-muted-foreground',
                       'hover:bg-muted/70 hover:text-foreground focus:bg-muted',
                     )}
@@ -400,9 +404,7 @@ export default function EventShare({ event }: EventShareProps) {
       }}
       aria-label="Copy event link"
     >
-      {shareSuccess
-        ? <CheckIcon className="size-4 text-primary" />
-        : <ShareIcon className="size-4" />}
+      {shareSuccess ? <CheckIcon className="size-4 text-primary" /> : <ShareIcon className="size-4" />}
     </Button>
   )
 }

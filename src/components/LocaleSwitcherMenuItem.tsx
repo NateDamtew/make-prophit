@@ -1,12 +1,13 @@
 'use client'
 
-import type { SupportedLocale } from '@/i18n/locales'
 import { CheckIcon } from 'lucide-react'
 import { useLocale } from 'next-intl'
 import { useEffect, useState } from 'react'
+
+import type { SupportedLocale } from '@/i18n/locales'
+
 import LocaleFlag from '@/components/LocaleFlag'
 import {
-  DropdownMenuPortal,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuSub,
@@ -21,14 +22,9 @@ function useLocaleCarousel() {
   const [enabledLocales, setEnabledLocales] = useState<SupportedLocale[] | null>(null)
   const [carouselState, setCarouselState] = useState({ index: 0, isSliding: true })
   const displayLocales = enabledLocales ?? SUPPORTED_LOCALES
-  const loopedLocales = [
-    ...displayLocales,
-    displayLocales[0],
-  ].filter(Boolean)
+  const loopedLocales = [...displayLocales, displayLocales[0]].filter(Boolean)
   const shouldAnimate = displayLocales.length > 1
-  const carouselIndex = shouldAnimate
-    ? Math.min(carouselState.index, displayLocales.length)
-    : 0
+  const carouselIndex = shouldAnimate ? Math.min(carouselState.index, displayLocales.length) : 0
   const isSliding = carouselState.isSliding
   const displayDurationMs = 1800
   const transitionDurationMs = 240
@@ -50,8 +46,7 @@ function useLocaleCarousel() {
         if (normalized.length > 0) {
           setEnabledLocales(normalized)
         }
-      }
-      catch (error) {
+      } catch (error) {
         console.error('Failed to load enabled locales', error)
       }
     }
@@ -63,22 +58,25 @@ function useLocaleCarousel() {
     }
   }, [])
 
-  useEffect(function runCarouselInterval() {
-    if (!shouldAnimate) {
-      return
-    }
+  useEffect(
+    function runCarouselInterval() {
+      if (!shouldAnimate) {
+        return
+      }
 
-    const interval = window.setInterval(() => {
-      setCarouselState(prev => ({
-        index: prev.index >= displayLocales.length ? 1 : prev.index + 1,
-        isSliding: true,
-      }))
-    }, displayDurationMs + transitionDurationMs)
+      const interval = window.setInterval(() => {
+        setCarouselState((prev) => ({
+          index: prev.index >= displayLocales.length ? 1 : prev.index + 1,
+          isSliding: true,
+        }))
+      }, displayDurationMs + transitionDurationMs)
 
-    return function cleanupCarouselInterval() {
-      window.clearInterval(interval)
-    }
-  }, [shouldAnimate, displayDurationMs, transitionDurationMs, displayLocales.length])
+      return function cleanupCarouselInterval() {
+        window.clearInterval(interval)
+      }
+    },
+    [shouldAnimate, displayDurationMs, transitionDurationMs, displayLocales.length],
+  )
 
   function handleCarouselTransitionEnd() {
     setCarouselState((prev) => {
@@ -93,12 +91,30 @@ function useLocaleCarousel() {
     })
   }
 
-  return { isPending, setIsPending, displayLocales, loopedLocales, shouldAnimate, carouselIndex, isSliding, handleCarouselTransitionEnd }
+  return {
+    isPending,
+    setIsPending,
+    displayLocales,
+    loopedLocales,
+    shouldAnimate,
+    carouselIndex,
+    isSliding,
+    handleCarouselTransitionEnd,
+  }
 }
 
 export default function LocaleSwitcherMenuItem() {
   const locale = useLocale()
-  const { isPending, setIsPending, displayLocales, loopedLocales, shouldAnimate, carouselIndex, isSliding, handleCarouselTransitionEnd } = useLocaleCarousel()
+  const {
+    isPending,
+    setIsPending,
+    displayLocales,
+    loopedLocales,
+    shouldAnimate,
+    carouselIndex,
+    isSliding,
+    handleCarouselTransitionEnd,
+  } = useLocaleCarousel()
   const itemHeightRem = 1.25
 
   function handleValueChange(nextLocale: string) {
@@ -138,31 +154,23 @@ export default function LocaleSwitcherMenuItem() {
           </span>
         </span>
       </DropdownMenuSubTrigger>
-      <DropdownMenuPortal>
-        <DropdownMenuSubContent
-          sideOffset={-30}
-          className="max-h-(--radix-dropdown-menu-content-available-height) overflow-x-hidden overflow-y-auto"
-        >
-          <DropdownMenuRadioGroup
-            value={locale}
-            onValueChange={handleValueChange}
-          >
-            {displayLocales.map(option => (
-              <DropdownMenuRadioItem
-                key={option}
-                value={option}
-                className="group flex items-center gap-1.5 pr-7 pl-2 text-sm font-semibold [&>span:first-child]:hidden"
-              >
-                <span className="flex flex-1 items-center gap-2 font-medium">
-                  <LocaleFlag locale={option} />
-                  <span>{LOCALE_LABELS[option] ?? option.toUpperCase()}</span>
-                </span>
-                <CheckIcon className="ml-auto size-4 text-primary opacity-0 group-data-[state=checked]:opacity-100" />
-              </DropdownMenuRadioItem>
-            ))}
-          </DropdownMenuRadioGroup>
-        </DropdownMenuSubContent>
-      </DropdownMenuPortal>
+      <DropdownMenuSubContent sideOffset={-30} className="max-h-(--available-height) overflow-x-hidden overflow-y-auto">
+        <DropdownMenuRadioGroup value={locale} onValueChange={handleValueChange}>
+          {displayLocales.map((option) => (
+            <DropdownMenuRadioItem
+              key={option}
+              value={option}
+              className="group flex items-center gap-1.5 pr-7 pl-2 text-sm font-semibold [&>span:first-child]:hidden"
+            >
+              <span className="flex flex-1 items-center gap-2 font-medium">
+                <LocaleFlag locale={option} />
+                <span>{LOCALE_LABELS[option] ?? option.toUpperCase()}</span>
+              </span>
+              <CheckIcon className="ml-auto size-4 text-primary opacity-0 group-data-checked:opacity-100" />
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuSubContent>
     </DropdownMenuSub>
   )
 }

@@ -1,13 +1,17 @@
 import type { Metadata, Viewport } from 'next'
 import type { ReactNode } from 'react'
-import type { SupportedLocale } from '@/i18n/locales'
-import type { RuntimeThemeState } from '@/lib/theme-settings'
+
 import { hasLocale, NextIntlClientProvider } from 'next-intl'
 import { setRequestLocale } from 'next-intl/server'
 import { cacheTag } from 'next/cache'
 import { notFound } from 'next/navigation'
 import Script from 'next/script'
 import { Suspense } from 'react'
+
+import type { SupportedLocale } from '@/i18n/locales'
+import type { RuntimeThemeState } from '@/lib/theme-settings'
+
+
 import CustomJavascriptCode from '@/components/CustomJavascriptCode'
 import GlobalAnnouncementBanner from '@/components/GlobalAnnouncementBanner'
 import PublicRuntimeConfigScript from '@/components/PublicRuntimeConfigScript'
@@ -29,7 +33,10 @@ import { loadRuntimeThemeState } from '@/lib/theme-settings'
 import { AppProviders } from '@/providers/AppProviders'
 import PublicRuntimeConfigProvider from '@/providers/PublicRuntimeConfigProvider'
 import SiteIdentityProvider from '@/providers/SiteIdentityProvider'
+
 import '../globals.css'
+
+export const instant = false
 
 export async function generateViewport(): Promise<Viewport> {
   'use cache'
@@ -47,7 +54,8 @@ export async function generateViewport(): Promise<Viewport> {
 }
 
 export async function generateMetadata(): Promise<Metadata> {
-  await deferPublicShellPrerenderIfNeeded()
+  'use cache'
+  cacheTag(cacheTags.settings)
 
   const runtimeTheme = await loadRuntimeThemeState()
   const site = runtimeTheme.site
@@ -151,7 +159,9 @@ function ThemeDocumentState({
   return (
     <>
       {syncRootPreset && <script id="theme-preset-sync" dangerouslySetInnerHTML={{ __html: setPresetScript }} />}
-      {runtimeTheme.theme.cssText && <style id="theme-vars" dangerouslySetInnerHTML={{ __html: runtimeTheme.theme.cssText }} />}
+      {runtimeTheme.theme.cssText && (
+        <style id="theme-vars" dangerouslySetInnerHTML={{ __html: runtimeTheme.theme.cssText }} />
+      )}
     </>
   )
 }
@@ -209,32 +219,16 @@ async function PrerenderedLocaleDocument({ locale, children }: LocaleDocumentPro
       data-theme-preset={runtimeData.runtimeTheme.theme.presetId}
       suppressHydrationWarning
     >
-      <LocaleBody
-        {...runtimeData}
-        locale={locale}
-        syncRootPreset={false}
-      >
+      <LocaleBody {...runtimeData} locale={locale} syncRootPreset={false}>
         {children}
       </LocaleBody>
     </html>
   )
 }
 
-async function RuntimeLocaleBody({ locale, children }: LocaleDocumentProps) {
+async function RuntimeLocaleDocument({ locale, children }: LocaleDocumentProps) {
   const runtimeData = await loadLocaleRuntimeData(locale)
 
-  return (
-    <LocaleBody
-      {...runtimeData}
-      locale={locale}
-      syncRootPreset
-    >
-      {children}
-    </LocaleBody>
-  )
-}
-
-function RuntimeLocaleDocument({ locale, children }: LocaleDocumentProps) {
   return (
     <html
       lang={locale}
@@ -242,11 +236,9 @@ function RuntimeLocaleDocument({ locale, children }: LocaleDocumentProps) {
       className={openSauceOne.variable}
       suppressHydrationWarning
     >
-      <Suspense fallback={null}>
-        <RuntimeLocaleBody locale={locale}>
-          {children}
-        </RuntimeLocaleBody>
-      </Suspense>
+      <LocaleBody {...runtimeData} locale={locale} syncRootPreset>
+        {children}
+      </LocaleBody>
     </html>
   )
 }
@@ -260,7 +252,9 @@ export default async function LocaleLayout({ params, children }: LayoutProps<'/[
 
   setRequestLocale(locale)
 
-  return shouldPrerenderPublicShell()
-    ? <PrerenderedLocaleDocument locale={locale}>{children}</PrerenderedLocaleDocument>
-    : <RuntimeLocaleDocument locale={locale}>{children}</RuntimeLocaleDocument>
+  return shouldPrerenderPublicShell() ? (
+    <PrerenderedLocaleDocument locale={locale}>{children}</PrerenderedLocaleDocument>
+  ) : (
+    <RuntimeLocaleDocument locale={locale}>{children}</RuntimeLocaleDocument>
+  )
 }

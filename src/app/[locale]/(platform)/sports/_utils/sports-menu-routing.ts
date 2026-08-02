@@ -1,11 +1,6 @@
-import type {
-  SportsMenuEntry,
-  SportsMenuGroupEntry,
-  SportsMenuLinkEntry,
-} from '@/lib/sports-menu-types'
+import type { SportsMenuEntry, SportsMenuGroupEntry, SportsMenuLinkEntry } from '@/lib/sports-menu-types'
 
-type SportsMenuChildLinkEntry = Extract<SportsMenuEntry, { type: 'group' }>['links'][number]
-type SportsMenuResolvedEntry = SportsMenuLinkEntry | SportsMenuGroupEntry | SportsMenuChildLinkEntry
+type SportsMenuResolvedEntry = SportsMenuLinkEntry | SportsMenuGroupEntry
 
 function findSportsMenuEntryBySlug(params: {
   menuEntries: SportsMenuEntry[] | undefined
@@ -19,9 +14,9 @@ function findSportsMenuEntryBySlug(params: {
 
   for (const entry of menuEntries) {
     if (
-      entry.type === 'link'
-      && entry.menuSlug === canonicalSportSlug
-      && (!hrefPrefix || entry.href.startsWith(hrefPrefix))
+      entry.type === 'link' &&
+      entry.menuSlug === canonicalSportSlug &&
+      (!hrefPrefix || entry.href.startsWith(hrefPrefix))
     ) {
       return entry
     }
@@ -31,9 +26,8 @@ function findSportsMenuEntryBySlug(params: {
         return entry
       }
 
-      const link = entry.links.find(child =>
-        child.menuSlug === canonicalSportSlug
-        && (!hrefPrefix || child.href.startsWith(hrefPrefix)),
+      const link = entry.links.find(
+        (child) => child.menuSlug === canonicalSportSlug && (!hrefPrefix || child.href.startsWith(hrefPrefix)),
       )
       if (link) {
         return link
@@ -44,10 +38,21 @@ function findSportsMenuEntryBySlug(params: {
   return null
 }
 
+function normalizeHrefPath(href: string) {
+  const [path] = href.split(/[?#]/)
+  return path?.replace(/\/+$/, '') || '/'
+}
+
 export function findSportsHrefBySlug(params: {
   menuEntries: SportsMenuEntry[] | undefined
   canonicalSportSlug: string
+  excludeHref?: string
   hrefPrefix?: string
 }) {
-  return findSportsMenuEntryBySlug(params)?.href ?? null
+  const href = findSportsMenuEntryBySlug(params)?.href ?? null
+  if (href && params.excludeHref && normalizeHrefPath(href) === normalizeHrefPath(params.excludeHref)) {
+    return null
+  }
+
+  return href
 }

@@ -1,37 +1,67 @@
 'use client'
 
+import type { Route } from 'next'
+
 import { useExtracted } from 'next-intl'
-import { useMemo, useState } from 'react'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { startTransition, useOptimistic } from 'react'
+
 import PublicActivityList from '@/app/[locale]/(platform)/profile/_components/PublicActivityList'
 import PublicCommunitiesList from '@/app/[locale]/(platform)/profile/_components/PublicCommunitiesList'
 import PublicPositionsList from '@/app/[locale]/(platform)/profile/_components/PublicPositionsList'
-import { useTabIndicatorPosition } from '@/hooks/useTabIndicatorPosition'
+import { Tabs, TabsContent, TabsIndicator, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
 
+// 'communities' is fork-only; upstream ships positions/activity.
 type TabType = 'positions' | 'activity' | 'communities'
 
-const baseTabs = [
-  { id: 'positions' as const },
-  { id: 'activity' as const },
-  { id: 'communities' as const },
-]
+const TAB_QUERY_PARAM = 'tab'
+
+const baseTabs = [{ id: 'positions' as const }, { id: 'activity' as const }, { id: 'communities' as const }]
+
+function parseTab(value: string | null | undefined): TabType {
+  const normalized = value?.toLowerCase()
+  if (normalized === 'activity') {
+    return 'activity'
+  }
+  if (normalized === 'communities') {
+    return 'communities'
+  }
+  return 'positions'
+}
 
 interface PublicProfileTabsProps {
   userAddress: string
-  userId: string | null
+  userId?: string | null
 }
 
 function usePublicProfileTabs() {
-  const [activeTab, setActiveTab] = useState<TabType>('positions')
-  const tabs = useMemo(() => baseTabs, [])
-  const { tabRef, indicatorStyle, isInitialized } = useTabIndicatorPosition({ tabs, activeTab })
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const activeTabFromQuery = parseTab(searchParams.get(TAB_QUERY_PARAM))
+  const [activeTab, setOptimisticActiveTab] = useOptimistic<TabType, TabType>(
+    activeTabFromQuery,
+    (_currentTab, nextTab) => nextTab,
+  )
 
-  return { tabs, activeTab, setActiveTab, tabRef, indicatorStyle, isInitialized }
+  function handleTabChange(nextTab: TabType) {
+    const nextParams = new URLSearchParams(searchParams.toString())
+    nextParams.set(TAB_QUERY_PARAM, nextTab)
+    const nextUrl = `${pathname}?${nextParams.toString()}`
+
+    startTransition(() => {
+      setOptimisticActiveTab(nextTab)
+      router.replace(nextUrl as Route, { scroll: false })
+    })
+  }
+
+  return { activeTab, handleTabChange }
 }
 
-export default function PublicProfileTabs({ userAddress, userId }: PublicProfileTabsProps) {
+export default function PublicProfileTabs({ userAddress, userId = null }: PublicProfileTabsProps) {
   const t = useExtracted()
-  const { tabs, activeTab, setActiveTab, tabRef, indicatorStyle, isInitialized } = usePublicProfileTabs()
+  const { activeTab, handleTabChange } = usePublicProfileTabs()
 
   function getLabel(id: TabType) {
     if (id === 'positions') {
@@ -44,47 +74,43 @@ export default function PublicProfileTabs({ userAddress, userId }: PublicProfile
   }
 
   return (
-    <div className="overflow-hidden rounded-2xl border">
+    <Tabs
+      value={activeTab}
+      onValueChange={value => handleTabChange(value as TabType)}
+      className="overflow-hidden rounded-2xl border"
+    >
       <div className="relative">
-        <div className="flex items-center gap-6 px-4 pt-4 sm:px-6">
-          {tabs.map((tab, index) => (
-            <button
+        <TabsList className="relative flex h-auto w-full items-center justify-start gap-6 rounded-none bg-transparent px-4 pt-4 pb-0 sm:px-6">
+          {baseTabs.map(tab => (
+            <TabsTrigger
               key={tab.id}
-              ref={(el) => {
-                tabRef.current[index] = el
-              }}
-              type="button"
-              onClick={() => setActiveTab(tab.id)}
+              value={tab.id}
               className={cn(
-                'relative pb-3 text-sm font-semibold transition-colors',
-                activeTab === tab.id
-                  ? 'text-foreground'
-                  : 'text-muted-foreground hover:text-foreground',
+                `relative rounded-none bg-transparent px-0 pt-0 pb-3 text-sm font-semibold shadow-none transition-colors
+                data-active:bg-transparent data-active:shadow-none`,
+                activeTab === tab.id ? 'text-foreground' : 'text-muted-foreground hover:text-foreground',
               )}
             >
               {getLabel(tab.id)}
-            </button>
+            </TabsTrigger>
           ))}
-        </div>
+          <TabsIndicator className="absolute bottom-0 h-0.5 bg-primary" />
+        </TabsList>
 
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-border/80" />
-        <div
-          className={cn(
-            'pointer-events-none absolute bottom-0 h-0.5 bg-primary',
-            { 'transition-all duration-300 ease-out': isInitialized },
-          )}
-          style={{
-            left: `${indicatorStyle.left}px`,
-            width: `${indicatorStyle.width}px`,
-          }}
-        />
       </div>
 
       <div className="space-y-4 px-0 pt-4 pb-0 sm:px-0">
-        {activeTab === 'positions' && <PublicPositionsList userAddress={userAddress} />}
-        {activeTab === 'activity' && <PublicActivityList userAddress={userAddress} />}
-        {activeTab === 'communities' && <PublicCommunitiesList userId={userId} />}
+        <TabsContent value="positions" className="mt-0">
+          <PublicPositionsList userAddress={userAddress} />
+        </TabsContent>
+        <TabsContent value="activity" className="mt-0">
+          <PublicActivityList userAddress={userAddress} />
+        </TabsContent>
+        <TabsContent value="communities" className="mt-0">
+          <PublicCommunitiesList userId={userId} />
+        </TabsContent>
       </div>
-    </div>
+    </Tabs>
   )
 }

@@ -1,7 +1,9 @@
+import { and, asc, eq, inArray, like, lte, or } from 'drizzle-orm'
+import { createHash } from 'node:crypto'
+
 import type { NonDefaultLocale } from '@/i18n/locales'
 import type { EventTranslationJobPayload, TagTranslationJobPayload } from '@/lib/translations/jobs'
-import { createHash } from 'node:crypto'
-import { and, asc, eq, inArray, like, lte, or } from 'drizzle-orm'
+
 import { loadAutomaticTranslationsEnabled, loadEnabledLocales } from '@/i18n/locale-settings'
 import { LOCALE_LABELS } from '@/i18n/locales'
 import { loadOpenRouterProviderSettings } from '@/lib/ai/market-context-config'
@@ -16,17 +18,18 @@ import {
 import { db } from '@/lib/drizzle'
 import { buildCronJsonResponse, handleCronRoute } from '@/lib/sync/cron-route'
 import {
-
-  isNonDefaultLocale,
-  parseEventJobPayload,
-  parseTagJobPayload,
-
-} from '@/lib/translations/jobs'
+  assertTranslationUsesExpectedScript,
+  groupTranslationsByLocale,
+  resolveDeterministicTranslation,
+  resolveTranslationSourceFingerprint,
+} from '@/lib/translations/batch'
+import { isNonDefaultLocale, parseEventJobPayload, parseTagJobPayload } from '@/lib/translations/jobs'
 
 export const maxDuration = 60
 
 const SYNC_TIME_LIMIT_MS = 55_000
 const JOB_BATCH_SIZE = 24
+const TRANSLATION_LOCALE_CONCURRENCY = 3
 const DEFAULT_MAX_ATTEMPTS = 2
 const EVENT_TITLE_TRANSLATION_JOB_TYPE = 'translate_event_title'
 const TAG_NAME_TRANSLATION_JOB_TYPE = 'translate_tag_name'
@@ -53,6 +56,8 @@ interface JobIdentity {
 interface EventSourceRow {
   id: string
   title: string
+  status: string
+  resolved_at: Date | null
 }
 
 interface TagSourceRow {
@@ -80,9 +85,10 @@ interface TranslationJobStats {
   retried: number
   failed: number
   skippedManual: number
+  skippedResolved: number
   skippedUpToDate: number
   timeLimitReached: boolean
-  errors: { jobType: string, targetId: string, locale: string, error: string }[]
+  errors: { jobType: string; targetId: string; locale: string; error: string }[]
 }
 
 type TranslationSourceLabel = 'event title' | 'tag name'
@@ -185,8 +191,7 @@ function getJobIdentity(job: Pick<TranslationJobRow, 'job_type' | 'payload' | 'd
         locale: payload.locale,
       }
     }
-  }
-  catch {
+  } catch {
     // Fall through to dedupe key parsing
   }
 
@@ -202,7 +207,7 @@ function buildProviderSignature(model: string | undefined) {
 }
 
 function buildEventTranslationMetaMap(rows: EventTranslationMetaRow[]) {
-  const map = new Map<string, { source_hash: string | null, is_manual: boolean }>()
+  const map = new Map<string, { source_hash: string | null; is_manual: boolean }>()
 
   for (const row of rows) {
     if (!isNonDefaultLocale(row.locale)) {
@@ -219,7 +224,7 @@ function buildEventTranslationMetaMap(rows: EventTranslationMetaRow[]) {
 }
 
 function buildTagTranslationMetaMap(rows: TagTranslationMetaRow[]) {
-  const map = new Map<string, { source_hash: string | null, is_manual: boolean }>()
+  const map = new Map<string, { source_hash: string | null; is_manual: boolean }>()
 
   for (const row of rows) {
     if (!isNonDefaultLocale(row.locale)) {
@@ -240,10 +245,8 @@ async function fetchCandidateJobs(nowIso: string, locales: NonDefaultLocale[]): 
     return []
   }
 
-  const localePredicates = locales.map(locale => like(jobsTable.dedupe_key, `%:${locale}`))
-  const localePredicate = localePredicates.length === 1
-    ? localePredicates[0]
-    : or(...localePredicates)
+  const localePredicates = locales.map((locale) => like(jobsTable.dedupe_key, `%:${locale}`))
+  const localePredicate = localePredicates.length === 1 ? localePredicates[0] : or(...localePredicates)
 
   const rows = await db
     .select({
@@ -257,12 +260,14 @@ async function fetchCandidateJobs(nowIso: string, locales: NonDefaultLocale[]): 
       available_at: jobsTable.available_at,
     })
     .from(jobsTable)
-    .where(and(
-      inArray(jobsTable.job_type, [...TRANSLATION_JOB_TYPES]),
-      eq(jobsTable.status, 'pending'),
-      lte(jobsTable.available_at, new Date(nowIso)),
-      localePredicate,
-    ))
+    .where(
+      and(
+        inArray(jobsTable.job_type, [...TRANSLATION_JOB_TYPES]),
+        eq(jobsTable.status, 'pending'),
+        lte(jobsTable.available_at, new Date(nowIso)),
+        localePredicate,
+      ),
+    )
     .orderBy(asc(jobsTable.available_at), asc(jobsTable.updated_at))
     .limit(JOB_BATCH_SIZE)
 
@@ -281,12 +286,14 @@ async function claimJob(job: TranslationJobRow, nowIso: string): Promise<Transla
       reserved_at: new Date(nowIso),
       last_error: null,
     })
-    .where(and(
-      eq(jobsTable.id, job.id),
-      eq(jobsTable.job_type, job.job_type),
-      eq(jobsTable.status, 'pending'),
-      lte(jobsTable.available_at, new Date(nowIso)),
-    ))
+    .where(
+      and(
+        eq(jobsTable.id, job.id),
+        eq(jobsTable.job_type, job.job_type),
+        eq(jobsTable.status, 'pending'),
+        lte(jobsTable.available_at, new Date(nowIso)),
+      ),
+    )
     .returning({
       id: jobsTable.id,
       job_type: jobsTable.job_type,
@@ -312,19 +319,14 @@ async function completeJob(job: TranslationJobRow, payload: EventTranslationJobP
       last_error: null,
       payload,
     })
-    .where(and(
-      eq(jobsTable.id, job.id),
-      eq(jobsTable.job_type, job.job_type),
-    ))
+    .where(and(eq(jobsTable.id, job.id), eq(jobsTable.job_type, job.job_type)))
 }
 
 async function scheduleRetry(job: TranslationJobRow, rawError: unknown): Promise<{ retryScheduled: boolean }> {
   const attempts = (job.attempts ?? 0) + 1
   const maxAttempts = normalizeMaxAttempts(job.max_attempts)
   const exhausted = attempts >= maxAttempts
-  const retryAt = exhausted
-    ? new Date()
-    : new Date(Date.now() + buildBackoffMs(attempts))
+  const retryAt = exhausted ? new Date() : new Date(Date.now() + buildBackoffMs(attempts))
   const message = rawError instanceof Error ? rawError.message : String(rawError)
   const truncatedMessage = message.slice(0, 1000)
 
@@ -337,17 +339,14 @@ async function scheduleRetry(job: TranslationJobRow, rawError: unknown): Promise
       reserved_at: null,
       last_error: truncatedMessage,
     })
-    .where(and(
-      eq(jobsTable.id, job.id),
-      eq(jobsTable.job_type, job.job_type),
-    ))
+    .where(and(eq(jobsTable.id, job.id), eq(jobsTable.job_type, job.job_type)))
 
   return { retryScheduled: !exhausted }
 }
 
 async function loadEventSourcesMap(eventIds: string[]) {
   const uniqueIds = [...new Set(eventIds)]
-  const map = new Map<string, string>()
+  const map = new Map<string, { resolved: boolean; title: string }>()
   if (uniqueIds.length === 0) {
     return map
   }
@@ -356,6 +355,8 @@ async function loadEventSourcesMap(eventIds: string[]) {
     .select({
       id: eventsTable.id,
       title: eventsTable.title,
+      status: eventsTable.status,
+      resolved_at: eventsTable.resolved_at,
     })
     .from(eventsTable)
     .where(inArray(eventsTable.id, uniqueIds))
@@ -365,7 +366,10 @@ async function loadEventSourcesMap(eventIds: string[]) {
     if (!title) {
       continue
     }
-    map.set(row.id, title)
+    map.set(row.id, {
+      resolved: row.status === 'resolved' || row.resolved_at !== null,
+      title,
+    })
   }
 
   return map
@@ -401,7 +405,7 @@ async function loadEventTranslationMetaMapForJobs(eventIds: string[], locales: N
   const uniqueEventIds = [...new Set(eventIds)]
   const uniqueLocales = [...new Set(locales)]
   if (uniqueEventIds.length === 0 || uniqueLocales.length === 0) {
-    return new Map<string, { source_hash: string | null, is_manual: boolean }>()
+    return new Map<string, { source_hash: string | null; is_manual: boolean }>()
   }
 
   const rows = await db
@@ -412,10 +416,12 @@ async function loadEventTranslationMetaMapForJobs(eventIds: string[], locales: N
       source_hash: eventTranslationsTable.source_hash,
     })
     .from(eventTranslationsTable)
-    .where(and(
-      inArray(eventTranslationsTable.event_id, uniqueEventIds),
-      inArray(eventTranslationsTable.locale, uniqueLocales),
-    ))
+    .where(
+      and(
+        inArray(eventTranslationsTable.event_id, uniqueEventIds),
+        inArray(eventTranslationsTable.locale, uniqueLocales),
+      ),
+    )
 
   return buildEventTranslationMetaMap(rows as EventTranslationMetaRow[])
 }
@@ -424,7 +430,7 @@ async function loadTagTranslationMetaMapForJobs(tagIds: number[], locales: NonDe
   const uniqueTagIds = [...new Set(tagIds)]
   const uniqueLocales = [...new Set(locales)]
   if (uniqueTagIds.length === 0 || uniqueLocales.length === 0) {
-    return new Map<string, { source_hash: string | null, is_manual: boolean }>()
+    return new Map<string, { source_hash: string | null; is_manual: boolean }>()
   }
 
   const rows = await db
@@ -435,15 +441,17 @@ async function loadTagTranslationMetaMapForJobs(tagIds: number[], locales: NonDe
       source_hash: tagTranslationsTable.source_hash,
     })
     .from(tagTranslationsTable)
-    .where(and(
-      inArray(tagTranslationsTable.tag_id, uniqueTagIds),
-      inArray(tagTranslationsTable.locale, uniqueLocales),
-    ))
+    .where(and(inArray(tagTranslationsTable.tag_id, uniqueTagIds), inArray(tagTranslationsTable.locale, uniqueLocales)))
 
   return buildTagTranslationMetaMap(rows as TagTranslationMetaRow[])
 }
 
-async function upsertAutoEventTranslation(eventId: string, locale: NonDefaultLocale, title: string, sourceHash: string) {
+async function upsertAutoEventTranslation(
+  eventId: string,
+  locale: NonDefaultLocale,
+  title: string,
+  sourceHash: string,
+) {
   const payload = {
     event_id: eventId,
     locale,
@@ -506,14 +514,14 @@ function extractJsonObject(raw: string) {
   return withoutFences.slice(firstBrace, lastBrace + 1)
 }
 
-function parseBatchTranslationResponse(raw: string) {
+function parseBatchTranslationResponse(raw: string, expectedRows: TranslationBatchInputRow[]) {
   const jsonPayload = extractJsonObject(raw)
+  const expectedRowsById = new Map(expectedRows.map((row) => [row.id, row]))
 
   let parsed: unknown
   try {
     parsed = JSON.parse(jsonPayload)
-  }
-  catch {
+  } catch {
     throw new Error('Model returned invalid JSON for translation batch.')
   }
 
@@ -541,6 +549,19 @@ function parseBatchTranslationResponse(raw: string) {
       continue
     }
 
+    const expectedRow = expectedRowsById.get(id)
+    if (!expectedRow) {
+      throw new Error(`Model returned unexpected translation id ${id}.`)
+    }
+    if (result.has(id)) {
+      throw new Error(`Model returned duplicate translation id ${id}.`)
+    }
+
+    assertTranslationUsesExpectedScript({
+      locale: expectedRow.locale,
+      sourceText: expectedRow.sourceText,
+      translatedText: normalizedText,
+    })
     result.set(id, normalizedText)
   }
 
@@ -552,15 +573,41 @@ function parseBatchTranslationResponse(raw: string) {
 }
 
 async function translateBatchText(rows: TranslationBatchInputRow[], model?: string, apiKey?: string) {
-  if (!apiKey) {
-    throw new Error('OpenRouter API key is not configured.')
-  }
-
   if (rows.length === 0) {
     return new Map<string, string>()
   }
 
-  const payload = rows.map(row => ({
+  const targetLocale = rows[0]!.locale
+  if (rows.some((row) => row.locale !== targetLocale)) {
+    throw new Error('Translation batches must contain exactly one target locale.')
+  }
+
+  const targetLocaleLabel = LOCALE_LABELS[targetLocale]
+  const translatedById = new Map<string, string>()
+  const providerRows: TranslationBatchInputRow[] = []
+
+  for (const row of rows) {
+    const deterministicTranslation = resolveDeterministicTranslation({
+      locale: row.locale,
+      sourceLabel: row.sourceLabel,
+      sourceText: row.sourceText,
+    })
+    if (deterministicTranslation) {
+      translatedById.set(row.id, deterministicTranslation)
+      continue
+    }
+
+    providerRows.push(row)
+  }
+
+  if (providerRows.length === 0) {
+    return translatedById
+  }
+  if (!apiKey) {
+    throw new Error('OpenRouter API key is not configured.')
+  }
+
+  const payload = providerRows.map((row) => ({
     id: row.id,
     source_label: row.sourceLabel,
     source_text: row.sourceText,
@@ -568,36 +615,45 @@ async function translateBatchText(rows: TranslationBatchInputRow[], model?: stri
     locale_label: LOCALE_LABELS[row.locale],
   }))
 
-  const translated = await requestOpenRouterCompletion([
+  const translated = await requestOpenRouterCompletion(
+    [
+      {
+        role: 'system',
+        content: [
+          'You are a translation engine specialized in short labels and event titles.',
+          `Translate every item into ${targetLocaleLabel} (${targetLocale}).`,
+          'Never translate an item into a different language.',
+          'Return only valid JSON.',
+        ].join(' '),
+      },
+      {
+        role: 'user',
+        content: [
+          `Translate each item from English to ${targetLocaleLabel} (${targetLocale}).`,
+          'Rules:',
+          '- Return only JSON in this exact shape: {"translations":[{"id":"...","text":"..."}]}.',
+          '- Include each input id exactly once in the output.',
+          '- Keep translation concise and neutral.',
+          '- Preserve names, acronyms, tickers, numbers, and dates exactly when appropriate.',
+          '- Do not add notes, explanations, markdown, or extra keys.',
+          `Input JSON: ${JSON.stringify(payload)}`,
+        ].join('\n'),
+      },
+    ],
     {
-      role: 'system',
-      content: [
-        'You are a translation engine specialized in short labels and event titles.',
-        'Translate every item independently based on its locale.',
-        'Return only valid JSON.',
-      ].join(' '),
+      apiKey,
+      model,
+      temperature: 0,
+      maxTokens: Math.min(4_000, Math.max(250, providerRows.length * 120)),
     },
-    {
-      role: 'user',
-      content: [
-        'Translate each item from English to the target locale.',
-        'Rules:',
-        '- Return only JSON in this exact shape: {"translations":[{"id":"...","text":"..."}]}.',
-        '- Include each input id exactly once in the output.',
-        '- Keep translation concise and neutral.',
-        '- Preserve names, acronyms, tickers, numbers, and dates exactly when appropriate.',
-        '- Do not add notes, explanations, markdown, or extra keys.',
-        `Input JSON: ${JSON.stringify(payload)}`,
-      ].join('\n'),
-    },
-  ], {
-    apiKey,
-    model,
-    temperature: 0,
-    maxTokens: Math.min(4_000, Math.max(250, rows.length * 120)),
-  })
+  )
 
-  return parseBatchTranslationResponse(translated)
+  const providerTranslations = parseBatchTranslationResponse(translated, providerRows)
+  for (const [id, translation] of providerTranslations) {
+    translatedById.set(id, translation)
+  }
+
+  return translatedById
 }
 
 function getErrorMessage(error: unknown) {
@@ -613,25 +669,28 @@ function pushJobError(stats: TranslationJobStats, jobType: string, identity: Job
   })
 }
 
-async function retryClaimedJob(claimed: TranslationJobRow, identity: JobIdentity, error: unknown, stats: TranslationJobStats) {
+async function retryClaimedJob(
+  claimed: TranslationJobRow,
+  identity: JobIdentity,
+  error: unknown,
+  stats: TranslationJobStats,
+) {
   pushJobError(stats, claimed.job_type, identity, error)
 
   try {
     const { retryScheduled } = await scheduleRetry(claimed, error)
     if (retryScheduled) {
       stats.retried += 1
-    }
-    else {
+    } else {
       stats.failed += 1
     }
-  }
-  catch (rescheduleError) {
+  } catch (rescheduleError) {
     stats.failed += 1
     pushJobError(stats, claimed.job_type, identity, rescheduleError)
   }
 }
 
-async function processPendingTranslationJobs(
+async function processPendingLocaleTranslationJobs(
   pendingJobs: PendingTranslationJob[],
   model: string | undefined,
   apiKey: string | undefined,
@@ -641,7 +700,7 @@ async function processPendingTranslationJobs(
     return
   }
 
-  const batchRows: TranslationBatchInputRow[] = pendingJobs.map(job => ({
+  const batchRows: TranslationBatchInputRow[] = pendingJobs.map((job) => ({
     id: job.claimed.id,
     sourceText: job.sourceText,
     locale: job.locale,
@@ -652,8 +711,7 @@ async function processPendingTranslationJobs(
 
   try {
     translatedById = await translateBatchText(batchRows, model, apiKey)
-  }
-  catch (error) {
+  } catch (error) {
     for (const pendingJob of pendingJobs) {
       await retryClaimedJob(pendingJob.claimed, pendingJob.identity, error, stats)
     }
@@ -683,10 +741,26 @@ async function processPendingTranslationJobs(
       await upsertAutoTagTranslation(pendingJob.tagId, pendingJob.locale, translatedText, pendingJob.sourceHash)
       await completeJob(pendingJob.claimed, pendingJob.nextPayload)
       stats.completed += 1
-    }
-    catch (error) {
+    } catch (error) {
       await retryClaimedJob(pendingJob.claimed, pendingJob.identity, error, stats)
     }
+  }
+}
+
+async function processPendingTranslationJobs(
+  pendingJobs: PendingTranslationJob[],
+  model: string | undefined,
+  apiKey: string | undefined,
+  stats: TranslationJobStats,
+) {
+  const localeBatches = groupTranslationsByLocale(pendingJobs)
+
+  for (let index = 0; index < localeBatches.length; index += TRANSLATION_LOCALE_CONCURRENCY) {
+    await Promise.all(
+      localeBatches
+        .slice(index, index + TRANSLATION_LOCALE_CONCURRENCY)
+        .map((localeBatch) => processPendingLocaleTranslationJobs(localeBatch, model, apiKey, stats)),
+    )
   }
 }
 
@@ -700,31 +774,37 @@ async function preparePendingTranslationJobs(
     return pendingJobs
   }
 
-  const eventJobs = claimedJobs.filter(job => job.kind === EVENT_TITLE_TRANSLATION_JOB_TYPE)
-  const tagJobs = claimedJobs.filter(job => job.kind === TAG_NAME_TRANSLATION_JOB_TYPE)
+  const eventJobs = claimedJobs.filter((job) => job.kind === EVENT_TITLE_TRANSLATION_JOB_TYPE)
+  const tagJobs = claimedJobs.filter((job) => job.kind === TAG_NAME_TRANSLATION_JOB_TYPE)
 
   const [eventSourceMap, tagSourceMap, eventMetaMap, tagMetaMap] = await Promise.all([
-    loadEventSourcesMap(eventJobs.map(job => job.payload.event_id)),
-    loadTagSourcesMap(tagJobs.map(job => job.payload.tag_id)),
+    loadEventSourcesMap(eventJobs.map((job) => job.payload.event_id)),
+    loadTagSourcesMap(tagJobs.map((job) => job.payload.tag_id)),
     loadEventTranslationMetaMapForJobs(
-      eventJobs.map(job => job.payload.event_id),
-      eventJobs.map(job => job.payload.locale),
+      eventJobs.map((job) => job.payload.event_id),
+      eventJobs.map((job) => job.payload.locale),
     ),
     loadTagTranslationMetaMapForJobs(
-      tagJobs.map(job => job.payload.tag_id),
-      tagJobs.map(job => job.payload.locale),
+      tagJobs.map((job) => job.payload.tag_id),
+      tagJobs.map((job) => job.payload.locale),
     ),
   ])
 
   for (const claimedJob of claimedJobs) {
     try {
       if (claimedJob.kind === EVENT_TITLE_TRANSLATION_JOB_TYPE) {
-        const sourceTitle = eventSourceMap.get(claimedJob.payload.event_id)
-        if (!sourceTitle) {
+        const eventSource = eventSourceMap.get(claimedJob.payload.event_id)
+        if (!eventSource) {
           throw new Error(`Event ${claimedJob.payload.event_id} does not have a valid source title`)
         }
-
-        const sourceHash = buildSourceHash(sourceTitle)
+        const sourceTitle = eventSource.title
+        const sourceHash = buildSourceHash(
+          resolveTranslationSourceFingerprint({
+            locale: claimedJob.payload.locale,
+            sourceLabel: 'event title',
+            sourceText: sourceTitle,
+          }),
+        )
         const nextPayload: EventTranslationJobPayload = {
           event_id: claimedJob.payload.event_id,
           locale: claimedJob.payload.locale,
@@ -732,6 +812,12 @@ async function preparePendingTranslationJobs(
           source_hash: sourceHash,
           provider_signature: providerSignature,
         }
+        if (eventSource.resolved) {
+          await completeJob(claimedJob.claimed, nextPayload)
+          stats.skippedResolved += 1
+          continue
+        }
+
         const currentTranslation = eventMetaMap.get(`${claimedJob.payload.event_id}:${claimedJob.payload.locale}`)
         if (currentTranslation?.is_manual) {
           await completeJob(claimedJob.claimed, nextPayload)
@@ -792,8 +878,7 @@ async function preparePendingTranslationJobs(
         sourceText: sourceName,
         nextPayload,
       })
-    }
-    catch (error) {
+    } catch (error) {
       await retryClaimedJob(claimedJob.claimed, claimedJob.identity, error, stats)
     }
   }
@@ -808,6 +893,7 @@ export async function GET(request: Request) {
     retried: 0,
     failed: 0,
     skippedManual: 0,
+    skippedResolved: 0,
     skippedUpToDate: 0,
     timeLimitReached: false,
     errors: [],
@@ -911,8 +997,7 @@ export async function GET(request: Request) {
           }
 
           throw new Error(`Unsupported translation job type: ${claimed.job_type}`)
-        }
-        catch (error) {
+        } catch (error) {
           const identity = claimedIdentity ?? (claimed ? getJobIdentity(claimed) : candidateIdentity)
 
           if (!claimed) {
@@ -933,8 +1018,7 @@ export async function GET(request: Request) {
           openRouterSettings.apiKey,
           stats,
         )
-      }
-      catch (error) {
+      } catch (error) {
         for (const claimedJob of claimedJobs) {
           await retryClaimedJob(claimedJob.claimed, claimedJob.identity, error, stats)
         }
@@ -949,10 +1033,14 @@ export async function GET(request: Request) {
         ...stats,
       }
     },
-    onError: error => buildCronJsonResponse({
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
-      ...stats,
-    }, 500),
+    onError: (error) =>
+      buildCronJsonResponse(
+        {
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+          ...stats,
+        },
+        500,
+      ),
   })
 }

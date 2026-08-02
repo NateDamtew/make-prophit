@@ -1,12 +1,18 @@
 'use client'
 
-import type { AdminEventRow } from '@/app/[locale]/admin/events/_hooks/useAdminEvents'
-import type { SportsSourceProvider } from '@/lib/sports-source/providers'
 import { useQueryClient } from '@tanstack/react-query'
-import { FilterIcon, Loader2Icon, SearchIcon, SettingsIcon, XIcon } from 'lucide-react'
+import { ChevronDownIcon, FilterIcon, SearchIcon, SettingsIcon, XIcon } from 'lucide-react'
 import { useExtracted } from 'next-intl'
-import { useCallback, useRef, useState } from 'react'
-import { toast } from 'sonner'
+import { useCallback, useRef, useState, useSyncExternalStore } from 'react'
+
+import type { AdminEventRow } from '@/app/[locale]/admin/events/_hooks/useAdminEvents'
+import type {
+  AdminEventsTableState,
+  AdminEventsTableStatePatch,
+} from '@/app/[locale]/admin/events/_lib/admin-events-table-state'
+import type { AdminEventAttentionFilter } from '@/lib/admin-event-attention'
+import type { SportsSourceProvider } from '@/lib/sports-source/providers'
+
 import { DataTable } from '@/app/[locale]/admin/_components/DataTable'
 import { updateEventAdditionalContextAction } from '@/app/[locale]/admin/events/_actions/update-event-additional-context'
 import { updateEventLivestreamUrlAction } from '@/app/[locale]/admin/events/_actions/update-event-livestream-url'
@@ -15,6 +21,14 @@ import { updateEventSyncSettingsAction } from '@/app/[locale]/admin/events/_acti
 import { updateEventVisibilityAction } from '@/app/[locale]/admin/events/_actions/update-event-visibility'
 import { useAdminEventsColumns } from '@/app/[locale]/admin/events/_components/columns'
 import { useAdminEventsTable } from '@/app/[locale]/admin/events/_hooks/useAdminEvents'
+import {
+  getServerHideCryptoPreference,
+  readHideCryptoPreference,
+  storeHideCryptoPreference,
+  subscribeToHideCryptoPreference,
+} from '@/app/[locale]/admin/events/_lib/admin-events-hide-crypto-preference'
+import { DEFAULT_ADMIN_EVENTS_TABLE_STATE } from '@/app/[locale]/admin/events/_lib/admin-events-table-state'
+import EventIconImage from '@/components/EventIconImage'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -36,24 +50,23 @@ import { Input } from '@/components/ui/input'
 import { InputError } from '@/components/ui/input-error'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Spinner } from '@/components/ui/spinner'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
+import { toast } from '@/components/ui/toast'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { Link } from '@/i18n/navigation'
-import {
-  filterSportsSourceProvidersByCategory,
-  formatSportsSourceProviderLabel,
-  normalizeSingleSportsSourceProvider,
-  SPORTS_SOURCE_PROVIDERS,
-} from '@/lib/sports-source/providers'
+import { resolveAutomaticSportsSourceCardCandidate } from '@/lib/sports-source/auto-selection'
+import { normalizeSingleSportsSourceProvider } from '@/lib/sports-source/providers'
 import { buildSportsSourceMatchupSearchQuery } from '@/lib/sports-source/search-query'
 import { cn } from '@/lib/utils'
 
-interface AdminEventsTableProps {
+export interface AdminEventsTableProps {
   initialAutoDeployNewEventsEnabled: boolean
-  mainCategoryOptions: { slug: string, name: string }[]
-  configuredSportsSourceProviders: SportsSourceProvider[]
+  tableState: AdminEventsTableState
+  onTableStateChange: (patch: AdminEventsTableStatePatch) => void
+  mainCategoryOptions: { slug: string; name: string }[]
 }
 
 interface SportsSourceCandidate {
@@ -66,8 +79,8 @@ interface SportsSourceCandidate {
   leagueSlug: string | null
   sportSlug: string | null
   startTime: string | null
-  homeTeam: { name: string, abbreviation?: string | null } | null
-  awayTeam: { name: string, abbreviation?: string | null } | null
+  homeTeam: { name: string; abbreviation?: string | null } | null
+  awayTeam: { name: string; abbreviation?: string | null } | null
   score: string | null
   live: boolean | null
   ended: boolean | null
@@ -148,6 +161,10 @@ function resolveSportsSourceSearchDate(event: AdminEventRow | null) {
   return event.end_date ? formatSportsSourceDate(new Date(event.end_date)) : null
 }
 
+function resolveSportsSourceProvider(event: AdminEventRow): SportsSourceProvider {
+  return event.sports_vertical === 'esports' ? 'pandascore' : 'thesportsdb'
+}
+
 function parseSportsSourceConfidence(value: string | null | undefined) {
   const normalized = value?.trim()
   if (!normalized) {
@@ -159,9 +176,11 @@ function parseSportsSourceConfidence(value: string | null | undefined) {
 }
 
 function formatSportsSourceCandidateName(candidate: SportsSourceCandidate) {
-  return [candidate.homeTeam?.name, candidate.awayTeam?.name].filter(Boolean).join(' vs ')
-    || candidate.eventName
-    || candidate.eventId
+  return (
+    [candidate.homeTeam?.name, candidate.awayTeam?.name].filter(Boolean).join(' vs ') ||
+    candidate.eventName ||
+    candidate.eventId
+  )
 }
 
 function formatSportsSourceCandidateMeta(candidate: SportsSourceCandidate) {
@@ -169,7 +188,9 @@ function formatSportsSourceCandidateMeta(candidate: SportsSourceCandidate) {
     candidate.leagueName,
     candidate.startTime ? formatDayMonthLabel(new Date(candidate.startTime)) : null,
     candidate.provider,
-  ].filter(Boolean).join(' · ')
+  ]
+    .filter(Boolean)
+    .join(' · ')
 }
 
 function buildSportsSourceCandidatePayload(candidate: SportsSourceCandidate) {
@@ -195,18 +216,27 @@ function buildSportsSourceCandidatePayload(candidate: SportsSourceCandidate) {
 function parseMatchTeamsFromTitle(title: string | null | undefined) {
   const matchup = buildSportsSourceMatchupSearchQuery(null, title)
   if (!matchup) {
-    return { home: 'Team 1', away: 'Team 2' }
-  }
-
-  const parts = matchup.split(/\s+vs\s+/i).map(part => part.trim()).filter(Boolean)
-  if (parts.length >= 2) {
     return {
-      home: parts[0]!,
-      away: parts[1]!,
+      home: { name: 'Team 1', logoUrl: null },
+      away: { name: 'Team 2', logoUrl: null },
     }
   }
 
-  return { home: 'Team 1', away: 'Team 2' }
+  const parts = matchup
+    .split(/\s+vs\s+/i)
+    .map((part) => part.trim())
+    .filter(Boolean)
+  if (parts.length >= 2) {
+    return {
+      home: { name: parts[0]!, logoUrl: null },
+      away: { name: parts[1]!, logoUrl: null },
+    }
+  }
+
+  return {
+    home: { name: 'Team 1', logoUrl: null },
+    away: { name: 'Team 2', logoUrl: null },
+  }
 }
 
 function resolveSportsFinalTeams(event: AdminEventRow | null) {
@@ -218,7 +248,11 @@ function resolveSportsFinalTeams(event: AdminEventRow | null) {
   const home = teams[0]?.name?.trim() || teams[0]?.abbreviation?.trim()
   const away = teams[1]?.name?.trim() || teams[1]?.abbreviation?.trim()
   if (home && away) {
-    return { home, away }
+    const logoUrls = event.sports_team_logo_urls ?? []
+    return {
+      home: { name: home, logoUrl: teams[0]?.logo_url?.trim() || logoUrls[0]?.trim() || null },
+      away: { name: away, logoUrl: teams[1]?.logo_url?.trim() || logoUrls[1]?.trim() || null },
+    }
   }
 
   return parseMatchTeamsFromTitle(event.title)
@@ -286,9 +320,25 @@ function buildSportsSourceModalSearchQuery(event: AdminEventRow) {
   return `${title} (${dateLabel})`
 }
 
-function useAdminEventsTableState(initialAutoDeployNewEventsEnabled: boolean) {
+function useAdminEventsTableState(
+  initialAutoDeployNewEventsEnabled: boolean,
+  tableState: AdminEventsTableState,
+  onTableStateChange: (patch: AdminEventsTableStatePatch) => void,
+) {
   const t = useExtracted()
   const queryClient = useQueryClient()
+  const subscribeToHideCryptoAndResetPage = useCallback(
+    (onStoreChange: () => void) =>
+      subscribeToHideCryptoPreference(onStoreChange, () => {
+        onTableStateChange({ pageIndex: 0 })
+      }),
+    [onTableStateChange],
+  )
+  const hideCrypto = useSyncExternalStore(
+    subscribeToHideCryptoAndResetPage,
+    readHideCryptoPreference,
+    getServerHideCryptoPreference,
+  )
 
   const {
     events,
@@ -307,15 +357,14 @@ function useAdminEventsTableState(initialAutoDeployNewEventsEnabled: boolean) {
     seriesSlug,
     seriesOptions,
     activeOnly,
+    attention,
     handleSearchChange,
     handleSortChange,
-    handleMainCategoryChange,
-    handleCreatorChange,
-    handleSeriesSlugChange,
+    handleFiltersChange,
     handleActiveOnlyChange,
     handlePageChange,
     handlePageSizeChange,
-  } = useAdminEventsTable()
+  } = useAdminEventsTable(tableState, onTableStateChange, hideCrypto)
 
   const [pendingHiddenId, setPendingHiddenId] = useState<string | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -344,7 +393,9 @@ function useAdminEventsTableState(initialAutoDeployNewEventsEnabled: boolean) {
   const [sportsSourceLeagueIdValue, setSportsSourceLeagueIdValue] = useState('')
   const [sportsSourceLeagueLabelValue, setSportsSourceLeagueLabelValue] = useState('')
   const [sportsSourceConfidenceValue, setSportsSourceConfidenceValue] = useState('')
-  const [sportsSourcePayloadValue, setSportsSourcePayloadValue] = useState<Record<string, unknown> | null | undefined>(undefined)
+  const [sportsSourcePayloadValue, setSportsSourcePayloadValue] = useState<Record<string, unknown> | null | undefined>(
+    undefined,
+  )
   const [sportsSourceLivestreamUrlValue, setSportsSourceLivestreamUrlValue] = useState('')
   const [sportsSourceSearchError, setSportsSourceSearchError] = useState<string | null>(null)
   const [isSearchingSportsSource, setIsSearchingSportsSource] = useState(false)
@@ -355,30 +406,37 @@ function useAdminEventsTableState(initialAutoDeployNewEventsEnabled: boolean) {
   const [draftMainCategorySlug, setDraftMainCategorySlug] = useState(mainCategorySlug)
   const [draftCreator, setDraftCreator] = useState(creator)
   const [draftSeriesSlug, setDraftSeriesSlug] = useState(seriesSlug)
+  const [draftAttention, setDraftAttention] = useState<AdminEventAttentionFilter | 'all'>(attention)
 
-  const handleToggleHidden = useCallback(async (event: AdminEventRow, checked: boolean) => {
-    setPendingHiddenId(event.id)
+  const handleHideCryptoChange = useCallback((nextHideCrypto: boolean) => {
+    storeHideCryptoPreference(nextHideCrypto)
+  }, [])
 
-    try {
-      const result = await updateEventVisibilityAction(event.id, checked)
-      if (result.success) {
-        toast.success(checked
-          ? t('{name} is now hidden from public event lists.', { name: event.title })
-          : t('{name} is now visible in public event lists.', { name: event.title }))
-        void queryClient.invalidateQueries({ queryKey: ['admin-events'] })
+  const handleToggleHidden = useCallback(
+    async (event: AdminEventRow, checked: boolean) => {
+      setPendingHiddenId(event.id)
+
+      try {
+        const result = await updateEventVisibilityAction(event.id, checked)
+        if (result.success) {
+          toast.success(
+            checked
+              ? t('{name} is now hidden from public event lists.', { name: event.title })
+              : t('{name} is now visible in public event lists.', { name: event.title }),
+          )
+          void queryClient.invalidateQueries({ queryKey: ['admin-events'] })
+        } else {
+          toast.error(result.error || t('Failed to update event visibility'))
+        }
+      } catch (error) {
+        console.error('Failed to update event visibility', error)
+        toast.error(t('Failed to update event visibility'))
+      } finally {
+        setPendingHiddenId(null)
       }
-      else {
-        toast.error(result.error || t('Failed to update event visibility'))
-      }
-    }
-    catch (error) {
-      console.error('Failed to update event visibility', error)
-      toast.error(t('Failed to update event visibility'))
-    }
-    finally {
-      setPendingHiddenId(null)
-    }
-  }, [queryClient, t])
+    },
+    [queryClient, t],
+  )
 
   const handleOpenSettings = useCallback(() => {
     setDraftAutoDeployEnabled(savedAutoDeployEnabled)
@@ -399,20 +457,19 @@ function useAdminEventsTableState(initialAutoDeployNewEventsEnabled: boolean) {
       const result = await updateEventSyncSettingsAction(draftAutoDeployEnabled)
       if (result.success) {
         setSavedAutoDeployEnabled(draftAutoDeployEnabled)
-        toast.success(draftAutoDeployEnabled
-          ? t('New events will be auto-deployed.')
-          : t('New events now require manual activation.'))
+        toast.success(
+          draftAutoDeployEnabled
+            ? t('New events will be auto-deployed.')
+            : t('New events now require manual activation.'),
+        )
         setSettingsOpen(false)
-      }
-      else {
+      } else {
         toast.error(result.error || t('Failed to update event sync settings'))
       }
-    }
-    catch (error) {
+    } catch (error) {
       console.error('Failed to update event sync settings', error)
       toast.error(t('Failed to update event sync settings'))
-    }
-    finally {
+    } finally {
       setIsSavingSettings(false)
     }
   }, [draftAutoDeployEnabled, t])
@@ -421,29 +478,30 @@ function useAdminEventsTableState(initialAutoDeployNewEventsEnabled: boolean) {
     setDraftMainCategorySlug(mainCategorySlug)
     setDraftCreator(creator)
     setDraftSeriesSlug(seriesSlug)
+    setDraftAttention(attention)
     setFiltersOpen(true)
-  }, [mainCategorySlug, creator, seriesSlug])
+  }, [attention, mainCategorySlug, creator, seriesSlug])
 
   const handleApplyFilters = useCallback(() => {
-    handleMainCategoryChange(draftMainCategorySlug)
-    handleCreatorChange(draftCreator)
-    handleSeriesSlugChange(draftSeriesSlug)
+    handleFiltersChange({
+      mainCategorySlug: draftMainCategorySlug,
+      creator: draftCreator,
+      seriesSlug: draftSeriesSlug,
+      activeOnly,
+      attention: draftAttention,
+    })
     setFiltersOpen(false)
-  }, [
-    draftMainCategorySlug,
-    draftCreator,
-    draftSeriesSlug,
-    handleMainCategoryChange,
-    handleCreatorChange,
-    handleSeriesSlugChange,
-  ])
+  }, [activeOnly, draftMainCategorySlug, draftCreator, draftSeriesSlug, draftAttention, handleFiltersChange])
 
   const handleClearFilters = useCallback(() => {
-    handleMainCategoryChange('all')
-    handleCreatorChange('all')
-    handleSeriesSlugChange('all')
-    handleActiveOnlyChange(false)
-  }, [handleMainCategoryChange, handleCreatorChange, handleSeriesSlugChange, handleActiveOnlyChange])
+    handleFiltersChange({
+      mainCategorySlug: 'all',
+      creator: 'all',
+      seriesSlug: 'all',
+      activeOnly: DEFAULT_ADMIN_EVENTS_TABLE_STATE.activeOnly,
+      attention: 'all',
+    })
+  }, [handleFiltersChange])
 
   const handleOpenLivestreamModal = useCallback((event: AdminEventRow) => {
     setLivestreamEvent(event)
@@ -487,9 +545,11 @@ function useAdminEventsTableState(initialAutoDeployNewEventsEnabled: boolean) {
 
     const result = await updateEventLivestreamUrlAction(livestreamEvent.id, livestreamUrlValue)
     if (result.success) {
-      toast.success(livestreamUrlValue.trim()
-        ? t('Livestream URL updated for {name}.', { name: livestreamEvent.title })
-        : t('Livestream URL removed for {name}.', { name: livestreamEvent.title }))
+      toast.success(
+        livestreamUrlValue.trim()
+          ? t('Livestream URL updated for {name}.', { name: livestreamEvent.title })
+          : t('Livestream URL removed for {name}.', { name: livestreamEvent.title }),
+      )
       void queryClient.invalidateQueries({ queryKey: ['admin-events'] })
       setLivestreamEvent(null)
       setLivestreamUrlValue('')
@@ -513,17 +573,11 @@ function useAdminEventsTableState(initialAutoDeployNewEventsEnabled: boolean) {
     try {
       const result = await updateEventAdditionalContextAction(additionalContextEvent.id, additionalContextValue)
       if (result.success) {
-        toast.success(additionalContextValue.trim()
-          ? t({
-              id: 'adminEventsAdditionalContextUpdatedToast',
-              message: 'Additional context updated for {name}.',
-              values: { name: additionalContextEvent.title },
-            })
-          : t({
-              id: 'adminEventsAdditionalContextRemovedToast',
-              message: 'Additional context removed for {name}.',
-              values: { name: additionalContextEvent.title },
-            }))
+        toast.success(
+          additionalContextValue.trim()
+            ? t('Additional context updated for {name}.', { name: additionalContextEvent.title })
+            : t('Additional context removed for {name}.', { name: additionalContextEvent.title }),
+        )
         void queryClient.invalidateQueries({ queryKey: ['admin-events'] })
         setAdditionalContextEvent(null)
         setAdditionalContextValue('')
@@ -531,27 +585,20 @@ function useAdminEventsTableState(initialAutoDeployNewEventsEnabled: boolean) {
         return
       }
 
-      setAdditionalContextError(result.error ?? t({
-        id: 'adminEventsAdditionalContextFailed',
-        message: 'Failed to update additional context',
-      }))
-    }
-    catch (error) {
-      setAdditionalContextError(error instanceof Error && error.message
-        ? error.message
-        : t({
-            id: 'adminEventsAdditionalContextFailed',
-            message: 'Failed to update additional context',
-          }))
-    }
-    finally {
+      setAdditionalContextError(result.error ?? t('Failed to update additional context'))
+    } catch (error) {
+      setAdditionalContextError(
+        error instanceof Error && error.message ? error.message : t('Failed to update additional context'),
+      )
+    } finally {
       setIsSavingAdditionalContext(false)
     }
   }, [additionalContextEvent, additionalContextValue, queryClient, t])
 
   const handleOpenSportsFinalModal = useCallback((event: AdminEventRow) => {
     const parsedScore = parseSportsScoreParts(event.sports_score)
-    const provider = normalizeSingleSportsSourceProvider(event.sports_source_provider)
+    const provider = resolveSportsSourceProvider(event)
+    const hasSourceIdentity = Boolean(event.sports_source_event_id?.trim() || event.sports_source_game_id?.trim())
     setSportsFinalEvent(event)
     setSportsEndedValue(event.sports_ended === true)
     setSportsScoreHomeValue(parsedScore.home)
@@ -559,13 +606,13 @@ function useAdminEventsTableState(initialAutoDeployNewEventsEnabled: boolean) {
     setSportsSourceSearchQuery(buildSportsSourceModalSearchQuery(event))
     setSportsSourceCandidates([])
     setHasSearchedSportsSource(false)
-    setSportsSourceDetailsOpen(true)
-    setSportsSourceProviderValue(provider ?? '')
-    setSportsSourceEventIdValue(provider ? event.sports_source_event_id ?? '' : '')
-    setSportsSourceGameIdValue(provider ? event.sports_source_game_id ?? '' : '')
-    setSportsSourceLeagueIdValue(provider ? event.sports_source_league_id ?? '' : '')
-    setSportsSourceLeagueLabelValue(provider ? event.sports_source_league_label ?? '' : '')
-    setSportsSourceConfidenceValue(provider ? event.sports_source_match_confidence ?? '' : '')
+    setSportsSourceDetailsOpen(false)
+    setSportsSourceProviderValue(hasSourceIdentity ? provider : '')
+    setSportsSourceEventIdValue(hasSourceIdentity ? (event.sports_source_event_id ?? '') : '')
+    setSportsSourceGameIdValue(hasSourceIdentity ? (event.sports_source_game_id ?? '') : '')
+    setSportsSourceLeagueIdValue(hasSourceIdentity ? (event.sports_source_league_id ?? '') : '')
+    setSportsSourceLeagueLabelValue(hasSourceIdentity ? (event.sports_source_league_label ?? '') : '')
+    setSportsSourceConfidenceValue(hasSourceIdentity ? (event.sports_source_match_confidence ?? '') : '')
     setSportsSourcePayloadValue(undefined)
     setSportsSourceLivestreamUrlValue('')
     setSportsSourceSearchError(null)
@@ -634,7 +681,7 @@ function useAdminEventsTableState(initialAutoDeployNewEventsEnabled: boolean) {
         signal: controller.signal,
         body: JSON.stringify({
           title: query,
-          teams: sportsFinalEvent.sports_teams?.slice(0, 2).map(team => ({
+          teams: sportsFinalEvent.sports_teams?.slice(0, 2).map((team) => ({
             name: team.name,
             abbreviation: team.abbreviation,
           })),
@@ -645,7 +692,7 @@ function useAdminEventsTableState(initialAutoDeployNewEventsEnabled: boolean) {
           league: sportsFinalEvent.sports_league_slug ?? undefined,
           series: sportsFinalEvent.sports_series_slug ?? undefined,
           date: eventDate ?? undefined,
-          provider: sportsSourceProviderValue || undefined,
+          provider: sportsSourceProviderValue || resolveSportsSourceProvider(sportsFinalEvent),
           limit: 8,
         }),
       })
@@ -653,32 +700,35 @@ function useAdminEventsTableState(initialAutoDeployNewEventsEnabled: boolean) {
         return
       }
       if (!response.ok) {
-        const payload = await response.json().catch(() => null) as { error?: string } | null
+        const payload = (await response.json().catch(() => null)) as { error?: string } | null
         setSportsSourceSearchError(payload?.error || t('Could not search sports matches.'))
         return
       }
 
-      const payload = await response.json().catch(() => null) as { candidates?: SportsSourceCandidate[] } | null
+      const payload = (await response.json().catch(() => null)) as { candidates?: SportsSourceCandidate[] } | null
       if (sportsSourceSearchControllerRef.current !== controller) {
         return
       }
-      setSportsSourceCandidates(Array.isArray(payload?.candidates) ? payload.candidates : [])
+      const nextCandidates = Array.isArray(payload?.candidates) ? payload.candidates : []
+      setSportsSourceCandidates(nextCandidates)
+      const automaticCardCandidate = resolveAutomaticSportsSourceCardCandidate(nextCandidates)
+      if (automaticCardCandidate) {
+        applySportsSourceCandidate(automaticCardCandidate)
+      }
       setHasSearchedSportsSource(true)
-    }
-    catch (error) {
+    } catch (error) {
       if (controller.signal.aborted) {
         return
       }
       console.error('Failed to search sports source candidates', error)
       setSportsSourceSearchError(t('Could not search sports matches.'))
-    }
-    finally {
+    } finally {
       if (sportsSourceSearchControllerRef.current === controller) {
         sportsSourceSearchControllerRef.current = null
         setIsSearchingSportsSource(false)
       }
     }
-  }, [sportsFinalEvent, sportsSourceProviderValue, sportsSourceSearchQuery, t])
+  }, [applySportsSourceCandidate, sportsFinalEvent, sportsSourceProviderValue, sportsSourceSearchQuery, t])
 
   const handleCloseSportsFinalModal = useCallback(() => {
     if (isSavingSportsFinal) {
@@ -731,23 +781,25 @@ function useAdminEventsTableState(initialAutoDeployNewEventsEnabled: boolean) {
       return
     }
 
-    const sportsScore = hasHomeScore && hasAwayScore
-      ? `${Number.parseInt(normalizedHomeScore, 10)} - ${Number.parseInt(normalizedAwayScore, 10)}`
-      : ''
+    const sportsScore =
+      hasHomeScore && hasAwayScore
+        ? `${Number.parseInt(normalizedHomeScore, 10)} - ${Number.parseInt(normalizedAwayScore, 10)}`
+        : ''
     const sourceMatchConfidence = parseSportsSourceConfidence(sportsSourceConfidenceValue)
     const normalizedSportsSourceLivestreamUrl = sportsSourceLivestreamUrlValue.trim()
     const hasUnrecognizedExistingSportsSourceProvider = Boolean(
-      sportsFinalEvent.sports_source_provider?.trim()
-      && !normalizeSingleSportsSourceProvider(sportsFinalEvent.sports_source_provider),
+      sportsFinalEvent.sports_source_provider?.trim() &&
+      !normalizeSingleSportsSourceProvider(sportsFinalEvent.sports_source_provider),
     )
-    const shouldSkipAutoClearedSportsSource = hasUnrecognizedExistingSportsSourceProvider
-      && !sportsSourceProviderValue.trim()
-      && !sportsSourceEventIdValue.trim()
-      && !sportsSourceGameIdValue.trim()
-      && !sportsSourceLeagueIdValue.trim()
-      && !sportsSourceLeagueLabelValue.trim()
-      && !sportsSourceConfidenceValue.trim()
-      && sportsSourcePayloadValue === undefined
+    const shouldSkipAutoClearedSportsSource =
+      hasUnrecognizedExistingSportsSourceProvider &&
+      !sportsSourceProviderValue.trim() &&
+      !sportsSourceEventIdValue.trim() &&
+      !sportsSourceGameIdValue.trim() &&
+      !sportsSourceLeagueIdValue.trim() &&
+      !sportsSourceLeagueLabelValue.trim() &&
+      !sportsSourceConfidenceValue.trim() &&
+      sportsSourcePayloadValue === undefined
 
     const result = await updateEventSportsFinalStateAction(sportsFinalEvent.id, {
       sportsEnded: sportsEndedValue,
@@ -768,9 +820,11 @@ function useAdminEventsTableState(initialAutoDeployNewEventsEnabled: boolean) {
       ...(normalizedSportsSourceLivestreamUrl ? { livestreamUrl: normalizedSportsSourceLivestreamUrl } : {}),
     })
     if (result.success) {
-      toast.success(sportsEndedValue
-        ? t('{name} marked as final.', { name: sportsFinalEvent.title })
-        : t('{name} updated.', { name: sportsFinalEvent.title }))
+      toast.success(
+        sportsEndedValue
+          ? t('{name} marked as final.', { name: sportsFinalEvent.title })
+          : t('{name} updated.', { name: sportsFinalEvent.title }),
+      )
       void queryClient.invalidateQueries({ queryKey: ['admin-events'] })
       setSportsFinalEvent(null)
       setSportsEndedValue(false)
@@ -818,7 +872,7 @@ function useAdminEventsTableState(initialAutoDeployNewEventsEnabled: boolean) {
     onOpenAdditionalContextModal: handleOpenAdditionalContextModal,
     onOpenLivestreamModal: handleOpenLivestreamModal,
     onOpenSportsFinalModal: handleOpenSportsFinalModal,
-    isUpdatingHidden: eventId => pendingHiddenId === eventId,
+    isUpdatingHidden: (eventId) => pendingHiddenId === eventId,
   })
 
   return {
@@ -837,9 +891,12 @@ function useAdminEventsTableState(initialAutoDeployNewEventsEnabled: boolean) {
     creatorOptions,
     seriesSlug,
     seriesOptions,
+    hideCrypto,
     activeOnly,
+    attention,
     handleSearchChange,
     handleSortChange,
+    handleHideCryptoChange,
     handleActiveOnlyChange,
     handlePageChange,
     handlePageSizeChange,
@@ -859,6 +916,8 @@ function useAdminEventsTableState(initialAutoDeployNewEventsEnabled: boolean) {
     setDraftCreator,
     draftSeriesSlug,
     setDraftSeriesSlug,
+    draftAttention,
+    setDraftAttention,
     handleOpenFilters,
     handleApplyFilters,
     handleClearFilters,
@@ -894,13 +953,6 @@ function useAdminEventsTableState(initialAutoDeployNewEventsEnabled: boolean) {
     sportsSourceEventIdValue,
     setSportsSourceEventIdValue,
     sportsSourceGameIdValue,
-    setSportsSourceGameIdValue,
-    sportsSourceLeagueIdValue,
-    setSportsSourceLeagueIdValue,
-    sportsSourceLeagueLabelValue,
-    setSportsSourceLeagueLabelValue,
-    sportsSourceConfidenceValue,
-    setSportsSourceConfidenceValue,
     sportsSourceLivestreamUrlValue,
     sportsSourceSearchError,
     isSearchingSportsSource,
@@ -917,8 +969,9 @@ function useAdminEventsTableState(initialAutoDeployNewEventsEnabled: boolean) {
 
 export default function AdminEventsTable({
   initialAutoDeployNewEventsEnabled,
+  tableState,
+  onTableStateChange,
   mainCategoryOptions,
-  configuredSportsSourceProviders,
 }: AdminEventsTableProps) {
   const t = useExtracted()
   const isMobile = useIsMobile()
@@ -938,9 +991,12 @@ export default function AdminEventsTable({
     creatorOptions,
     seriesSlug,
     seriesOptions,
+    hideCrypto,
     activeOnly,
+    attention,
     handleSearchChange,
     handleSortChange,
+    handleHideCryptoChange,
     handleActiveOnlyChange,
     handlePageChange,
     handlePageSizeChange,
@@ -960,6 +1016,8 @@ export default function AdminEventsTable({
     setDraftCreator,
     draftSeriesSlug,
     setDraftSeriesSlug,
+    draftAttention,
+    setDraftAttention,
     handleOpenFilters,
     handleApplyFilters,
     handleClearFilters,
@@ -995,13 +1053,6 @@ export default function AdminEventsTable({
     sportsSourceEventIdValue,
     setSportsSourceEventIdValue,
     sportsSourceGameIdValue,
-    setSportsSourceGameIdValue,
-    sportsSourceLeagueIdValue,
-    setSportsSourceLeagueIdValue,
-    sportsSourceLeagueLabelValue,
-    setSportsSourceLeagueLabelValue,
-    sportsSourceConfidenceValue,
-    setSportsSourceConfidenceValue,
     sportsSourceLivestreamUrlValue,
     sportsSourceSearchError,
     isSearchingSportsSource,
@@ -1013,37 +1064,46 @@ export default function AdminEventsTable({
     handleCloseSportsFinalModal,
     handleSaveSportsFinalState,
     columns,
-  } = useAdminEventsTableState(initialAutoDeployNewEventsEnabled)
+  } = useAdminEventsTableState(initialAutoDeployNewEventsEnabled, tableState, onTableStateChange)
 
   const settingsButton = (
     <Tooltip>
-      <TooltipTrigger asChild>
-        <Button type="button" variant="outline" size="icon" onClick={handleOpenSettings} aria-label={t('Settings')}>
-          <SettingsIcon className="size-4" />
-        </Button>
-      </TooltipTrigger>
+      <TooltipTrigger
+        render={
+          <Button type="button" variant="outline" size="icon" onClick={handleOpenSettings} aria-label={t('Settings')}>
+            <SettingsIcon className="size-4" />
+          </Button>
+        }
+      />
       <TooltipContent>{t('Settings')}</TooltipContent>
     </Tooltip>
   )
 
   const createEventButton = (
-    <Button asChild type="button" className="h-9">
-      <Link href="/admin/events/calendar">{t('Create Event')}</Link>
-    </Button>
+    <Button
+      className="h-9"
+      nativeButton={false}
+      render={<Link href="/admin/events/calendar">{t('Create Event')}</Link>}
+    />
   )
 
-  const hasAppliedFilters = mainCategorySlug !== 'all'
-    || creator !== 'all'
-    || seriesSlug !== 'all'
+  const hasAppliedFilters =
+    mainCategorySlug !== 'all' ||
+    creator !== 'all' ||
+    seriesSlug !== 'all' ||
+    activeOnly !== DEFAULT_ADMIN_EVENTS_TABLE_STATE.activeOnly ||
+    attention !== 'all'
 
   const filtersButton = (
     <div className="relative">
       <Tooltip>
-        <TooltipTrigger asChild>
-          <Button type="button" variant="outline" size="icon" onClick={handleOpenFilters} aria-label={t('Filters')}>
-            <FilterIcon className="size-4" />
-          </Button>
-        </TooltipTrigger>
+        <TooltipTrigger
+          render={
+            <Button type="button" variant="outline" size="icon" onClick={handleOpenFilters} aria-label={t('Filters')}>
+              <FilterIcon className="size-4" />
+            </Button>
+          }
+        />
         <TooltipContent>{t('Filters')}</TooltipContent>
       </Tooltip>
       {hasAppliedFilters && (
@@ -1053,10 +1113,9 @@ export default function AdminEventsTable({
             event.stopPropagation()
             handleClearFilters()
           }}
-          className={cn(`
-            absolute -top-1 -right-1 flex size-4 items-center justify-center rounded-full border border-background
-            bg-foreground text-background
-          `)}
+          className={cn(
+            `absolute -top-1 -right-1 flex size-4 items-center justify-center rounded-full border border-background bg-foreground text-background`,
+          )}
           aria-label={t('Clear filters')}
         >
           <XIcon className="size-2.5" />
@@ -1067,54 +1126,112 @@ export default function AdminEventsTable({
 
   const onlyActiveControl = (
     <div className="flex items-center gap-2">
-      <Switch
-        id="admin-events-active-only"
-        checked={activeOnly}
-        onCheckedChange={handleActiveOnlyChange}
-      />
+      <Switch id="admin-events-active-only" checked={activeOnly} onCheckedChange={handleActiveOnlyChange} />
       <Label htmlFor="admin-events-active-only" className="text-sm font-normal text-muted-foreground">
         {t('Only active')}
       </Label>
     </div>
   )
 
+  const hideCryptoControl = (
+    <div className="flex items-center gap-2">
+      <Switch
+        id="admin-events-hide-crypto"
+        checked={hideCrypto}
+        onCheckedChange={(checked) => {
+          handleHideCryptoChange(checked)
+        }}
+      />
+      <Label htmlFor="admin-events-hide-crypto" className="text-sm font-normal text-muted-foreground">
+        {t('Hide crypto')}
+      </Label>
+    </div>
+  )
+
   const sportsFinalGameDateLabel = formatDayMonthLabel(resolveGameDateFromAdminEvent(sportsFinalEvent))
   const sportsFinalTeams = resolveSportsFinalTeams(sportsFinalEvent)
-  const hasSportsSourceIdentity = Boolean(sportsSourceProviderValue.trim() && (
-    sportsSourceEventIdValue.trim() || sportsSourceGameIdValue.trim()
-  ))
-  const sportsSourceProviderOptions = filterSportsSourceProvidersByCategory({
-    providers: configuredSportsSourceProviders,
-    category: sportsFinalEvent?.sports_vertical ?? null,
-    tags: sportsFinalEvent?.sports_vertical ? [sportsFinalEvent.sports_vertical] : null,
-  })
-  const sportsSourceProviderSelectValue = SPORTS_SOURCE_PROVIDERS.includes(sportsSourceProviderValue as typeof SPORTS_SOURCE_PROVIDERS[number])
-    && sportsSourceProviderOptions.includes(sportsSourceProviderValue as typeof sportsSourceProviderOptions[number])
-    ? sportsSourceProviderValue
-    : 'none'
+  const hasSportsSourceIdentity = Boolean(
+    sportsSourceProviderValue.trim() && (sportsSourceEventIdValue.trim() || sportsSourceGameIdValue.trim()),
+  )
   const sportsSourceSummary = hasSportsSourceIdentity
-    ? [
-        sportsSourceProviderValue.trim(),
-        sportsSourceEventIdValue.trim() || sportsSourceGameIdValue.trim(),
-      ].filter(Boolean).join(' · ')
-    : t('Search sports API')
+    ? [sportsSourceProviderValue.trim(), sportsSourceEventIdValue.trim() || sportsSourceGameIdValue.trim()]
+        .filter(Boolean)
+        .join(' · ')
+    : t('Automatic score')
+  const sportsFinalEventSummary = sportsFinalEvent ? (
+    <div className="flex max-w-full min-w-0 items-center gap-3 overflow-hidden text-left">
+      <div className="relative size-10 shrink-0 overflow-hidden rounded-md border bg-muted/40">
+        {sportsFinalEvent.icon_url ? (
+          <EventIconImage
+            src={sportsFinalEvent.icon_url}
+            alt={sportsFinalEvent.title}
+            sizes="40px"
+            containerClassName="size-full"
+          />
+        ) : (
+          <div className="flex size-full items-center justify-center text-xs font-semibold text-muted-foreground">
+            {sportsFinalEvent.title.slice(0, 1).toUpperCase()}
+          </div>
+        )}
+      </div>
+      <div className="min-w-0 flex-1 overflow-hidden">
+        <p className="max-w-full text-sm leading-snug font-medium break-words whitespace-normal text-foreground">
+          {sportsFinalEvent.title}
+        </p>
+        {sportsFinalGameDateLabel ? <p className="text-xs text-muted-foreground">{sportsFinalGameDateLabel}</p> : null}
+      </div>
+    </div>
+  ) : null
 
   const filtersFormFields = (
     <div className="grid gap-4 py-2">
       <div className="grid gap-2">
+        <Label>{t('Attention')}</Label>
+        <Select
+          items={{
+            all: t('All events'),
+            'missing-sports-id': t('Events without a sports ID'),
+            'past-due-unresolved': t('Events awaiting resolution'),
+          }}
+          value={draftAttention}
+          onValueChange={(value) => value !== null && setDraftAttention(value as AdminEventAttentionFilter | 'all')}
+        >
+          <SelectTrigger className="h-10 w-full">
+            <SelectValue placeholder={t('Attention')} />
+          </SelectTrigger>
+          <SelectContent align="start" className="py-1">
+            <SelectItem value="all" className="mx-1 my-0.5 cursor-pointer rounded-md">
+              {t('All events')}
+            </SelectItem>
+            <SelectItem value="missing-sports-id" className="mx-1 my-0.5 cursor-pointer rounded-md">
+              {t('Events without a sports ID')}
+            </SelectItem>
+            <SelectItem value="past-due-unresolved" className="mx-1 my-0.5 cursor-pointer rounded-md">
+              {t('Events awaiting resolution')}
+            </SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="grid gap-2">
         <Label>{t('Main category')}</Label>
-        <Select value={draftMainCategorySlug} onValueChange={setDraftMainCategorySlug}>
+        <Select
+          items={[
+            { label: t('All categories'), value: 'all' },
+            ...mainCategoryOptions.map((category) => ({ label: category.name, value: category.slug })),
+          ]}
+          value={draftMainCategorySlug}
+          onValueChange={(value) => value !== null && setDraftMainCategorySlug(value)}
+        >
           <SelectTrigger className="h-10 w-full">
             <SelectValue placeholder={t('Main category')} />
           </SelectTrigger>
           <SelectContent align="start" className="py-1">
-            <SelectItem value="all" className="mx-1 my-0.5 cursor-pointer rounded-md">{t('All categories')}</SelectItem>
-            {mainCategoryOptions.map(category => (
-              <SelectItem
-                key={category.slug}
-                value={category.slug}
-                className="mx-1 my-0.5 cursor-pointer rounded-md"
-              >
+            <SelectItem value="all" className="mx-1 my-0.5 cursor-pointer rounded-md">
+              {t('All categories')}
+            </SelectItem>
+            {mainCategoryOptions.map((category) => (
+              <SelectItem key={category.slug} value={category.slug} className="mx-1 my-0.5 cursor-pointer rounded-md">
                 {category.name}
               </SelectItem>
             ))}
@@ -1125,13 +1242,22 @@ export default function AdminEventsTable({
       {creatorOptions.length > 1 && (
         <div className="grid gap-2">
           <Label>{t('Creator')}</Label>
-          <Select value={draftCreator} onValueChange={setDraftCreator}>
+          <Select
+            items={[
+              { label: t('All creators'), value: 'all' },
+              ...creatorOptions.map((creatorWallet) => ({ label: creatorWallet, value: creatorWallet })),
+            ]}
+            value={draftCreator}
+            onValueChange={(value) => value !== null && setDraftCreator(value)}
+          >
             <SelectTrigger className="h-10 w-full">
               <SelectValue placeholder={t('Creator')} />
             </SelectTrigger>
             <SelectContent align="start" className="py-1">
-              <SelectItem value="all" className="mx-1 my-0.5 cursor-pointer rounded-md">{t('All creators')}</SelectItem>
-              {creatorOptions.map(creatorWallet => (
+              <SelectItem value="all" className="mx-1 my-0.5 cursor-pointer rounded-md">
+                {t('All creators')}
+              </SelectItem>
+              {creatorOptions.map((creatorWallet) => (
                 <SelectItem
                   key={creatorWallet}
                   value={creatorWallet}
@@ -1148,18 +1274,23 @@ export default function AdminEventsTable({
       {seriesOptions.length > 0 && (
         <div className="grid gap-2">
           <Label>{t('Series')}</Label>
-          <Select value={draftSeriesSlug} onValueChange={setDraftSeriesSlug}>
+          <Select
+            items={[
+              { label: t('All series'), value: 'all' },
+              ...seriesOptions.map((seriesOption) => ({ label: seriesOption, value: seriesOption })),
+            ]}
+            value={draftSeriesSlug}
+            onValueChange={(value) => value !== null && setDraftSeriesSlug(value)}
+          >
             <SelectTrigger className="h-10 w-full">
               <SelectValue placeholder={t('Series')} />
             </SelectTrigger>
             <SelectContent align="start" className="py-1">
-              <SelectItem value="all" className="mx-1 my-0.5 cursor-pointer rounded-md">{t('All series')}</SelectItem>
-              {seriesOptions.map(seriesOption => (
-                <SelectItem
-                  key={seriesOption}
-                  value={seriesOption}
-                  className="mx-1 my-0.5 cursor-pointer rounded-md"
-                >
+              <SelectItem value="all" className="mx-1 my-0.5 cursor-pointer rounded-md">
+                {t('All series')}
+              </SelectItem>
+              {seriesOptions.map((seriesOption) => (
+                <SelectItem key={seriesOption} value={seriesOption} className="mx-1 my-0.5 cursor-pointer rounded-md">
                   {seriesOption}
                 </SelectItem>
               ))}
@@ -1196,22 +1327,16 @@ export default function AdminEventsTable({
   const livestreamFormFields = (
     <div className="grid gap-4 py-2">
       <div className="grid gap-2">
-        <Label htmlFor="event-livestream-url">
-          {t('Livestream URL')}
-        </Label>
+        <Label htmlFor="event-livestream-url">{t('Livestream URL')}</Label>
         <Input
           id="event-livestream-url"
           type="url"
           placeholder="https://example.com/live"
           value={livestreamUrlValue}
-          onChange={event => setLivestreamUrlValue(event.target.value)}
+          onChange={(event) => setLivestreamUrlValue(event.target.value)}
           disabled={isSavingLivestream}
         />
-        {livestreamEvent && (
-          <p className="text-xs text-muted-foreground">
-            {livestreamEvent.title}
-          </p>
-        )}
+        {livestreamEvent && <p className="text-xs text-muted-foreground">{livestreamEvent.title}</p>}
       </div>
       {livestreamError && <InputError message={livestreamError} />}
     </div>
@@ -1220,25 +1345,16 @@ export default function AdminEventsTable({
   const additionalContextFormFields = (
     <div className="grid gap-4 py-2">
       <div className="grid gap-2">
-        <Label htmlFor="event-additional-context">
-          {t({ id: 'adminEventsAdditionalContextLabel', message: 'Additional Context' })}
-        </Label>
+        <Label htmlFor="event-additional-context">{t('Additional Context')}</Label>
         <Textarea
           id="event-additional-context"
-          placeholder={t({
-            id: 'adminEventsAdditionalContextPlaceholder',
-            message: 'Write the additional context shown in Rules for this event.',
-          })}
+          placeholder={t('Write the additional context shown in Rules for this event.')}
           value={additionalContextValue}
-          onChange={event => setAdditionalContextValue(event.target.value)}
+          onChange={(event) => setAdditionalContextValue(event.target.value)}
           disabled={isSavingAdditionalContext}
           className="min-h-28"
         />
-        {additionalContextEvent && (
-          <p className="text-sm text-muted-foreground">
-            {additionalContextEvent.title}
-          </p>
-        )}
+        {additionalContextEvent && <p className="text-sm text-muted-foreground">{additionalContextEvent.title}</p>}
       </div>
       {additionalContextError && <InputError message={additionalContextError} />}
     </div>
@@ -1246,55 +1362,106 @@ export default function AdminEventsTable({
 
   const sportsFinalFormFields = (
     <div className="grid gap-4 py-2">
-      <div className="grid gap-2">
-        <Label>{t('Score')}</Label>
-        <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2">
-          <Input
-            id="event-sports-score-home"
-            type="number"
-            min={0}
-            step={1}
-            inputMode="numeric"
-            placeholder="0"
-            value={sportsScoreHomeValue}
-            onChange={event => setSportsScoreHomeValue(event.target.value)}
-            disabled={isSavingSportsFinal}
-          />
-          <span className="text-sm font-semibold text-muted-foreground">-</span>
-          <Input
-            id="event-sports-score-away"
-            type="number"
-            min={0}
-            step={1}
-            inputMode="numeric"
-            placeholder="0"
-            value={sportsScoreAwayValue}
-            onChange={event => setSportsScoreAwayValue(event.target.value)}
-            disabled={isSavingSportsFinal}
-          />
-        </div>
-        {sportsFinalTeams && (
-          <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
-            <span className="truncate">{sportsFinalTeams.home}</span>
-            <span className="truncate text-right">{sportsFinalTeams.away}</span>
+      {sportsFinalTeams ? (
+        <div className="rounded-xl border bg-muted/10 px-3 py-4 sm:px-4">
+          <div className="grid grid-cols-[minmax(0,1fr)_3.5rem_auto_3.5rem_minmax(0,1fr)] items-center gap-2 sm:grid-cols-[minmax(0,1fr)_4rem_auto_4rem_minmax(0,1fr)] sm:gap-3">
+            <div className="flex min-w-0 flex-col items-center gap-2 text-center">
+              <div className="flex size-12 items-center justify-center sm:size-14">
+                {sportsFinalTeams.home.logoUrl ? (
+                  <EventIconImage
+                    src={sportsFinalTeams.home.logoUrl}
+                    alt={sportsFinalTeams.home.name}
+                    sizes="56px"
+                    containerClassName="size-full rounded-md"
+                    imageClassName="object-contain"
+                  />
+                ) : (
+                  <div className="flex size-full items-center justify-center text-sm font-semibold text-muted-foreground">
+                    {sportsFinalTeams.home.name.slice(0, 2).toUpperCase()}
+                  </div>
+                )}
+              </div>
+              <span className="line-clamp-2 w-full text-xs leading-tight font-medium break-words sm:text-sm">
+                {sportsFinalTeams.home.name}
+              </span>
+            </div>
+
+            <Input
+              id="event-sports-score-home"
+              type="number"
+              min={0}
+              step={1}
+              inputMode="numeric"
+              placeholder="0"
+              aria-label={`${sportsFinalTeams.home.name} ${t('Score')}`}
+              value={sportsScoreHomeValue}
+              onChange={(event) => setSportsScoreHomeValue(event.target.value)}
+              disabled={isSavingSportsFinal}
+              className="h-12 [appearance:textfield] px-1 text-center text-lg font-semibold [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+            />
+
+            <span className="text-base font-semibold text-muted-foreground" aria-hidden="true">
+              ×
+            </span>
+
+            <Input
+              id="event-sports-score-away"
+              type="number"
+              min={0}
+              step={1}
+              inputMode="numeric"
+              placeholder="0"
+              aria-label={`${sportsFinalTeams.away.name} ${t('Score')}`}
+              value={sportsScoreAwayValue}
+              onChange={(event) => setSportsScoreAwayValue(event.target.value)}
+              disabled={isSavingSportsFinal}
+              className="h-12 [appearance:textfield] px-1 text-center text-lg font-semibold [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+            />
+
+            <div className="flex min-w-0 flex-col items-center gap-2 text-center">
+              <div className="flex size-12 items-center justify-center sm:size-14">
+                {sportsFinalTeams.away.logoUrl ? (
+                  <EventIconImage
+                    src={sportsFinalTeams.away.logoUrl}
+                    alt={sportsFinalTeams.away.name}
+                    sizes="56px"
+                    containerClassName="size-full rounded-md"
+                    imageClassName="object-contain"
+                  />
+                ) : (
+                  <div className="flex size-full items-center justify-center text-sm font-semibold text-muted-foreground">
+                    {sportsFinalTeams.away.name.slice(0, 2).toUpperCase()}
+                  </div>
+                )}
+              </div>
+              <span className="line-clamp-2 w-full text-xs leading-tight font-medium break-words sm:text-sm">
+                {sportsFinalTeams.away.name}
+              </span>
+            </div>
           </div>
-        )}
-      </div>
+        </div>
+      ) : null}
 
       <details
-        className="rounded-md border border-border bg-muted/10 p-3"
+        className="overflow-hidden rounded-lg border border-border bg-muted/10"
         open={sportsSourceDetailsOpen}
-        onToggle={event => setSportsSourceDetailsOpen(event.currentTarget.open)}
+        onToggle={(event) => setSportsSourceDetailsOpen(event.currentTarget.open)}
       >
-        <summary className="cursor-pointer text-sm font-medium">
-          {sportsSourceSummary}
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 text-sm font-medium [&::-webkit-details-marker]:hidden">
+          <span className="truncate">{sportsSourceSummary}</span>
+          <ChevronDownIcon
+            className={cn(
+              'size-4 shrink-0 text-muted-foreground transition-transform duration-200',
+              sportsSourceDetailsOpen && 'rotate-180',
+            )}
+          />
         </summary>
 
-        <div className="mt-3 grid gap-3">
+        <div className="grid gap-3 border-t border-border/50 p-3">
           <div className="flex flex-col gap-2 sm:flex-row">
             <Input
               value={sportsSourceSearchQuery}
-              onChange={event => setSportsSourceSearchQuery(event.target.value)}
+              onChange={(event) => setSportsSourceSearchQuery(event.target.value)}
               placeholder={sportsFinalEvent?.title ?? t('Search match')}
               disabled={isSavingSportsFinal}
               onKeyDown={(event) => {
@@ -1310,154 +1477,104 @@ export default function AdminEventsTable({
               onClick={() => void searchSportsSourceCandidates()}
               disabled={isSavingSportsFinal || isSearchingSportsSource}
             >
-              {isSearchingSportsSource
-                ? <Loader2Icon className="size-4 animate-spin" />
-                : <SearchIcon className="size-4" />}
+              {isSearchingSportsSource ? <Spinner className="size-4" /> : <SearchIcon className="size-4" />}
               <span>{t('Search')}</span>
             </Button>
-            {hasSportsSourceIdentity
-              ? (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={clearSportsSourceCandidate}
-                    disabled={isSavingSportsFinal}
-                  >
-                    {t('Clear')}
-                  </Button>
-                )
-              : null}
+            {hasSportsSourceIdentity ? (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={clearSportsSourceCandidate}
+                disabled={isSavingSportsFinal}
+              >
+                {t('Clear')}
+              </Button>
+            ) : null}
           </div>
 
           {sportsSourceSearchError && <InputError message={sportsSourceSearchError} />}
 
-          {sportsSourceCandidates.length > 0
-            ? (
-                <div className="grid gap-2">
-                  {sportsSourceCandidates.map(candidate => (
-                    <button
-                      key={`${candidate.provider}:${candidate.eventId}:${candidate.gameId ?? ''}`}
-                      type="button"
-                      className={cn(`
-                        flex min-w-0 items-center justify-between gap-3 rounded-md border bg-background px-3 py-2
-                        text-left text-sm transition
-                        hover:border-primary/60
-                      `)}
-                      onClick={() => applySportsSourceCandidate(candidate)}
-                      disabled={isSavingSportsFinal}
-                    >
-                      <span className="min-w-0">
-                        <span className="block truncate font-medium">
-                          {formatSportsSourceCandidateName(candidate)}
-                        </span>
-                        <span className="block truncate text-xs text-muted-foreground">
-                          {formatSportsSourceCandidateMeta(candidate)}
-                        </span>
-                      </span>
-                      <span className="shrink-0 text-xs text-muted-foreground">
-                        {Math.round((candidate.confidence ?? 0) * 100)}
-                        %
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )
-            : hasSearchedSportsSource && !sportsSourceSearchError
-              ? (
-                  <p className="rounded-md border border-dashed border-border px-3 py-2 text-sm text-muted-foreground">
-                    {t('No results found')}
-                  </p>
-                )
-              : null}
-
-          {sportsSourceLivestreamUrlValue
-            ? (
-                <p className="truncate text-xs text-muted-foreground">
-                  {t('Livestream URL')}
-                  {': '}
-                  {sportsSourceLivestreamUrlValue}
-                </p>
-              )
-            : null}
-
-          <div className="grid grid-cols-1 gap-3 border-t border-border/50 pt-3 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="event-sports-source-provider">{t('Provider')}</Label>
-              <Select
-                value={sportsSourceProviderSelectValue}
-                onValueChange={value => setSportsSourceProviderValue(value === 'none' ? '' : value)}
-                disabled={isSavingSportsFinal}
-              >
-                <SelectTrigger id="event-sports-source-provider" className="w-full">
-                  <SelectValue placeholder={t('Provider')} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none" className="mx-1 my-0.5 cursor-pointer rounded-md">
-                    {t('None')}
-                  </SelectItem>
-                  {sportsSourceProviderOptions.map(provider => (
-                    <SelectItem
-                      key={provider}
-                      value={provider}
-                      className="mx-1 my-0.5 cursor-pointer rounded-md"
-                    >
-                      {formatSportsSourceProviderLabel(provider)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          {sportsSourceCandidates.length > 0 ? (
+            <div className="grid gap-2">
+              {sportsSourceCandidates.map((candidate) => (
+                <button
+                  key={`${candidate.provider}:${candidate.eventId}:${candidate.gameId ?? ''}`}
+                  type="button"
+                  className={cn(
+                    `flex min-w-0 items-center justify-between gap-3 rounded-md border bg-background px-3 py-2 text-left text-sm transition hover:border-primary/60`,
+                  )}
+                  onClick={() => applySportsSourceCandidate(candidate)}
+                  disabled={isSavingSportsFinal}
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate font-medium">{formatSportsSourceCandidateName(candidate)}</span>
+                    <span className="block truncate text-xs text-muted-foreground">
+                      {formatSportsSourceCandidateMeta(candidate)}
+                    </span>
+                  </span>
+                  <span className="shrink-0 text-xs text-muted-foreground">
+                    {Math.round((candidate.confidence ?? 0) * 100)}%
+                  </span>
+                </button>
+              ))}
             </div>
-            <div className="space-y-1.5">
+          ) : hasSearchedSportsSource && !sportsSourceSearchError ? (
+            <p className="rounded-md border border-dashed border-border px-3 py-2 text-sm text-muted-foreground">
+              {t('No results found')}
+            </p>
+          ) : null}
+
+          {sportsSourceLivestreamUrlValue ? (
+            <p className="truncate text-xs text-muted-foreground">
+              {t('Livestream URL')}
+              {': '}
+              {sportsSourceLivestreamUrlValue}
+            </p>
+          ) : null}
+
+          {sportsFinalEvent?.sports_vertical !== 'esports' ? (
+            <div className="space-y-1.5 border-t border-border/50 pt-3">
               <Label htmlFor="event-sports-source-event-id">{t('Event ID')}</Label>
               <Input
                 id="event-sports-source-event-id"
                 value={sportsSourceEventIdValue}
-                onChange={event => setSportsSourceEventIdValue(event.target.value)}
+                onChange={(event) => {
+                  const eventId = event.target.value
+                  clearSportsSourceCandidate()
+                  setSportsSourceProviderValue(eventId.trim() ? 'thesportsdb' : '')
+                  setSportsSourceEventIdValue(eventId)
+                }}
                 disabled={isSavingSportsFinal}
+                inputMode="numeric"
               />
+              <p className="text-xs text-muted-foreground">
+                {t.rich(
+                  'Can’t find the event? Search for it on <link>TheSportsDB</link>, open the event page, and paste the numeric ID from the URL here.',
+                  {
+                    link: (chunks) => (
+                      <a
+                        href="https://www.thesportsdb.com/"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="font-medium text-foreground underline underline-offset-4"
+                      >
+                        {chunks}
+                      </a>
+                    ),
+                  },
+                )}
+              </p>
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="event-sports-source-game-id">{t('Game ID')}</Label>
-              <Input
-                id="event-sports-source-game-id"
-                value={sportsSourceGameIdValue}
-                onChange={event => setSportsSourceGameIdValue(event.target.value)}
-                disabled={isSavingSportsFinal}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="event-sports-source-league-id">{t('League ID')}</Label>
-              <Input
-                id="event-sports-source-league-id"
-                value={sportsSourceLeagueIdValue}
-                onChange={event => setSportsSourceLeagueIdValue(event.target.value)}
-                disabled={isSavingSportsFinal}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="event-sports-source-league-label">{t('League')}</Label>
-              <Input
-                id="event-sports-source-league-label"
-                value={sportsSourceLeagueLabelValue}
-                onChange={event => setSportsSourceLeagueLabelValue(event.target.value)}
-                disabled={isSavingSportsFinal}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="event-sports-source-confidence">{t('Confidence')}</Label>
-              <Input
-                id="event-sports-source-confidence"
-                value={sportsSourceConfidenceValue}
-                onChange={event => setSportsSourceConfidenceValue(event.target.value)}
-                disabled={isSavingSportsFinal}
-                inputMode="decimal"
-                placeholder="0.0000"
-              />
-            </div>
-          </div>
+          ) : null}
         </div>
       </details>
 
+      {sportsFinalError && <InputError message={sportsFinalError} />}
+    </div>
+  )
+
+  const sportsFinalFooter = (
+    <div className="flex w-full items-center justify-between gap-3">
       <div className="flex items-center gap-2">
         <Switch
           id="event-sports-ended"
@@ -1465,10 +1582,24 @@ export default function AdminEventsTable({
           onCheckedChange={setSportsEndedValue}
           disabled={isSavingSportsFinal}
         />
-        <Label htmlFor="event-sports-ended">{t('Ended')}</Label>
+        <Label htmlFor="event-sports-ended" className="whitespace-nowrap">
+          {t('Match ended')}
+        </Label>
       </div>
-
-      {sportsFinalError && <InputError message={sportsFinalError} />}
+      <div className="flex items-center gap-2">
+        <Button type="button" variant="outline" onClick={handleCloseSportsFinalModal} disabled={isSavingSportsFinal}>
+          {t('Cancel')}
+        </Button>
+        <Button
+          type="button"
+          onClick={() => {
+            void handleSaveSportsFinalState()
+          }}
+          disabled={isSavingSportsFinal}
+        >
+          {isSavingSportsFinal ? t('Saving...') : t('Save')}
+        </Button>
+      </div>
     </div>
   )
 
@@ -1496,415 +1627,350 @@ export default function AdminEventsTable({
         pageSize={pageSize}
         onPageChange={handlePageChange}
         onPageSizeChange={handlePageSizeChange}
-        toolbarLeftContent={(
+        toolbarLeftContent={
           <div className="flex items-center gap-3">
             {filtersButton}
             {onlyActiveControl}
+            {hideCryptoControl}
           </div>
-        )}
-        toolbarRightContent={(
+        }
+        toolbarRightContent={
           <div className="flex items-center gap-2">
             {createEventButton}
             {settingsButton}
           </div>
-        )}
+        }
         searchInputClassName="h-9 sm:w-37.5 lg:w-62.5"
         searchLeadingIcon={<SearchIcon className="size-4" />}
       />
 
-      {isMobile
-        ? (
-            <Drawer
-              open={filtersOpen}
-              onOpenChange={(open) => {
-                if (open) {
-                  setFiltersOpen(true)
-                  return
-                }
-                setFiltersOpen(false)
-              }}
-            >
-              <DrawerContent className="max-h-[90vh] w-full bg-background px-4 pt-4 pb-6">
-                <div className="grid gap-4">
-                  <DrawerHeader className="space-y-2 p-0 text-left">
-                    <DrawerTitle>{t('Filters')}</DrawerTitle>
-                  </DrawerHeader>
-                  {filtersFormFields}
-                  <DrawerFooter className="mt-2 p-0">
-                    <Button type="button" variant="outline" onClick={() => setFiltersOpen(false)}>
-                      {t('Cancel')}
-                    </Button>
-                    <Button type="button" onClick={handleApplyFilters}>
-                      {t('Apply')}
-                    </Button>
-                  </DrawerFooter>
-                </div>
-              </DrawerContent>
-            </Drawer>
-          )
-        : (
-            <Dialog
-              open={filtersOpen}
-              onOpenChange={(open) => {
-                if (open) {
-                  setFiltersOpen(true)
-                  return
-                }
-                setFiltersOpen(false)
-              }}
-            >
-              <DialogContent className="sm:max-w-lg">
-                <DialogHeader>
-                  <DialogTitle>{t('Filters')}</DialogTitle>
-                </DialogHeader>
-                {filtersFormFields}
-                <DialogFooter>
-                  <Button type="button" variant="outline" onClick={() => setFiltersOpen(false)}>
-                    {t('Cancel')}
-                  </Button>
-                  <Button type="button" onClick={handleApplyFilters}>
-                    {t('Apply')}
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-          )}
+      {isMobile ? (
+        <Drawer
+          open={filtersOpen}
+          onOpenChange={(open) => {
+            if (open) {
+              setFiltersOpen(true)
+              return
+            }
+            setFiltersOpen(false)
+          }}
+        >
+          <DrawerContent className="max-h-[90vh] w-full bg-background px-4 pt-4 pb-6">
+            <div className="grid gap-4">
+              <DrawerHeader className="space-y-2 p-0 text-left">
+                <DrawerTitle>{t('Filters')}</DrawerTitle>
+              </DrawerHeader>
+              {filtersFormFields}
+              <DrawerFooter className="mt-2 p-0">
+                <Button type="button" variant="outline" onClick={() => setFiltersOpen(false)}>
+                  {t('Cancel')}
+                </Button>
+                <Button type="button" onClick={handleApplyFilters}>
+                  {t('Apply')}
+                </Button>
+              </DrawerFooter>
+            </div>
+          </DrawerContent>
+        </Drawer>
+      ) : (
+        <Dialog
+          open={filtersOpen}
+          onOpenChange={(open) => {
+            if (open) {
+              setFiltersOpen(true)
+              return
+            }
+            setFiltersOpen(false)
+          }}
+        >
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>{t('Filters')}</DialogTitle>
+            </DialogHeader>
+            {filtersFormFields}
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setFiltersOpen(false)}>
+                {t('Cancel')}
+              </Button>
+              <Button type="button" onClick={handleApplyFilters}>
+                {t('Apply')}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
 
-      {isMobile
-        ? (
-            <Drawer
-              open={settingsOpen}
-              onOpenChange={(open) => {
-                if (open) {
-                  setSettingsOpen(true)
-                  return
-                }
-                handleCloseSettings()
-              }}
-            >
-              <DrawerContent className="max-h-[90vh] w-full bg-background px-4 pt-4 pb-6">
-                <div className="grid gap-4">
-                  <DrawerHeader className="space-y-2 p-0 text-left">
-                    <DrawerTitle>{t('Events settings')}</DrawerTitle>
-                  </DrawerHeader>
-                  {settingsFormFields}
-                  <DrawerFooter className="mt-2 p-0">
-                    <Button
-                      type="button"
-                      onClick={() => {
-                        void handleSaveSettings()
-                      }}
-                      disabled={isSavingSettings}
-                    >
-                      {isSavingSettings ? t('Saving...') : t('Save')}
-                    </Button>
-                  </DrawerFooter>
-                </div>
-              </DrawerContent>
-            </Drawer>
-          )
-        : (
-            <Dialog
-              open={settingsOpen}
-              onOpenChange={(open) => {
-                if (open) {
-                  setSettingsOpen(true)
-                  return
-                }
-                handleCloseSettings()
-              }}
-            >
-              <DialogContent className="sm:max-w-lg">
-                <DialogHeader>
-                  <DialogTitle>{t('Events settings')}</DialogTitle>
-                </DialogHeader>
-                {settingsFormFields}
-                <DialogFooter>
-                  <Button
-                    type="button"
-                    onClick={() => {
-                      void handleSaveSettings()
-                    }}
-                    disabled={isSavingSettings}
-                  >
-                    {isSavingSettings ? t('Saving...') : t('Save')}
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-          )}
+      {isMobile ? (
+        <Drawer
+          open={settingsOpen}
+          onOpenChange={(open) => {
+            if (open) {
+              setSettingsOpen(true)
+              return
+            }
+            handleCloseSettings()
+          }}
+        >
+          <DrawerContent className="max-h-[90vh] w-full bg-background px-4 pt-4 pb-6">
+            <div className="grid gap-4">
+              <DrawerHeader className="space-y-2 p-0 text-left">
+                <DrawerTitle>{t('Events settings')}</DrawerTitle>
+              </DrawerHeader>
+              {settingsFormFields}
+              <DrawerFooter className="mt-2 p-0">
+                <Button
+                  type="button"
+                  onClick={() => {
+                    void handleSaveSettings()
+                  }}
+                  disabled={isSavingSettings}
+                >
+                  {isSavingSettings ? t('Saving...') : t('Save')}
+                </Button>
+              </DrawerFooter>
+            </div>
+          </DrawerContent>
+        </Drawer>
+      ) : (
+        <Dialog
+          open={settingsOpen}
+          onOpenChange={(open) => {
+            if (open) {
+              setSettingsOpen(true)
+              return
+            }
+            handleCloseSettings()
+          }}
+        >
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>{t('Events settings')}</DialogTitle>
+            </DialogHeader>
+            {settingsFormFields}
+            <DialogFooter>
+              <Button
+                type="button"
+                onClick={() => {
+                  void handleSaveSettings()
+                }}
+                disabled={isSavingSettings}
+              >
+                {isSavingSettings ? t('Saving...') : t('Save')}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
 
-      {isMobile
-        ? (
-            <Drawer
-              open={Boolean(additionalContextEvent)}
-              onOpenChange={(open) => {
-                if (open) {
-                  return
-                }
-                handleCloseAdditionalContextModal()
-              }}
-            >
-              <DrawerContent className="max-h-[90vh] w-full bg-background px-4 pt-4 pb-6">
-                <div className="grid gap-4">
-                  <DrawerHeader className="space-y-2 p-0 text-left">
-                    <DrawerTitle>
-                      {t({ id: 'adminEventsAddAdditionalContext', message: 'Add Additional Context' })}
-                    </DrawerTitle>
-                    <DrawerDescription>
-                      {t({
-                        id: 'adminEventsAdditionalContextDescription',
-                        message: 'Configure the additional context shown in Rules for this event. Leave empty to remove it.',
-                      })}
-                    </DrawerDescription>
-                  </DrawerHeader>
-                  {additionalContextFormFields}
-                  <DrawerFooter className="mt-2 p-0">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={handleCloseAdditionalContextModal}
-                      disabled={isSavingAdditionalContext}
-                    >
-                      {t('Cancel')}
-                    </Button>
-                    <Button
-                      type="button"
-                      onClick={() => {
-                        void handleSaveAdditionalContext()
-                      }}
-                      disabled={isSavingAdditionalContext}
-                    >
-                      {isSavingAdditionalContext ? t('Saving...') : t('Save')}
-                    </Button>
-                  </DrawerFooter>
-                </div>
-              </DrawerContent>
-            </Drawer>
-          )
-        : (
-            <Dialog
-              open={Boolean(additionalContextEvent)}
-              onOpenChange={(open) => {
-                if (open) {
-                  return
-                }
-                handleCloseAdditionalContextModal()
-              }}
-            >
-              <DialogContent className="sm:max-w-lg">
-                <DialogHeader>
-                  <DialogTitle>
-                    {t({ id: 'adminEventsAddAdditionalContext', message: 'Add Additional Context' })}
-                  </DialogTitle>
-                  <DialogDescription>
-                    {t({
-                      id: 'adminEventsAdditionalContextDescription',
-                      message: 'Configure the additional context shown in Rules for this event. Leave empty to remove it.',
-                    })}
-                  </DialogDescription>
-                </DialogHeader>
-                {additionalContextFormFields}
-                <DialogFooter>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={handleCloseAdditionalContextModal}
-                    disabled={isSavingAdditionalContext}
-                  >
-                    {t('Cancel')}
-                  </Button>
-                  <Button
-                    type="button"
-                    onClick={() => {
-                      void handleSaveAdditionalContext()
-                    }}
-                    disabled={isSavingAdditionalContext}
-                  >
-                    {isSavingAdditionalContext ? t('Saving...') : t('Save')}
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-          )}
+      {isMobile ? (
+        <Drawer
+          open={Boolean(additionalContextEvent)}
+          onOpenChange={(open) => {
+            if (open) {
+              return
+            }
+            handleCloseAdditionalContextModal()
+          }}
+        >
+          <DrawerContent className="max-h-[90vh] w-full bg-background px-4 pt-4 pb-6">
+            <div className="grid gap-4">
+              <DrawerHeader className="space-y-2 p-0 text-left">
+                <DrawerTitle>{t('Add Additional Context')}</DrawerTitle>
+                <DrawerDescription>
+                  {t('Configure the additional context shown in Rules for this event. Leave empty to remove it.')}
+                </DrawerDescription>
+              </DrawerHeader>
+              {additionalContextFormFields}
+              <DrawerFooter className="mt-2 p-0">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleCloseAdditionalContextModal}
+                  disabled={isSavingAdditionalContext}
+                >
+                  {t('Cancel')}
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => {
+                    void handleSaveAdditionalContext()
+                  }}
+                  disabled={isSavingAdditionalContext}
+                >
+                  {isSavingAdditionalContext ? t('Saving...') : t('Save')}
+                </Button>
+              </DrawerFooter>
+            </div>
+          </DrawerContent>
+        </Drawer>
+      ) : (
+        <Dialog
+          open={Boolean(additionalContextEvent)}
+          onOpenChange={(open) => {
+            if (open) {
+              return
+            }
+            handleCloseAdditionalContextModal()
+          }}
+        >
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>{t('Add Additional Context')}</DialogTitle>
+              <DialogDescription>
+                {t('Configure the additional context shown in Rules for this event. Leave empty to remove it.')}
+              </DialogDescription>
+            </DialogHeader>
+            {additionalContextFormFields}
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleCloseAdditionalContextModal}
+                disabled={isSavingAdditionalContext}
+              >
+                {t('Cancel')}
+              </Button>
+              <Button
+                type="button"
+                onClick={() => {
+                  void handleSaveAdditionalContext()
+                }}
+                disabled={isSavingAdditionalContext}
+              >
+                {isSavingAdditionalContext ? t('Saving...') : t('Save')}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
 
-      {isMobile
-        ? (
-            <Drawer
-              open={Boolean(livestreamEvent)}
-              onOpenChange={(open) => {
-                if (open) {
-                  return
-                }
-                handleCloseLivestreamModal()
-              }}
-            >
-              <DrawerContent className="max-h-[90vh] w-full bg-background px-4 pt-4 pb-6">
-                <div className="grid gap-4">
-                  <DrawerHeader className="space-y-2 p-0 text-left">
-                    <DrawerTitle>
-                      {livestreamEvent?.livestream_url ? t('Edit livestream URL') : t('Add livestream URL')}
-                    </DrawerTitle>
-                    <DrawerDescription>
-                      {t('Configure the livestream URL for this event. Leave empty to remove it.')}
-                    </DrawerDescription>
-                  </DrawerHeader>
-                  {livestreamFormFields}
-                  <DrawerFooter className="mt-2 p-0">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={handleCloseLivestreamModal}
-                      disabled={isSavingLivestream}
-                    >
-                      {t('Cancel')}
-                    </Button>
-                    <Button
-                      type="button"
-                      onClick={() => {
-                        void handleSaveLivestreamUrl()
-                      }}
-                      disabled={isSavingLivestream}
-                    >
-                      {isSavingLivestream ? t('Saving...') : t('Save')}
-                    </Button>
-                  </DrawerFooter>
-                </div>
-              </DrawerContent>
-            </Drawer>
-          )
-        : (
-            <Dialog
-              open={Boolean(livestreamEvent)}
-              onOpenChange={(open) => {
-                if (open) {
-                  return
-                }
-                handleCloseLivestreamModal()
-              }}
-            >
-              <DialogContent className="sm:max-w-lg">
-                <DialogHeader>
-                  <DialogTitle>
-                    {livestreamEvent?.livestream_url ? t('Edit livestream URL') : t('Add livestream URL')}
-                  </DialogTitle>
-                  <DialogDescription>
-                    {t('Configure the livestream URL for this event. Leave empty to remove it.')}
-                  </DialogDescription>
-                </DialogHeader>
-                {livestreamFormFields}
-                <DialogFooter>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={handleCloseLivestreamModal}
-                    disabled={isSavingLivestream}
-                  >
-                    {t('Cancel')}
-                  </Button>
-                  <Button
-                    type="button"
-                    onClick={() => {
-                      void handleSaveLivestreamUrl()
-                    }}
-                    disabled={isSavingLivestream}
-                  >
-                    {isSavingLivestream ? t('Saving...') : t('Save')}
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-          )}
+      {isMobile ? (
+        <Drawer
+          open={Boolean(livestreamEvent)}
+          onOpenChange={(open) => {
+            if (open) {
+              return
+            }
+            handleCloseLivestreamModal()
+          }}
+        >
+          <DrawerContent className="max-h-[90vh] w-full bg-background px-4 pt-4 pb-6">
+            <div className="grid gap-4">
+              <DrawerHeader className="space-y-2 p-0 text-left">
+                <DrawerTitle>
+                  {livestreamEvent?.livestream_url ? t('Edit livestream URL') : t('Add livestream URL')}
+                </DrawerTitle>
+                <DrawerDescription>
+                  {t('Configure the livestream URL for this event. Leave empty to remove it.')}
+                </DrawerDescription>
+              </DrawerHeader>
+              {livestreamFormFields}
+              <DrawerFooter className="mt-2 p-0">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleCloseLivestreamModal}
+                  disabled={isSavingLivestream}
+                >
+                  {t('Cancel')}
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => {
+                    void handleSaveLivestreamUrl()
+                  }}
+                  disabled={isSavingLivestream}
+                >
+                  {isSavingLivestream ? t('Saving...') : t('Save')}
+                </Button>
+              </DrawerFooter>
+            </div>
+          </DrawerContent>
+        </Drawer>
+      ) : (
+        <Dialog
+          open={Boolean(livestreamEvent)}
+          onOpenChange={(open) => {
+            if (open) {
+              return
+            }
+            handleCloseLivestreamModal()
+          }}
+        >
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>
+                {livestreamEvent?.livestream_url ? t('Edit livestream URL') : t('Add livestream URL')}
+              </DialogTitle>
+              <DialogDescription>
+                {t('Configure the livestream URL for this event. Leave empty to remove it.')}
+              </DialogDescription>
+            </DialogHeader>
+            {livestreamFormFields}
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleCloseLivestreamModal}
+                disabled={isSavingLivestream}
+              >
+                {t('Cancel')}
+              </Button>
+              <Button
+                type="button"
+                onClick={() => {
+                  void handleSaveLivestreamUrl()
+                }}
+                disabled={isSavingLivestream}
+              >
+                {isSavingLivestream ? t('Saving...') : t('Save')}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
 
-      {isMobile
-        ? (
-            <Drawer
-              open={Boolean(sportsFinalEvent)}
-              onOpenChange={(open) => {
-                if (open) {
-                  return
-                }
-                handleCloseSportsFinalModal()
-              }}
-            >
-              <DrawerContent className="max-h-[90vh] w-full overflow-y-auto bg-background px-4 pt-4 pb-6">
-                <div className="grid gap-4">
-                  <DrawerHeader className="space-y-2 p-0 text-left">
-                    <DrawerTitle>{t('Sports final status')}</DrawerTitle>
-                    {sportsFinalEvent && (
-                      <p className="text-sm text-muted-foreground">
-                        {sportsFinalEvent.title}
-                        {sportsFinalGameDateLabel ? ` (${sportsFinalGameDateLabel})` : ''}
-                      </p>
-                    )}
-                  </DrawerHeader>
-                  {sportsFinalFormFields}
-                  <DrawerFooter className="mt-2 p-0">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={handleCloseSportsFinalModal}
-                      disabled={isSavingSportsFinal}
-                    >
-                      {t('Cancel')}
-                    </Button>
-                    <Button
-                      type="button"
-                      onClick={() => {
-                        void handleSaveSportsFinalState()
-                      }}
-                      disabled={isSavingSportsFinal}
-                    >
-                      {isSavingSportsFinal ? t('Saving...') : t('Save')}
-                    </Button>
-                  </DrawerFooter>
-                </div>
-              </DrawerContent>
-            </Drawer>
-          )
-        : (
-            <Dialog
-              open={Boolean(sportsFinalEvent)}
-              onOpenChange={(open) => {
-                if (open) {
-                  return
-                }
-                handleCloseSportsFinalModal()
-              }}
-            >
-              <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
-                <DialogHeader>
-                  <DialogTitle>{t('Sports final status')}</DialogTitle>
-                  {sportsFinalEvent && (
-                    <p className="text-sm text-muted-foreground">
-                      {sportsFinalEvent.title}
-                      {sportsFinalGameDateLabel ? ` (${sportsFinalGameDateLabel})` : ''}
-                    </p>
-                  )}
-                </DialogHeader>
-                {sportsFinalFormFields}
-                <DialogFooter>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={handleCloseSportsFinalModal}
-                    disabled={isSavingSportsFinal}
-                  >
-                    {t('Cancel')}
-                  </Button>
-                  <Button
-                    type="button"
-                    onClick={() => {
-                      void handleSaveSportsFinalState()
-                    }}
-                    disabled={isSavingSportsFinal}
-                  >
-                    {isSavingSportsFinal ? t('Saving...') : t('Save')}
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-          )}
+      {isMobile ? (
+        <Drawer
+          open={Boolean(sportsFinalEvent)}
+          onOpenChange={(open) => {
+            if (open) {
+              return
+            }
+            handleCloseSportsFinalModal()
+          }}
+        >
+          <DrawerContent className="max-h-[90vh] w-full overflow-x-hidden overflow-y-auto bg-background px-4 pt-4 pb-6">
+            <div className="grid gap-4">
+              <DrawerHeader className="min-w-0 space-y-2 p-0 text-left">
+                <DrawerTitle>{t('Match score')}</DrawerTitle>
+                {sportsFinalEventSummary}
+              </DrawerHeader>
+              {sportsFinalFormFields}
+              <DrawerFooter className="mt-2 border-t border-border/50 p-0 pt-4">{sportsFinalFooter}</DrawerFooter>
+            </div>
+          </DrawerContent>
+        </Drawer>
+      ) : (
+        <Dialog
+          open={Boolean(sportsFinalEvent)}
+          onOpenChange={(open) => {
+            if (open) {
+              return
+            }
+            handleCloseSportsFinalModal()
+          }}
+        >
+          <DialogContent className="max-h-[90vh] min-w-0 overflow-x-hidden overflow-y-auto sm:max-w-xl">
+            <DialogHeader className="min-w-0">
+              <DialogTitle>{t('Match score')}</DialogTitle>
+              {sportsFinalEventSummary}
+            </DialogHeader>
+            {sportsFinalFormFields}
+            <DialogFooter className="border-t border-border/50 pt-4">{sportsFinalFooter}</DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </>
   )
 }

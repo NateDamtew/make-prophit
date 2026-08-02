@@ -1,12 +1,19 @@
 'use server'
 
 import type { WalletTransactionRequestPayload } from '@/lib/wallet/transactions'
+
 import { DEFAULT_ERROR_MESSAGE } from '@/lib/constants'
 import { DEPOSIT_WALLET_FACTORY_ADDRESS } from '@/lib/contracts'
 import { UserRepository } from '@/lib/db/queries/user'
 import { captureDepositWalletError, captureDepositWalletEvent } from '@/lib/deposit-wallet-observability'
 import { buildClobHmacSignature } from '@/lib/hmac'
 import { resolvePublicRuntimeEnv } from '@/lib/public-runtime-config.shared'
+import {
+  requireSumsubTradingApproval,
+  SUMSUB_APPROVAL_REQUIRED_CODE,
+  SUMSUB_APPROVAL_REQUIRED_MESSAGE,
+} from '@/lib/sumsub/enforcement'
+import { isSumsubExitOperation, isVerifiedSumsubExitTransaction } from '@/lib/sumsub/wallet-operations'
 import { TRADING_AUTH_REQUIRED_ERROR } from '@/lib/trading-auth/errors'
 import {
   getUserTradingAuthSecrets,
@@ -45,7 +52,7 @@ const WALLET_TX_POLL_ATTEMPTS = 45
 const WALLET_TX_POLL_DELAY_MS = 2_000
 
 function sleep(ms: number) {
-  return new Promise(resolve => setTimeout(resolve, ms))
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 function resolveWalletSubmitErrorCode(rawError: string | null | undefined) {
@@ -105,20 +112,17 @@ async function fetchRelayerTransactionState(transactionId: string): Promise<Rela
 
   return {
     state: typeof transaction.state === 'string' ? transaction.state : null,
-    txHash: typeof transaction.transactionHash === 'string'
-      ? transaction.transactionHash
-      : typeof transaction.hash === 'string'
-        ? transaction.hash
-        : null,
-    failureReason: typeof transaction.failureReason === 'string'
-      ? transaction.failureReason
-      : null,
+    txHash:
+      typeof transaction.transactionHash === 'string'
+        ? transaction.transactionHash
+        : typeof transaction.hash === 'string'
+          ? transaction.hash
+          : null,
+    failureReason: typeof transaction.failureReason === 'string' ? transaction.failureReason : null,
   }
 }
 
-async function waitForRelayerTransactionFinalState(
-  transactionId: string,
-): Promise<RelayerTransactionState | null> {
+async function waitForRelayerTransactionFinalState(transactionId: string): Promise<RelayerTransactionState | null> {
   for (let attempt = 0; attempt < WALLET_TX_POLL_ATTEMPTS; attempt += 1) {
     const transaction = await fetchRelayerTransactionState(transactionId)
     if (transaction?.state === 'STATE_MINED' || transaction?.state === 'STATE_CONFIRMED') {
@@ -132,10 +136,7 @@ async function waitForRelayerTransactionFinalState(
   return null
 }
 
-async function syncClobCollateralBalanceAllowanceSignatureType3(user: {
-  address: string
-  id: string
-}) {
+async function syncClobCollateralBalanceAllowanceSignatureType3(user: { address: string; id: string }) {
   const auth = await getUserTradingAuthSecrets(user.id)
   if (!auth?.clob) {
     return
@@ -168,22 +169,27 @@ async function syncClobCollateralBalanceAllowanceSignatureType3(user: {
         status: response.status,
       })
     }
-  }
-  catch (error) {
+  } catch (error) {
     console.warn('Failed to sync CLOB balance/allowance after Deposit Wallet approval.', error)
   }
 }
 
-export async function getDepositWalletNonceAction(): Promise<RelayerNonceResult> {
+export async function getDepositWalletNonceAction(metadata?: string): Promise<RelayerNonceResult> {
   const user = await UserRepository.getCurrentUser({ disableCookieCache: true })
   if (!user) {
     return { error: 'Unauthenticated.' }
+  }
+  if (!(await requireSumsubTradingApproval(user.id)).allowed && !isSumsubExitOperation(metadata)) {
+    return { error: SUMSUB_APPROVAL_REQUIRED_MESSAGE, code: SUMSUB_APPROVAL_REQUIRED_CODE }
   }
   if (!user.deposit_wallet_address) {
     return { error: 'Set up your Deposit Wallet before signing.', code: 'missing_deposit_wallet' }
   }
   if (user.deposit_wallet_status !== 'deployed') {
-    return { error: 'Your Deposit Wallet is still being created. Try again in a moment.', code: 'deposit_wallet_not_deployed' }
+    return {
+      error: 'Your Deposit Wallet is still being created. Try again in a moment.',
+      code: 'deposit_wallet_not_deployed',
+    }
   }
 
   const { relayerUrl } = resolvePublicRuntimeEnv(process.env)
@@ -227,8 +233,7 @@ export async function getDepositWalletNonceAction(): Promise<RelayerNonceResult>
     }
 
     return { error: null, nonce: payload.nonce }
-  }
-  catch (error) {
+  } catch (error) {
     console.error('Failed to fetch Deposit Wallet nonce', error)
     captureDepositWalletError(error, {
       operation: 'wallet_nonce',
@@ -245,6 +250,9 @@ export async function submitDepositWalletTransactionAction(
   const user = await UserRepository.getCurrentUser({ disableCookieCache: true, minimal: true })
   if (!user) {
     return { error: 'Unauthenticated.' }
+  }
+  if (!(await requireSumsubTradingApproval(user.id)).allowed && !isVerifiedSumsubExitTransaction(request)) {
+    return { error: SUMSUB_APPROVAL_REQUIRED_MESSAGE, code: SUMSUB_APPROVAL_REQUIRED_CODE }
   }
 
   const auth = await getUserTradingAuthSecrets(user.id)
@@ -264,8 +272,8 @@ export async function submitDepositWalletTransactionAction(
     return { error: 'Signer mismatch.' }
   }
 
-  const depositWallet = request.depositWalletParams?.depositWallet
-    ?? request.signatureParams?.depositWalletParams?.depositWallet
+  const depositWallet =
+    request.depositWalletParams?.depositWallet ?? request.signatureParams?.depositWalletParams?.depositWallet
 
   if (!depositWallet || depositWallet.toLowerCase() !== user.deposit_wallet_address.toLowerCase()) {
     return { error: 'Deposit Wallet mismatch.' }
@@ -303,7 +311,7 @@ export async function submitDepositWalletTransactionAction(
   try {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
-      'Accept': 'application/json',
+      Accept: 'application/json',
     }
     if (useUserAuth && timestamp !== null && signature) {
       headers.KUEST_ADDRESS = user.address
@@ -357,25 +365,25 @@ export async function submitDepositWalletTransactionAction(
       }
     }
 
-    const responseTxHash = typeof payload?.txHash === 'string'
-      ? payload.txHash
-      : typeof payload?.tx_hash === 'string'
-        ? payload.tx_hash
-        : typeof payload?.transactionHash === 'string'
-          ? payload.transactionHash
-          : typeof payload?.hash === 'string'
-            ? payload.hash
-            : undefined
-    const transactionId = typeof payload?.transactionID === 'string'
-      ? payload.transactionID
-      : typeof payload?.transactionId === 'string'
-        ? payload.transactionId
-        : typeof payload?.id === 'string'
-          ? payload.id
-          : null
-    const responseState = typeof payload?.state === 'string'
-      ? payload.state
-      : null
+    const responseTxHash =
+      typeof payload?.txHash === 'string'
+        ? payload.txHash
+        : typeof payload?.tx_hash === 'string'
+          ? payload.tx_hash
+          : typeof payload?.transactionHash === 'string'
+            ? payload.transactionHash
+            : typeof payload?.hash === 'string'
+              ? payload.hash
+              : undefined
+    const transactionId =
+      typeof payload?.transactionID === 'string'
+        ? payload.transactionID
+        : typeof payload?.transactionId === 'string'
+          ? payload.transactionId
+          : typeof payload?.id === 'string'
+            ? payload.id
+            : null
+    const responseState = typeof payload?.state === 'string' ? payload.state : null
 
     let txHash = responseTxHash
     let finalState: RelayerTransactionState | null = null
@@ -400,8 +408,7 @@ export async function submitDepositWalletTransactionAction(
         })
         return { error: friendlyWalletSubmitError(failureReason, failureReason) }
       }
-    }
-    else if (responseState === 'STATE_MINED' || responseState === 'STATE_CONFIRMED') {
+    } else if (responseState === 'STATE_MINED' || responseState === 'STATE_CONFIRMED') {
       finalState = {
         state: responseState,
         txHash: txHash ?? null,
@@ -424,8 +431,7 @@ export async function submitDepositWalletTransactionAction(
     }
 
     return { error: null, approvals, autoRedeem, txHash }
-  }
-  catch (error) {
+  } catch (error) {
     console.error('Failed to submit Deposit Wallet transaction', error)
     captureDepositWalletError(error, {
       operation: 'wallet_submit',
@@ -443,6 +449,9 @@ export async function markApprovalStateWithoutTransactionAction(
   const user = await UserRepository.getCurrentUser({ disableCookieCache: true, minimal: true })
   if (!user) {
     return { error: 'Unauthenticated.' }
+  }
+  if (!(await requireSumsubTradingApproval(user.id)).allowed) {
+    return { error: SUMSUB_APPROVAL_REQUIRED_MESSAGE, code: SUMSUB_APPROVAL_REQUIRED_CODE }
   }
 
   const approvals = await markTokenApprovalsCompleted(user.id)

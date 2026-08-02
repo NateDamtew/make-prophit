@@ -7,9 +7,10 @@ import type { FeeOverrides } from '@/lib/transaction-fees'
 import type { Event } from '@/types'
 import { useExtracted } from 'next-intl'
 import { useId, useMemo, useState } from 'react'
-import { toast } from 'sonner'
 import { getAddress, isAddress } from 'viem'
 import { usePublicClient, useWalletClient } from 'wagmi'
+
+
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
@@ -21,6 +22,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
+import { toast } from '@/components/ui/toast'
 import { useAppKitAccount } from '@/hooks/useAppKitAccount'
 import { usePublicRuntimeConfig } from '@/hooks/usePublicRuntimeConfig'
 import { useSignaturePromptRunner } from '@/hooks/useSignaturePromptRunner'
@@ -28,7 +30,6 @@ import { OUTCOME_INDEX } from '@/lib/constants'
 import {
   CTF_ADAPTER_QUESTION_ABI,
   DIRECT_RESOLUTION_ORACLE_ABI,
-
   getDirectResolutionAdapterAddress,
   getDirectResolutionNegRiskOperatorAddress,
   getDirectResolutionOracleAddress,
@@ -42,7 +43,7 @@ import { DEFAULT_CHAIN_ID } from '@/lib/network'
 import { readCreatorProposerWhitelistStatus } from '@/lib/proposer-whitelist'
 import { sendWithEstimatedFeeRetry } from '@/lib/transaction-fees'
 import { cn } from '@/lib/utils'
-import { resolveViemRpcUrl } from '@/lib/viem-network'
+import { resolveViemRpcUrls } from '@/lib/viem-network'
 
 interface DirectResolutionButtonProps {
   market: Event['markets'][number]
@@ -59,17 +60,24 @@ interface AdapterQuestionData {
   ancillaryData: Hex
 }
 
-type DirectResolutionState = 'idle' | 'checking' | 'not_whitelisted' | 'missing_request' | 'pending' | 'submitted' | 'resolved' | 'error'
+type DirectResolutionState =
+  | 'idle'
+  | 'checking'
+  | 'not_whitelisted'
+  | 'missing_request'
+  | 'pending'
+  | 'submitted'
+  | 'resolved'
+  | 'error'
 
 const WALLET_TRANSACTION_GAS_BUFFER_NUMERATOR = 3n
 const WALLET_TRANSACTION_GAS_BUFFER_DENOMINATOR = 2n
 
 function addWalletTransactionGasBuffer(gas: bigint) {
   return (
-    (gas * WALLET_TRANSACTION_GAS_BUFFER_NUMERATOR)
-    + WALLET_TRANSACTION_GAS_BUFFER_DENOMINATOR
-    - 1n
-  ) / WALLET_TRANSACTION_GAS_BUFFER_DENOMINATOR
+    (gas * WALLET_TRANSACTION_GAS_BUFFER_NUMERATOR + WALLET_TRANSACTION_GAS_BUFFER_DENOMINATOR - 1n) /
+    WALLET_TRANSACTION_GAS_BUFFER_DENOMINATOR
+  )
 }
 
 function normalizeQuestionData(value: unknown): AdapterQuestionData | null {
@@ -108,7 +116,7 @@ function normalizeQuestionData(value: unknown): AdapterQuestionData | null {
 }
 
 function getOutcomeLabel(market: Event['markets'][number], outcomeIndex: number, fallback: string) {
-  return market.outcomes.find(outcome => outcome.outcome_index === outcomeIndex)?.outcome_text || fallback
+  return market.outcomes.find((outcome) => outcome.outcome_index === outcomeIndex)?.outcome_text || fallback
 }
 
 function getResolutionSource(market: Event['markets'][number]) {
@@ -129,7 +137,7 @@ export default function DirectResolutionButton({
   const { data: walletClient } = useWalletClient()
   const { polygonRpcUrl } = usePublicRuntimeConfig()
   const { runWithSignaturePrompt } = useSignaturePromptRunner()
-  const viemRpcUrl = useMemo(() => resolveViemRpcUrl(polygonRpcUrl), [polygonRpcUrl])
+  const viemRpcUrls = useMemo(() => resolveViemRpcUrls(polygonRpcUrl), [polygonRpcUrl])
   const rulesCheckboxId = useId()
   const sourceCheckboxId = useId()
   const [open, setOpen] = useState(false)
@@ -142,41 +150,36 @@ export default function DirectResolutionButton({
   const isDirect = isDirectResolutionMarket(market)
   const resolutionSource = getResolutionSource(market)
   const requiresSourceConfirmation = Boolean(resolutionSource)
-  const connectedAddress = address && isAddress(address) ? getAddress(address) as Address : null
+  const connectedAddress = address && isAddress(address) ? (getAddress(address) as Address) : null
   const isResolved = Boolean(market.is_resolved || market.condition?.resolved)
   const canSubmit = Boolean(
-    isDirect
-    && connectedAddress
-    && selectedOutcome
-    && rulesConfirmed
-    && (!requiresSourceConfirmation || sourceConfirmed)
-    && state !== 'checking'
-    && state !== 'pending'
-    && state !== 'not_whitelisted'
-    && state !== 'missing_request'
-    && !isResolved,
+    isDirect &&
+    connectedAddress &&
+    selectedOutcome &&
+    rulesConfirmed &&
+    (!requiresSourceConfirmation || sourceConfirmed) &&
+    state !== 'checking' &&
+    state !== 'pending' &&
+    state !== 'not_whitelisted' &&
+    state !== 'missing_request' &&
+    !isResolved,
   )
 
-  const outcomeOptions = useMemo<Array<{ value: DirectResolutionOutcome, label: string }>>(() => {
+  const outcomeOptions = useMemo<Array<{ value: DirectResolutionOutcome; label: string }>>(() => {
     const yesLabel = getOutcomeLabel(market, OUTCOME_INDEX.YES, t('Yes'))
     const noLabel = getOutcomeLabel(market, OUTCOME_INDEX.NO, t('No'))
-    const base: Array<{ value: DirectResolutionOutcome, label: string }> = [
+    const base: Array<{ value: DirectResolutionOutcome; label: string }> = [
       { value: 'yes', label: yesLabel },
       { value: 'no', label: noLabel },
     ]
-    return market.neg_risk
-      ? base
-      : [...base, { value: 'unknown', label: t('Unknown') }]
+    return market.neg_risk ? base : [...base, { value: 'unknown', label: t('Unknown') }]
   }, [market, t])
 
   function getUserFacingResolutionError(error: unknown) {
     const message = readDirectResolutionError(error)
 
     if (message === 'Connected proposer wallet needs POL for gas before resolving this market.') {
-      return t({
-        id: 'directResolutionNeedsPolForGas',
-        message: 'Connected proposer wallet needs POL for gas before resolving this market.',
-      })
+      return t('Connected proposer wallet needs POL for gas before resolving this market.')
     }
     if (message === 'Transaction could not be sent because the gas fee is below the current network minimum.') {
       return t('Transaction could not be sent because the gas fee is below the current network minimum.')
@@ -210,9 +213,9 @@ export default function DirectResolutionButton({
     try {
       const status = await readCreatorProposerWhitelistStatus({
         creator: getAddress(event.creator) as Address,
-        rpcUrl: viemRpcUrl,
+        rpcUrls: viemRpcUrls,
       })
-      const isAllowed = status.proposers.some(proposer => proposer.toLowerCase() === connectedAddress.toLowerCase())
+      const isAllowed = status.proposers.some((proposer) => proposer.toLowerCase() === connectedAddress.toLowerCase())
       if (!status.whitelistAddress || !isAllowed) {
         setState('not_whitelisted')
         setMessage(t('You are not allowed to propose a result for this market.'))
@@ -220,8 +223,7 @@ export default function DirectResolutionButton({
       }
       setState('idle')
       return true
-    }
-    catch (error) {
+    } catch (error) {
       console.error('Direct resolution whitelist check failed:', error)
       setState('error')
       setMessage(t('We could not check your permission right now. Try again.'))
@@ -268,12 +270,14 @@ export default function DirectResolutionButton({
     setState('pending')
     setMessage('')
     try {
-      const question = normalizeQuestionData(await publicClient.readContract({
-        address: adapterAddress,
-        abi: CTF_ADAPTER_QUESTION_ABI,
-        functionName: 'getQuestion',
-        args: [adapterQuestionId],
-      }))
+      const question = normalizeQuestionData(
+        await publicClient.readContract({
+          address: adapterAddress,
+          abi: CTF_ADAPTER_QUESTION_ABI,
+          functionName: 'getQuestion',
+          args: [adapterQuestionId],
+        }),
+      )
 
       if (!question || question.requestTimestamp === 0n || question.ancillaryData === '0x') {
         setState('missing_request')
@@ -297,32 +301,36 @@ export default function DirectResolutionButton({
         proposedPrice,
         requestTimestamp: question.requestTimestamp,
       })
-      const hash = await runWithSignaturePrompt(() => sendWithEstimatedFeeRetry({
-        chainId: walletClient.chain?.id ?? DEFAULT_CHAIN_ID,
-        client: publicClient,
-        send: overrides => writeResolutionTransaction({
-          adapterAddress,
-          adapterQuestionId,
-          ancillaryData: question.ancillaryData,
-          connectedAddress,
-          gas,
-          negRiskOperatorQuestionId,
-          overrides,
-          proposedPrice,
-          requestTimestamp: question.requestTimestamp,
-        }),
-      }), {
-        title: t('Submit final result'),
-        description: t('Open your wallet and approve the final result transaction.'),
-      })
+      const hash = await runWithSignaturePrompt(
+        () =>
+          sendWithEstimatedFeeRetry({
+            chainId: walletClient.chain?.id ?? DEFAULT_CHAIN_ID,
+            client: publicClient,
+            send: (overrides) =>
+              writeResolutionTransaction({
+                adapterAddress,
+                adapterQuestionId,
+                ancillaryData: question.ancillaryData,
+                connectedAddress,
+                gas,
+                negRiskOperatorQuestionId,
+                overrides,
+                proposedPrice,
+                requestTimestamp: question.requestTimestamp,
+              }),
+          }),
+        {
+          title: t('Submit final result'),
+          description: t('Open your wallet and approve the final result transaction.'),
+        },
+      )
 
       setMessage(t('Confirming transaction...'))
       await publicClient.waitForTransactionReceipt({ hash })
       setState('submitted')
       setMessage(t('Result submitted. The market will update shortly.'))
       toast.success(t('Resolution submitted.'))
-    }
-    catch (error) {
+    } catch (error) {
       console.error('Direct resolution failed:', error)
       setState('error')
       setMessage(getUserFacingResolutionError(error))
@@ -372,8 +380,7 @@ export default function DirectResolutionButton({
           })
 
       return estimatedGas ? addWalletTransactionGasBuffer(estimatedGas) : undefined
-    }
-    catch (error) {
+    } catch (error) {
       console.warn('Could not estimate direct resolution gas:', error)
       return undefined
     }
@@ -457,7 +464,7 @@ export default function DirectResolutionButton({
             <div className="grid gap-2">
               <Label>{t('Final outcome')}</Label>
               <div className="grid gap-2">
-                {outcomeOptions.map(option => (
+                {outcomeOptions.map((option) => (
                   <button
                     key={option.value}
                     type="button"
@@ -477,11 +484,9 @@ export default function DirectResolutionButton({
               <Checkbox
                 id={rulesCheckboxId}
                 checked={rulesConfirmed}
-                onCheckedChange={checked => setRulesConfirmed(checked === true)}
+                onCheckedChange={(checked) => setRulesConfirmed(checked === true)}
               />
-              <span>
-                {t('I have read the market rules and will resolve according to them.')}
-              </span>
+              <span>{t('I have read the market rules and will resolve according to them.')}</span>
             </label>
 
             {requiresSourceConfirmation && (
@@ -489,21 +494,20 @@ export default function DirectResolutionButton({
                 <Checkbox
                   id={sourceCheckboxId}
                   checked={sourceConfirmed}
-                  onCheckedChange={checked => setSourceConfirmed(checked === true)}
+                  onCheckedChange={(checked) => setSourceConfirmed(checked === true)}
                 />
-                <span>
-                  {t('The final result is published at the listed resolution source and I checked it.')}
-                </span>
+                <span>{t('The final result is published at the listed resolution source and I checked it.')}</span>
               </label>
             )}
 
             {message && (
-              <p className={cn(
-                'rounded-md border px-3 py-2 text-sm',
-                state === 'error' || state === 'not_whitelisted' || state === 'missing_request'
-                  ? 'border-destructive/30 bg-destructive/5 text-destructive'
-                  : 'text-muted-foreground',
-              )}
+              <p
+                className={cn(
+                  'rounded-md border px-3 py-2 text-sm',
+                  state === 'error' || state === 'not_whitelisted' || state === 'missing_request'
+                    ? 'border-destructive/30 bg-destructive/5 text-destructive'
+                    : 'text-muted-foreground',
+                )}
               >
                 {message}
               </p>
@@ -515,9 +519,7 @@ export default function DirectResolutionButton({
               {t('Cancel')}
             </Button>
             <Button type="button" disabled={!canSubmit} onClick={() => void submitResolution()}>
-              {state === 'pending'
-                ? t('Submitting...')
-                : t('Submit final result')}
+              {state === 'pending' ? t('Submitting...') : t('Submit final result')}
             </Button>
           </DialogFooter>
         </DialogContent>

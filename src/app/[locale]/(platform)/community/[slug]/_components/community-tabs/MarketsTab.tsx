@@ -50,12 +50,10 @@ export function MarketsTab({ community, markets, memberRole, isJuror }: MarketsT
           </p>
         </div>
         {memberRole === 'admin' && (
-          <Button asChild size="sm">
-            <Link href={`/community/${community.slug}/markets/new` as any}>
+          <Button size="sm" nativeButton={false} render={<Link href={`/community/${community.slug}/markets/new` as any} />}>
               <TrendingUp className="mr-1.5 size-3.5" />
               Create First Market
-            </Link>
-          </Button>
+            </Button>
         )}
       </div>
     )

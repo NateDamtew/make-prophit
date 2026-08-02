@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react'
+
 import { render, screen } from '@testing-library/react'
+
 import EventLiveSeriesChartHeader from '@/app/[locale]/(platform)/event/[slug]/_components/EventLiveSeriesChartHeader'
 
 vi.mock('next-intl', () => ({
@@ -41,6 +43,12 @@ const baseProps = {
 }
 
 describe('eventLiveSeriesChartHeader', () => {
+  it('shows no price to beat when the event has no active baseline', () => {
+    render(<EventLiveSeriesChartHeader {...baseProps} resolvedBaselinePrice={null} delta={null} />)
+
+    expect(screen.getByText('Price To Beat').parentElement).toHaveTextContent('Price To Beat--')
+  })
+
   it('renders stable formatted prices and zero-padded countdown values', () => {
     const { rerender } = render(<EventLiveSeriesChartHeader {...baseProps} />)
 
@@ -76,5 +84,18 @@ describe('eventLiveSeriesChartHeader', () => {
 
     expect(visualPrice).toHaveAttribute('aria-hidden', 'true')
     expect(firstDigitStack).toHaveStyle({ transform: 'translateY(-6em)' })
+  })
+
+  it('uses foreground for a closed final price while preserving the delta color', () => {
+    render(<EventLiveSeriesChartHeader {...baseProps} isEventClosed />)
+
+    const finalPriceLabel = screen.getByText('Final price')
+    const readablePrice = screen.getByText('$64,702.40')
+    const finalPriceValue = readablePrice.parentElement?.parentElement
+    const delta = screen.getByText('$349.15')
+
+    expect(finalPriceLabel.parentElement).toHaveClass('text-foreground')
+    expect(finalPriceValue).toHaveClass('text-foreground')
+    expect(delta).toHaveClass('text-no')
   })
 })

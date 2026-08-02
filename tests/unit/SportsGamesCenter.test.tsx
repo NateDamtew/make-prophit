@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createElement } from 'react'
+
 import SportsGamesCenter from '@/app/[locale]/(platform)/sports/_components/SportsGamesCenter'
 
 const mocks = vi.hoisted(() => ({
@@ -21,7 +22,11 @@ vi.mock('next-intl', () => ({
 
 vi.mock('@/i18n/navigation', () => ({
   Link: function MockLink({ children, href, ...props }: any) {
-    return <a href={href} {...props}>{children}</a>
+    return (
+      <a href={href} {...props}>
+        {children}
+      </a>
+    )
   },
   useRouter: () => ({ push: mocks.push }),
 }))
@@ -35,22 +40,26 @@ vi.mock('@/hooks/useIsMobile', () => ({
 }))
 
 vi.mock('@/stores/useOrder', () => ({
-  useOrder: Object.assign((selector: any) => selector({
-    event: null,
-    market: null,
-    outcome: null,
-    setEvent: vi.fn(),
-    setMarket: vi.fn(),
-    setOutcome: vi.fn(),
-    setSide: vi.fn(),
-    setIsMobileOrderPanelOpen: mocks.setIsMobileOrderPanelOpen,
-  }), {
-    getState: () => ({
-      event: null,
-      market: null,
-      outcome: null,
-    }),
-  }),
+  useOrder: Object.assign(
+    (selector: any) =>
+      selector({
+        event: null,
+        market: null,
+        outcome: null,
+        setEvent: vi.fn(),
+        setMarket: vi.fn(),
+        setOutcome: vi.fn(),
+        setSide: vi.fn(),
+        setIsMobileOrderPanelOpen: mocks.setIsMobileOrderPanelOpen,
+      }),
+    {
+      getState: () => ({
+        event: null,
+        market: null,
+        outcome: null,
+      }),
+    },
+  ),
 }))
 
 vi.mock('@/stores/useSportsLivestream', () => ({
@@ -86,17 +95,12 @@ vi.mock('@/app/[locale]/(platform)/sports/_components/SportsLivestreamFloatingPl
 }))
 
 vi.mock('@/app/[locale]/(platform)/sports/_components/_sports-games-center/SportsGameDetailsPanel', () => ({
-  default: function MockSportsGameDetailsPanel(props: { showBottomContent: boolean, activeDetailsTab: string }) {
+  default: function MockSportsGameDetailsPanel(props: { showBottomContent: boolean; activeDetailsTab: string }) {
     if (!props.showBottomContent) {
       return null
     }
 
-    return (
-      <div
-        data-testid="sports-game-details-panel"
-        data-active-details-tab={props.activeDetailsTab}
-      />
-    )
+    return <div data-testid="sports-game-details-panel" data-active-details-tab={props.activeDetailsTab} />
   },
 }))
 
@@ -107,16 +111,19 @@ vi.mock('@/app/[locale]/(platform)/sports/_components/_sports-games-center/Sport
 }))
 
 vi.mock('@/components/ui/button', () => ({
-  Button: function MockButton(props: any) {
-    return <button {...props} />
+  Button: function MockButton({ nativeButton: _nativeButton, render, ...props }: any) {
+    return render ?? <button {...props} />
   },
 }))
 
 vi.mock('@/components/ui/dropdown-menu', () => ({
   DropdownMenu: ({ children }: any) => <div>{children}</div>,
   DropdownMenuContent: ({ children }: any) => <div>{children}</div>,
-  DropdownMenuItem: ({ children, onSelect, ...props }: any) => (
-    <button type="button" onClick={onSelect} {...props}>{children}</button>
+  DropdownMenuGroup: ({ children }: any) => <div>{children}</div>,
+  DropdownMenuItem: ({ children, closeOnClick: _closeOnClick, onClick, ...props }: any) => (
+    <button type="button" onClick={onClick} {...props}>
+      {children}
+    </button>
   ),
   DropdownMenuLabel: ({ children }: any) => <div>{children}</div>,
   DropdownMenuSeparator: () => <div />,
@@ -127,14 +134,18 @@ vi.mock('@/components/ui/select', () => ({
   Select: ({ children }: any) => <div>{children}</div>,
   SelectContent: ({ children }: any) => <div>{children}</div>,
   SelectItem: ({ children }: any) => <div>{children}</div>,
-  SelectTrigger: ({ children, ...props }: any) => <button type="button" {...props}>{children}</button>,
+  SelectTrigger: ({ children, ...props }: any) => (
+    <button type="button" {...props}>
+      {children}
+    </button>
+  ),
   SelectValue: ({ placeholder }: any) => <span>{placeholder}</span>,
 }))
 
 vi.mock('@/components/ui/tooltip', () => ({
   Tooltip: ({ children }: any) => <>{children}</>,
   TooltipContent: ({ children }: any) => <div>{children}</div>,
-  TooltipTrigger: ({ children }: any) => <>{children}</>,
+  TooltipTrigger: ({ children, render }: any) => render ?? <>{children}</>,
 }))
 
 function createSportsCard() {

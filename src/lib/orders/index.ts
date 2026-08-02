@@ -1,6 +1,7 @@
 import type { CLOB_ORDER_TYPE } from '@/lib/constants'
 import type { BlockchainOrder, OrderSide, OrderType, Outcome } from '@/types'
-import { storeOrderAction } from '@/app/[locale]/(platform)/event/[slug]/_actions/store-order'
+
+import { storeOrderAction, storeOrdersAction } from '@/app/[locale]/(platform)/event/[slug]/_actions/store-order'
 import { MICRO_UNIT, ORDER_SIDE, ORDER_TYPE } from '@/lib/constants'
 import { ZERO_ADDRESS, ZERO_BYTES32 } from '@/lib/contracts'
 import { toMicro } from '@/lib/formatters'
@@ -28,6 +29,7 @@ export interface SubmitOrderArgs {
   signature: string
   orderType: OrderType
   clobOrderType?: keyof typeof CLOB_ORDER_TYPE
+  postOnly?: boolean
   conditionId: string
   slug: string
 }
@@ -74,9 +76,8 @@ export function calculateOrderAmounts({
 }: CalculateOrderAmountsArgs) {
   let makerAmount: bigint
   let takerAmount: bigint
-  const normalizedMarketPrice = Number.isFinite(marketPriceCents) && (marketPriceCents ?? 0) > 0
-    ? (Number(marketPriceCents) / 100)
-    : 1
+  const normalizedMarketPrice =
+    Number.isFinite(marketPriceCents) && (marketPriceCents ?? 0) > 0 ? Number(marketPriceCents) / 100 : 1
 
   if (orderType === ORDER_TYPE.LIMIT) {
     const normalizedLimitPrice = (Number.parseFloat(limitPrice) || 0) / 100
@@ -86,13 +87,11 @@ export function calculateOrderAmounts({
     if (side === ORDER_SIDE.BUY) {
       makerAmount = (priceMicro * sharesMicro) / BigInt(MICRO_UNIT)
       takerAmount = sharesMicro
-    }
-    else {
+    } else {
       makerAmount = sharesMicro
       takerAmount = (priceMicro * sharesMicro) / BigInt(MICRO_UNIT)
     }
-  }
-  else {
+  } else {
     makerAmount = BigInt(toMicro(amount))
     if (side === ORDER_SIDE.BUY) {
       const priceMicro = BigInt(toMicro(normalizedMarketPrice))
@@ -104,14 +103,10 @@ export function calculateOrderAmounts({
         const scale = BigInt(MICRO_UNIT)
         makerAmount = (priceMicro * explicitMinimumShares + scale - 1n) / scale
         takerAmount = explicitMinimumShares
+      } else {
+        takerAmount = priceMicro > 0n ? (makerAmount * BigInt(MICRO_UNIT)) / priceMicro : makerAmount
       }
-      else {
-        takerAmount = priceMicro > 0n
-          ? (makerAmount * BigInt(MICRO_UNIT)) / priceMicro
-          : makerAmount
-      }
-    }
-    else {
+    } else {
       const priceMicro = BigInt(toMicro(normalizedMarketPrice))
       takerAmount = priceMicro > 0n ? (priceMicro * makerAmount) / BigInt(MICRO_UNIT) : makerAmount
     }
@@ -131,9 +126,10 @@ export function buildOrderPayload({
   const { makerAmount, takerAmount } = calculateOrderAmounts(rest)
   const salt = generateOrderSalt()
   const maker = makerAddress
-  const expirationValue = typeof expirationTimestamp === 'number' && Number.isFinite(expirationTimestamp)
-    ? BigInt(Math.max(0, Math.trunc(expirationTimestamp)))
-    : DEFAULT_ORDER_FIELDS.expiration
+  const expirationValue =
+    typeof expirationTimestamp === 'number' && Number.isFinite(expirationTimestamp)
+      ? BigInt(Math.max(0, Math.trunc(expirationTimestamp)))
+      : DEFAULT_ORDER_FIELDS.expiration
 
   return {
     ...DEFAULT_ORDER_FIELDS,
@@ -170,21 +166,49 @@ function serializeOrder(order: BlockchainOrder) {
   }
 }
 
-export async function submitOrder({
+function toStoreOrderInput({
   order,
   signature,
   orderType,
   clobOrderType,
+  postOnly,
   conditionId,
   slug,
 }: SubmitOrderArgs) {
-  return storeOrderAction({
+  return {
     ...serializeOrder(order),
     side: order.side as OrderSide,
     signature,
     type: orderType,
     clob_type: clobOrderType,
+    ...(typeof postOnly === 'boolean' ? { post_only: postOnly } : {}),
     condition_id: conditionId,
     slug,
-  })
+  }
+}
+
+export async function submitOrder({
+  order,
+  signature,
+  orderType,
+  clobOrderType,
+  postOnly,
+  conditionId,
+  slug,
+}: SubmitOrderArgs) {
+  return storeOrderAction(
+    toStoreOrderInput({
+      order,
+      signature,
+      orderType,
+      clobOrderType,
+      postOnly,
+      conditionId,
+      slug,
+    }),
+  )
+}
+
+export async function submitOrders(orders: SubmitOrderArgs[]) {
+  return storeOrdersAction(orders.map(toStoreOrderInput))
 }

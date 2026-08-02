@@ -1,13 +1,20 @@
+import { describe, expect, it } from 'vitest'
+
 import type { Event, EventSeriesEntry } from '@/types'
 import type { DataPoint } from '@/types/PredictionChartTypes'
-import { describe, expect, it } from 'vitest'
+
 import {
   appendLivePriceTransition,
+  classifyLiveSeriesReference,
   findLiveSeriesEvent,
+  isCanonicalBinanceDailySnapshot,
   LIVE_PRICE_TRANSITION_MS,
   MAX_POINTS,
+  requiresCanonicalBinanceDailyClose,
+  resolveDisplayedLiveSeriesBaselinePrice,
   resolveEventEndTimestamp,
   resolveLivePriceTransitionDuration,
+  resolveLiveSeriesCountdown,
   resolveLiveSeriesDisplayPrice,
   SERIES_KEY,
 } from '@/app/[locale]/(platform)/event/[slug]/_utils/eventLiveSeriesChartUtils'
@@ -95,17 +102,79 @@ function createEvent(overrides: Partial<Event> = {}): Event {
 }
 
 describe('event live series chart utils', () => {
+  it('returns a zero countdown for the SSR clock sentinel', () => {
+    expect(resolveLiveSeriesCountdown(Date.parse('2026-07-31T00:00:00.000Z'), 0)).toEqual({
+      totalSeconds: 0,
+      showDays: false,
+      days: 0,
+      hours: 0,
+      minutes: 0,
+      seconds: 0,
+    })
+  })
+
+  it('uses the hydrated client clock for the countdown', () => {
+    expect(
+      resolveLiveSeriesCountdown(Date.parse('2026-07-31T00:00:00.000Z'), Date.parse('2026-07-30T19:12:13.000Z')),
+    ).toEqual({
+      totalSeconds: 17_267,
+      showDays: false,
+      days: 0,
+      hours: 4,
+      minutes: 47,
+      seconds: 47,
+    })
+  })
+
+  it.each([5, 15])('hides the price to beat before a %d-minute event starts', (windowMinutes) => {
+    const tradingWindowStartTimestamp = Date.parse('2026-07-28T12:45:00.000Z')
+
+    expect(
+      resolveDisplayedLiveSeriesBaselinePrice({
+        baselinePrice: 63_350.01,
+        isEventClosed: false,
+        nowTimestamp: tradingWindowStartTimestamp - 1,
+        tradingWindowStartTimestamp,
+        tradingWindowMs: windowMinutes * 60 * 1000,
+      }),
+    ).toBeNull()
+  })
+
+  it('keeps the price to beat once a short-cadence event starts', () => {
+    const tradingWindowStartTimestamp = Date.parse('2026-07-28T12:45:00.000Z')
+
+    expect(
+      resolveDisplayedLiveSeriesBaselinePrice({
+        baselinePrice: 63_350.01,
+        isEventClosed: false,
+        nowTimestamp: tradingWindowStartTimestamp,
+        tradingWindowStartTimestamp,
+        tradingWindowMs: 5 * 60 * 1000,
+      }),
+    ).toBe(63_350.01)
+  })
+
+  it('does not change future price-to-beat behavior for longer cadences', () => {
+    const tradingWindowStartTimestamp = Date.parse('2026-07-28T12:00:00.000Z')
+
+    expect(
+      resolveDisplayedLiveSeriesBaselinePrice({
+        baselinePrice: 63_350.01,
+        isEventClosed: false,
+        nowTimestamp: tradingWindowStartTimestamp - 1,
+        tradingWindowStartTimestamp,
+        tradingWindowMs: 60 * 60 * 1000,
+      }),
+    ).toBe(63_350.01)
+  })
+
   it.each([
     { startPrice: 100, targetPrice: 110 },
     { startPrice: 110, targetPrice: 100 },
   ])('builds a monotonic live transition from $startPrice to $targetPrice', ({ startPrice, targetPrice }) => {
     const transitionStart = 10_000
-    const result = appendLivePriceTransition(
-      [createLivePoint(1_000, startPrice)],
-      targetPrice,
-      transitionStart,
-    )
-    const transition = result.filter(point => point.date.getTime() >= transitionStart)
+    const result = appendLivePriceTransition([createLivePoint(1_000, startPrice)], targetPrice, transitionStart)
+    const transition = result.filter((point) => point.date.getTime() >= transitionStart)
     const prices = transition.map(readLivePrice)
 
     expect(transition.length).toBeGreaterThan(10)
@@ -118,8 +187,7 @@ describe('event live series chart utils', () => {
       expect(transition[index]!.date.getTime()).toBeGreaterThan(transition[index - 1]!.date.getTime())
       if (targetPrice > startPrice) {
         expect(prices[index]).toBeGreaterThan(prices[index - 1]!)
-      }
-      else {
+      } else {
         expect(prices[index]).toBeLessThan(prices[index - 1]!)
       }
     }
@@ -128,62 +196,42 @@ describe('event live series chart utils', () => {
   it('retargets an in-flight transition from the currently displayed price', () => {
     const firstTransitionStart = 10_000
     const retargetTimestamp = firstTransitionStart + 173
-    const firstTransition = appendLivePriceTransition(
-      [createLivePoint(1_000, 100)],
-      110,
-      firstTransitionStart,
-    )
-    const pointBeforeRetarget = firstTransition
-      .filter(point => point.date.getTime() < retargetTimestamp)
-      .at(-1)!
-    const pointAfterRetarget = firstTransition
-      .find(point => point.date.getTime() > retargetTimestamp)!
-    const interpolationProgress = (
-      retargetTimestamp - pointBeforeRetarget.date.getTime()
-    ) / (
-      pointAfterRetarget.date.getTime() - pointBeforeRetarget.date.getTime()
-    )
-    const expectedRetargetPrice = readLivePrice(pointBeforeRetarget) + (
-      readLivePrice(pointAfterRetarget) - readLivePrice(pointBeforeRetarget)
-    ) * interpolationProgress
-    const result = appendLivePriceTransition(
-      firstTransition,
-      90,
-      retargetTimestamp,
-    )
-    const retargetedTransition = result.filter(point => point.date.getTime() >= retargetTimestamp)
+    const firstTransition = appendLivePriceTransition([createLivePoint(1_000, 100)], 110, firstTransitionStart)
+    const pointBeforeRetarget = firstTransition.filter((point) => point.date.getTime() < retargetTimestamp).at(-1)!
+    const pointAfterRetarget = firstTransition.find((point) => point.date.getTime() > retargetTimestamp)!
+    const interpolationProgress =
+      (retargetTimestamp - pointBeforeRetarget.date.getTime()) /
+      (pointAfterRetarget.date.getTime() - pointBeforeRetarget.date.getTime())
+    const expectedRetargetPrice =
+      readLivePrice(pointBeforeRetarget) +
+      (readLivePrice(pointAfterRetarget) - readLivePrice(pointBeforeRetarget)) * interpolationProgress
+    const result = appendLivePriceTransition(firstTransition, 90, retargetTimestamp)
+    const retargetedTransition = result.filter((point) => point.date.getTime() >= retargetTimestamp)
     const retargetedPrices = retargetedTransition.map(readLivePrice)
 
     expect(retargetedTransition[0]?.date.getTime()).toBe(retargetTimestamp)
     expect(retargetedPrices[0]).toBeCloseTo(expectedRetargetPrice, 8)
     expect(retargetedPrices.at(-1)).toBe(90)
-    expect(result.some(point => (
-      point.date.getTime() > retargetTimestamp
-      && readLivePrice(point) > (retargetedPrices[0] ?? Number.POSITIVE_INFINITY)
-    ))).toBe(false)
+    expect(
+      result.some(
+        (point) =>
+          point.date.getTime() > retargetTimestamp &&
+          readLivePrice(point) > (retargetedPrices[0] ?? Number.POSITIVE_INFINITY),
+      ),
+    ).toBe(false)
   })
 
   it('does not restart a transition when the WS repeats the same target', () => {
     const transitionStart = 10_000
-    const firstTransition = appendLivePriceTransition(
-      [createLivePoint(1_000, 100)],
-      110,
-      transitionStart,
-    )
-    const repeatedTarget = appendLivePriceTransition(
-      firstTransition,
-      110,
-      transitionStart + 200,
-    )
+    const firstTransition = appendLivePriceTransition([createLivePoint(1_000, 100)], 110, transitionStart)
+    const repeatedTarget = appendLivePriceTransition(firstTransition, 110, transitionStart + 200)
 
     expect(repeatedTarget).toEqual(firstTransition)
     expect(repeatedTarget.at(-1)?.date.getTime()).toBe(transitionStart + LIVE_PRICE_TRANSITION_MS)
   })
 
   it('keeps the smoothed live history within the chart point limit', () => {
-    const points = Array.from({ length: MAX_POINTS }, (_value, index) => (
-      createLivePoint(index * 10, 100)
-    ))
+    const points = Array.from({ length: MAX_POINTS }, (_value, index) => createLivePoint(index * 10, 100))
     const result = appendLivePriceTransition(points, 110, MAX_POINTS * 10)
 
     expect(result).toHaveLength(MAX_POINTS)
@@ -208,7 +256,7 @@ describe('event live series chart utils', () => {
       previousTimestamp = timestamp
     }
 
-    const finalTransitionStart = points.find(point => point.date.getTime() === 2_000)
+    const finalTransitionStart = points.find((point) => point.date.getTime() === 2_000)
     expect(finalTransitionStart?.[SERIES_KEY]).toBeGreaterThan(118)
     expect(points.at(-1)?.[SERIES_KEY]).toBe(120)
     expect(points.at(-1)?.date.getTime()).toBe(2_120)
@@ -247,29 +295,28 @@ describe('event live series chart utils', () => {
       end_date: '2026-06-25T00:00:00.000Z',
     })
 
-    expect(findLiveSeriesEvent(
-      [laterEvent, liveEvent],
-      'bitcoin-up-or-down-on-june-22-2026',
-      nowTimestamp,
-      10 * 60 * 1000,
-    )).toBe(liveEvent)
+    expect(
+      findLiveSeriesEvent([laterEvent, liveEvent], 'bitcoin-up-or-down-on-june-22-2026', nowTimestamp, 10 * 60 * 1000),
+    ).toBe(liveEvent)
   })
 
   it('does not treat the current, ended, future, or inactive series event as live', () => {
     const currentSlug = 'bitcoin-up-or-down-on-june-23-2026'
     const nowTimestamp = Date.parse('2026-06-24T00:05:00.000Z')
 
-    expect(findLiveSeriesEvent(
-      [
-        createSeriesEvent({ slug: currentSlug, end_date: '2026-06-24T00:10:00.000Z' }),
-        createSeriesEvent({ slug: 'ended', end_date: '2026-06-24T00:05:00.000Z' }),
-        createSeriesEvent({ slug: 'future', end_date: '2026-06-24T00:20:01.000Z' }),
-        createSeriesEvent({ slug: 'draft', status: 'draft', end_date: '2026-06-24T00:10:00.000Z' }),
-      ],
-      currentSlug,
-      nowTimestamp,
-      15 * 60 * 1000,
-    )).toBeNull()
+    expect(
+      findLiveSeriesEvent(
+        [
+          createSeriesEvent({ slug: currentSlug, end_date: '2026-06-24T00:10:00.000Z' }),
+          createSeriesEvent({ slug: 'ended', end_date: '2026-06-24T00:05:00.000Z' }),
+          createSeriesEvent({ slug: 'future', end_date: '2026-06-24T00:20:01.000Z' }),
+          createSeriesEvent({ slug: 'draft', status: 'draft', end_date: '2026-06-24T00:10:00.000Z' }),
+        ],
+        currentSlug,
+        nowTimestamp,
+        15 * 60 * 1000,
+      ),
+    ).toBeNull()
   })
 
   it('falls back to resolved condition timestamps for resolved events', () => {
@@ -325,29 +372,150 @@ describe('event live series chart utils', () => {
   })
 
   it('uses the final price for closed live series charts', () => {
-    expect(resolveLiveSeriesDisplayPrice({
-      isEventClosed: true,
-      finalPrice: 105,
-      renderedPrice: 104,
-      fallbackCurrentPrice: 103,
-    })).toBe(105)
+    expect(
+      resolveLiveSeriesDisplayPrice({
+        isEventClosed: true,
+        finalPrice: 105,
+        renderedPrice: 104,
+        fallbackCurrentPrice: 103,
+        requiresCanonicalClose: true,
+      }),
+    ).toBe(105)
   })
 
   it('falls back to the rendered chart price for closed live series charts without a final price', () => {
-    expect(resolveLiveSeriesDisplayPrice({
-      isEventClosed: true,
-      finalPrice: null,
-      renderedPrice: 104,
-      fallbackCurrentPrice: 103,
-    })).toBe(104)
+    expect(
+      resolveLiveSeriesDisplayPrice({
+        isEventClosed: true,
+        finalPrice: null,
+        renderedPrice: 104,
+        fallbackCurrentPrice: 103,
+        requiresCanonicalClose: false,
+      }),
+    ).toBe(104)
+  })
+
+  it('does not use the rendered price when a closed market requires a canonical close', () => {
+    expect(
+      resolveLiveSeriesDisplayPrice({
+        isEventClosed: true,
+        finalPrice: null,
+        renderedPrice: 104,
+        fallbackCurrentPrice: 103,
+        requiresCanonicalClose: true,
+      }),
+    ).toBeNull()
   })
 
   it('uses the live fallback price only for open live series charts without rendered data', () => {
-    expect(resolveLiveSeriesDisplayPrice({
-      isEventClosed: false,
-      finalPrice: null,
-      renderedPrice: null,
-      fallbackCurrentPrice: 103,
-    })).toBe(103)
+    expect(
+      resolveLiveSeriesDisplayPrice({
+        isEventClosed: false,
+        finalPrice: null,
+        renderedPrice: null,
+        fallbackCurrentPrice: 103,
+        requiresCanonicalClose: false,
+      }),
+    ).toBe(103)
+  })
+
+  it('requires a canonical close for confirmed daily Binance snapshots', () => {
+    const snapshot = {
+      series_slug: 'btc-up-or-down-daily',
+      instrument: 'BTC/USD',
+      interval: '1d' as const,
+      source: 'binance' as const,
+      interval_ms: 86_400_000,
+      event_window_start_ms: 100,
+      event_window_end_ms: 200,
+      opening_price: 100,
+      closing_price: null,
+      latest_price: 101,
+      latest_window_end_ms: 150,
+      latest_source_timestamp_ms: 150,
+      is_event_closed: true,
+    }
+
+    expect(isCanonicalBinanceDailySnapshot(snapshot)).toBe(true)
+    expect(
+      requiresCanonicalBinanceDailyClose({
+        snapshot,
+        snapshotStatus: 'ready',
+        seriesClassification: 'binance_daily',
+      }),
+    ).toBe(true)
+    expect(
+      requiresCanonicalBinanceDailyClose({
+        snapshot: { ...snapshot, interval: '5m' },
+        snapshotStatus: 'ready',
+        seriesClassification: 'other',
+      }),
+    ).toBe(false)
+    expect(
+      requiresCanonicalBinanceDailyClose({
+        snapshot: { ...snapshot, source: 'chainlink' },
+        snapshotStatus: 'ready',
+        seriesClassification: 'other',
+      }),
+    ).toBe(false)
+  })
+
+  it('keeps an expected Binance daily close canonical while its snapshot is unavailable', () => {
+    expect(
+      classifyLiveSeriesReference({
+        topic: 'crypto_prices_chainlink',
+        activeWindowMinutes: 1440,
+      }),
+    ).toBe('binance_daily')
+    expect(
+      requiresCanonicalBinanceDailyClose({
+        snapshot: null,
+        snapshotStatus: 'loading',
+        seriesClassification: 'binance_daily',
+      }),
+    ).toBe(true)
+    expect(
+      requiresCanonicalBinanceDailyClose({
+        snapshot: null,
+        snapshotStatus: 'unavailable',
+        seriesClassification: 'binance_daily',
+      }),
+    ).toBe(true)
+    expect(
+      requiresCanonicalBinanceDailyClose({
+        snapshot: {
+          series_slug: 'btc-up-or-down-daily',
+          instrument: 'BTC/USD',
+          interval: '1d',
+          source: 'chainlink',
+          interval_ms: 86_400_000,
+          event_window_start_ms: 100,
+          event_window_end_ms: 200,
+          opening_price: 100,
+          closing_price: 101,
+          latest_price: 101,
+          latest_window_end_ms: 200,
+          latest_source_timestamp_ms: 200,
+          is_event_closed: true,
+        },
+        snapshotStatus: 'ready',
+        seriesClassification: 'binance_daily',
+      }),
+    ).toBe(true)
+  })
+
+  it('does not classify intraday crypto or daily equities as Binance daily series', () => {
+    expect(
+      classifyLiveSeriesReference({
+        topic: 'crypto_prices_chainlink',
+        activeWindowMinutes: 60,
+      }),
+    ).toBe('other')
+    expect(
+      classifyLiveSeriesReference({
+        topic: 'equity_prices',
+        activeWindowMinutes: 390,
+      }),
+    ).toBe('other')
   })
 })

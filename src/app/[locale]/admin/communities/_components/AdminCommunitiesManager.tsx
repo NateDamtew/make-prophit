@@ -4,9 +4,9 @@ import type { ColumnDef } from '@tanstack/react-table'
 import { BadgeCheckIcon, SettingsIcon } from 'lucide-react'
 import Link from 'next/link'
 import { useMemo, useState } from 'react'
-import { toast } from 'sonner'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { DataTable } from '@/app/[locale]/admin/_components/DataTable'
+import { toast } from '@/components/ui/toast'
 import { formatAbsolute, formatNumber, formatRelativeTime } from '@/components/admin-ui/format'
 import { PageHeader } from '@/components/admin-ui/PageHeader'
 import { Button } from '@/components/ui/button'
@@ -131,12 +131,10 @@ export function AdminCommunitiesManager() {
       id: 'actions',
       cell: ({ row }) => (
         <div className="flex justify-end gap-1">
-          <Button asChild size="sm" variant="ghost">
-            <Link href={`/community/${row.original.slug}/insights`}>
+          <Button size="sm" variant="ghost" nativeButton={false} render={<Link href={`/community/${row.original.slug}/insights`} />}>
               <SettingsIcon className="size-3.5" />
               Insights
-            </Link>
-          </Button>
+            </Button>
         </div>
       ),
     },

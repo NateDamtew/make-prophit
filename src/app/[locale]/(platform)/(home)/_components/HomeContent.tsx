@@ -2,6 +2,7 @@
 import type { SupportedLocale } from '@/i18n/locales'
 import type { CategoryFaqContext } from '@/lib/category-faq'
 import type { Event, HomeFeaturedEventCard, HomeFeaturedHotTopic, HomeFeaturedSideCardSettings } from '@/types'
+
 import HomeClient from '@/app/[locale]/(platform)/(home)/_components/HomeClient'
 import FaqStructuredData from '@/components/seo/FaqStructuredData'
 import { buildTranslatedCategoryFaqItems } from '@/lib/category-faq-server'
@@ -51,7 +52,7 @@ export default async function HomeContent({
     ...(initialSortBy && { sortBy: initialSortBy }),
   })
     .then(({ data: events, error, currentTimestamp: resolvedCurrentTimestamp, hasMore }) => ({
-      events: error ? [] : events ?? [],
+      events: error ? [] : (events ?? []),
       currentTimestamp: resolvedCurrentTimestamp ?? null,
       hasMore: !error && hasMore === true,
     }))
@@ -67,12 +68,8 @@ export default async function HomeContent({
             listHomeFeaturedEvents(resolvedLocale),
             listHomeFeaturedHotTopics(resolvedLocale),
           ])
-          const featuredEvents = featuredEventsResult.status === 'fulfilled'
-            ? featuredEventsResult.value
-            : []
-          const featuredHotTopics = featuredHotTopicsResult.status === 'fulfilled'
-            ? featuredHotTopicsResult.value
-            : []
+          const featuredEvents = featuredEventsResult.status === 'fulfilled' ? featuredEventsResult.value : []
+          const featuredHotTopics = featuredHotTopicsResult.status === 'fulfilled' ? featuredHotTopicsResult.value : []
 
           if (featuredEventsResult.status === 'rejected') {
             console.error('Failed to load home featured markets', featuredEventsResult.reason)
@@ -81,17 +78,17 @@ export default async function HomeContent({
             console.error('Failed to load home featured hot topics', featuredHotTopicsResult.reason)
           }
 
-          const featuredSideCard = featuredEvents.length > 0
-            ? await getHomeFeaturedSideCard(featuredEvents, featuredHotTopics)
-            : DEFAULT_HOME_FEATURED_SETTINGS.sideCard
+          const featuredSideCard =
+            featuredEvents.length > 0
+              ? await getHomeFeaturedSideCard(featuredEvents, featuredHotTopics)
+              : DEFAULT_HOME_FEATURED_SETTINGS.sideCard
 
           return {
             featuredEvents,
             featuredHotTopics,
             featuredSideCard,
           }
-        }
-        catch (error) {
+        } catch (error) {
           console.error('Failed to load home featured events', error)
           return {
             featuredEvents: [],
@@ -106,23 +103,24 @@ export default async function HomeContent({
         featuredSideCard: DEFAULT_HOME_FEATURED_SETTINGS.sideCard,
       })
 
-  const categoryNewEventsPromise = initialMainTagSlug !== 'trending' && initialTagSlug !== 'new'
-    ? listHomeEventsPage({
-        tag: initialTagSlug,
-        mainTag: initialMainTagSlug,
-        search: '',
-        userId: '',
-        bookmarked: false,
-        locale: resolvedLocale,
-        currentTimestamp,
-        sortBy: 'created_at',
-      })
-        .then(({ data: events, error }) => error ? [] : events ?? [])
-        .catch((error) => {
-          console.error('Failed to load new category events for the footer', error)
-          return []
+  const categoryNewEventsPromise =
+    initialMainTagSlug !== 'trending' && initialTagSlug !== 'new'
+      ? listHomeEventsPage({
+          tag: initialTagSlug,
+          mainTag: initialMainTagSlug,
+          search: '',
+          userId: '',
+          bookmarked: false,
+          locale: resolvedLocale,
+          currentTimestamp,
+          sortBy: 'created_at',
         })
-    : Promise.resolve([])
+          .then(({ data: events, error }) => (error ? [] : (events ?? [])))
+          .catch((error) => {
+            console.error('Failed to load new category events for the footer', error)
+            return []
+          })
+      : Promise.resolve([])
 
   const [initialEventsResult, featuredEventsResult, categoryNewEvents, siteName] = await Promise.all([
     initialEventsPromise,
@@ -142,7 +140,7 @@ export default async function HomeContent({
   const categoryFaqItems = categoryFaqContext
     ? await buildTranslatedCategoryFaqItems({
         ...categoryFaqContext,
-        popularEventTitles: initialEvents.slice(0, 3).map(event => event.title),
+        popularEventTitles: initialEvents.slice(0, 3).map((event) => event.title),
         locale: resolvedLocale,
         siteName,
       })

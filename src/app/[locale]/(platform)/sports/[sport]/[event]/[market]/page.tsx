@@ -1,9 +1,12 @@
 import type { Metadata } from 'next'
+
 import {
   generateSportsVerticalEventMarketMetadata,
   renderSportsVerticalEventMarketPage,
 } from '@/app/[locale]/(platform)/sports/_utils/sports-event-page'
 import { getPublicShellStaticParams, STATIC_PARAMS_PLACEHOLDER } from '@/lib/static-params'
+
+export const instant = false
 
 export async function generateStaticParams() {
   return getPublicShellStaticParams({ market: STATIC_PARAMS_PLACEHOLDER })
@@ -49,12 +52,5 @@ export default async function SportsEventMarketPage({
 }: PageProps<'/[locale]/sports/[sport]/[event]/[market]'>) {
   const { locale, sport, event, market } = await params
 
-  return (
-    <CachedSportsEventMarketPageContent
-      locale={locale}
-      sport={sport}
-      event={event}
-      market={market}
-    />
-  )
+  return <CachedSportsEventMarketPageContent locale={locale} sport={sport} event={event} market={market} />
 }

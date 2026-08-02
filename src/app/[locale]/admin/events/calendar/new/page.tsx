@@ -1,6 +1,8 @@
 import { ArrowLeftIcon } from 'lucide-react'
-import { setRequestLocale } from 'next-intl/server'
+import { getExtracted, setRequestLocale } from 'next-intl/server'
 import { Suspense } from 'react'
+
+import { AdminPanelSkeleton } from '@/app/[locale]/admin/_components/AdminPageSkeleton'
 import AdminCreateEventForm from '@/app/[locale]/admin/events/calendar/_components/AdminCreateEventForm'
 import { Button } from '@/components/ui/button'
 import { Link } from '@/i18n/navigation'
@@ -12,6 +14,8 @@ import { UserRepository } from '@/lib/db/queries/user'
 import { loadEventCreationSignersFromEnv } from '@/lib/event-creation-signers'
 import { getConfiguredSportsSourceProviders } from '@/lib/sports-source/providers'
 import { loadSportsSourceProviderSettings } from '@/lib/sports-source/settings'
+
+export const instant = false
 
 type CreationMode = 'single' | 'recurring'
 
@@ -36,9 +40,8 @@ function resolveBooleanSearchParam(value: string | string[] | undefined) {
   return normalized === '1' || normalized === 'true'
 }
 
-async function AdminCreateEventNewContent({
-  searchParams,
-}: Pick<AdminCreateEventNewPageProps, 'searchParams'>) {
+async function AdminCreateEventNewContent({ searchParams }: Pick<AdminCreateEventNewPageProps, 'searchParams'>) {
+  const t = await getExtracted()
   const resolvedSearchParams = await searchParams
   const mode = resolveCreationMode(resolvedSearchParams?.mode)
   const draftId = resolveSearchParam(resolvedSearchParams?.draftId) ?? ''
@@ -54,12 +57,13 @@ async function AdminCreateEventNewContent({
     ? buildAdminSportsSlugCatalog(sportsMenuResult.data)
     : EMPTY_ADMIN_SPORTS_SLUG_CATALOG
 
-  const draftResult = (draftId && currentUser?.is_admin)
-    ? await EventCreationRepository.getDraftByIdForUser({
-        draftId,
-        userId: currentUser.id,
-      })
-    : { data: null, error: null }
+  const draftResult =
+    draftId && currentUser?.is_admin
+      ? await EventCreationRepository.getDraftByIdForUser({
+          draftId,
+          userId: currentUser.id,
+        })
+      : { data: null, error: null }
   const hasConfiguredServerSigners = loadEventCreationSignersFromEnv().length > 0
   const effectiveMode = draftResult.data?.creationMode ?? mode
   const initialTitle = draftResult.data?.title ?? ''
@@ -69,16 +73,13 @@ async function AdminCreateEventNewContent({
       ? (draftResult.data?.startAt ?? draftResult.data?.endDate ?? startAtValue)
       : (draftResult.data?.endDate ?? startAtValue),
   )
-  const formKey = [
-    draftId || 'new',
-    effectiveMode,
-    startAtValue || 'no-start-at',
-  ].join(':')
+  const formKey = [draftId || 'new', effectiveMode, startAtValue || 'no-start-at'].join(':')
 
-  const title = effectiveMode === 'recurring' ? 'Create Recurring Event' : 'Create Event'
-  const description = effectiveMode === 'recurring'
-    ? 'Build the base market draft for a recurring schedule. The selected date is always the resolution date.'
-    : 'Create a one-off event. The selected date is always the resolution date.'
+  const title = effectiveMode === 'recurring' ? t('Create Recurring Event') : t('Create Event')
+  const description =
+    effectiveMode === 'recurring'
+      ? t('Build the base market draft for a recurring schedule. The selected date is always the resolution date.')
+      : t('Create a one-off event. The selected date is always the resolution date.')
 
   return (
     <>
@@ -87,12 +88,16 @@ async function AdminCreateEventNewContent({
           <h1 className="text-2xl font-semibold">{title}</h1>
           <p className="text-sm text-muted-foreground">{description}</p>
         </div>
-        <Button type="button" variant="outline" asChild>
-          <Link href="/admin/events/calendar">
-            <ArrowLeftIcon className="size-4" />
-            Back to calendar
-          </Link>
-        </Button>
+        <Button
+          variant="outline"
+          nativeButton={false}
+          render={
+            <Link href="/admin/events/calendar">
+              <ArrowLeftIcon className="size-4" />
+              {t('Back to calendar')}
+            </Link>
+          }
+        />
       </div>
 
       <div className="min-w-0">
@@ -116,34 +121,36 @@ async function AdminCreateEventNewContent({
   )
 }
 
-export default async function AdminCreateEventNewPage({
-  params,
-  searchParams,
-}: AdminCreateEventNewPageProps) {
+export default async function AdminCreateEventNewPage({ params, searchParams }: AdminCreateEventNewPageProps) {
   const { locale } = await params
   setRequestLocale(locale)
+  const t = await getExtracted()
 
   return (
     <section className="grid gap-4">
       <Suspense
-        fallback={(
+        fallback={
           <>
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div className="grid gap-2">
-                <h1 className="text-2xl font-semibold">Create Event</h1>
-                <p className="text-sm text-muted-foreground">Loading event form...</p>
+                <h1 className="text-2xl font-semibold">{t('Create Event')}</h1>
+                <p className="text-sm text-muted-foreground">{t('Loading event form...')}</p>
               </div>
-              <Button type="button" variant="outline" asChild>
-                <Link href="/admin/events/calendar">
-                  <ArrowLeftIcon className="size-4" />
-                  Back to calendar
-                </Link>
-              </Button>
+              <Button
+                variant="outline"
+                nativeButton={false}
+                render={
+                  <Link href="/admin/events/calendar">
+                    <ArrowLeftIcon className="size-4" />
+                    {t('Back to calendar')}
+                  </Link>
+                }
+              />
             </div>
 
-            <div className="min-h-40 rounded-xl border bg-background" />
+            <AdminPanelSkeleton className="min-h-40" rowCount={2} />
           </>
-        )}
+        }
       >
         <AdminCreateEventNewContent searchParams={searchParams} />
       </Suspense>

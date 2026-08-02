@@ -4,7 +4,7 @@ import type { useWaitlistTable, WaitlistEntry } from '@/app/[locale]/admin/waitl
 
 import { CopyIcon, MailIcon, MoreHorizontalIcon, ShieldXIcon, Trash2Icon, UserCheckIcon } from 'lucide-react'
 import { useState } from 'react'
-import { toast } from 'sonner'
+import { toast } from '@/components/ui/toast'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -62,11 +62,9 @@ export function WaitlistRowActions({ entry, actions }: { entry: WaitlistEntry, a
   return (
     <>
       <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon" className="size-8" aria-label="Row actions">
+        <DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="size-8" aria-label="Row actions" />}>
             <MoreHorizontalIcon className="size-4" />
-          </Button>
-        </DropdownMenuTrigger>
+          </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-48">
           <DropdownMenuItem onClick={() => setConfirmInvite(true)}>
             <MailIcon className="size-4" />

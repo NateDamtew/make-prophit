@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react'
+
 import { cache } from 'react'
+
 import DiscordIcon from '@/components/icons/DiscordIcon'
 import { Button } from '@/components/ui/button'
 import { loadRuntimeThemeState } from '@/lib/theme-settings'
@@ -23,11 +25,17 @@ export async function DiscordLink({ children = 'Discord', className }: DiscordLi
   }
 
   return (
-    <Button asChild variant="outline" size="sm" className={className}>
-      <a href={discordLink} rel="noopener noreferrer" target="_blank">
-        <DiscordIcon />
-        {children}
-      </a>
-    </Button>
+    <Button
+      variant="outline"
+      size="sm"
+      className={className}
+      nativeButton={false}
+      render={
+        <a href={discordLink} rel="noopener noreferrer" target="_blank">
+          <DiscordIcon />
+          {children}
+        </a>
+      }
+    />
   )
 }

@@ -15,12 +15,12 @@ import {
 } from 'lucide-react'
 import Image from 'next/image'
 import { useState, useTransition } from 'react'
-import { toast } from 'sonner'
 import {
   deleteAgentAction,
   rotateAgentApiKeyAction,
   updateAgentAction,
 } from '@/app/[locale]/(platform)/settings/agents/_actions/agent-actions'
+import { toast } from '@/components/ui/toast'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -285,11 +285,9 @@ export default function SettingsAgentsContent({ initialAgents }: SettingsAgentsC
 
                   {/* Actions menu */}
                   <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" disabled={isPending} aria-label="Agent actions">
+                    <DropdownMenuTrigger render={<Button variant="ghost" size="icon" disabled={isPending} aria-label="Agent actions" />}>
                         <EllipsisVerticalIcon className="size-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
+                      </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-48">
                       <DropdownMenuItem onSelect={() => openEdit(agent)}>
                         <RefreshCwIcon className="size-4" />

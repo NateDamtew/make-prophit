@@ -1,4 +1,6 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
+import { cloneElement } from 'react'
+
 import PredictionResultsClient from '@/app/[locale]/(platform)/predictions/[slug]/_components/PredictionResultsClient'
 
 const mocks = vi.hoisted(() => {
@@ -15,6 +17,14 @@ const mocks = vi.hoisted(() => {
     },
   }
 })
+
+function mockSearchParams(value: string) {
+  const searchParams = new URLSearchParams(value)
+  const query = searchParams.toString()
+
+  mocks.useSearchParams.mockReturnValue(searchParams)
+  window.history.replaceState(null, '', `/predictions/test${query ? `?${query}` : ''}`)
+}
 
 vi.mock('@tanstack/react-query', () => ({
   useInfiniteQuery: (options: any) => mocks.useInfiniteQuery(options),
@@ -34,7 +44,11 @@ vi.mock('next/navigation', () => ({
 }))
 
 vi.mock('@/i18n/navigation', () => ({
-  Link: ({ children, href, prefetch: _prefetch, ...props }: any) => <a href={href} {...props}>{children}</a>,
+  Link: ({ children, href, prefetch: _prefetch, ...props }: any) => (
+    <a href={href} {...props}>
+      {children}
+    </a>
+  ),
   usePathname: () => '/predictions/test',
   useRouter: () => ({ replace: mocks.replace }),
 }))
@@ -57,7 +71,7 @@ vi.mock('@/app/[locale]/(platform)/event/[slug]/_hooks/useCommentMetrics', () =>
 
 vi.mock('@/components/ui/drawer', () => ({
   Drawer: ({ children }: any) => <div>{children}</div>,
-  DrawerTrigger: ({ children }: any) => children,
+  DrawerTrigger: ({ children, render: trigger }: any) => cloneElement(trigger, {}, children),
   DrawerContent: () => null,
   DrawerHeader: ({ children }: any) => <div>{children}</div>,
   DrawerTitle: ({ children }: any) => <div>{children}</div>,
@@ -72,28 +86,32 @@ describe('predictionResultsClient', () => {
     mocks.useInfiniteQuery.mockReset()
     mocks.useSearchParams.mockReset()
     mocks.setIntersectionCallback(null)
-    mocks.useSearchParams.mockReturnValue(new URLSearchParams('_status=resolved&_sort=volume'))
+    mockSearchParams('_status=resolved&_sort=volume')
     mocks.useInfiniteQuery.mockImplementation(() => ({
       data: {
-        pages: [[
-          {
-            id: 'event-1',
-            slug: 'test-future-president',
-            title: 'Test future president?',
-            icon_url: '/icon.png',
-            status: 'active',
-            volume: 120000,
-            end_date: '2026-04-01T00:00:00.000Z',
-            tags: [{ id: 1, name: 'Politics', slug: 'politics', isMainCategory: true }],
-            markets: [{
-              condition: { resolved: false },
-              condition_id: 'c1',
-              is_resolved: false,
-              probability: 51,
-              title: 'Yes',
-            }],
-          },
-        ]],
+        pages: [
+          [
+            {
+              id: 'event-1',
+              slug: 'test-future-president',
+              title: 'Test future president?',
+              icon_url: '/icon.png',
+              status: 'active',
+              volume: 120000,
+              end_date: '2026-04-01T00:00:00.000Z',
+              tags: [{ id: 1, name: 'Politics', slug: 'politics', isMainCategory: true }],
+              markets: [
+                {
+                  condition: { resolved: false },
+                  condition_id: 'c1',
+                  is_resolved: false,
+                  probability: 51,
+                  title: 'Yes',
+                },
+              ],
+            },
+          ],
+        ],
       },
       error: null,
       fetchNextPage: mocks.fetchNextPage,
@@ -175,7 +193,7 @@ describe('predictionResultsClient', () => {
   })
 
   it('keeps direct visits on the clean default predictions url until the user changes a filter', () => {
-    mocks.useSearchParams.mockReturnValue(new URLSearchParams(''))
+    mockSearchParams('')
 
     render(
       <PredictionResultsClient
@@ -195,7 +213,7 @@ describe('predictionResultsClient', () => {
   })
 
   it('renders the all status filter last and only appends it after the user selects it', () => {
-    mocks.useSearchParams.mockReturnValue(new URLSearchParams(''))
+    mockSearchParams('')
 
     render(
       <PredictionResultsClient
@@ -211,25 +229,21 @@ describe('predictionResultsClient', () => {
       />,
     )
 
-    const statusButtons = Array.from(
-      screen.getByTestId('prediction-status-active').parentElement?.children ?? [],
-    ).map(button => button.getAttribute('data-testid'))
+    const statusButtons = Array.from(screen.getByTestId('prediction-status-active').parentElement?.children ?? []).map(
+      (button) => button.getAttribute('data-testid'),
+    )
 
-    expect(statusButtons).toEqual([
-      'prediction-status-active',
-      'prediction-status-resolved',
-      'prediction-status-all',
-    ])
+    expect(statusButtons).toEqual(['prediction-status-active', 'prediction-status-resolved', 'prediction-status-all'])
 
     fireEvent.click(screen.getByTestId('prediction-status-all'))
 
-    const [href, options] = mocks.replace.mock.calls.at(-1) ?? []
-    expect(href).toBe('/predictions/test?_status=all')
-    expect(options).toEqual({ scroll: false })
+    expect(window.location.pathname).toBe('/predictions/test')
+    expect(window.location.search).toBe('?_status=all')
+    expect(mocks.replace).not.toHaveBeenCalled()
   })
 
-  it('keeps an active status selection while the resolved url replacement is pending', async () => {
-    mocks.useSearchParams.mockReturnValue(new URLSearchParams('_status=resolved&_sort=volume'))
+  it('keeps an active status selection while shallowly updating the filtered url', async () => {
+    mockSearchParams('_status=resolved&_sort=volume')
 
     render(
       <PredictionResultsClient
@@ -252,52 +266,116 @@ describe('predictionResultsClient', () => {
     expect(screen.getByTestId('prediction-status-active')).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByTestId('prediction-status-resolved')).toHaveAttribute('aria-pressed', 'false')
 
-    const [href, options] = mocks.replace.mock.calls.at(-1) ?? []
-    expect(href).toBe('/predictions/test?_sort=volume')
-    expect(options).toEqual({ scroll: false })
+    expect(window.location.pathname).toBe('/predictions/test')
+    expect(window.location.search).toBe('?_sort=volume')
+    expect(mocks.replace).not.toHaveBeenCalled()
+  })
+
+  it('keeps a filter selected immediately after typing when the search debounce expires', async () => {
+    mockSearchParams('')
+
+    render(
+      <PredictionResultsClient
+        displayLabel="Test"
+        initialCurrentTimestamp={Date.parse('2026-03-25T12:00:00.000Z')}
+        initialEvents={[]}
+        initialInputValue="test"
+        initialQuery="test"
+        initialSort="trending"
+        initialStatus="active"
+        routeMainTag="trending"
+        routeTag="trending"
+      />,
+    )
+
+    fireEvent.change(screen.getByTestId('prediction-search-input'), {
+      target: { value: 'future bets' },
+    })
+    fireEvent.click(screen.getByTestId('prediction-status-all'))
+
+    expect(window.location.pathname).toBe('/predictions/test')
+    expect(window.location.search).toBe('?_status=all')
+
+    await act(async () => {
+      vi.advanceTimersByTime(300)
+    })
+
+    expect(screen.getByTestId('prediction-status-all')).toHaveAttribute('aria-pressed', 'true')
+    expect(window.location.pathname).toBe('/predictions/test')
+    expect(window.location.search).toBe('?_status=all')
+    expect(mocks.replace).not.toHaveBeenCalled()
+  })
+
+  it('clears sort and status filters without a route navigation', () => {
+    render(
+      <PredictionResultsClient
+        displayLabel="Test"
+        initialCurrentTimestamp={Date.parse('2026-03-25T12:00:00.000Z')}
+        initialEvents={[]}
+        initialInputValue="test"
+        initialQuery="test"
+        initialSort="volume"
+        initialStatus="resolved"
+        routeMainTag="trending"
+        routeTag="trending"
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }))
+
+    expect(window.location.pathname).toBe('/predictions/test')
+    expect(window.location.search).toBe('')
+    expect(screen.getByTestId('prediction-status-active')).toHaveAttribute('aria-pressed', 'true')
+    expect(mocks.replace).not.toHaveBeenCalled()
   })
 
   it('shows only resolved events on resolved category pages even when the fetched dataset is combined', () => {
-    mocks.useSearchParams.mockReturnValue(new URLSearchParams('_status=resolved'))
+    mockSearchParams('_status=resolved')
     mocks.useInfiniteQuery.mockImplementation(() => ({
       data: {
-        pages: [[
-          {
-            id: 'event-active',
-            slug: 'meta-active',
-            title: 'Meta active event',
-            icon_url: '/icon.png',
-            status: 'active',
-            volume: 120000,
-            end_date: '2026-04-01T00:00:00.000Z',
-            tags: [{ id: 1, name: 'Meta', slug: 'meta', isMainCategory: true }],
-            markets: [{
-              condition: { resolved: false },
-              condition_id: 'c1',
-              is_resolved: false,
-              probability: 51,
-              title: 'Yes',
-            }],
-          },
-          {
-            id: 'event-resolved',
-            slug: 'meta-resolved',
-            title: 'Meta resolved event',
-            icon_url: '/icon.png',
-            status: 'resolved',
-            volume: 90000,
-            resolved_at: '2026-03-24T00:00:00.000Z',
-            end_date: '2026-03-24T00:00:00.000Z',
-            tags: [{ id: 1, name: 'Meta', slug: 'meta', isMainCategory: true }],
-            markets: [{
-              condition: { resolved: true },
-              condition_id: 'c2',
-              is_resolved: true,
-              probability: 100,
-              title: 'Yes',
-            }],
-          },
-        ]],
+        pages: [
+          [
+            {
+              id: 'event-active',
+              slug: 'meta-active',
+              title: 'Meta active event',
+              icon_url: '/icon.png',
+              status: 'active',
+              volume: 120000,
+              end_date: '2026-04-01T00:00:00.000Z',
+              tags: [{ id: 1, name: 'Meta', slug: 'meta', isMainCategory: true }],
+              markets: [
+                {
+                  condition: { resolved: false },
+                  condition_id: 'c1',
+                  is_resolved: false,
+                  probability: 51,
+                  title: 'Yes',
+                },
+              ],
+            },
+            {
+              id: 'event-resolved',
+              slug: 'meta-resolved',
+              title: 'Meta resolved event',
+              icon_url: '/icon.png',
+              status: 'resolved',
+              volume: 90000,
+              resolved_at: '2026-03-24T00:00:00.000Z',
+              end_date: '2026-03-24T00:00:00.000Z',
+              tags: [{ id: 1, name: 'Meta', slug: 'meta', isMainCategory: true }],
+              markets: [
+                {
+                  condition: { resolved: true },
+                  condition_id: 'c2',
+                  is_resolved: true,
+                  probability: 100,
+                  title: 'Yes',
+                },
+              ],
+            },
+          ],
+        ],
       },
       error: null,
       fetchNextPage: mocks.fetchNextPage,
@@ -331,47 +409,53 @@ describe('predictionResultsClient', () => {
       json: async () => [],
     })
     vi.stubGlobal('fetch', fetchMock)
-    mocks.useSearchParams.mockReturnValue(new URLSearchParams('_status=resolved'))
+    mockSearchParams('_status=resolved')
     mocks.useInfiniteQuery.mockImplementation((options: any) => ({
       data: {
-        pages: [[
-          {
-            id: 'event-meta',
-            slug: 'meta-up-or-down',
-            title: 'Meta up or down?',
-            icon_url: '/icon.png',
-            status: 'resolved',
-            volume: 90000,
-            resolved_at: '2026-03-24T00:00:00.000Z',
-            end_date: '2026-03-24T00:00:00.000Z',
-            tags: [{ id: 1, name: 'Finance', slug: 'finance', isMainCategory: true }],
-            markets: [{
-              condition: { resolved: true },
-              condition_id: 'meta',
-              is_resolved: true,
-              probability: 100,
-              title: 'Yes',
-            }],
-          },
-          {
-            id: 'event-paulo',
-            slug: 'highest-temperature-in-sao-paulo-on-march-24-2026',
-            title: 'Highest temperature in Sao Paulo on March 24?',
-            icon_url: '/icon.png',
-            status: 'resolved',
-            volume: 70000,
-            resolved_at: '2026-03-24T00:00:00.000Z',
-            end_date: '2026-03-24T00:00:00.000Z',
-            tags: [{ id: 2, name: 'Weather', slug: 'weather', isMainCategory: true }],
-            markets: [{
-              condition: { resolved: true },
-              condition_id: 'paulo-temp',
-              is_resolved: true,
-              probability: 100,
-              title: 'Yes',
-            }],
-          },
-        ]],
+        pages: [
+          [
+            {
+              id: 'event-meta',
+              slug: 'meta-up-or-down',
+              title: 'Meta up or down?',
+              icon_url: '/icon.png',
+              status: 'resolved',
+              volume: 90000,
+              resolved_at: '2026-03-24T00:00:00.000Z',
+              end_date: '2026-03-24T00:00:00.000Z',
+              tags: [{ id: 1, name: 'Finance', slug: 'finance', isMainCategory: true }],
+              markets: [
+                {
+                  condition: { resolved: true },
+                  condition_id: 'meta',
+                  is_resolved: true,
+                  probability: 100,
+                  title: 'Yes',
+                },
+              ],
+            },
+            {
+              id: 'event-paulo',
+              slug: 'highest-temperature-in-sao-paulo-on-march-24-2026',
+              title: 'Highest temperature in Sao Paulo on March 24?',
+              icon_url: '/icon.png',
+              status: 'resolved',
+              volume: 70000,
+              resolved_at: '2026-03-24T00:00:00.000Z',
+              end_date: '2026-03-24T00:00:00.000Z',
+              tags: [{ id: 2, name: 'Weather', slug: 'weather', isMainCategory: true }],
+              markets: [
+                {
+                  condition: { resolved: true },
+                  condition_id: 'paulo-temp',
+                  is_resolved: true,
+                  probability: 100,
+                  title: 'Yes',
+                },
+              ],
+            },
+          ],
+        ],
       },
       error: null,
       fetchNextPage: mocks.fetchNextPage,
@@ -409,54 +493,59 @@ describe('predictionResultsClient', () => {
       expect(requestUrl).toContain('status=resolved')
       expect(requestUrl).not.toContain('homeFeed=')
       expect(requestUrl).not.toContain('sort=')
-    }
-    finally {
+    } finally {
       vi.unstubAllGlobals()
     }
   })
 
   it('filters stale resolved search rows for non-Latin prediction queries', () => {
-    mocks.useSearchParams.mockReturnValue(new URLSearchParams('_status=resolved'))
+    mockSearchParams('_status=resolved')
     mocks.useInfiniteQuery.mockImplementation(() => ({
       data: {
-        pages: [[
-          {
-            id: 'event-meta',
-            slug: 'meta-up-or-down',
-            title: 'Meta up or down?',
-            icon_url: '/icon.png',
-            status: 'resolved',
-            volume: 90000,
-            resolved_at: '2026-03-24T00:00:00.000Z',
-            end_date: '2026-03-24T00:00:00.000Z',
-            tags: [{ id: 1, name: 'Finance', slug: 'finance', isMainCategory: true }],
-            markets: [{
-              condition: { resolved: true },
-              condition_id: 'meta',
-              is_resolved: true,
-              probability: 100,
-              title: 'Yes',
-            }],
-          },
-          {
-            id: 'event-tokyo',
-            slug: 'highest-temperature-in-tokyo-on-march-24-2026',
-            title: '東京の最高気温は?',
-            icon_url: '/icon.png',
-            status: 'resolved',
-            volume: 70000,
-            resolved_at: '2026-03-24T00:00:00.000Z',
-            end_date: '2026-03-24T00:00:00.000Z',
-            tags: [{ id: 2, name: 'Weather', slug: 'weather', isMainCategory: true }],
-            markets: [{
-              condition: { resolved: true },
-              condition_id: 'tokyo-temp',
-              is_resolved: true,
-              probability: 100,
-              title: 'Yes',
-            }],
-          },
-        ]],
+        pages: [
+          [
+            {
+              id: 'event-meta',
+              slug: 'meta-up-or-down',
+              title: 'Meta up or down?',
+              icon_url: '/icon.png',
+              status: 'resolved',
+              volume: 90000,
+              resolved_at: '2026-03-24T00:00:00.000Z',
+              end_date: '2026-03-24T00:00:00.000Z',
+              tags: [{ id: 1, name: 'Finance', slug: 'finance', isMainCategory: true }],
+              markets: [
+                {
+                  condition: { resolved: true },
+                  condition_id: 'meta',
+                  is_resolved: true,
+                  probability: 100,
+                  title: 'Yes',
+                },
+              ],
+            },
+            {
+              id: 'event-tokyo',
+              slug: 'highest-temperature-in-tokyo-on-march-24-2026',
+              title: '東京の最高気温は?',
+              icon_url: '/icon.png',
+              status: 'resolved',
+              volume: 70000,
+              resolved_at: '2026-03-24T00:00:00.000Z',
+              end_date: '2026-03-24T00:00:00.000Z',
+              tags: [{ id: 2, name: 'Weather', slug: 'weather', isMainCategory: true }],
+              markets: [
+                {
+                  condition: { resolved: true },
+                  condition_id: 'tokyo-temp',
+                  is_resolved: true,
+                  probability: 100,
+                  title: 'Yes',
+                },
+              ],
+            },
+          ],
+        ],
       },
       error: null,
       fetchNextPage: mocks.fetchNextPage,
@@ -490,49 +579,55 @@ describe('predictionResultsClient', () => {
       json: async () => [],
     })
     vi.stubGlobal('fetch', fetchMock)
-    mocks.useSearchParams.mockReturnValue(new URLSearchParams('_status=resolved'))
+    mockSearchParams('_status=resolved')
     mocks.useInfiniteQuery.mockImplementation((options: any) => ({
       data: {
-        pages: [[
-          {
-            id: 'event-paulo-june-8',
-            slug: 'highest-temperature-in-sao-paulo-on-june-8-2026',
-            title: 'Highest temperature in Sao Paulo on June 8?',
-            icon_url: '/icon.png',
-            is_bookmarked: false,
-            status: 'resolved',
-            volume: 50000,
-            resolved_at: '2026-06-08T00:00:00.000Z',
-            end_date: '2026-06-08T00:00:00.000Z',
-            tags: [{ id: 2, name: 'Weather', slug: 'weather', isMainCategory: true }],
-            markets: [{
-              condition: { resolved: true },
-              condition_id: 'paulo-temp-june-8',
-              is_resolved: true,
-              probability: 100,
-              title: 'Yes',
-            }],
-          },
-          {
-            id: 'event-paulo-june-9',
-            slug: 'highest-temperature-in-sao-paulo-on-june-9-2026',
-            title: 'Highest temperature in Sao Paulo on June 9?',
-            icon_url: '/icon.png',
-            is_bookmarked: true,
-            status: 'resolved',
-            volume: 70000,
-            resolved_at: '2026-06-09T00:00:00.000Z',
-            end_date: '2026-06-09T00:00:00.000Z',
-            tags: [{ id: 2, name: 'Weather', slug: 'weather', isMainCategory: true }],
-            markets: [{
-              condition: { resolved: true },
-              condition_id: 'paulo-temp-june-9',
-              is_resolved: true,
-              probability: 100,
-              title: 'Yes',
-            }],
-          },
-        ]],
+        pages: [
+          [
+            {
+              id: 'event-paulo-june-8',
+              slug: 'highest-temperature-in-sao-paulo-on-june-8-2026',
+              title: 'Highest temperature in Sao Paulo on June 8?',
+              icon_url: '/icon.png',
+              is_bookmarked: false,
+              status: 'resolved',
+              volume: 50000,
+              resolved_at: '2026-06-08T00:00:00.000Z',
+              end_date: '2026-06-08T00:00:00.000Z',
+              tags: [{ id: 2, name: 'Weather', slug: 'weather', isMainCategory: true }],
+              markets: [
+                {
+                  condition: { resolved: true },
+                  condition_id: 'paulo-temp-june-8',
+                  is_resolved: true,
+                  probability: 100,
+                  title: 'Yes',
+                },
+              ],
+            },
+            {
+              id: 'event-paulo-june-9',
+              slug: 'highest-temperature-in-sao-paulo-on-june-9-2026',
+              title: 'Highest temperature in Sao Paulo on June 9?',
+              icon_url: '/icon.png',
+              is_bookmarked: true,
+              status: 'resolved',
+              volume: 70000,
+              resolved_at: '2026-06-09T00:00:00.000Z',
+              end_date: '2026-06-09T00:00:00.000Z',
+              tags: [{ id: 2, name: 'Weather', slug: 'weather', isMainCategory: true }],
+              markets: [
+                {
+                  condition: { resolved: true },
+                  condition_id: 'paulo-temp-june-9',
+                  is_resolved: true,
+                  probability: 100,
+                  title: 'Yes',
+                },
+              ],
+            },
+          ],
+        ],
       },
       error: null,
       fetchNextPage: mocks.fetchNextPage,
@@ -562,7 +657,9 @@ describe('predictionResultsClient', () => {
         fireEvent.click(screen.getAllByTestId('prediction-bookmark-filter')[0])
       })
 
-      expect(screen.queryByRole('heading', { name: 'Highest temperature in Sao Paulo on June 8?' })).not.toBeInTheDocument()
+      expect(
+        screen.queryByRole('heading', { name: 'Highest temperature in Sao Paulo on June 8?' }),
+      ).not.toBeInTheDocument()
       expect(screen.getByRole('heading', { name: 'Highest temperature in Sao Paulo on June 9?' })).toBeInTheDocument()
 
       const queryOptions = mocks.useInfiniteQuery.mock.calls.at(-1)?.[0]
@@ -574,42 +671,45 @@ describe('predictionResultsClient', () => {
       expect(requestUrl).toContain('search=paulo')
       expect(requestUrl).toContain('status=resolved')
       expect(requestUrl).not.toContain('homeFeed=')
-    }
-    finally {
+    } finally {
       vi.unstubAllGlobals()
     }
   })
 
   it('shows the winning outcome label on resolved single-market rows', () => {
-    mocks.useSearchParams.mockReturnValue(new URLSearchParams('_status=resolved'))
+    mockSearchParams('_status=resolved')
     mocks.useInfiniteQuery.mockImplementation(() => ({
       data: {
-        pages: [[
-          {
-            id: 'event-single-resolved',
-            slug: 'meta-single-resolved',
-            title: 'Meta up or down?',
-            icon_url: '/icon.png',
-            status: 'resolved',
-            volume: 90000,
-            resolved_at: '2026-03-24T00:00:00.000Z',
-            end_date: '2026-03-24T00:00:00.000Z',
-            total_markets_count: 1,
-            tags: [{ id: 1, name: 'Meta', slug: 'meta', isMainCategory: true }],
-            markets: [{
-              condition: { resolved: true, resolution_price: 1 },
-              condition_id: 'single-market',
-              is_resolved: true,
-              outcomes: [
-                { outcome_index: 0, outcome_text: 'Up' },
-                { outcome_index: 1, outcome_text: 'Down' },
+        pages: [
+          [
+            {
+              id: 'event-single-resolved',
+              slug: 'meta-single-resolved',
+              title: 'Meta up or down?',
+              icon_url: '/icon.png',
+              status: 'resolved',
+              volume: 90000,
+              resolved_at: '2026-03-24T00:00:00.000Z',
+              end_date: '2026-03-24T00:00:00.000Z',
+              total_markets_count: 1,
+              tags: [{ id: 1, name: 'Meta', slug: 'meta', isMainCategory: true }],
+              markets: [
+                {
+                  condition: { resolved: true, resolution_price: 1 },
+                  condition_id: 'single-market',
+                  is_resolved: true,
+                  outcomes: [
+                    { outcome_index: 0, outcome_text: 'Up' },
+                    { outcome_index: 1, outcome_text: 'Down' },
+                  ],
+                  probability: 100,
+                  short_title: 'Up or Down',
+                  title: 'Up or Down',
+                },
               ],
-              probability: 100,
-              short_title: 'Up or Down',
-              title: 'Up or Down',
-            }],
-          },
-        ]],
+            },
+          ],
+        ],
       },
       error: null,
       fetchNextPage: mocks.fetchNextPage,
@@ -637,36 +737,102 @@ describe('predictionResultsClient', () => {
     expect(screen.queryByText('100%')).not.toBeInTheDocument()
   })
 
-  it('uses the no-outcome badge styling when the resolved winner is no', () => {
-    mocks.useSearchParams.mockReturnValue(new URLSearchParams('_status=resolved'))
+  it('shows resolved-like rows as resolved when the all status filter is selected', () => {
+    mockSearchParams('_status=all&_sort=ending-soon')
     mocks.useInfiniteQuery.mockImplementation(() => ({
       data: {
-        pages: [[
-          {
-            id: 'event-single-no-resolved',
-            slug: 'meta-single-no-resolved',
-            title: 'Meta down?',
-            icon_url: '/icon.png',
-            status: 'resolved',
-            volume: 90000,
-            resolved_at: '2026-03-24T00:00:00.000Z',
-            end_date: '2026-03-24T00:00:00.000Z',
-            total_markets_count: 1,
-            tags: [{ id: 1, name: 'Meta', slug: 'meta', isMainCategory: true }],
-            markets: [{
-              condition: { resolved: true, resolution_price: 0 },
-              condition_id: 'single-market-no',
-              is_resolved: true,
-              outcomes: [
-                { outcome_index: 0, outcome_text: 'Up' },
-                { outcome_index: 1, outcome_text: 'Down' },
+        pages: [
+          [
+            {
+              id: 'event-all-resolved',
+              slug: 'bitcoin-all-resolved',
+              title: 'Bitcoin up or down?',
+              icon_url: '/icon.png',
+              status: 'active',
+              volume: 90000,
+              end_date: '2026-03-24T00:00:00.000Z',
+              total_markets_count: 1,
+              tags: [{ id: 1, name: 'Bitcoin', slug: 'bitcoin', isMainCategory: false }],
+              markets: [
+                {
+                  condition: { resolved: true, resolution_price: 1 },
+                  condition_id: 'bitcoin-all-resolved-market',
+                  is_resolved: true,
+                  outcomes: [
+                    { outcome_index: 0, outcome_text: 'Up' },
+                    { outcome_index: 1, outcome_text: 'Down' },
+                  ],
+                  probability: 100,
+                  short_title: 'Up or Down',
+                  title: 'Up or Down',
+                },
               ],
-              probability: 0,
-              short_title: 'Up or Down',
-              title: 'Up or Down',
-            }],
-          },
-        ]],
+            },
+          ],
+        ],
+      },
+      error: null,
+      fetchNextPage: mocks.fetchNextPage,
+      hasNextPage: false,
+      isFetching: false,
+      isFetchingNextPage: false,
+      isPending: false,
+    }))
+
+    render(
+      <PredictionResultsClient
+        displayLabel="Bitcoin"
+        initialCurrentTimestamp={Date.parse('2026-07-22T12:00:00.000Z')}
+        initialEvents={[]}
+        initialInputValue="bitcoin"
+        initialQuery=""
+        initialSort="ending-soon"
+        initialStatus="all"
+        routeMainTag="crypto"
+        routeTag="bitcoin"
+      />,
+    )
+
+    expect(screen.getByText('Resolved', { selector: 'span' })).toBeInTheDocument()
+    expect(screen.getByText('Up')).toBeInTheDocument()
+    expect(screen.getByTestId('prediction-result-resolved-badge')).toHaveAttribute('data-outcome', 'yes')
+    expect(screen.queryByText('100%')).not.toBeInTheDocument()
+  })
+
+  it('uses the no-outcome badge styling when the resolved winner is no', () => {
+    mockSearchParams('_status=resolved')
+    mocks.useInfiniteQuery.mockImplementation(() => ({
+      data: {
+        pages: [
+          [
+            {
+              id: 'event-single-no-resolved',
+              slug: 'meta-single-no-resolved',
+              title: 'Meta down?',
+              icon_url: '/icon.png',
+              status: 'resolved',
+              volume: 90000,
+              resolved_at: '2026-03-24T00:00:00.000Z',
+              end_date: '2026-03-24T00:00:00.000Z',
+              total_markets_count: 1,
+              tags: [{ id: 1, name: 'Meta', slug: 'meta', isMainCategory: true }],
+              markets: [
+                {
+                  condition: { resolved: true, resolution_price: 0 },
+                  condition_id: 'single-market-no',
+                  is_resolved: true,
+                  outcomes: [
+                    { outcome_index: 0, outcome_text: 'Up' },
+                    { outcome_index: 1, outcome_text: 'Down' },
+                  ],
+                  probability: 0,
+                  short_title: 'Up or Down',
+                  title: 'Up or Down',
+                },
+              ],
+            },
+          ],
+        ],
       },
       error: null,
       fetchNextPage: mocks.fetchNextPage,
@@ -696,35 +862,39 @@ describe('predictionResultsClient', () => {
   })
 
   it('uses a neutral badge when the resolved winner cannot be determined', () => {
-    mocks.useSearchParams.mockReturnValue(new URLSearchParams('_status=resolved'))
+    mockSearchParams('_status=resolved')
     mocks.useInfiniteQuery.mockImplementation(() => ({
       data: {
-        pages: [[
-          {
-            id: 'event-single-unknown-resolved',
-            slug: 'meta-single-unknown-resolved',
-            title: 'Meta unresolved winner?',
-            icon_url: '/icon.png',
-            status: 'resolved',
-            volume: 90000,
-            resolved_at: '2026-03-24T00:00:00.000Z',
-            end_date: '2026-03-24T00:00:00.000Z',
-            total_markets_count: 1,
-            tags: [{ id: 1, name: 'Meta', slug: 'meta', isMainCategory: true }],
-            markets: [{
-              condition: { resolved: true },
-              condition_id: 'single-market-unknown',
-              is_resolved: true,
-              outcomes: [
-                { outcome_index: 0, outcome_text: 'Yes' },
-                { outcome_index: 1, outcome_text: 'No' },
+        pages: [
+          [
+            {
+              id: 'event-single-unknown-resolved',
+              slug: 'meta-single-unknown-resolved',
+              title: 'Meta unresolved winner?',
+              icon_url: '/icon.png',
+              status: 'resolved',
+              volume: 90000,
+              resolved_at: '2026-03-24T00:00:00.000Z',
+              end_date: '2026-03-24T00:00:00.000Z',
+              total_markets_count: 1,
+              tags: [{ id: 1, name: 'Meta', slug: 'meta', isMainCategory: true }],
+              markets: [
+                {
+                  condition: { resolved: true },
+                  condition_id: 'single-market-unknown',
+                  is_resolved: true,
+                  outcomes: [
+                    { outcome_index: 0, outcome_text: 'Yes' },
+                    { outcome_index: 1, outcome_text: 'No' },
+                  ],
+                  probability: 50,
+                  short_title: 'Unclear winner',
+                  title: 'Unclear winner',
+                },
               ],
-              probability: 50,
-              short_title: 'Unclear winner',
-              title: 'Unclear winner',
-            }],
-          },
-        ]],
+            },
+          ],
+        ],
       },
       error: null,
       fetchNextPage: mocks.fetchNextPage,
@@ -755,49 +925,51 @@ describe('predictionResultsClient', () => {
   })
 
   it('shows the winning market label on resolved multi-market rows', () => {
-    mocks.useSearchParams.mockReturnValue(new URLSearchParams('_status=resolved'))
+    mockSearchParams('_status=resolved')
     mocks.useInfiniteQuery.mockImplementation(() => ({
       data: {
-        pages: [[
-          {
-            id: 'event-multi-resolved',
-            slug: 'meta-multi-resolved',
-            title: 'Meta closing range?',
-            icon_url: '/icon.png',
-            status: 'resolved',
-            volume: 90000,
-            resolved_at: '2026-03-24T00:00:00.000Z',
-            end_date: '2026-03-24T00:00:00.000Z',
-            total_markets_count: 2,
-            tags: [{ id: 1, name: 'Meta', slug: 'meta', isMainCategory: true }],
-            markets: [
-              {
-                condition: { resolved: true, resolution_price: 0 },
-                condition_id: 'range-loser',
-                is_resolved: true,
-                outcomes: [
-                  { outcome_index: 0, outcome_text: 'Yes' },
-                  { outcome_index: 1, outcome_text: 'No' },
-                ],
-                probability: 0,
-                short_title: '260-279',
-                title: '260-279',
-              },
-              {
-                condition: { resolved: true, resolution_price: 1 },
-                condition_id: 'range-winner',
-                is_resolved: true,
-                outcomes: [
-                  { outcome_index: 0, outcome_text: 'Yes' },
-                  { outcome_index: 1, outcome_text: 'No' },
-                ],
-                probability: 100,
-                short_title: '280-299',
-                title: '280-299',
-              },
-            ],
-          },
-        ]],
+        pages: [
+          [
+            {
+              id: 'event-multi-resolved',
+              slug: 'meta-multi-resolved',
+              title: 'Meta closing range?',
+              icon_url: '/icon.png',
+              status: 'resolved',
+              volume: 90000,
+              resolved_at: '2026-03-24T00:00:00.000Z',
+              end_date: '2026-03-24T00:00:00.000Z',
+              total_markets_count: 2,
+              tags: [{ id: 1, name: 'Meta', slug: 'meta', isMainCategory: true }],
+              markets: [
+                {
+                  condition: { resolved: true, resolution_price: 0 },
+                  condition_id: 'range-loser',
+                  is_resolved: true,
+                  outcomes: [
+                    { outcome_index: 0, outcome_text: 'Yes' },
+                    { outcome_index: 1, outcome_text: 'No' },
+                  ],
+                  probability: 0,
+                  short_title: '260-279',
+                  title: '260-279',
+                },
+                {
+                  condition: { resolved: true, resolution_price: 1 },
+                  condition_id: 'range-winner',
+                  is_resolved: true,
+                  outcomes: [
+                    { outcome_index: 0, outcome_text: 'Yes' },
+                    { outcome_index: 1, outcome_text: 'No' },
+                  ],
+                  probability: 100,
+                  short_title: '280-299',
+                  title: '280-299',
+                },
+              ],
+            },
+          ],
+        ],
       },
       error: null,
       fetchNextPage: mocks.fetchNextPage,
@@ -845,7 +1017,7 @@ describe('predictionResultsClient', () => {
   })
 
   it('renders the event title inside a link to the event page', () => {
-    mocks.useSearchParams.mockReturnValue(new URLSearchParams(''))
+    mockSearchParams('')
 
     render(
       <PredictionResultsClient

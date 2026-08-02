@@ -1,4 +1,6 @@
 import type { AdminPaginatedFetchParams } from '@/app/[locale]/admin/_hooks/useAdminPaginatedResource'
+import type { SumsubStatus } from '@/lib/sumsub/types'
+
 import { useAdminPaginatedResource } from '@/app/[locale]/admin/_hooks/useAdminPaginatedResource'
 
 interface AdminUserRow {
@@ -15,6 +17,7 @@ interface AdminUserRow {
   profileUrl: string
   created_at: string
   search_text: string
+  sumsub_status: SumsubStatus
 }
 
 type AdminUsersSortBy = 'username' | 'email' | 'address' | 'created_at'
@@ -23,6 +26,7 @@ interface AdminUsersResponse {
   data: AdminUserRow[]
   count: number
   totalCount: number
+  sumsubActive: boolean
 }
 
 async function fetchAdminUsers(params: AdminPaginatedFetchParams<AdminUsersSortBy>): Promise<AdminUsersResponse> {
@@ -74,6 +78,7 @@ export function useAdminUsersTable() {
     // Data
     users: data?.data || [],
     totalCount: data?.totalCount || 0,
+    sumsubActive: data?.sumsubActive || false,
 
     // Loading states
     isLoading,

@@ -1,9 +1,11 @@
 'use client'
 
+import { useMemo, useState } from 'react'
+
 import type { EventTabKey } from '@/app/[locale]/(platform)/event/[slug]/_components/EventTabSelector'
 import type { EventFaqItem } from '@/lib/event-faq'
 import type { Event, User } from '@/types'
-import { useMemo, useState } from 'react'
+
 import EventActivity from '@/app/[locale]/(platform)/event/[slug]/_components/EventActivity'
 import EventComments from '@/app/[locale]/(platform)/event/[slug]/_components/EventComments'
 import EventFaq from '@/app/[locale]/(platform)/event/[slug]/_components/EventFaq'
@@ -12,6 +14,7 @@ import EventTabSelector from '@/app/[locale]/(platform)/event/[slug]/_components
 import EventTopHolders from '@/app/[locale]/(platform)/event/[slug]/_components/EventTopHolders'
 import { useCommentMetrics } from '@/app/[locale]/(platform)/event/[slug]/_hooks/useCommentMetrics'
 import { useLiveCommentsChannel } from '@/app/[locale]/(platform)/event/[slug]/_hooks/useLiveCommentsChannel'
+import { Tabs, TabsContent } from '@/components/ui/tabs'
 
 interface EventTabsProps {
   event: Event
@@ -34,12 +37,7 @@ function useCommentsCount(commentMetrics: ReturnType<typeof useCommentMetrics>['
   }, [commentMetrics?.comments_count])
 }
 
-export default function EventTabs({
-  event,
-  user,
-  faqItems,
-  initialTab = 'comments',
-}: EventTabsProps) {
+export default function EventTabs({ event, user, faqItems, initialTab = 'comments' }: EventTabsProps) {
   const { activeTab, setActiveTab } = useActiveTab(initialTab)
   const { data: commentMetrics } = useCommentMetrics(event.slug)
   const { status: liveCommentsStatus } = useLiveCommentsChannel({
@@ -51,22 +49,23 @@ export default function EventTabs({
   const commentsCount = useCommentsCount(commentMetrics)
 
   return (
-    <div className="mt-6">
+    <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as EventTabKey)} className="mt-6">
       <EventTabSelector
         activeTab={activeTab}
-        setActiveTab={setActiveTab}
         commentsCount={commentsCount}
         liveCommentsStatus={liveCommentsStatus}
         marketChannelStatus={marketChannelStatus}
       />
-      {activeTab === 'comments' && (
-        <>
-          <EventComments event={event} user={user} />
-          <EventFaq items={faqItems} />
-        </>
-      )}
-      {activeTab === 'holders' && <EventTopHolders event={event} />}
-      {activeTab === 'activity' && <EventActivity event={event} />}
-    </div>
+      <TabsContent value="comments" className="mt-0">
+        <EventComments event={event} user={user} />
+        <EventFaq items={faqItems} />
+      </TabsContent>
+      <TabsContent value="holders" className="mt-0">
+        <EventTopHolders event={event} />
+      </TabsContent>
+      <TabsContent value="activity" className="mt-0">
+        <EventActivity event={event} />
+      </TabsContent>
+    </Tabs>
   )
 }

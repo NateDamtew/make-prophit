@@ -1,11 +1,11 @@
 import type { Metadata } from 'next'
-import type { SupportedLocale } from '@/i18n/locales'
-import type {
-  PredictionResultsSortOption,
-  PredictionResultsStatusOption,
-} from '@/lib/prediction-results-filters'
-import type { Event } from '@/types'
+
 import { getExtracted } from 'next-intl/server'
+
+import type { SupportedLocale } from '@/i18n/locales'
+import type { PredictionResultsSortOption, PredictionResultsStatusOption } from '@/lib/prediction-results-filters'
+import type { Event } from '@/types'
+
 import {
   buildPredictionResultsOgImageUrl,
   buildPredictionResultsPageUrl,
@@ -21,7 +21,7 @@ import { loadRuntimeThemeState } from '@/lib/theme-settings'
 
 async function getPredictionPageContext(locale: SupportedLocale, slug: string) {
   const t = await getExtracted({ locale })
-  const { data: mainTags, globalChilds = [] } = await TagRepository.getMainTags(locale)
+  const { data: mainTags, globalChilds } = await TagRepository.getMainTags(locale)
   const tags = buildPlatformNavigationTags({
     globalChilds,
     mainTags: mainTags ?? [],
@@ -34,27 +34,34 @@ async function getPredictionPageContext(locale: SupportedLocale, slug: string) {
 }
 
 export async function generatePredictionResultsMetadata({
+  description: descriptionOverride,
   locale,
+  pageSlug,
   slug,
+  title: titleOverride,
 }: {
+  description?: string
   locale: SupportedLocale
+  pageSlug?: string | null
   slug: string
+  title?: string
 }): Promise<Metadata> {
   const t = await getExtracted({ locale })
-  const [context, runtimeTheme] = await Promise.all([
-    getPredictionPageContext(locale, slug),
-    loadRuntimeThemeState(),
-  ])
-  const title = t('{slug} Predictions & Real-Time Odds', {
-    slug: context.label,
-  })
-  const description = t('Explore live {slug} prediction markets.', {
-    slug: context.label,
-  })
+  const [context, runtimeTheme] = await Promise.all([getPredictionPageContext(locale, slug), loadRuntimeThemeState()])
+  const title =
+    titleOverride ??
+    t('{slug} Predictions & Real-Time Odds', {
+      slug: context.label,
+    })
+  const description =
+    descriptionOverride ??
+    t('Explore live {slug} prediction markets.', {
+      slug: context.label,
+    })
   const siteName = runtimeTheme.site.name
   const pageUrl = buildPredictionResultsPageUrl({
     locale,
-    slug,
+    slug: pageSlug === undefined ? slug : pageSlug,
   })
   const imageUrl = buildPredictionResultsOgImageUrl({
     locale,
@@ -91,11 +98,13 @@ export async function generatePredictionResultsMetadata({
 }
 
 export async function renderPredictionResultsPage({
+  heading,
   initialSort,
   initialStatus,
   locale,
   slug,
 }: {
+  heading?: string
   initialSort: PredictionResultsSortOption
   initialStatus: PredictionResultsStatusOption
   locale: SupportedLocale
@@ -122,8 +131,7 @@ export async function renderPredictionResultsPage({
     if (!error) {
       initialEvents = data ?? []
     }
-  }
-  catch {
+  } catch {
     initialEvents = []
   }
 
@@ -131,6 +139,7 @@ export async function renderPredictionResultsPage({
     <main className="container py-6 lg:py-8">
       <PredictionResultsClient
         displayLabel={context.label}
+        heading={heading}
         initialCurrentTimestamp={null}
         initialEvents={initialEvents}
         initialInputValue={context.inputValue}

@@ -19,9 +19,9 @@ import {
 } from 'lucide-react'
 import { useExtracted, useLocale } from 'next-intl'
 import { lazy, Suspense, useEffect, useState } from 'react'
-import { toast } from 'sonner'
 import SearchDiscoveryContent from '@/app/[locale]/(platform)/_components/SearchDiscoveryContent'
 import { MOBILE_BOTTOM_NAV_OFFSET } from '@/app/[locale]/(platform)/_lib/mobile-bottom-nav'
+import { toast } from '@/components/ui/toast'
 import AppLink from '@/components/AppLink'
 import LocaleFlag from '@/components/LocaleFlag'
 import PwaInstallIosInstructions from '@/components/PwaInstallIosInstructions'
@@ -203,12 +203,7 @@ function MobileBottomNavContent({ pathname }: MobileBottomNavContentProps) {
         </div>
       )}
 
-      <Drawer
-        open={isSearchOpen}
-        onOpenChange={handleSearchOpenChange}
-        fixed
-        repositionInputs={false}
-      >
+      <Drawer open={isSearchOpen} onOpenChange={handleSearchOpenChange}>
         <DrawerContent
           data-mobile-search-drawer="true"
           className={cn(`
@@ -257,50 +252,39 @@ function MobileBottomNavContent({ pathname }: MobileBottomNavContentProps) {
                   </>
                 )}
 
-                <DrawerClose asChild>
-                  <button
+                <DrawerClose render={<button
                     type="button"
                     className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-semibold"
-                    onClick={handleHowItWorksAction}
-                  >
+                    onClick={handleHowItWorksAction} />}>
                     <InfoIcon className="size-4 text-primary" />
                     {t('How it works')}
-                  </button>
-                </DrawerClose>
+                  </DrawerClose>
 
                 <div className="mx-4 h-px bg-border/70" />
 
-                <DrawerClose asChild>
-                  <AppLink
+                <DrawerClose render={<AppLink
                     intentPrefetch
                     href="/docs"
                     target="_blank"
-                    className="flex items-center gap-3 px-4 py-3 text-sm font-semibold"
-                  >
+                    className="flex items-center gap-3 px-4 py-3 text-sm font-semibold" />}>
                     <BookOpenIcon className="size-4 text-muted-foreground" />
                     {t('Documentation')}
-                  </AppLink>
-                </DrawerClose>
+                  </DrawerClose>
 
                 <div className="mx-4 h-px bg-border/70" />
 
-                <DrawerClose asChild>
-                  <AppLink
+                <DrawerClose render={<AppLink
                     intentPrefetch
                     href="/tos"
-                    className="flex items-center gap-3 px-4 py-3 text-sm font-semibold"
-                  >
+                    className="flex items-center gap-3 px-4 py-3 text-sm font-semibold" />}>
                     <FileTextIcon className="size-4 text-muted-foreground" />
                     {t('Terms of Use')}
-                  </AppLink>
-                </DrawerClose>
+                  </DrawerClose>
               </div>
 
-              <DrawerClose asChild>
-                <Button type="button" className="h-11 w-full" onClick={handleAuthAction}>
+              <DrawerClose render={<Button type="button" className="h-11 w-full" onClick={handleAuthAction} />}>
                   {t('Get Started')}
-                </Button>
-              </DrawerClose>
+                </DrawerClose>
             </div>
           </DrawerContent>
         </Drawer>

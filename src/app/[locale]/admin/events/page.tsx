@@ -1,26 +1,37 @@
-import type { SupportedLocale } from '@/i18n/locales'
 import { getExtracted, setRequestLocale } from 'next-intl/server'
 import { Suspense } from 'react'
-import AdminEventsTable from '@/app/[locale]/admin/events/_components/AdminEventsTable'
+
+import type { SupportedLocale } from '@/i18n/locales'
+
+import { DataTableSkeleton } from '@/app/[locale]/admin/_components/DataTableSkeleton'
+import AdminEventsTableFromUrl from '@/app/[locale]/admin/events/_components/AdminEventsTableFromUrl'
 import { TagRepository } from '@/lib/db/queries/tag'
 import { loadAutoDeployNewEventsEnabled } from '@/lib/event-sync-settings'
-import { getConfiguredSportsSourceProviders } from '@/lib/sports-source/providers'
-import { loadSportsSourceProviderSettings } from '@/lib/sports-source/settings'
+
+export const instant = false
+
+async function AdminEventsContent({ locale }: { locale: SupportedLocale }) {
+  const [autoDeployNewEventsEnabled, mainTagsResult] = await Promise.all([
+    loadAutoDeployNewEventsEnabled(),
+    TagRepository.getMainTags(locale),
+  ])
+  const mainCategoryOptions = (mainTagsResult.data ?? []).map((tag) => ({
+    slug: tag.slug,
+    name: tag.name,
+  }))
+
+  return (
+    <AdminEventsTableFromUrl
+      initialAutoDeployNewEventsEnabled={autoDeployNewEventsEnabled}
+      mainCategoryOptions={mainCategoryOptions}
+    />
+  )
+}
 
 export default async function AdminEventsPage({ params }: PageProps<'/[locale]/admin/events'>) {
   const { locale } = await params
   setRequestLocale(locale)
-  const resolvedLocale = locale as SupportedLocale
   const t = await getExtracted()
-  const [autoDeployNewEventsEnabled, mainTagsResult, sportsSourceSettings] = await Promise.all([
-    loadAutoDeployNewEventsEnabled(),
-    TagRepository.getMainTags(resolvedLocale),
-    loadSportsSourceProviderSettings(),
-  ])
-  const mainCategoryOptions = (mainTagsResult.data ?? []).map(tag => ({
-    slug: tag.slug,
-    name: tag.name,
-  }))
 
   return (
     <section className="grid gap-4">
@@ -31,12 +42,8 @@ export default async function AdminEventsPage({ params }: PageProps<'/[locale]/a
         </p>
       </div>
       <div className="min-w-0">
-        <Suspense fallback={<div className="min-h-64 rounded-xl border bg-background" />}>
-          <AdminEventsTable
-            initialAutoDeployNewEventsEnabled={autoDeployNewEventsEnabled}
-            mainCategoryOptions={mainCategoryOptions}
-            configuredSportsSourceProviders={getConfiguredSportsSourceProviders(sportsSourceSettings)}
-          />
+        <Suspense fallback={<DataTableSkeleton columnCount={6} rowCount={8} />}>
+          <AdminEventsContent locale={locale as SupportedLocale} />
         </Suspense>
       </div>
     </section>

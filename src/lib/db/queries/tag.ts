@@ -1,12 +1,19 @@
-import type { NonDefaultLocale, SupportedLocale } from '@/i18n/locales'
-import type { PlatformCategorySidebarItem, PlatformNavigationChild } from '@/lib/platform-navigation'
-import { createHash } from 'node:crypto'
 import { and, asc, count, desc, eq, exists, ilike, inArray, or, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import { cacheTag } from 'next/cache'
+import { createHash } from 'node:crypto'
+
+import type { NonDefaultLocale, SupportedLocale } from '@/i18n/locales'
+import type { PlatformCategorySidebarItem, PlatformNavigationChild } from '@/lib/platform-navigation'
+
 import { DEFAULT_LOCALE, NON_DEFAULT_LOCALES } from '@/i18n/locales'
 import { cacheTags } from '@/lib/cache-tags'
 import { resolveCategorySidebarData } from '@/lib/category-sidebar-config'
+import {
+  CRYPTO_CADENCE_ROUTES,
+  resolveCryptoCadenceRouteSlug,
+  resolveCryptoCadenceSidebarLabel,
+} from '@/lib/crypto-cadence-event'
 import { event_tags, events, tag_translations, tags, v_main_tag_subcategories } from '@/lib/db/schema/events/tables'
 import { runQuery } from '@/lib/db/utils/run-query'
 import { db } from '@/lib/drizzle'
@@ -77,6 +84,7 @@ interface SidebarCountEventCandidate {
   id: string
   slug: string
   status: 'draft' | 'active' | 'resolved' | 'archived'
+  series_recurrence?: string | null
   series_slug?: string | null
   end_date?: string | null
   created_at: string
@@ -95,6 +103,7 @@ function createSidebarCountEventCandidate(row: {
   event_id: string
   event_slug: string
   event_status: SidebarCountEventCandidate['status']
+  series_recurrence: string | null
   series_slug: string | null
   end_date: Date | null
   created_at: Date
@@ -104,6 +113,7 @@ function createSidebarCountEventCandidate(row: {
     id: row.event_id,
     slug: row.event_slug,
     status: row.event_status,
+    series_recurrence: row.series_recurrence,
     series_slug: row.series_slug,
     end_date: row.end_date?.toISOString() ?? null,
     created_at: row.created_at.toISOString(),
@@ -121,9 +131,7 @@ interface TagTranslationRecord {
 }
 
 function normalizeTranslationLocale(locale: string): NonDefaultLocale | null {
-  return NON_DEFAULT_LOCALES.includes(locale as NonDefaultLocale)
-    ? locale as NonDefaultLocale
-    : null
+  return NON_DEFAULT_LOCALES.includes(locale as NonDefaultLocale) ? (locale as NonDefaultLocale) : null
 }
 
 function buildSourceHash(value: string) {
@@ -209,7 +217,10 @@ async function getTranslationsByTagIds(tagIds: number[]): Promise<{
   return { data: buildTagTranslationsByTagId(data), error: null }
 }
 
-async function getLocalizedNamesByTagId(tagIds: number[], locale: SupportedLocale): Promise<{
+async function getLocalizedNamesByTagId(
+  tagIds: number[],
+  locale: SupportedLocale,
+): Promise<{
   data: Map<number, string>
   error: string | null
 }> {
@@ -224,10 +235,7 @@ async function getLocalizedNamesByTagId(tagIds: number[], locale: SupportedLocal
         name: tag_translations.name,
       })
       .from(tag_translations)
-      .where(and(
-        inArray(tag_translations.tag_id, tagIds),
-        eq(tag_translations.locale, locale),
-      ))
+      .where(and(inArray(tag_translations.tag_id, tagIds), eq(tag_translations.locale, locale)))
 
     return { data: result, error: null }
   })
@@ -251,11 +259,7 @@ async function getVisibleActiveEventCountsByTagSlugs(tagSlugs: string[]): Promis
   data: Map<string, number>
   error: string | null
 }> {
-  const normalizedTagSlugs = Array.from(new Set(
-    tagSlugs
-      .map(tagSlug => tagSlug.trim())
-      .filter(Boolean),
-  ))
+  const normalizedTagSlugs = Array.from(new Set(tagSlugs.map((tagSlug) => tagSlug.trim()).filter(Boolean)))
 
   if (normalizedTagSlugs.length === 0) {
     return { data: new Map(), error: null }
@@ -267,6 +271,7 @@ async function getVisibleActiveEventCountsByTagSlugs(tagSlugs: string[]): Promis
         event_id: events.id,
         event_slug: events.slug,
         event_status: events.status,
+        series_recurrence: events.series_recurrence,
         series_slug: events.series_slug,
         end_date: events.end_date,
         created_at: events.created_at,
@@ -276,12 +281,14 @@ async function getVisibleActiveEventCountsByTagSlugs(tagSlugs: string[]): Promis
       .from(events)
       .innerJoin(event_tags, eq(event_tags.event_id, events.id))
       .innerJoin(tags, eq(event_tags.tag_id, tags.id))
-      .where(and(
-        eq(events.status, 'active'),
-        eq(events.is_hidden, false),
-        inArray(tags.slug, normalizedTagSlugs),
-        buildPublicEventListVisibilityCondition(events.id),
-      ))
+      .where(
+        and(
+          eq(events.status, 'active'),
+          eq(events.is_hidden, false),
+          inArray(tags.slug, normalizedTagSlugs),
+          buildPublicEventListVisibilityCondition(events.id),
+        ),
+      )
 
     return { data: result, error: null }
   })
@@ -299,15 +306,19 @@ async function getVisibleActiveEventCountsByTagSlugs(tagSlugs: string[]): Promis
     const bucket = eventsByTagSlug.get(row.tag_slug) ?? new Map<string, SidebarCountEventCandidate>()
 
     if (!bucket.has(row.event_id)) {
-      bucket.set(row.event_id, createSidebarCountEventCandidate({
-        event_id: row.event_id,
-        event_slug: row.event_slug,
-        event_status: row.event_status as SidebarCountEventCandidate['status'],
-        series_slug: row.series_slug,
-        end_date: row.end_date,
-        created_at: row.created_at,
-        updated_at: row.updated_at,
-      }))
+      bucket.set(
+        row.event_id,
+        createSidebarCountEventCandidate({
+          event_id: row.event_id,
+          event_slug: row.event_slug,
+          event_status: row.event_status as SidebarCountEventCandidate['status'],
+          series_recurrence: row.series_recurrence,
+          series_slug: row.series_slug,
+          end_date: row.end_date,
+          created_at: row.created_at,
+          updated_at: row.updated_at,
+        }),
+      )
     }
 
     eventsByTagSlug.set(row.tag_slug, bucket)
@@ -316,9 +327,7 @@ async function getVisibleActiveEventCountsByTagSlugs(tagSlugs: string[]): Promis
   const countsByTagSlug = new Map<string, number>()
 
   for (const tagSlug of normalizedTagSlugs) {
-    const visibleEvents = filterHomeEvents(
-      Array.from(eventsByTagSlug.get(tagSlug)?.values() ?? []),
-    )
+    const visibleEvents = filterHomeEvents(Array.from(eventsByTagSlug.get(tagSlug)?.values() ?? []))
 
     countsByTagSlug.set(tagSlug, visibleEvents.length)
   }
@@ -348,10 +357,7 @@ export const TagRepository = {
           updated_at: tags.updated_at,
         })
         .from(tags)
-        .where(and(
-          eq(tags.is_main_category, true),
-          eq(tags.is_hidden, false),
-        ))
+        .where(and(eq(tags.is_main_category, true), eq(tags.is_hidden, false)))
         .orderBy(asc(tags.display_order), asc(tags.name))
 
       return { data: result, error: null }
@@ -363,7 +369,7 @@ export const TagRepository = {
     }
 
     const mainVisibleTags = mainTagsResult
-    const mainSlugs = mainVisibleTags.map(tag => tag.slug)
+    const mainSlugs = mainVisibleTags.map((tag) => tag.slug)
 
     const { data: subcategoriesResult, error: viewError } = await runQuery(async () => {
       const result = await db
@@ -401,6 +407,7 @@ export const TagRepository = {
           event_id: events.id,
           event_slug: events.slug,
           event_status: events.status,
+          series_recurrence: events.series_recurrence,
           series_slug: events.series_slug,
           end_date: events.end_date,
           created_at: events.created_at,
@@ -411,23 +418,28 @@ export const TagRepository = {
         .from(events)
         .innerJoin(event_tags, eq(event_tags.event_id, events.id))
         .innerJoin(tags, eq(event_tags.tag_id, tags.id))
-        .where(and(
-          eq(events.status, 'active'),
-          eq(events.is_hidden, false),
-          eq(tags.is_hidden, false),
-          buildPublicEventListVisibilityCondition(events.id),
-          exists(
-            db.select()
-              .from(visibleMainEventTags)
-              .innerJoin(visibleMainTags, eq(visibleMainEventTags.tag_id, visibleMainTags.id))
-              .where(and(
-                eq(visibleMainEventTags.event_id, events.id),
-                inArray(visibleMainTags.slug, mainSlugs),
-                eq(visibleMainTags.is_main_category, true),
-                eq(visibleMainTags.is_hidden, false),
-              )),
+        .where(
+          and(
+            eq(events.status, 'active'),
+            eq(events.is_hidden, false),
+            eq(tags.is_hidden, false),
+            buildPublicEventListVisibilityCondition(events.id),
+            exists(
+              db
+                .select()
+                .from(visibleMainEventTags)
+                .innerJoin(visibleMainTags, eq(visibleMainEventTags.tag_id, visibleMainTags.id))
+                .where(
+                  and(
+                    eq(visibleMainEventTags.event_id, events.id),
+                    inArray(visibleMainTags.slug, mainSlugs),
+                    eq(visibleMainTags.is_main_category, true),
+                    eq(visibleMainTags.is_hidden, false),
+                  ),
+                ),
+            ),
           ),
-        ))
+        )
 
       return { data: result, error: null }
     })
@@ -436,11 +448,13 @@ export const TagRepository = {
 
     for (const row of visibleEventTagRows ?? []) {
       const eventId = row.event_id
-      const existing: SidebarCountEventCandidate = sidebarCountEventsById.get(eventId)
-        ?? createSidebarCountEventCandidate({
+      const existing: SidebarCountEventCandidate =
+        sidebarCountEventsById.get(eventId) ??
+        createSidebarCountEventCandidate({
           event_id: row.event_id,
           event_slug: row.event_slug,
           event_status: row.event_status as SidebarCountEventCandidate['status'],
+          series_recurrence: row.series_recurrence,
           series_slug: row.series_slug,
           end_date: row.end_date,
           created_at: row.created_at,
@@ -485,27 +499,31 @@ export const TagRepository = {
       return { data: null, error: translationError, globalChilds: [] }
     }
 
-    const grouped = new Map<string, { name: string, slug: string, count: number }[]>()
-    const globalCounts = new Map<string, { name: string, slug: string, count: number }>()
+    const grouped = new Map<string, { name: string; slug: string; count: number }[]>()
+    const globalCounts = new Map<string, { name: string; slug: string; count: number }>()
 
     const mainSlugSet = new Set(mainSlugs)
 
     for (const event of visibleSidebarCountEvents) {
       const mainTagsForEvent = new Set(
-        event.tags
-          .filter(tag => tag.isMainCategory && mainSlugSet.has(tag.slug))
-          .map(tag => tag.slug),
+        event.tags.filter((tag) => tag.isMainCategory && mainSlugSet.has(tag.slug)).map((tag) => tag.slug),
       )
       const subTagsForEvent = new Set(
         event.tags
-          .filter(tag => !tag.isMainCategory && !mainSlugSet.has(tag.slug) && !EXCLUDED_SUB_SLUGS.has(tag.slug))
-          .map(tag => tag.slug),
+          .filter((tag) => !tag.isMainCategory && !mainSlugSet.has(tag.slug) && !EXCLUDED_SUB_SLUGS.has(tag.slug))
+          .map((tag) => tag.slug),
       )
 
       for (const mainSlug of mainTagsForEvent) {
         mainCategoryEventCounts.set(mainSlug, (mainCategoryEventCounts.get(mainSlug) ?? 0) + 1)
 
-        for (const subSlug of subTagsForEvent) {
+        const resolvedSubTagsForEvent = new Set(subTagsForEvent)
+        const cadenceRouteSlug = resolveCryptoCadenceRouteSlug(event)
+        if (mainSlug === 'crypto' && cadenceRouteSlug) {
+          resolvedSubTagsForEvent.add(cadenceRouteSlug)
+        }
+
+        for (const subSlug of resolvedSubTagsForEvent) {
           const key = `${mainSlug}::${subSlug}`
           subcategoryEventCounts.set(key, (subcategoryEventCounts.get(key) ?? 0) + 1)
         }
@@ -514,18 +532,18 @@ export const TagRepository = {
 
     for (const subtag of subcategoriesResult) {
       if (
-        !subtag.sub_tag_slug
-        || mainSlugSet.has(subtag.sub_tag_slug)
-        || EXCLUDED_SUB_SLUGS.has(subtag.sub_tag_slug)
-        || subtag.sub_tag_is_hidden
-        || subtag.main_tag_is_hidden
+        !subtag.sub_tag_slug ||
+        mainSlugSet.has(subtag.sub_tag_slug) ||
+        EXCLUDED_SUB_SLUGS.has(subtag.sub_tag_slug) ||
+        subtag.sub_tag_is_hidden ||
+        subtag.main_tag_is_hidden
       ) {
         continue
       }
 
       const localizedSubTagName = localizedNamesByTagId.get(subtag.sub_tag_id ?? -1) ?? subtag.sub_tag_name!
       const current = grouped.get(subtag.main_tag_slug!) ?? []
-      const existingIndex = current.findIndex(item => item.slug === subtag.sub_tag_slug)
+      const existingIndex = current.findIndex((item) => item.slug === subtag.sub_tag_slug)
       const nextCount = subcategoryEventCounts.get(`${subtag.main_tag_slug!}::${subtag.sub_tag_slug}`) ?? 0
 
       if (nextCount <= 0) {
@@ -538,8 +556,7 @@ export const TagRepository = {
           slug: subtag.sub_tag_slug,
           count: Math.max(current[existingIndex].count, nextCount),
         }
-      }
-      else {
+      } else {
         current.push({
           name: localizedSubTagName,
           slug: subtag.sub_tag_slug,
@@ -567,6 +584,18 @@ export const TagRepository = {
           return b.count - a.count
         })
         .map(({ name, slug, count }) => ({ name, slug, count }))
+      if (tag.slug === 'crypto') {
+        for (const cadenceRoute of CRYPTO_CADENCE_ROUTES) {
+          const cadenceCount = subcategoryEventCounts.get(`${tag.slug}::${cadenceRoute.routeSlug}`) ?? 0
+          if (cadenceCount > 0 && !sortedChilds.some((child) => child.slug === cadenceRoute.routeSlug)) {
+            sortedChilds.push({
+              name: resolveCryptoCadenceSidebarLabel(cadenceRoute, locale),
+              slug: cadenceRoute.routeSlug,
+              count: cadenceCount,
+            })
+          }
+        }
+      }
       const { childs: resolvedChilds, sidebarItems } = resolveCategorySidebarData({
         categorySlug: tag.slug,
         categoryCount: mainCategoryEventCounts.get(tag.slug) ?? 0,
@@ -582,7 +611,7 @@ export const TagRepository = {
     })
 
     const globalChilds = Array.from(globalCounts.values())
-      .filter(child => child.count > 0)
+      .filter((child) => child.count > 0)
       .sort((a, b) => {
         if (b.count === a.count) {
           return a.name.localeCompare(b.name)
@@ -623,12 +652,10 @@ export const TagRepository = {
     const orderField = validSortFields.includes(sortBy) ? sortBy : 'display_order'
     const ascending = (sortOrder ?? 'asc') === 'asc'
 
-    const searchCondition = search && search.trim()
-      ? or(
-          ilike(tags.name, `%${search.trim()}%`),
-          ilike(tags.slug, `%${search.trim()}%`),
-        )
-      : undefined
+    const searchCondition =
+      search && search.trim()
+        ? or(ilike(tags.name, `%${search.trim()}%`), ilike(tags.slug, `%${search.trim()}%`))
+        : undefined
     const mainOnlyCondition = mainOnly ? eq(tags.is_main_category, true) : undefined
     const whereCondition = and(searchCondition, mainOnlyCondition)
 
@@ -730,9 +757,8 @@ export const TagRepository = {
       }
 
       const allRows = data || []
-      const { data: allVisibleCountsByTagSlug, error: visibleCountsError } = await getVisibleActiveEventCountsByTagSlugs(
-        allRows.map(row => row.slug),
-      )
+      const { data: allVisibleCountsByTagSlug, error: visibleCountsError } =
+        await getVisibleActiveEventCountsByTagSlugs(allRows.map((row) => row.slug))
 
       if (visibleCountsError) {
         return {
@@ -755,8 +781,7 @@ export const TagRepository = {
           return left.name.localeCompare(right.name)
         })
         .slice(safeOffset, safeOffset + cappedLimit)
-    }
-    else {
+    } else {
       const { data, error } = await runQuery(async () => {
         const finalQuery = whereCondition
           ? db
@@ -823,9 +848,8 @@ export const TagRepository = {
     }
 
     if (orderField !== 'active_events_count') {
-      const { data: pageVisibleCountsByTagSlug, error: visibleCountsError } = await getVisibleActiveEventCountsByTagSlugs(
-        rawRows.map(row => row.slug),
-      )
+      const { data: pageVisibleCountsByTagSlug, error: visibleCountsError } =
+        await getVisibleActiveEventCountsByTagSlugs(rawRows.map((row) => row.slug))
 
       if (visibleCountsError) {
         return {
@@ -861,15 +885,14 @@ export const TagRepository = {
     }
   },
 
-  async updateTagById(id: number, payload: any): Promise<{
+  async updateTagById(
+    id: number,
+    payload: any,
+  ): Promise<{
     data: AdminTagRow | null
     error: string | null
   }> {
-    const updateQuery = db
-      .update(tags)
-      .set(payload)
-      .where(eq(tags.id, id))
-      .returning()
+    const updateQuery = db.update(tags).set(payload).where(eq(tags.id, id)).returning()
 
     const { data: updateResult, error } = await runQuery(async () => {
       const result = await updateQuery
@@ -912,7 +935,9 @@ export const TagRepository = {
       return { data: null, error: translationError }
     }
 
-    const { data: visibleCountsByTagSlug, error: visibleCountsError } = await getVisibleActiveEventCountsByTagSlugs([selectResult[0].slug])
+    const { data: visibleCountsByTagSlug, error: visibleCountsError } = await getVisibleActiveEventCountsByTagSlugs([
+      selectResult[0].slug,
+    ])
 
     if (visibleCountsError) {
       return { data: null, error: visibleCountsError }
@@ -969,7 +994,7 @@ export const TagRepository = {
     }
 
     return {
-      data: (data ?? []).map(row => ({
+      data: (data ?? []).map((row) => ({
         id: row.id,
         name: row.name,
         slug: row.slug,
@@ -986,9 +1011,11 @@ export const TagRepository = {
       return { error: null }
     }
 
-    const orderCases = categoryIds.map((categoryId, index) => sql`
+    const orderCases = categoryIds.map(
+      (categoryId, index) => sql`
       WHEN ${tags.id} = ${categoryId} THEN ${index + 1}
-    `)
+    `,
+    )
     const displayOrderSql = sql<number>`
       CASE
         ${sql.join(orderCases, sql` `)}
@@ -1002,10 +1029,7 @@ export const TagRepository = {
         .set({
           display_order: displayOrderSql,
         })
-        .where(and(
-          eq(tags.is_main_category, true),
-          inArray(tags.id, categoryIds),
-        ))
+        .where(and(eq(tags.is_main_category, true), inArray(tags.id, categoryIds)))
         .returning({ id: tags.id })
 
       return { data: result, error: null }
@@ -1024,7 +1048,10 @@ export const TagRepository = {
     return { error: null }
   },
 
-  async updateTagTranslationsById(tagId: number, translations: TagTranslationsMap): Promise<{
+  async updateTagTranslationsById(
+    tagId: number,
+    translations: TagTranslationsMap,
+  ): Promise<{
     data: TagTranslationsMap | null
     error: string | null
   }> {
@@ -1034,16 +1061,10 @@ export const TagRepository = {
       return { locale, value }
     })
 
-    const localesToDelete = normalizedEntries
-      .filter(entry => entry.value.length === 0)
-      .map(entry => entry.locale)
+    const localesToDelete = normalizedEntries.filter((entry) => entry.value.length === 0).map((entry) => entry.locale)
 
     const { data: tagRecord, error: tagCheckError } = await runQuery(async () => {
-      const result = await db
-        .select({ id: tags.id, name: tags.name })
-        .from(tags)
-        .where(eq(tags.id, tagId))
-        .limit(1)
+      const result = await db.select({ id: tags.id, name: tags.name }).from(tags).where(eq(tags.id, tagId)).limit(1)
 
       return { data: result[0] ?? null, error: null }
     })
@@ -1054,8 +1075,8 @@ export const TagRepository = {
 
     const sourceHash = buildSourceHash(tagRecord.name)
     const rowsToUpsert = normalizedEntries
-      .filter(entry => entry.value.length > 0)
-      .map(entry => ({
+      .filter((entry) => entry.value.length > 0)
+      .map((entry) => ({
         tag_id: tagId,
         locale: entry.locale,
         name: entry.value,
@@ -1068,10 +1089,7 @@ export const TagRepository = {
         if (localesToDelete.length > 0) {
           await tx
             .delete(tag_translations)
-            .where(and(
-              eq(tag_translations.tag_id, tagId),
-              inArray(tag_translations.locale, localesToDelete),
-            ))
+            .where(and(eq(tag_translations.tag_id, tagId), inArray(tag_translations.locale, localesToDelete)))
         }
 
         if (rowsToUpsert.length > 0) {

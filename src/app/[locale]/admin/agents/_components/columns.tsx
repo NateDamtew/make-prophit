@@ -3,7 +3,7 @@
 import type { ColumnDef } from '@tanstack/react-table'
 import type { AdminAgentRow, useAgentsTable } from '@/app/[locale]/admin/agents/_hooks/useAgents'
 import { MoreHorizontalIcon, PauseIcon, PlayIcon, ShieldXIcon } from 'lucide-react'
-import { toast } from 'sonner'
+import { toast } from '@/components/ui/toast'
 import { formatRelativeTime } from '@/components/admin-ui/format'
 import { StatusBadge } from '@/components/admin-ui/StatusBadge'
 import { Button } from '@/components/ui/button'
@@ -88,11 +88,9 @@ export function useAgentsColumns(setStatus: SetStatus): ColumnDef<AdminAgentRow>
         return (
           <div className="flex justify-end">
             <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="size-8" aria-label="Agent actions">
+              <DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="size-8" aria-label="Agent actions" />}>
                   <MoreHorizontalIcon className="size-4" />
-                </Button>
-              </DropdownMenuTrigger>
+                </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-40">
                 {agent.status !== 'active' && (
                   <DropdownMenuItem onClick={() => apply(agent.id, 'active', 'activated')}>

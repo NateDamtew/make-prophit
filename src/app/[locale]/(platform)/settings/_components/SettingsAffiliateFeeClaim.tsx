@@ -3,10 +3,12 @@
 import { ArrowDownToLineIcon, Loader2Icon } from 'lucide-react'
 import { useExtracted } from 'next-intl'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { toast } from 'sonner'
 import { usePublicClient, useSignTypedData } from 'wagmi'
+
 import { useTradingOnboarding } from '@/app/[locale]/(platform)/_providers/TradingOnboardingProvider'
 import { Button } from '@/components/ui/button'
+import { Spinner } from '@/components/ui/spinner'
+import { toast } from '@/components/ui/toast'
 import { useAppKit } from '@/hooks/useAppKit'
 import { useAppKitAccount } from '@/hooks/useAppKitAccount'
 import { useSignaturePromptRunner } from '@/hooks/useSignaturePromptRunner'
@@ -52,9 +54,10 @@ export default function SettingsAffiliateFeeClaim() {
   const [isClaiming, setIsClaiming] = useState(false)
   const [claimableByExchange, setClaimableByExchange] = useState<Partial<Record<`0x${string}`, bigint>>>({})
   const [claimableReadFailures, setClaimableReadFailures] = useState<Set<`0x${string}`>>(() => new Set())
-  const depositWalletAddress = user?.deposit_wallet_status === 'deployed' && user.deposit_wallet_address
-    ? user.deposit_wallet_address as `0x${string}`
-    : null
+  const depositWalletAddress =
+    user?.deposit_wallet_status === 'deployed' && user.deposit_wallet_address
+      ? (user.deposit_wallet_address as `0x${string}`)
+      : null
   const claimAddress = depositWalletAddress
 
   const refreshClaimable = useCallback(async () => {
@@ -77,8 +80,7 @@ export default function SettingsAffiliateFeeClaim() {
             })
 
             return { exchange, claimable, didFail: false } as const
-          }
-          catch (error) {
+          } catch (error) {
             console.error('Failed to read claimable fees for exchange.', { exchange, error })
             return { exchange, didFail: true } as const
           }
@@ -99,12 +101,10 @@ export default function SettingsAffiliateFeeClaim() {
 
       setClaimableByExchange(nextClaimable)
       setClaimableReadFailures(nextReadFailures)
-    }
-    catch (error) {
+    } catch (error) {
       console.error('Failed to read claimable fees.', error)
       setClaimableReadFailures(new Set())
-    }
-    finally {
+    } finally {
       setIsLoading(false)
     }
   }, [claimAddress, publicClient])
@@ -133,11 +133,9 @@ export default function SettingsAffiliateFeeClaim() {
     if (response.error) {
       if (isTradingAuthRequiredError(response.error)) {
         openTradeRequirements({ forceTradingAuth: true })
-      }
-      else if (response.code === 'deadline_expired') {
+      } else if (response.code === 'deadline_expired') {
         toast.error(t('Your signature expired. Click Sign again to create a fresh request.'))
-      }
-      else {
+      } else {
         toast.error(response.error ?? DEFAULT_ERROR_MESSAGE)
       }
       return false
@@ -183,12 +181,10 @@ export default function SettingsAffiliateFeeClaim() {
       if (submitted) {
         toast.success(t('Fee claim submitted successfully.'))
       }
-    }
-    catch (error) {
+    } catch (error) {
       console.error('Failed to claim fees.', error)
       toast.error(t('Failed to claim fees. Please try again.'))
-    }
-    finally {
+    } finally {
       await refreshClaimable()
       setIsClaiming(false)
     }
@@ -205,29 +201,21 @@ export default function SettingsAffiliateFeeClaim() {
             })}
           </p>
         </div>
-        <Button
-          type="button"
-          onClick={() => void handleClaim()}
-          disabled={isLoading || isClaiming}
-        >
-          {isClaiming || isLoading
-            ? (
-                <Loader2Icon className="size-4 animate-spin" />
-              )
-            : isConnected && depositWalletAddress
-              ? (
-                  <ArrowDownToLineIcon className="size-4" />
-                )
-              : null}
+        <Button type="button" onClick={() => void handleClaim()} disabled={isLoading || isClaiming}>
+          {isClaiming || isLoading ? (
+            <Spinner className="size-4" />
+          ) : isConnected && depositWalletAddress ? (
+            <ArrowDownToLineIcon className="size-4" />
+          ) : null}
           {!isConnected
             ? t('Connect wallet')
             : !depositWalletAddress
-                ? t('Enable Trading')
-                : isClaiming
-                  ? t('Claiming...')
-                  : isLoading
-                    ? t('Refreshing...')
-                    : t('Claim')}
+              ? t('Enable Trading')
+              : isClaiming
+                ? t('Claiming...')
+                : isLoading
+                  ? t('Refreshing...')
+                  : t('Claim')}
         </Button>
       </div>
     </div>

@@ -1,6 +1,7 @@
 'use client'
 
 import type { ReactElement } from 'react'
+
 import type { DataPoint, SeriesConfig } from '@/types/PredictionChartTypes'
 
 interface PredictionChartMarkersProps {
@@ -10,6 +11,7 @@ interface PredictionChartMarkersProps {
   mutedPoints: DataPoint[]
   shouldSplitByCursor: boolean
   surgeActive: boolean
+  preserveMarkersDuringSurge: boolean
   markerOuterRadius: number
   markerInnerRadius: number
   markerPulseStyle: 'filled' | 'ring'
@@ -25,6 +27,7 @@ function PredictionChartMarkers({
   mutedPoints,
   shouldSplitByCursor,
   surgeActive,
+  preserveMarkersDuringSurge,
   markerOuterRadius,
   markerInnerRadius,
   markerPulseStyle,
@@ -39,8 +42,9 @@ function PredictionChartMarkers({
       {series.map((seriesItem) => {
         const isSeriesRevealing = revealSeriesSet.has(seriesItem.key)
         const seriesMutedPoints = isSeriesRevealing ? mutedPoints : []
-        const shouldShowMarker = (seriesMutedPoints.length === 0 || shouldSplitByCursor)
-          && !(surgeActive && isSeriesRevealing)
+        const shouldShowMarker =
+          (seriesMutedPoints.length === 0 || shouldSplitByCursor) &&
+          !(surgeActive && isSeriesRevealing && !preserveMarkersDuringSurge)
 
         if (!shouldShowMarker) {
           return null
@@ -55,36 +59,34 @@ function PredictionChartMarkers({
 
         return (
           <g key={`${seriesItem.key}-marker`} transform={`translate(${cx}, ${cy})`}>
-            {markerPulseStyle === 'ring'
-              ? (
-                  <circle
-                    r={markerOuterRadius}
-                    fill="none"
-                    stroke={seriesItem.color}
-                    strokeWidth={1.6}
-                    strokeOpacity={0.85}
-                    vectorEffect="non-scaling-stroke"
-                    pointerEvents="none"
-                    style={{
-                      transformOrigin: 'center',
-                      transformBox: 'fill-box',
-                      animation: 'prediction-chart-radar 2.6s ease-out infinite',
-                    }}
-                  />
-                )
-              : (
-                  <circle
-                    r={markerOuterRadius}
-                    fill={seriesItem.color}
-                    fillOpacity={0.4}
-                    pointerEvents="none"
-                    style={{
-                      transformOrigin: 'center',
-                      transformBox: 'fill-box',
-                      animation: 'prediction-chart-radar 2.6s ease-out infinite',
-                    }}
-                  />
-                )}
+            {markerPulseStyle === 'ring' ? (
+              <circle
+                r={markerOuterRadius}
+                fill="none"
+                stroke={seriesItem.color}
+                strokeWidth={1.6}
+                strokeOpacity={0.85}
+                vectorEffect="non-scaling-stroke"
+                pointerEvents="none"
+                style={{
+                  transformOrigin: 'center',
+                  transformBox: 'fill-box',
+                  animation: 'prediction-chart-radar 2.6s ease-out infinite',
+                }}
+              />
+            ) : (
+              <circle
+                r={markerOuterRadius}
+                fill={seriesItem.color}
+                fillOpacity={0.4}
+                pointerEvents="none"
+                style={{
+                  transformOrigin: 'center',
+                  transformBox: 'fill-box',
+                  animation: 'prediction-chart-radar 2.6s ease-out infinite',
+                }}
+              />
+            )}
             <circle
               r={markerInnerRadius}
               fill={seriesItem.color}

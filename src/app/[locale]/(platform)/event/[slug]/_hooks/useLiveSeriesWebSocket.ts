@@ -1,7 +1,10 @@
-import type { DataPoint } from '@/types/PredictionChartTypes'
 import { useEffect, useState } from 'react'
+
+import type { DataPoint } from '@/types/PredictionChartTypes'
+
 import { usePublicRuntimeConfig } from '@/hooks/usePublicRuntimeConfig'
 import { closeWebSocketWhenReady, createWebSocketReconnectController } from '@/lib/websocket-reconnect'
+
 import {
   appendLivePriceTransition,
   extractLivePriceUpdates,
@@ -21,7 +24,6 @@ interface UseLiveSeriesWebSocketOptions {
   eventEndTimestamp: number | null
   subscriptionSymbol: string
   isLiveView: boolean
-  setBaselinePrice: React.Dispatch<React.SetStateAction<number | null>>
 }
 
 export function useLiveSeriesWebSocket({
@@ -30,236 +32,228 @@ export function useLiveSeriesWebSocket({
   eventEndTimestamp,
   subscriptionSymbol,
   isLiveView,
-  setBaselinePrice,
 }: UseLiveSeriesWebSocketOptions) {
   const { wsLiveDataUrl } = usePublicRuntimeConfig()
   const wsUrl = wsLiveDataUrl
   const [data, setData] = useState<DataPoint[]>([])
-  const [status, setStatus] = useState<'connecting' | 'live' | 'offline'>(
-    () => (wsUrl ? 'connecting' : 'offline'),
-  )
+  const [status, setStatus] = useState<'connecting' | 'live' | 'offline'>(() => (wsUrl ? 'connecting' : 'offline'))
 
-  useEffect(function connectLiveSeriesWebSocket() {
-    if (!isLiveView) {
-      return
-    }
-
-    if (!wsUrl) {
-      return
-    }
-    // Intentionally keep WS active regardless of event close to preserve always-live behavior.
-    const resolvedWsUrl = wsUrl
-
-    let isActive = true
-    let ws: WebSocket | null = null
-    let previousPriceMessageTimestamp: number | null = null
-
-    function buildSubscriptionPayload(action: 'subscribe' | 'unsubscribe') {
-      const filters = JSON.stringify({
-        symbol: subscriptionSymbol,
-      })
-
-      return JSON.stringify({
-        action,
-        subscriptions: [
-          {
-            topic,
-            type: eventType,
-            filters,
-          },
-        ],
-      })
-    }
-
-    function handleOpen() {
-      if (!ws) {
-        return
-      }
-      setStatus('connecting')
-      ws.send(buildSubscriptionPayload('subscribe'))
-    }
-
-    function handleMessage(eventMessage: MessageEvent<string>) {
-      if (!isActive) {
+  useEffect(
+    function connectLiveSeriesWebSocket() {
+      if (!isLiveView) {
         return
       }
 
-      let payload: any
-      try {
-        payload = JSON.parse(eventMessage.data)
-      }
-      catch {
+      if (!wsUrl) {
         return
       }
+      // Intentionally keep WS active regardless of event close to preserve always-live behavior.
+      const resolvedWsUrl = wsUrl
 
-      const arrivalTimestamp = Date.now()
-      const updates = extractLivePriceUpdates(payload, topic, subscriptionSymbol, arrivalTimestamp)
-      const normalizedUpdates = updates
-        .map((update) => {
-          const normalizedPrice = normalizeLiveChartPrice(update.price, topic)
-          if (normalizedPrice == null) {
-            return null
-          }
+      let isActive = true
+      let ws: WebSocket | null = null
+      let previousPriceMessageTimestamp: number | null = null
 
-          return {
-            ...update,
-            price: normalizedPrice,
-          }
+      function buildSubscriptionPayload(action: 'subscribe' | 'unsubscribe') {
+        const filters = JSON.stringify({
+          symbol: subscriptionSymbol,
         })
-        .filter((update): update is { price: number, timestamp: number, symbol: string | null } => update !== null)
-        .filter(update => eventEndTimestamp == null || update.timestamp <= eventEndTimestamp)
 
-      const messageIsSnapshot = isSnapshotMessage(payload)
-      const wsUpdatesForRender = messageIsSnapshot
-        ? normalizedUpdates
-        : normalizedUpdates.slice(-1)
-
-      if (!wsUpdatesForRender.length) {
-        return
+        return JSON.stringify({
+          action,
+          subscriptions: [
+            {
+              topic,
+              type: eventType,
+              filters,
+            },
+          ],
+        })
       }
 
-      const cadenceTransitionDurationMs = resolveLivePriceTransitionDuration(
-        previousPriceMessageTimestamp,
-        arrivalTimestamp,
-      )
-      const transitionStartTimestamp = eventEndTimestamp == null
-        ? arrivalTimestamp
-        : Math.min(arrivalTimestamp, eventEndTimestamp)
-      const transitionDurationMs = eventEndTimestamp == null
-        ? cadenceTransitionDurationMs
-        : Math.min(
-            cadenceTransitionDurationMs,
-            Math.max(0, eventEndTimestamp - transitionStartTimestamp),
-          )
-      previousPriceMessageTimestamp = arrivalTimestamp
-
-      setStatus('live')
-      const latest = wsUpdatesForRender.at(-1)
-      if (latest) {
-        writePersistedLivePrice(topic, subscriptionSymbol, latest.price, latest.timestamp)
+      function handleOpen() {
+        if (!ws) {
+          return
+        }
+        setStatus('connecting')
+        ws.send(buildSubscriptionPayload('subscribe'))
       }
 
-      setData((prev) => {
-        const cutoff = arrivalTimestamp - LIVE_DATA_RETENTION_MS
-
-        if (messageIsSnapshot) {
-          let lastSnapshotTimestamp: number | null = null
-          const snapshotPoints: DataPoint[] = []
-
-          for (const update of wsUpdatesForRender) {
-            let pointTimestamp = update.timestamp
-            if (!Number.isFinite(pointTimestamp)) {
-              continue
-            }
-
-            pointTimestamp = Math.max(cutoff + 1, Math.min(pointTimestamp, arrivalTimestamp))
-            if (lastSnapshotTimestamp !== null && pointTimestamp <= lastSnapshotTimestamp) {
-              pointTimestamp = lastSnapshotTimestamp + 1
-            }
-
-            snapshotPoints.push({
-              date: new Date(pointTimestamp),
-              [SERIES_KEY]: update.price,
-            })
-            lastSnapshotTimestamp = pointTimestamp
-          }
-
-          if (snapshotPoints.length > 1 || (snapshotPoints.length === 1 && prev.length === 0)) {
-            return snapshotPoints.slice(-MAX_POINTS)
-          }
+      function handleMessage(eventMessage: MessageEvent<string>) {
+        if (!isActive) {
+          return
         }
 
-        const latestUpdate = wsUpdatesForRender.at(-1)
-        if (!latestUpdate) {
-          return prev
+        let payload: any
+        try {
+          payload = JSON.parse(eventMessage.data)
+        } catch {
+          return
         }
 
-        const retainedPoints = keepWithinLiveWindow(prev, cutoff)
+        const arrivalTimestamp = Date.now()
+        const updates = extractLivePriceUpdates(payload, topic, subscriptionSymbol, arrivalTimestamp)
+        const normalizedUpdates = updates
+          .map((update) => {
+            const normalizedPrice = normalizeLiveChartPrice(update.price, topic)
+            if (normalizedPrice == null) {
+              return null
+            }
 
-        // Treat live values as targets. Future samples are revealed by the existing
-        // 30 FPS chart clock, and a new target retakes the current visual price.
-        return appendLivePriceTransition(
-          retainedPoints,
-          latestUpdate.price,
-          transitionStartTimestamp,
-          transitionDurationMs,
+            return {
+              ...update,
+              price: normalizedPrice,
+            }
+          })
+          .filter((update): update is { price: number; timestamp: number; symbol: string | null } => update !== null)
+          .filter((update) => eventEndTimestamp == null || update.timestamp <= eventEndTimestamp)
+
+        const messageIsSnapshot = isSnapshotMessage(payload)
+        const wsUpdatesForRender = messageIsSnapshot ? normalizedUpdates : normalizedUpdates.slice(-1)
+
+        if (!wsUpdatesForRender.length) {
+          return
+        }
+
+        const cadenceTransitionDurationMs = resolveLivePriceTransitionDuration(
+          previousPriceMessageTimestamp,
+          arrivalTimestamp,
         )
-      })
+        const transitionStartTimestamp =
+          eventEndTimestamp == null ? arrivalTimestamp : Math.min(arrivalTimestamp, eventEndTimestamp)
+        const transitionDurationMs =
+          eventEndTimestamp == null
+            ? cadenceTransitionDurationMs
+            : Math.min(cadenceTransitionDurationMs, Math.max(0, eventEndTimestamp - transitionStartTimestamp))
+        previousPriceMessageTimestamp = arrivalTimestamp
 
-      setBaselinePrice(current => current ?? wsUpdatesForRender[0]?.price ?? null)
-    }
+        setStatus('live')
+        const latest = wsUpdatesForRender.at(-1)
+        if (latest) {
+          writePersistedLivePrice(topic, subscriptionSymbol, latest.price, latest.timestamp)
+        }
 
-    function handleError() {
-      if (isActive) {
-        setStatus('offline')
-      }
-    }
+        setData((prev) => {
+          const cutoff = arrivalTimestamp - LIVE_DATA_RETENTION_MS
 
-    let reconnectController: ReturnType<typeof createWebSocketReconnectController> | null = null
+          if (messageIsSnapshot) {
+            let lastSnapshotTimestamp: number | null = null
+            const snapshotPoints: DataPoint[] = []
 
-    function clearReconnect() {
-      reconnectController?.clearReconnect()
-    }
+            for (const update of wsUpdatesForRender) {
+              let pointTimestamp = update.timestamp
+              if (!Number.isFinite(pointTimestamp)) {
+                continue
+              }
 
-    function handleVisibilityChange() {
-      reconnectController?.handleVisibilityChange()
-    }
+              pointTimestamp = Math.max(cutoff + 1, Math.min(pointTimestamp, arrivalTimestamp))
+              if (lastSnapshotTimestamp !== null && pointTimestamp <= lastSnapshotTimestamp) {
+                pointTimestamp = lastSnapshotTimestamp + 1
+              }
 
-    function scheduleReconnect() {
-      reconnectController?.scheduleReconnect()
-    }
+              snapshotPoints.push({
+                date: new Date(pointTimestamp),
+                [SERIES_KEY]: update.price,
+              })
+              lastSnapshotTimestamp = pointTimestamp
+            }
 
-    function handleClose() {
-      if (!isActive) {
-        return
-      }
-      setStatus('offline')
-      scheduleReconnect()
-    }
+            if (snapshotPoints.length > 1 || (snapshotPoints.length === 1 && prev.length === 0)) {
+              return snapshotPoints.slice(-MAX_POINTS)
+            }
+          }
 
-    function connect() {
-      if (!isActive || ws || document.hidden) {
-        return
-      }
-      const socket = new WebSocket(resolvedWsUrl)
-      socket.onopen = handleOpen
-      socket.onmessage = handleMessage
-      socket.onerror = handleError
-      socket.onclose = handleClose
-      ws = socket
-    }
+          const latestUpdate = wsUpdatesForRender.at(-1)
+          if (!latestUpdate) {
+            return prev
+          }
 
-    reconnectController = createWebSocketReconnectController({
-      connect,
-      getWebSocket: () => ws,
-      isActive: () => isActive,
-      reconnectOnVisible: true,
-      resetWebSocket: () => {
-        ws = null
-      },
-    })
+          const retainedPoints = keepWithinLiveWindow(prev, cutoff)
 
-    connect()
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-
-    return function cleanupLiveSeriesWebSocket() {
-      isActive = false
-      setStatus('offline')
-      clearReconnect()
-      document.removeEventListener('visibilitychange', handleVisibilityChange)
-      const socket = ws
-      if (socket) {
-        socket.onopen = null
-        socket.onmessage = null
-        socket.onerror = null
-        socket.onclose = null
-        closeWebSocketWhenReady(socket, (currentSocket) => {
-          currentSocket.send(buildSubscriptionPayload('unsubscribe'))
-          currentSocket.close()
+          // Treat live values as targets. Future samples are revealed by the existing
+          // 30 FPS chart clock, and a new target retakes the current visual price.
+          return appendLivePriceTransition(
+            retainedPoints,
+            latestUpdate.price,
+            transitionStartTimestamp,
+            transitionDurationMs,
+          )
         })
       }
-    }
-  }, [eventEndTimestamp, eventType, topic, isLiveView, wsUrl, subscriptionSymbol, setBaselinePrice])
+
+      function handleError() {
+        if (isActive) {
+          setStatus('offline')
+        }
+      }
+
+      let reconnectController: ReturnType<typeof createWebSocketReconnectController> | null = null
+
+      function clearReconnect() {
+        reconnectController?.clearReconnect()
+      }
+
+      function handleVisibilityChange() {
+        reconnectController?.handleVisibilityChange()
+      }
+
+      function scheduleReconnect() {
+        reconnectController?.scheduleReconnect()
+      }
+
+      function handleClose() {
+        if (!isActive) {
+          return
+        }
+        setStatus('offline')
+        scheduleReconnect()
+      }
+
+      function connect() {
+        if (!isActive || ws || document.hidden) {
+          return
+        }
+        const socket = new WebSocket(resolvedWsUrl)
+        socket.onopen = handleOpen
+        socket.onmessage = handleMessage
+        socket.onerror = handleError
+        socket.onclose = handleClose
+        ws = socket
+      }
+
+      reconnectController = createWebSocketReconnectController({
+        connect,
+        getWebSocket: () => ws,
+        isActive: () => isActive,
+        reconnectOnVisible: true,
+        resetWebSocket: () => {
+          ws = null
+        },
+      })
+
+      connect()
+      document.addEventListener('visibilitychange', handleVisibilityChange)
+
+      return function cleanupLiveSeriesWebSocket() {
+        isActive = false
+        setStatus('offline')
+        clearReconnect()
+        document.removeEventListener('visibilitychange', handleVisibilityChange)
+        const socket = ws
+        if (socket) {
+          socket.onopen = null
+          socket.onmessage = null
+          socket.onerror = null
+          socket.onclose = null
+          closeWebSocketWhenReady(socket, (currentSocket) => {
+            currentSocket.send(buildSubscriptionPayload('unsubscribe'))
+            currentSocket.close()
+          })
+        }
+      }
+    },
+    [eventEndTimestamp, eventType, topic, isLiveView, wsUrl, subscriptionSymbol],
+  )
 
   return { data, status }
 }

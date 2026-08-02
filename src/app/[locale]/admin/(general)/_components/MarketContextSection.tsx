@@ -1,15 +1,19 @@
 'use client'
 
-import type { MarketContextVariable } from '@/lib/ai/market-context-template'
 import { PlusIcon, TextSelectIcon } from 'lucide-react'
 import { useExtracted } from 'next-intl'
 import { useEffect, useRef, useState } from 'react'
+
+import type { MarketContextVariable } from '@/lib/ai/market-context-template'
+
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { Link } from '@/i18n/navigation'
 import { cn } from '@/lib/utils'
+
 import SettingsAccordionSection from './SettingsAccordionSection'
 
 interface MarketContextSectionProps {
@@ -132,12 +136,12 @@ export default function MarketContextSection({
       value="market-context"
       isOpen={openSections.includes('market-context')}
       onToggle={onToggleSection}
-      header={(
+      header={
         <h3 className="flex items-center gap-2 text-base font-medium">
           <TextSelectIcon className="size-4 text-muted-foreground" />
           {t('Market Context')}
         </h3>
-      )}
+      }
     >
       <div className="grid gap-4">
         <section className="flex items-center justify-between gap-3 rounded-lg border p-4 sm:p-6">
@@ -146,9 +150,10 @@ export default function MarketContextSection({
               {t('Enable market context')}
             </Label>
             <p className="text-xs text-muted-foreground">
-              {t('You need to enable OpenRouter, the credentials and model selection are in')}
-              {' '}
-              {t('General Settings')}
+              {t('You need to enable OpenRouter, the credentials and model selection are in')}{' '}
+              <Link href="/admin/integrations" className="underline underline-offset-4">
+                {t('Integrations')}
+              </Link>
               .
             </p>
           </div>
@@ -170,12 +175,14 @@ export default function MarketContextSection({
               ref={textareaRef}
               rows={16}
               value={prompt}
-              onChange={event => onPromptChange(event.target.value)}
+              onChange={(event) => onPromptChange(event.target.value)}
               disabled={isPending}
               className={cn({ 'bg-primary/5 ring-2 ring-primary/35 transition-colors': isPromptHighlighted })}
             />
             <p className="text-sm text-muted-foreground">
-              {t('Use the variables below to blend live market data into the instructions. They will be replaced before the request is sent.')}
+              {t(
+                'Use the variables below to blend live market data into the instructions. They will be replaced before the request is sent.',
+              )}
             </p>
           </div>
 
@@ -186,16 +193,12 @@ export default function MarketContextSection({
                 <table className="w-full table-fixed border-collapse text-sm">
                   <thead>
                     <tr className="border-b bg-muted/20 text-foreground">
-                      <th className="w-80 px-4 py-2 text-left font-semibold">
-                        {t('Variables')}
-                      </th>
-                      <th className="px-6 py-2 text-left font-semibold">
-                        {t('Description')}
-                      </th>
+                      <th className="w-80 px-4 py-2 text-left font-semibold">{t('Variables')}</th>
+                      <th className="px-6 py-2 text-left font-semibold">{t('Description')}</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {variables.map(variable => (
+                    {variables.map((variable) => (
                       <tr
                         key={variable.key}
                         className="group border-b transition-colors last:border-b-0 hover:bg-muted/50"
@@ -207,38 +210,30 @@ export default function MarketContextSection({
                               { '-translate-y-0.5': liftedVariableKey === variable.key },
                             )}
                           >
-                            <span>
-                              [
-                              {variable.key}
-                              ]
-                            </span>
+                            <span>[{variable.key}]</span>
                             <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  type="button"
-                                  size="icon"
-                                  disabled={isPending}
-                                  onClick={() => handleInsertVariable(variable.key)}
-                                  aria-label={t('Add {variable} variable', { variable: `[${variable.key}]` })}
-                                  className={cn(
-                                    `
-                                      size-5 rounded-full bg-primary p-0 text-background shadow-none
-                                      transition-transform duration-200
-                                      hover:bg-primary/90
-                                    `,
-                                    { '-translate-y-0.5': liftedVariableKey === variable.key },
-                                  )}
-                                >
-                                  <PlusIcon className="size-2.5" />
-                                </Button>
-                              </TooltipTrigger>
+                              <TooltipTrigger
+                                render={
+                                  <Button
+                                    type="button"
+                                    size="icon"
+                                    disabled={isPending}
+                                    onClick={() => handleInsertVariable(variable.key)}
+                                    aria-label={t('Add {variable} variable', { variable: `[${variable.key}]` })}
+                                    className={cn(
+                                      `size-5 rounded-full bg-primary p-0 text-background shadow-none transition-transform duration-200 hover:bg-primary/90`,
+                                      { '-translate-y-0.5': liftedVariableKey === variable.key },
+                                    )}
+                                  >
+                                    <PlusIcon className="size-2.5" />
+                                  </Button>
+                                }
+                              />
                               <TooltipContent side="top">{t('Insert into prompt')}</TooltipContent>
                             </Tooltip>
                           </span>
                         </td>
-                        <td className="p-2 text-sm/5 text-muted-foreground">
-                          {getVariableDescription(variable)}
-                        </td>
+                        <td className="p-2 text-sm/5 text-muted-foreground">{getVariableDescription(variable)}</td>
                       </tr>
                     ))}
                   </tbody>

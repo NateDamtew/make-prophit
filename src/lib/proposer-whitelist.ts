@@ -1,12 +1,16 @@
 import type { Address, Hash } from 'viem'
-import { createPublicClient, getAddress, http, isAddress } from 'viem'
+
+import { createPublicClient, getAddress, isAddress } from 'viem'
+
+import type { ViemRpcUrls } from '@/lib/viem-network'
+
 import { CREATOR_PROPOSER_WHITELIST_REGISTRY_ADDRESS, ZERO_ADDRESS } from '@/lib/contracts'
 import {
   CREATOR_PROPOSER_WHITELIST_ABI,
   CREATOR_PROPOSER_WHITELIST_REGISTRY_ABI,
 } from '@/lib/proposer-whitelist-contracts'
 import { isGasFeeTooLowError } from '@/lib/transaction-fees'
-import { defaultViemNetwork, resolveRuntimeViemRpcUrl } from '@/lib/viem-network'
+import { createViemTransport, defaultViemNetwork, resolveRuntimeViemRpcUrls } from '@/lib/viem-network'
 
 export interface ProposerWhitelistCreatorOption {
   address: Address
@@ -59,9 +63,7 @@ export function resolveProposerWhitelistAddress(...candidates: Array<string | nu
 }
 
 export function normalizeProposerAddressList(value: string | string[]) {
-  const values = Array.isArray(value)
-    ? value
-    : value.split(/[\s,;]+/g)
+  const values = Array.isArray(value) ? value : value.split(/[\s,;]+/g)
 
   const deduped = new Map<string, Address>()
   for (const raw of values) {
@@ -91,10 +93,12 @@ function isProposerWhitelistCreatorOption(value: unknown): value is ProposerWhit
     return false
   }
 
-  return isAddressValue(value.address)
-    && typeof value.displayName === 'string'
-    && typeof value.shortAddress === 'string'
-    && typeof value.hasServerSigner === 'boolean'
+  return (
+    isAddressValue(value.address) &&
+    typeof value.displayName === 'string' &&
+    typeof value.shortAddress === 'string' &&
+    typeof value.hasServerSigner === 'boolean'
+  )
 }
 
 function isProposerWhitelistStatus(value: unknown): value is ProposerWhitelistStatus {
@@ -102,12 +106,14 @@ function isProposerWhitelistStatus(value: unknown): value is ProposerWhitelistSt
     return false
   }
 
-  return isAddressValue(value.creator)
-    && isAddressValue(value.registryAddress)
-    && (value.whitelistAddress === null || isAddressValue(value.whitelistAddress))
-    && Array.isArray(value.proposers)
-    && value.proposers.every(isAddressValue)
-    && typeof value.hasServerSigner === 'boolean'
+  return (
+    isAddressValue(value.creator) &&
+    isAddressValue(value.registryAddress) &&
+    (value.whitelistAddress === null || isAddressValue(value.whitelistAddress)) &&
+    Array.isArray(value.proposers) &&
+    value.proposers.every(isAddressValue) &&
+    typeof value.hasServerSigner === 'boolean'
+  )
 }
 
 export function isProposerWhitelistStatusResponse(payload: unknown): payload is ProposerWhitelistStatusResponse {
@@ -115,10 +121,12 @@ export function isProposerWhitelistStatusResponse(payload: unknown): payload is 
     return false
   }
 
-  return isAddressValue(payload.registryAddress)
-    && Array.isArray(payload.creators)
-    && payload.creators.every(isProposerWhitelistCreatorOption)
-    && (payload.status === null || isProposerWhitelistStatus(payload.status))
+  return (
+    isAddressValue(payload.registryAddress) &&
+    Array.isArray(payload.creators) &&
+    payload.creators.every(isProposerWhitelistCreatorOption) &&
+    (payload.status === null || isProposerWhitelistStatus(payload.status))
+  )
 }
 
 export function readProposerWhitelistError(error: unknown) {
@@ -126,10 +134,10 @@ export function readProposerWhitelistError(error: unknown) {
   const lower = message.toLowerCase()
 
   if (
-    lower.includes('insufficient funds')
-    || lower.includes('exceeds the balance')
-    || lower.includes('not enough native')
-    || lower.includes('insufficient balance')
+    lower.includes('insufficient funds') ||
+    lower.includes('exceeds the balance') ||
+    lower.includes('not enough native') ||
+    lower.includes('insufficient balance')
   ) {
     return 'Creator wallet needs POL for gas before updating proposer whitelist.'
   }
@@ -139,8 +147,8 @@ export function readProposerWhitelistError(error: unknown) {
   }
 
   if (
-    lower.includes('code storage out of gas')
-    || (lower.includes('contract creation') && lower.includes('out of gas'))
+    lower.includes('code storage out of gas') ||
+    (lower.includes('contract creation') && lower.includes('out of gas'))
   ) {
     return 'Whitelist deployment ran out of gas. Please try again.'
   }
@@ -180,39 +188,38 @@ export async function readCreatorProposerWhitelistStatus(input: {
   creator: Address
   registryAddress?: Address
   hasServerSigner?: boolean
-  rpcUrl?: string
+  rpcUrls?: ViemRpcUrls
 }): Promise<ProposerWhitelistStatus> {
   const registryAddress = input.registryAddress ?? getClientCreatorProposerWhitelistRegistryAddress()
-  const rpcUrl = input.rpcUrl ?? resolveRuntimeViemRpcUrl()
+  const rpcUrls = input.rpcUrls ?? resolveRuntimeViemRpcUrls()
   const client = createPublicClient({
     chain: defaultViemNetwork,
-    transport: http(rpcUrl),
+    transport: createViemTransport(rpcUrls),
   })
 
-  const whitelist = await client.readContract({
+  const whitelist = (await client.readContract({
     address: registryAddress,
     abi: CREATOR_PROPOSER_WHITELIST_REGISTRY_ABI,
     functionName: 'whitelistOf',
     args: [input.creator],
-  }) as Address
+  })) as Address
 
-  const whitelistAddress = whitelist.toLowerCase() === ZERO_ADDRESS.toLowerCase()
-    ? null
-    : (getAddress(whitelist) as Address)
+  const whitelistAddress =
+    whitelist.toLowerCase() === ZERO_ADDRESS.toLowerCase() ? null : (getAddress(whitelist) as Address)
 
   const proposers = whitelistAddress
-    ? await client.readContract({
-      address: whitelistAddress,
-      abi: CREATOR_PROPOSER_WHITELIST_ABI,
-      functionName: 'getProposers',
-    }) as Address[]
+    ? ((await client.readContract({
+        address: whitelistAddress,
+        abi: CREATOR_PROPOSER_WHITELIST_ABI,
+        functionName: 'getProposers',
+      })) as Address[])
     : []
 
   return {
     creator: input.creator,
     registryAddress,
     whitelistAddress,
-    proposers: proposers.map(proposer => getAddress(proposer) as Address),
+    proposers: proposers.map((proposer) => getAddress(proposer) as Address),
     hasServerSigner: Boolean(input.hasServerSigner),
   }
 }

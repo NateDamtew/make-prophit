@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react'
+
 import { SearchResults } from '@/app/[locale]/(platform)/_components/SearchResults'
 
 const mocks = vi.hoisted(() => ({
@@ -15,15 +16,15 @@ vi.mock('lucide-react', () => ({
 }))
 
 vi.mock('@/i18n/navigation', () => ({
-  Link: ({ children, href, ...props }: any) => <a href={href} {...props}>{children}</a>,
+  Link: ({ children, href, ...props }: any) => (
+    <a href={href} {...props}>
+      {children}
+    </a>
+  ),
 }))
 
 vi.mock('@/app/[locale]/(platform)/_providers/PlatformNavigationProvider', () => ({
   usePlatformNavigationData: mocks.usePlatformNavigationData,
-}))
-
-vi.mock('@/app/[locale]/(platform)/_components/SearchTabs', () => ({
-  SearchTabs: () => <div data-testid="search-tabs" />,
 }))
 
 vi.mock('@/components/EventIconImage', () => ({
@@ -54,9 +55,7 @@ describe('searchResults', () => {
         {
           slug: 'world',
           name: 'World',
-          childs: [
-            { name: 'Brazil', slug: 'brazil' },
-          ],
+          childs: [{ name: 'Brazil', slug: 'brazil' }],
         },
       ],
     })

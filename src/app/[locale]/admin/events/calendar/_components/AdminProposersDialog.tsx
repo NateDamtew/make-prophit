@@ -1,33 +1,36 @@
 'use client'
 
+import type { ReactNode } from 'react'
 import type { Address, Hash, Hex } from 'viem'
 import type { SignerOption } from './admin-create-event-form-types'
 import type { ProposerWhitelistCreatorOption, ProposerWhitelistMutationResponse, ProposerWhitelistStatus, ProposerWhitelistStatusResponse } from '@/lib/proposer-whitelist'
 import { CheckCircle2Icon, CircleIcon, Loader2Icon, PlusIcon, UserCheckIcon, XIcon } from 'lucide-react'
 import { useExtracted } from 'next-intl'
 import { useCallback, useEffect, useEffectEvent, useMemo, useState } from 'react'
-import { toast } from 'sonner'
-import { createWalletClient, custom, encodeDeployData, encodeFunctionData, getAddress, getCreate2Address, isAddress, toHex } from 'viem'
+import {
+  createWalletClient,
+  custom,
+  encodeDeployData,
+  encodeFunctionData,
+  getAddress,
+  getCreate2Address,
+  isAddress,
+  toHex,
+} from 'viem'
 import { usePublicClient, useWalletClient } from 'wagmi'
+
+
 import { Button } from '@/components/ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from '@/components/ui/drawer'
 import { Label } from '@/components/ui/label'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Spinner } from '@/components/ui/spinner'
 import { Textarea } from '@/components/ui/textarea'
+import { toast } from '@/components/ui/toast'
 import { useAppKitAccount } from '@/hooks/useAppKitAccount'
 import { useAppKitNetworkCore, useAppKitProvider } from '@/hooks/useAppKitCompat'
+import { useIsMobile } from '@/hooks/useIsMobile'
 import { useSignaturePromptRunner } from '@/hooks/useSignaturePromptRunner'
 import { DEFAULT_CHAIN_ID } from '@/lib/network'
 import {
@@ -46,6 +49,8 @@ import { sendWithEstimatedFeeRetry } from '@/lib/transaction-fees'
 import { cn } from '@/lib/utils'
 import { defaultViemNetwork } from '@/lib/viem-network'
 import { useUser } from '@/stores/useUser'
+
+
 import { isBigIntSerializationError } from './admin-create-event-form-utils'
 
 interface AdminProposersDialogProps {
@@ -56,15 +61,20 @@ interface AdminProposersDialogProps {
   onStatusChange?: (status: ProposerWhitelistStatus) => void
 }
 
+interface AdminProposersDialogShellProps {
+  open: boolean
+  title: ReactNode
+  description: ReactNode
+  children: ReactNode
+  onOpenChange: (open: boolean) => void
+}
+
 interface EventCreationSignersResponse {
   data?: SignerOption[]
 }
 
 interface RpcWalletProvider {
-  request: (args: {
-    method: string
-    params?: unknown[] | object
-  }) => Promise<unknown>
+  request: (args: { method: string; params?: unknown[] | object }) => Promise<unknown>
 }
 
 const SINGLETON_FACTORY_ADDRESS = '0xce0042B868300000d44A59004Da54A005ffdcf9f' as Address
@@ -100,9 +110,7 @@ const SINGLETON_FACTORY_ABI = [
 ] as const
 
 function isRpcWalletProvider(value: unknown): value is RpcWalletProvider {
-  return Boolean(value)
-    && typeof value === 'object'
-    && typeof (value as { request?: unknown }).request === 'function'
+  return Boolean(value) && typeof value === 'object' && typeof (value as { request?: unknown }).request === 'function'
 }
 
 function isEmbeddedWalletProvider(value: unknown): value is RpcWalletProvider {
@@ -118,13 +126,13 @@ function isEmbeddedWalletProvider(value: unknown): value is RpcWalletProvider {
     constructor?: { name?: string }
   }
 
-  return candidate.constructor?.name === 'W3mFrameProvider'
-    || (
-      typeof candidate.connectEmail === 'function'
-      && typeof candidate.connectSocial === 'function'
-      && typeof candidate.getEmail === 'function'
-      && typeof candidate.switchNetwork === 'function'
-    )
+  return (
+    candidate.constructor?.name === 'W3mFrameProvider' ||
+    (typeof candidate.connectEmail === 'function' &&
+      typeof candidate.connectSocial === 'function' &&
+      typeof candidate.getEmail === 'function' &&
+      typeof candidate.switchNetwork === 'function')
+  )
 }
 
 function resolveChainId(value: number | string | undefined) {
@@ -186,10 +194,9 @@ function buildRpcWalletTransactionRequest(params: {
 
 function addWalletTransactionGasBuffer(gas: bigint) {
   return (
-    (gas * WALLET_TRANSACTION_GAS_BUFFER_NUMERATOR)
-    + WALLET_TRANSACTION_GAS_BUFFER_DENOMINATOR
-    - 1n
-  ) / WALLET_TRANSACTION_GAS_BUFFER_DENOMINATOR
+    (gas * WALLET_TRANSACTION_GAS_BUFFER_NUMERATOR + WALLET_TRANSACTION_GAS_BUFFER_DENOMINATOR - 1n) /
+    WALLET_TRANSACTION_GAS_BUFFER_DENOMINATOR
+  )
 }
 
 function readApiError(payload: unknown) {
@@ -258,19 +265,24 @@ function getLockedCreatorOption(input: {
     connectedLabel: input.connectedLabel,
   })
   const lockedAddress = getAddress(input.initialCreatorAddress) as Address
-  const existing = merged.find(creator => creator.address.toLowerCase() === lockedAddress.toLowerCase())
+  const existing = merged.find((creator) => creator.address.toLowerCase() === lockedAddress.toLowerCase())
   if (existing) {
     return [existing]
   }
 
-  return [{
-    address: lockedAddress,
-    displayName: input.connectedAddress?.toLowerCase() === lockedAddress.toLowerCase()
-      ? input.connectedLabel
-      : shortenProposerWhitelistAddress(lockedAddress),
-    shortAddress: shortenProposerWhitelistAddress(lockedAddress),
-    hasServerSigner: input.signers.some(signer => isAddress(signer.address) && signer.address.toLowerCase() === lockedAddress.toLowerCase()),
-  } satisfies ProposerWhitelistCreatorOption]
+  return [
+    {
+      address: lockedAddress,
+      displayName:
+        input.connectedAddress?.toLowerCase() === lockedAddress.toLowerCase()
+          ? input.connectedLabel
+          : shortenProposerWhitelistAddress(lockedAddress),
+      shortAddress: shortenProposerWhitelistAddress(lockedAddress),
+      hasServerSigner: input.signers.some(
+        (signer) => isAddress(signer.address) && signer.address.toLowerCase() === lockedAddress.toLowerCase(),
+      ),
+    } satisfies ProposerWhitelistCreatorOption,
+  ]
 }
 
 function isMutationResponse(payload: unknown): payload is ProposerWhitelistMutationResponse {
@@ -299,6 +311,44 @@ function getPreferredCreator(input: {
   return input.creators[0]?.address ?? null
 }
 
+function AdminProposersDialogShell({
+  open,
+  title,
+  description,
+  children,
+  onOpenChange,
+}: AdminProposersDialogShellProps) {
+  const isMobile = useIsMobile()
+
+  if (isMobile) {
+    return (
+      <Drawer open={open} onOpenChange={onOpenChange}>
+        <DrawerContent className="max-h-[90dvh] w-full overflow-hidden bg-background px-4 pt-4 pb-6">
+          <div className="grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)] gap-4 overflow-hidden">
+            <DrawerHeader className="mt-4 shrink-0 space-y-2 p-0 text-left">
+              <DrawerTitle className="flex items-center gap-2">{title}</DrawerTitle>
+              <DrawerDescription>{description}</DrawerDescription>
+            </DrawerHeader>
+            <div className="min-h-0 overflow-y-auto overscroll-contain pr-1">{children}</div>
+          </div>
+        </DrawerContent>
+      </Drawer>
+    )
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">{title}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
+        </DialogHeader>
+        {children}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 export default function AdminProposersDialog({
   open,
   onOpenChange,
@@ -310,9 +360,10 @@ export default function AdminProposersDialog({
   const appKitAccount = useAppKitAccount({ namespace: 'eip155' })
   const { address: appKitAddressRaw } = appKitAccount
   const { walletProvider, walletProviderType } = useAppKitProvider<RpcWalletProvider>('eip155')
-  const isEmbeddedWallet = Boolean(appKitAccount.embeddedWalletInfo)
-    || walletProviderType === 'AUTH'
-    || isEmbeddedWalletProvider(walletProvider)
+  const isEmbeddedWallet =
+    Boolean(appKitAccount.embeddedWalletInfo) ||
+    walletProviderType === 'AUTH' ||
+    isEmbeddedWalletProvider(walletProvider)
   const { chainId: appKitChainId } = useAppKitNetworkCore()
   const { data: walletClient } = useWalletClient()
   const publicClient = usePublicClient()
@@ -326,10 +377,7 @@ export default function AdminProposersDialog({
     () => resolveProposerWhitelistAddress(appKitAddressRaw, user?.address, walletClient?.account?.address),
     [appKitAddressRaw, user?.address, walletClient?.account?.address],
   )
-  const appKitResolvedChainId = useMemo(
-    () => resolveChainId(appKitChainId),
-    [appKitChainId],
-  )
+  const appKitResolvedChainId = useMemo(() => resolveChainId(appKitChainId), [appKitChainId])
   const [creators, setCreators] = useState<ProposerWhitelistCreatorOption[]>([])
   const [signers, setSigners] = useState<SignerOption[]>([])
   const [selectedCreator, setSelectedCreator] = useState<Address | null>(null)
@@ -357,31 +405,25 @@ export default function AdminProposersDialog({
       connectedLabel: t('EOA wallet'),
     })
   }, [creators, initialCreatorAddress, knownCreatorAddress, lockCreatorSelection, signers, t])
-  const selectedOption = creatorOptions.find(item => selectedCreator && item.address.toLowerCase() === selectedCreator.toLowerCase()) ?? null
+  const selectedOption =
+    creatorOptions.find((item) => selectedCreator && item.address.toLowerCase() === selectedCreator.toLowerCase()) ??
+    null
   const walletClientMatchesSelectedCreator = Boolean(
-    selectedCreator
-    && walletClient
-    && isSameAddress(walletClient.account?.address, selectedCreator),
+    selectedCreator && walletClient && isSameAddress(walletClient.account?.address, selectedCreator),
   )
-  const hasConnectedWalletTransport = Boolean(
-    isRpcWalletProvider(walletProvider)
-    || walletClientMatchesSelectedCreator,
-  )
+  const hasConnectedWalletTransport = Boolean(isRpcWalletProvider(walletProvider) || walletClientMatchesSelectedCreator)
   const connectedWalletTransportChainId = walletClientMatchesSelectedCreator
-    ? walletClient?.chain?.id ?? appKitResolvedChainId
+    ? (walletClient?.chain?.id ?? appKitResolvedChainId)
     : appKitResolvedChainId
   const canUseConnectedWallet = Boolean(
-    selectedCreator
-    && connectedWalletAddress
-    && isSameAddress(selectedCreator, connectedWalletAddress)
-    && hasConnectedWalletTransport,
+    selectedCreator &&
+    connectedWalletAddress &&
+    isSameAddress(selectedCreator, connectedWalletAddress) &&
+    hasConnectedWalletTransport,
   )
   const canUseServerSigner = Boolean(status?.hasServerSigner || selectedOption?.hasServerSigner)
   const isSwitchingCreator = Boolean(
-    isLoading
-    && selectedCreator
-    && status
-    && status.creator.toLowerCase() !== selectedCreator.toLowerCase(),
+    isLoading && selectedCreator && status && status.creator.toLowerCase() !== selectedCreator.toLowerCase(),
   )
 
   function readDialogError(error: unknown) {
@@ -432,62 +474,66 @@ export default function AdminProposersDialog({
         return [] as SignerOption[]
       }
 
-      const payload = await response.json().catch(() => null) as EventCreationSignersResponse | null
+      const payload = (await response.json().catch(() => null)) as EventCreationSignersResponse | null
       const nextSigners = Array.isArray(payload?.data) ? payload.data : []
       setSigners(nextSigners)
       return nextSigners
-    }
-    catch (error) {
+    } catch (error) {
       console.error('Failed to load event creation signers for proposer whitelist dialog', error)
       setSigners([])
       return [] as SignerOption[]
     }
   }, [])
 
-  const loadStatus = useCallback(async (creator: Address | null, nextSigners: SignerOption[] = signers) => {
-    setIsLoading(true)
-    try {
-      const query = creator ? `?creator=${encodeURIComponent(creator)}` : ''
-      const response = await fetch(`/admin/api/proposer-whitelists${query}`, {
-        method: 'GET',
-        cache: 'no-store',
-      })
-      const payload = await response.json().catch(() => null) as unknown
-      const apiError = readApiError(payload)
-      if (!response.ok || apiError || !isProposerWhitelistStatusResponse(payload)) {
-        throw new Error(apiError || t('Could not load proposer whitelist ({status})', { status: String(response.status) }))
-      }
+  const loadStatus = useCallback(
+    async (creator: Address | null, nextSigners: SignerOption[] = signers) => {
+      setIsLoading(true)
+      try {
+        const query = creator ? `?creator=${encodeURIComponent(creator)}` : ''
+        const response = await fetch(`/admin/api/proposer-whitelists${query}`, {
+          method: 'GET',
+          cache: 'no-store',
+        })
+        const payload = (await response.json().catch(() => null)) as unknown
+        const apiError = readApiError(payload)
+        if (!response.ok || apiError || !isProposerWhitelistStatusResponse(payload)) {
+          throw new Error(
+            apiError || t('Could not load proposer whitelist ({status})', { status: String(response.status) }),
+          )
+        }
 
-      const nextPayload: ProposerWhitelistStatusResponse = payload
-      setCreators(nextPayload.creators)
-      setStatus(nextPayload.status)
-      if (nextPayload.status) {
-        onStatusChange?.(nextPayload.status)
-      }
+        const nextPayload: ProposerWhitelistStatusResponse = payload
+        setCreators(nextPayload.creators)
+        setStatus(nextPayload.status)
+        if (nextPayload.status) {
+          onStatusChange?.(nextPayload.status)
+        }
 
-      const availableCreators = mergeCreatorOptions({
-        creators: nextPayload.creators,
-        signers: nextSigners,
-        connectedAddress: knownCreatorAddress,
-        connectedLabel: t('EOA wallet'),
-      })
-      const preferred = getPreferredCreator({
-        initialCreatorAddress,
-        selectedCreator: creator,
-        connectedAddress: knownCreatorAddress,
-        creators: availableCreators,
-      })
-      setSelectedCreator(preferred)
-    }
-    catch (error) {
-      console.error('Failed to load proposer whitelist', error)
-      setStatus(previous => creator && previous?.creator.toLowerCase() === creator.toLowerCase() ? previous : null)
-      toast.error(error instanceof Error ? error.message : t('Could not load proposer whitelist.'))
-    }
-    finally {
-      setIsLoading(false)
-    }
-  }, [initialCreatorAddress, knownCreatorAddress, onStatusChange, signers, t])
+        const availableCreators = mergeCreatorOptions({
+          creators: nextPayload.creators,
+          signers: nextSigners,
+          connectedAddress: knownCreatorAddress,
+          connectedLabel: t('EOA wallet'),
+        })
+        const preferred = getPreferredCreator({
+          initialCreatorAddress,
+          selectedCreator: creator,
+          connectedAddress: knownCreatorAddress,
+          creators: availableCreators,
+        })
+        setSelectedCreator(preferred)
+      } catch (error) {
+        console.error('Failed to load proposer whitelist', error)
+        setStatus((previous) =>
+          creator && previous?.creator.toLowerCase() === creator.toLowerCase() ? previous : null,
+        )
+        toast.error(error instanceof Error ? error.message : t('Could not load proposer whitelist.'))
+      } finally {
+        setIsLoading(false)
+      }
+    },
+    [initialCreatorAddress, knownCreatorAddress, onStatusChange, signers, t],
+  )
 
   const bootstrapDialog = useEffectEvent(async () => {
     const nextSigners = await loadSigners()
@@ -505,15 +551,18 @@ export default function AdminProposersDialog({
     await loadStatus(preferred, nextSigners)
   })
 
-  /* eslint-disable react-you-might-not-need-an-effect/no-event-handler */
-  useEffect(function loadOnOpen() {
-    if (!open) {
-      return
-    }
+  /* oxlint-disable react-you-might-not-need-an-effect/no-event-handler -- Opening the controlled dialog triggers an external API refresh. */
+  useEffect(
+    function loadOnOpen() {
+      if (!open) {
+        return
+      }
 
-    void bootstrapDialog()
-  }, [open])
-  /* eslint-enable react-you-might-not-need-an-effect/no-event-handler */
+      void bootstrapDialog()
+    },
+    [open],
+  )
+  /* oxlint-enable react-you-might-not-need-an-effect/no-event-handler */
 
   async function runServerMutation(action: 'create' | 'add' | 'remove', proposers: Address[]) {
     if (!selectedCreator) {
@@ -531,10 +580,12 @@ export default function AdminProposersDialog({
         proposers,
       }),
     })
-    const payload = await response.json().catch(() => null) as unknown
+    const payload = (await response.json().catch(() => null)) as unknown
     const apiError = readApiError(payload)
     if (!response.ok || apiError || !isMutationResponse(payload)) {
-      throw new Error(apiError || t('Could not update proposer whitelist ({status})', { status: String(response.status) }))
+      throw new Error(
+        apiError || t('Could not update proposer whitelist ({status})', { status: String(response.status) }),
+      )
     }
     setStatus(payload.status)
     onStatusChange?.(payload.status)
@@ -561,7 +612,9 @@ export default function AdminProposersDialog({
       throw new Error(t('Use the selected creator EOA in your wallet to sign this action.'))
     }
     if (connectedWalletTransportChainId && connectedWalletTransportChainId !== DEFAULT_CHAIN_ID) {
-      throw new Error(t('Switch wallet to {chain} before updating proposer whitelist.', { chain: defaultViemNetwork.name }))
+      throw new Error(
+        t('Switch wallet to {chain} before updating proposer whitelist.', { chain: defaultViemNetwork.name }),
+      )
     }
     const rpcProvider = isRpcWalletProvider(walletProvider)
       ? walletProvider
@@ -608,18 +661,14 @@ export default function AdminProposersDialog({
         })
 
         return addWalletTransactionGasBuffer(estimatedGas)
-      }
-      catch {
+      } catch {
         return undefined
       }
     }
 
     const gas = await estimateWalletGas()
 
-    function sendWithWalletClient(overrides?: {
-      maxFeePerGas?: bigint
-      maxPriorityFeePerGas?: bigint
-    }) {
+    function sendWithWalletClient(overrides?: { maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint }) {
       if (!connection.walletClient) {
         throw new Error(t('Wallet connection is not ready. Please try again.'))
       }
@@ -635,10 +684,7 @@ export default function AdminProposersDialog({
       })
     }
 
-    async function sendRpc(overrides?: {
-      maxFeePerGas?: bigint
-      maxPriorityFeePerGas?: bigint
-    }) {
+    async function sendRpc(overrides?: { maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint }) {
       if (!connection.rpcProvider) {
         throw new Error(t('Wallet connection is not ready. Please try again.'))
       }
@@ -660,10 +706,11 @@ export default function AdminProposersDialog({
           ...(overrides ?? {}),
         })
         const rpcHash = await runWithSignaturePrompt(
-          () => rpcProvider.request({
-            method: 'eth_sendTransaction',
-            params: [txRequest],
-          }),
+          () =>
+            rpcProvider.request({
+              method: 'eth_sendTransaction',
+              params: [txRequest],
+            }),
           {
             title: input.title,
             description: input.description,
@@ -676,15 +723,16 @@ export default function AdminProposersDialog({
       }
 
       const rpcHash = await runWithSignaturePrompt(
-        () => rpcWalletClient.sendTransaction({
-          account: input.account,
-          chain: defaultViemNetwork,
-          to: input.to,
-          data: input.data,
-          value: input.value ?? 0n,
-          gas,
-          ...(overrides ?? {}),
-        }),
+        () =>
+          rpcWalletClient.sendTransaction({
+            account: input.account,
+            chain: defaultViemNetwork,
+            to: input.to,
+            data: input.data,
+            value: input.value ?? 0n,
+            gas,
+            ...(overrides ?? {}),
+          }),
         {
           title: input.title,
           description: input.description,
@@ -696,10 +744,7 @@ export default function AdminProposersDialog({
       return rpcHash as Hash
     }
 
-    async function sendWithRpcFallback(overrides?: {
-      maxFeePerGas?: bigint
-      maxPriorityFeePerGas?: bigint
-    }) {
+    async function sendWithRpcFallback(overrides?: { maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint }) {
       if (isEmbeddedWallet) {
         return await sendRpc(overrides)
       }
@@ -713,8 +758,7 @@ export default function AdminProposersDialog({
           title: input.title,
           description: input.description,
         })
-      }
-      catch (sendError) {
+      } catch (sendError) {
         const message = sendError instanceof Error ? sendError.message : String(sendError)
         if (!isBigIntSerializationError(message)) {
           throw sendError
@@ -793,9 +837,10 @@ export default function AdminProposersDialog({
     if (!whitelistAddress) {
       const deployment = await deployWalletWhitelist(proposers.length > 0)
       const deployReceipt = deployment.hash ? await waitForWalletTx(deployment.hash) : null
-      whitelistAddress = deployReceipt?.contractAddress && isAddress(deployReceipt.contractAddress)
-        ? getAddress(deployReceipt.contractAddress) as Address
-        : deployment.whitelistAddress ?? null
+      whitelistAddress =
+        deployReceipt?.contractAddress && isAddress(deployReceipt.contractAddress)
+          ? (getAddress(deployReceipt.contractAddress) as Address)
+          : (deployment.whitelistAddress ?? null)
       if (whitelistAddress && publicClient) {
         const code = await publicClient.getCode({ address: whitelistAddress })
         if (!code || code === '0x') {
@@ -824,9 +869,10 @@ export default function AdminProposersDialog({
 
     const registerHash = await sendWalletTransaction({
       title: t('Register proposer whitelist'),
-      description: proposers.length > 0
-        ? t('Transaction 3 of 3: register this whitelist in the registry.')
-        : t('Transaction 2 of 2: register this whitelist in the registry.'),
+      description:
+        proposers.length > 0
+          ? t('Transaction 3 of 3: register this whitelist in the registry.')
+          : t('Transaction 2 of 2: register this whitelist in the registry.'),
       account: selectedCreator,
       to: status.registryAddress,
       data: encodeFunctionData({
@@ -865,8 +911,7 @@ export default function AdminProposersDialog({
     let requestedProposers: Address[] = []
     try {
       requestedProposers = normalizeProposerAddressList(rawProposers)
-    }
-    catch (error) {
+    } catch (error) {
       toast.error(error instanceof Error ? error.message : t('Invalid wallet address.'))
       return
     }
@@ -882,11 +927,9 @@ export default function AdminProposersDialog({
     try {
       if (canUseServerSigner && (action === 'create' || !canUseConnectedWallet)) {
         await runServerMutation(action, proposers)
-      }
-      else if (action === 'create') {
+      } else if (action === 'create') {
         await runWalletCreate(proposers)
-      }
-      else {
+      } else {
         await runWalletUpdate(action, proposers)
       }
 
@@ -894,12 +937,10 @@ export default function AdminProposersDialog({
       setWalletInput('')
       setAddOpen(false)
       toast.success(action === 'remove' ? t('Proposer removed.') : t('Proposer whitelist updated.'))
-    }
-    catch (error) {
+    } catch (error) {
       console.error('Failed to update proposer whitelist', error)
       toast.error(readDialogError(error))
-    }
-    finally {
+    } finally {
       setIsMutating(false)
     }
   }
@@ -918,173 +959,188 @@ export default function AdminProposersDialog({
   const proposerRows = status?.proposers ?? []
   const hasAllowedProposers = proposerRows.length > 0
   const connectedAddressAlreadyListed = Boolean(
-    knownCreatorAddress && proposerRows.some(proposer => proposer.toLowerCase() === knownCreatorAddress.toLowerCase()),
+    knownCreatorAddress &&
+    proposerRows.some((proposer) => proposer.toLowerCase() === knownCreatorAddress.toLowerCase()),
   )
-  const showAddYourWallet = Boolean((!status?.whitelistAddress || addOpen) && knownCreatorAddress && !connectedAddressAlreadyListed && !walletInput.trim())
-  const actionDisabled = isLoading || isMutating || !selectedCreator || !status || (!canUseConnectedWallet && !canUseServerSigner)
+  const showAddYourWallet = Boolean(
+    (!status?.whitelistAddress || addOpen) &&
+    knownCreatorAddress &&
+    !connectedAddressAlreadyListed &&
+    !walletInput.trim(),
+  )
+  const actionDisabled =
+    isLoading || isMutating || !selectedCreator || !status || (!canUseConnectedWallet && !canUseServerSigner)
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <UserCheckIcon className="size-5" />
-            {t('Proposers')}
-          </DialogTitle>
-          <DialogDescription>
-            {t('Add trusted wallets that can propose market outcomes in UMA.')}
-          </DialogDescription>
-        </DialogHeader>
+    <AdminProposersDialogShell
+      open={open}
+      onOpenChange={onOpenChange}
+      title={
+        <>
+          <UserCheckIcon className="size-5" />
+          {t('Proposers')}
+        </>
+      }
+      description={t('Add trusted wallets that can propose market outcomes in UMA.')}
+    >
+      <div className="grid gap-4">
+        <div className="grid gap-2">
+          <div className="flex items-center justify-between gap-3">
+            <Label>{t('Creator wallet')}</Label>
+            <div className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+              <CircleIcon
+                className={cn(
+                  'size-3.5 fill-current stroke-none',
+                  status?.whitelistAddress ? 'text-emerald-500' : 'text-muted-foreground/70',
+                )}
+              />
+              <span className="text-muted-foreground">
+                {status?.whitelistAddress ? t('Whitelist registered') : t('Whitelist not registered')}
+              </span>
+            </div>
+          </div>
+          <Select
+            items={creatorOptions.map((creator) => ({
+              label: `${creator.displayName} · ${creator.shortAddress}${creator.hasServerSigner ? ` · ${t('server')}` : ''}`,
+              value: creator.address,
+            }))}
+            value={selectedCreator ?? undefined}
+            onValueChange={(value) => value !== null && handleCreatorChange(value)}
+            disabled={isLoading || isMutating || lockCreatorSelection}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder={isLoading ? t('Loading creators...') : t('Select creator')} />
+            </SelectTrigger>
+            <SelectContent>
+              {creatorOptions.map((creator) => (
+                <SelectItem key={creator.address} value={creator.address}>
+                  {creator.displayName}
+                  {' · '}
+                  {creator.shortAddress}
+                  {creator.hasServerSigner ? ` · ${t('server')}` : ''}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
 
-        <div className="grid gap-4">
-          <div className="grid gap-2">
-            <div className="flex items-center justify-between gap-3">
-              <Label>{t('Creator wallet')}</Label>
-              <div className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-                <CircleIcon
-                  className={cn(
-                    'size-3.5 fill-current stroke-none',
-                    status?.whitelistAddress ? 'text-emerald-500' : 'text-muted-foreground/70',
-                  )}
-                />
-                <span className="text-muted-foreground">
-                  {status?.whitelistAddress ? t('Whitelist registered') : t('Whitelist not registered')}
-                </span>
+        <div className="relative">
+          {isSwitchingCreator && (
+            <div
+              className={cn(
+                'absolute inset-0 z-10 flex items-center justify-center',
+                'rounded-md bg-background/80 backdrop-blur-[1px]',
+              )}
+            >
+              <div className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+                <Spinner className="size-4" />
+                {t('Loading creators...')}
               </div>
             </div>
-            <Select
-              value={selectedCreator ?? undefined}
-              onValueChange={handleCreatorChange}
-              disabled={isLoading || isMutating || lockCreatorSelection}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder={isLoading ? t('Loading creators...') : t('Select creator')} />
-              </SelectTrigger>
-              <SelectContent>
-                {creatorOptions.map(creator => (
-                  <SelectItem key={creator.address} value={creator.address}>
-                    {creator.displayName}
-                    {' · '}
-                    {creator.shortAddress}
-                    {creator.hasServerSigner ? ` · ${t('server')}` : ''}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          )}
 
-          <div className="relative">
-            {isSwitchingCreator && (
-              <div
-                className={cn(
-                  'absolute inset-0 z-10 flex items-center justify-center',
-                  'rounded-md bg-background/80 backdrop-blur-[1px]',
-                )}
-              >
-                <div className="inline-flex items-center gap-2 text-sm text-muted-foreground">
-                  <Loader2Icon className="size-4 animate-spin" />
-                  {t('Loading creators...')}
+          <div className={cn('grid gap-4', isSwitchingCreator && 'pointer-events-none opacity-60')}>
+            {status?.whitelistAddress && hasAllowedProposers && (
+              <div className="grid gap-2">
+                <div className="flex items-center justify-between gap-2">
+                  <Label>{t('Allowed proposers')}</Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7"
+                    onClick={() => setAddOpen((previous) => !previous)}
+                    disabled={isMutating || actionDisabled}
+                  >
+                    <PlusIcon className="size-3.5" />
+                    {t('Add')}
+                  </Button>
+                </div>
+
+                <div className="grid max-h-[280px] gap-2 overflow-y-auto rounded-md border p-2 pr-1">
+                  {proposerRows.map((proposer) => (
+                    <div
+                      key={proposer}
+                      className="flex items-center justify-between gap-2 rounded-sm bg-muted/25 px-2 py-1.5"
+                    >
+                      <span className="min-w-0 font-mono text-xs break-all text-muted-foreground">{proposer}</span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="size-7 shrink-0 rounded-md"
+                        aria-label={t('Remove proposer')}
+                        disabled={isMutating || actionDisabled}
+                        onClick={() => void mutate('remove', [proposer])}
+                      >
+                        <XIcon className="size-3.5" />
+                      </Button>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
 
-            <div className={cn('grid gap-4', isSwitchingCreator && 'pointer-events-none opacity-60')}>
-              {status?.whitelistAddress && hasAllowedProposers && (
-                <div className="grid gap-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <Label>{t('Allowed proposers')}</Label>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-7"
-                      onClick={() => setAddOpen(previous => !previous)}
-                      disabled={isMutating || actionDisabled}
-                    >
-                      <PlusIcon className="size-3.5" />
-                      {t('Add')}
-                    </Button>
-                  </div>
-
-                  <div className="grid max-h-[280px] gap-2 overflow-y-auto rounded-md border p-2 pr-1">
-                    {proposerRows.map(proposer => (
-                      <div
-                        key={proposer}
-                        className="flex items-center justify-between gap-2 rounded-sm bg-muted/25 px-2 py-1.5"
-                      >
-                        <span className="min-w-0 font-mono text-xs break-all text-muted-foreground">{proposer}</span>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="size-7 shrink-0 rounded-md"
-                          aria-label={t('Remove proposer')}
-                          disabled={isMutating || actionDisabled}
-                          onClick={() => void mutate('remove', [proposer])}
-                        >
-                          <XIcon className="size-3.5" />
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
+            {(!status?.whitelistAddress || addOpen || !hasAllowedProposers) && (
+              <div className="grid gap-2">
+                <Label>{status?.whitelistAddress ? t('Add proposer wallets') : t('Initial proposer wallets')}</Label>
+                <Textarea
+                  value={walletInput}
+                  onChange={(event) => setWalletInput(event.target.value)}
+                  placeholder="0x123..., 0xabc..."
+                  className="min-h-20"
+                  disabled={isMutating}
+                />
+                {!status?.whitelistAddress && (
+                  <p className="text-xs text-muted-foreground">
+                    {t('The creator wallet is added by default on creation. You can remove or add it again later.')}
+                  </p>
+                )}
+                {!status?.whitelistAddress && canUseConnectedWallet && (
+                  <p className="text-xs text-muted-foreground">
+                    {t(
+                      'Creating a new whitelist requires two onchain transactions: deploy the whitelist, then register it.',
+                    )}
+                  </p>
+                )}
+                {showAddYourWallet && (
+                  <button
+                    type="button"
+                    className="w-fit text-xs font-medium text-primary hover:opacity-80"
+                    onClick={() => setWalletInput(knownCreatorAddress ?? '')}
+                  >
+                    {t('add my own wallet')}
+                  </button>
+                )}
+                <div className="flex justify-end">
+                  <Button
+                    type="button"
+                    onClick={() => void mutate(status?.whitelistAddress ? 'add' : 'create', walletInput)}
+                    disabled={actionDisabled}
+                  >
+                    {isMutating ? (
+                      <Spinner className="size-4" />
+                    ) : status?.whitelistAddress ? (
+                      <PlusIcon className="size-4" />
+                    ) : (
+                      <CheckCircle2Icon className="size-4" />
+                    )}
+                    {status?.whitelistAddress ? t('Add proposers') : t('Create whitelist')}
+                  </Button>
                 </div>
-              )}
+              </div>
+            )}
 
-              {(!status?.whitelistAddress || addOpen || !hasAllowedProposers) && (
-                <div className="grid gap-2">
-                  <Label>{status?.whitelistAddress ? t('Add proposer wallets') : t('Initial proposer wallets')}</Label>
-                  <Textarea
-                    value={walletInput}
-                    onChange={event => setWalletInput(event.target.value)}
-                    placeholder="0x123..., 0xabc..."
-                    className="min-h-20"
-                    disabled={isMutating}
-                  />
-                  {!status?.whitelistAddress && (
-                    <p className="text-xs text-muted-foreground">
-                      {t('The creator wallet is added by default on creation. You can remove or add it again later.')}
-                    </p>
-                  )}
-                  {!status?.whitelistAddress && canUseConnectedWallet && (
-                    <p className="text-xs text-muted-foreground">
-                      {t('Creating a new whitelist requires two onchain transactions: deploy the whitelist, then register it.')}
-                    </p>
-                  )}
-                  {showAddYourWallet && (
-                    <button
-                      type="button"
-                      className="w-fit text-xs font-medium text-primary hover:opacity-80"
-                      onClick={() => setWalletInput(knownCreatorAddress ?? '')}
-                    >
-                      {t('add my own wallet')}
-                    </button>
-                  )}
-                  <div className="flex justify-end">
-                    <Button
-                      type="button"
-                      onClick={() => void mutate(status?.whitelistAddress ? 'add' : 'create', walletInput)}
-                      disabled={actionDisabled}
-                    >
-                      {isMutating
-                        ? <Loader2Icon className="size-4 animate-spin" />
-                        : status?.whitelistAddress
-                          ? <PlusIcon className="size-4" />
-                          : <CheckCircle2Icon className="size-4" />}
-                      {status?.whitelistAddress ? t('Add proposers') : t('Create whitelist')}
-                    </Button>
-                  </div>
-                </div>
-              )}
-
-              {!canUseConnectedWallet && !canUseServerSigner && selectedCreator && (
-                <p className="text-sm text-destructive">
-                  {t('Use the selected creator EOA or configure its private key in environment variables to update the whitelist.')}
-                </p>
-              )}
-            </div>
+            {!canUseConnectedWallet && !canUseServerSigner && selectedCreator && (
+              <p className="text-sm text-destructive">
+                {t(
+                  'Use the selected creator EOA or configure its private key in environment variables to update the whitelist.',
+                )}
+              </p>
+            )}
           </div>
         </div>
-      </DialogContent>
-    </Dialog>
+      </div>
+    </AdminProposersDialogShell>
   )
 }

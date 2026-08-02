@@ -35,7 +35,7 @@ trustPolicyExclude:
 overrides:
   # Force the CLOB client's nested viem onto the app's version — a second viem
   # instance makes its ClobSigner type reject our WalletClient at tsc time.
-  '@polymarket/clob-client-v2>viem': 2.55.0
+  '@polymarket/clob-client-v2>viem': 2.55.10
   '@wagmi/connectors': 6.2.0
   '@wagmi/core': 2.22.1
   '@walletconnect/relay-auth>@noble/curves': 1.8.1

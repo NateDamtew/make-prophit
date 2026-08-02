@@ -2,7 +2,7 @@
 
 import { ArchiveIcon, ArchiveRestoreIcon, LockIcon, LockOpenIcon, PinIcon, PinOffIcon } from 'lucide-react'
 import { useState, useTransition } from 'react'
-import { toast } from 'sonner'
+import { toast } from '@/components/ui/toast'
 import { Button } from '@/components/ui/button'
 
 interface ModerationBarProps {

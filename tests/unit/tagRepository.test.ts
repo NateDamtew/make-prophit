@@ -254,20 +254,91 @@ describe('tagRepository.getMainTags', () => {
 
     expect(result.error).toBeNull()
     expect(result.data).toHaveLength(1)
-    expect(result.data?.[0]?.childs.find(child => child.slug === 'stocks')).toEqual({
+    expect(result.data?.[0]?.childs.find((child) => child.slug === 'stocks')).toEqual({
       slug: 'stocks',
       name: 'Stocks',
       count: 1,
     })
-    expect(result.data?.[0]?.sidebarItems?.find(item => item.type === 'link' && item.slug === 'finance')).toMatchObject({
+    expect(
+      result.data?.[0]?.sidebarItems?.find((item) => item.type === 'link' && item.slug === 'finance'),
+    ).toMatchObject({
       slug: 'finance',
       count: 1,
       isAll: true,
     })
-    expect(result.data?.[0]?.sidebarItems?.find(item => item.type === 'link' && item.slug === 'stocks')).toMatchObject({
+    expect(
+      result.data?.[0]?.sidebarItems?.find((item) => item.type === 'link' && item.slug === 'stocks'),
+    ).toMatchObject({
       slug: 'stocks',
       count: 1,
     })
+  })
+
+  it('counts intraday crypto series without requiring cadence tags', async () => {
+    const now = new Date('2026-07-28T13:00:00.000Z')
+    const cadenceEvents = [
+      { id: 'btc-5m', seriesRecurrence: '5m', seriesSlug: 'btc-up-or-down' },
+      { id: 'btc-15m', seriesSlug: 'btc-up-or-down-15m' },
+      { id: 'btc-hourly', seriesSlug: 'btc-up-or-down-hourly' },
+      { id: 'btc-4h', seriesSlug: 'bitcoin-up-or-down-4h' },
+      { id: 'btc-daily', seriesSlug: 'btc-up-or-down-daily' },
+    ]
+
+    mocks.runQuery
+      .mockResolvedValueOnce({
+        data: [
+          {
+            id: 1,
+            name: 'Crypto',
+            slug: 'crypto',
+            is_main_category: true,
+            is_hidden: false,
+            display_order: 1,
+            active_markets_count: cadenceEvents.length,
+            created_at: now,
+            updated_at: now,
+          },
+        ],
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        data: [],
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        data: cadenceEvents.map((event) => ({
+          event_id: event.id,
+          event_slug: event.id,
+          event_status: 'active',
+          series_recurrence: 'seriesRecurrence' in event ? event.seriesRecurrence : null,
+          series_slug: event.seriesSlug,
+          end_date: now,
+          created_at: now,
+          updated_at: now,
+          tag_slug: 'crypto',
+          tag_is_main_category: true,
+        })),
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        data: [{ current_timestamp_ms: now.getTime() }],
+        error: null,
+      })
+
+    const { TagRepository } = await import('@/lib/db/queries/tag')
+    const result = await TagRepository.getMainTags('en')
+    const crypto = result.data?.[0]
+
+    for (const routeSlug of ['5M', '15M', 'hourly', '4hour', 'daily']) {
+      expect(crypto?.childs.find((child) => child.slug === routeSlug)).toMatchObject({
+        count: 1,
+        slug: routeSlug,
+      })
+      expect(crypto?.sidebarItems?.find((item) => item.type === 'link' && item.slug === routeSlug)).toMatchObject({
+        count: 1,
+        slug: routeSlug,
+      })
+    }
   })
 
   it('uses the current timestamp to keep sidebar counts on the preferred series event', async () => {
@@ -383,17 +454,19 @@ describe('tagRepository.getMainTags', () => {
 
     expect(result.error).toBeNull()
     expect(result.data).toHaveLength(1)
-    expect(result.data?.[0]?.childs.find(child => child.slug === 'stocks')).toEqual({
+    expect(result.data?.[0]?.childs.find((child) => child.slug === 'stocks')).toEqual({
       slug: 'stocks',
       name: 'Stocks',
       count: 1,
     })
-    expect(result.data?.[0]?.childs.find(child => child.slug === 'tech')).toBeUndefined()
-    expect(result.data?.[0]?.sidebarItems?.find(item => item.type === 'link' && item.slug === 'stocks')).toMatchObject({
+    expect(result.data?.[0]?.childs.find((child) => child.slug === 'tech')).toBeUndefined()
+    expect(
+      result.data?.[0]?.sidebarItems?.find((item) => item.type === 'link' && item.slug === 'stocks'),
+    ).toMatchObject({
       slug: 'stocks',
       count: 1,
     })
-    expect(result.data?.[0]?.sidebarItems?.find(item => item.type === 'link' && item.slug === 'tech')).toBeUndefined()
+    expect(result.data?.[0]?.sidebarItems?.find((item) => item.type === 'link' && item.slug === 'tech')).toBeUndefined()
   })
 })
 
@@ -501,11 +574,13 @@ describe('tagRepository.listTags', () => {
 
     expect(result.error).toBeNull()
     expect(result.totalCount).toBe(2)
-    expect(result.data.map(tag => ({
-      slug: tag.slug,
-      active_events_count: tag.active_events_count,
-      active_markets_count: tag.active_markets_count,
-    }))).toEqual([
+    expect(
+      result.data.map((tag) => ({
+        slug: tag.slug,
+        active_events_count: tag.active_events_count,
+        active_markets_count: tag.active_markets_count,
+      })),
+    ).toEqual([
       {
         slug: 'weather',
         active_events_count: 2,

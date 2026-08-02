@@ -2,9 +2,9 @@
 
 import { useEffect, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { toast } from 'sonner'
 import { Check, Send, Loader2, AlertCircle } from 'lucide-react'
 import { submitMarketForReviewAction } from '@/app/[locale]/(platform)/community/[slug]/_actions/review-actions'
+import { toast } from '@/components/ui/toast'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,

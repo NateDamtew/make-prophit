@@ -1,14 +1,16 @@
 import type { ReactNode } from 'react'
+
+import { useExtracted } from 'next-intl'
+
 import type { EventOrderPanelOutcomeSelectedAccent } from '@/app/[locale]/(platform)/event/[slug]/_components/EventOrderPanelOutcomeButton'
 import type { OddsFormat } from '@/lib/odds-format'
 import type { Event, Market, Outcome } from '@/types'
-import { useExtracted } from 'next-intl'
+
 import { MOBILE_BOTTOM_NAV_OFFSET } from '@/app/[locale]/(platform)/_lib/mobile-bottom-nav'
 import EventOrderPanelForm from '@/app/[locale]/(platform)/event/[slug]/_components/EventOrderPanelForm'
-import EventOrderPanelTermsDisclaimer
-  from '@/app/[locale]/(platform)/event/[slug]/_components/EventOrderPanelTermsDisclaimer'
+import EventOrderPanelTermsDisclaimer from '@/app/[locale]/(platform)/event/[slug]/_components/EventOrderPanelTermsDisclaimer'
 import { Button } from '@/components/ui/button'
-import { Drawer, DrawerContent, DrawerTitle, DrawerTrigger } from '@/components/ui/drawer'
+import { Drawer, DrawerContent, DrawerTitle } from '@/components/ui/drawer'
 import { useOutcomeLabel } from '@/hooks/useOutcomeLabel'
 import { ORDER_SIDE, OUTCOME_INDEX } from '@/lib/constants'
 import { formatCentsLabel } from '@/lib/formatters'
@@ -48,16 +50,13 @@ export default function EventOrderPanelMobile({
   const state = useOrder()
   const hasMatchingStoreEvent = state.event?.id === event.id
   const hasMatchingStoreMarket = Boolean(
-    state.market
-    && event.markets.some(market => market.condition_id === state.market?.condition_id),
+    state.market && event.markets.some((market) => market.condition_id === state.market?.condition_id),
   )
   const activeEvent: Event = hasMatchingStoreEvent && state.event ? state.event : event
   const activeMarket = hasMatchingStoreMarket ? state.market : initialMarket
   const fallbackOutcome = initialOutcome ?? activeMarket?.outcomes[0] ?? null
   const hasMatchingStoreOutcome = Boolean(
-    state.outcome
-    && activeMarket
-    && state.outcome.condition_id === activeMarket.condition_id,
+    state.outcome && activeMarket && state.outcome.condition_id === activeMarket.condition_id,
   )
   const activeOutcome = hasMatchingStoreOutcome ? state.outcome : fallbackOutcome
   const isSingleMarket = useIsSingleMarket() || activeEvent.total_markets_count === 1
@@ -71,101 +70,87 @@ export default function EventOrderPanelMobile({
   const noPrice = activeLiveNoPrice ?? resolveFallbackOutcomeUnitPrice(activeMarket, noOutcome)
   const buyYesOutcome = yesOutcome ?? activeMarket?.outcomes[0] ?? null
   const buyNoOutcome = noOutcome ?? activeMarket?.outcomes[1] ?? null
-  const buyYesOutcomeLabel = outcomeLabelOverrides[OUTCOME_INDEX.YES]?.trim()
-    || (buyYesOutcome?.outcome_text
+  const buyYesOutcomeLabel =
+    outcomeLabelOverrides[OUTCOME_INDEX.YES]?.trim() ||
+    (buyYesOutcome?.outcome_text
       ? (normalizeOutcomeLabel(buyYesOutcome.outcome_text) ?? buyYesOutcome.outcome_text)
       : t('Yes'))
-  const buyNoOutcomeLabel = outcomeLabelOverrides[OUTCOME_INDEX.NO]?.trim()
-    || (buyNoOutcome?.outcome_text
+  const buyNoOutcomeLabel =
+    outcomeLabelOverrides[OUTCOME_INDEX.NO]?.trim() ||
+    (buyNoOutcome?.outcome_text
       ? (normalizeOutcomeLabel(buyNoOutcome.outcome_text) ?? buyNoOutcome.outcome_text)
       : t('No'))
   const shouldShowDefaultTrigger = showDefaultTrigger && isSingleMarket
-  const yesPriceLabel = oddsFormat === 'price'
-    ? formatCentsLabel(yesPrice)
-    : formatOddsFromPrice(yesPrice, oddsFormat)
-  const noPriceLabel = oddsFormat === 'price'
-    ? formatCentsLabel(noPrice)
-    : formatOddsFromPrice(noPrice, oddsFormat)
+  const yesPriceLabel = oddsFormat === 'price' ? formatCentsLabel(yesPrice) : formatOddsFromPrice(yesPrice, oddsFormat)
+  const noPriceLabel = oddsFormat === 'price' ? formatCentsLabel(noPrice) : formatOddsFromPrice(noPrice, oddsFormat)
 
   return (
-    <Drawer
-      open={state.isMobileOrderPanelOpen}
-      onClose={() => state.setIsMobileOrderPanelOpen(false)}
-      repositionInputs={false}
-    >
+    <Drawer open={state.isMobileOrderPanelOpen} onOpenChange={state.setIsMobileOrderPanelOpen}>
       {shouldShowDefaultTrigger && (
-        <DrawerTrigger asChild>
-          <div
-            className="fixed inset-x-0 z-30 border-t bg-background p-4 lg:hidden"
-            style={{ bottom: MOBILE_BOTTOM_NAV_OFFSET }}
-          >
-            <div className="flex gap-2">
-              <Button
-                variant="yes"
-                size="outcomeLg"
-                onClick={() => {
-                  if (!activeMarket || !buyYesOutcome) {
-                    return
-                  }
+        <div
+          className="fixed inset-x-0 z-30 border-t bg-background p-4 lg:hidden"
+          style={{ bottom: MOBILE_BOTTOM_NAV_OFFSET }}
+        >
+          <div className="flex gap-2">
+            <Button
+              variant="yes"
+              size="outcomeLg"
+              onClick={() => {
+                if (!activeMarket || !buyYesOutcome) {
+                  return
+                }
 
-                  state.setMarket(activeMarket)
-                  state.setOutcome(buyYesOutcome)
-                  state.setIsMobileOrderPanelOpen(true)
-                }}
-              >
-                <span className="truncate opacity-70">
-                  {t('Buy')}
-                  {' '}
-                  {buyYesOutcomeLabel}
-                </span>
-                <span className="shrink-0 font-bold">
-                  {yesPriceLabel}
-                </span>
-              </Button>
-              <Button
-                variant="no"
-                size="outcomeLg"
-                onClick={() => {
-                  if (!activeMarket || !buyNoOutcome) {
-                    return
-                  }
+                state.setMarket(activeMarket)
+                state.setOutcome(buyYesOutcome)
+                state.setIsMobileOrderPanelOpen(true)
+              }}
+            >
+              <span className="truncate opacity-70">
+                {t('Buy')} {buyYesOutcomeLabel}
+              </span>
+              <span className="shrink-0 font-bold">{yesPriceLabel}</span>
+            </Button>
+            <Button
+              variant="no"
+              size="outcomeLg"
+              onClick={() => {
+                if (!activeMarket || !buyNoOutcome) {
+                  return
+                }
 
-                  state.setMarket(activeMarket)
-                  state.setOutcome(buyNoOutcome)
-                  state.setIsMobileOrderPanelOpen(true)
-                }}
-              >
-                <span className="truncate opacity-70">
-                  {t('Buy')}
-                  {' '}
-                  {buyNoOutcomeLabel}
-                </span>
-                <span className="shrink-0 font-bold">
-                  {noPriceLabel}
-                </span>
-              </Button>
-            </div>
+                state.setMarket(activeMarket)
+                state.setOutcome(buyNoOutcome)
+                state.setIsMobileOrderPanelOpen(true)
+              }}
+            >
+              <span className="truncate opacity-70">
+                {t('Buy')} {buyNoOutcomeLabel}
+              </span>
+              <span className="shrink-0 font-bold">{noPriceLabel}</span>
+            </Button>
           </div>
-        </DrawerTrigger>
+        </div>
       )}
 
-      <DrawerContent className="max-h-[95vh] w-full">
+      <DrawerContent className="max-h-[95dvh] w-full">
         <DrawerTitle className="sr-only">{event.title}</DrawerTitle>
 
-        <EventOrderPanelForm
-          event={event}
-          isMobile={true}
-          initialMarket={activeMarket}
-          initialOutcome={activeOutcome}
-          mobileMarketInfo={mobileMarketInfo}
-          primaryOutcomeIndex={primaryOutcomeIndex}
-          oddsFormat={oddsFormat}
-          outcomeButtonStyleVariant={outcomeButtonStyleVariant}
-          outcomeLabelOverrides={outcomeLabelOverrides}
-          outcomeAccentOverrides={outcomeAccentOverrides}
-          optimisticallyClaimedConditionIds={optimisticallyClaimedConditionIds}
-        />
-        <EventOrderPanelTermsDisclaimer />
+        <div className="pb-[calc(env(safe-area-inset-bottom)+1rem)]">
+          <EventOrderPanelForm
+            event={event}
+            isMobile={true}
+            initialMarket={activeMarket}
+            initialOutcome={activeOutcome}
+            mobileMarketInfo={mobileMarketInfo}
+            primaryOutcomeIndex={primaryOutcomeIndex}
+            oddsFormat={oddsFormat}
+            outcomeButtonStyleVariant={outcomeButtonStyleVariant}
+            outcomeLabelOverrides={outcomeLabelOverrides}
+            outcomeAccentOverrides={outcomeAccentOverrides}
+            optimisticallyClaimedConditionIds={optimisticallyClaimedConditionIds}
+          />
+          <EventOrderPanelTermsDisclaimer />
+        </div>
       </DrawerContent>
     </Drawer>
   )

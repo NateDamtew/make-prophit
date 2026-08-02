@@ -17,6 +17,7 @@ import {
   timestamp,
   unique,
 } from 'drizzle-orm/pg-core'
+
 import { users } from '../auth/tables'
 
 export const conditions = pgTable(
@@ -49,20 +50,17 @@ export const conditions = pgTable(
   },
 )
 
-export const conditions_audit = pgTable(
-  'conditions_audit',
-  {
-    id: char({ length: 26 })
-      .primaryKey()
-      .default(sql`generate_ulid()`),
-    condition_id: text()
-      .notNull()
-      .references(() => conditions.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
-    old_values: jsonb().notNull(),
-    new_values: jsonb().notNull(),
-    created_at: timestamp({ withTimezone: true }).defaultNow().notNull(),
-  },
-)
+export const conditions_audit = pgTable('conditions_audit', {
+  id: char({ length: 26 })
+    .primaryKey()
+    .default(sql`generate_ulid()`),
+  condition_id: text()
+    .notNull()
+    .references(() => conditions.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
+  old_values: jsonb().notNull(),
+  new_values: jsonb().notNull(),
+  created_at: timestamp({ withTimezone: true }).defaultNow().notNull(),
+})
 
 export const events = pgTable(
   'events',
@@ -70,73 +68,61 @@ export const events = pgTable(
     id: char({ length: 26 })
       .primaryKey()
       .default(sql`generate_ulid()`),
-    slug: text()
-      .notNull()
-      .unique(),
-    title: text()
-      .notNull(),
+    slug: text().notNull().unique(),
+    title: text().notNull(),
     creator: char({ length: 42 }),
     icon_url: text(),
-    is_hidden: boolean()
-      .notNull()
-      .default(false),
-    is_polymarket_mirror: boolean()
-      .notNull()
-      .default(false),
+    is_hidden: boolean().notNull().default(false),
+    is_polymarket_mirror: boolean().notNull().default(false),
     livestream_url: text(),
     additional_context: text(),
     additional_context_updated_at: timestamp({ withTimezone: true }),
-    show_market_icons: boolean()
-      .default(true),
-    enable_neg_risk: boolean()
-      .default(false),
-    neg_risk_augmented: boolean()
-      .default(false),
-    neg_risk: boolean()
-      .default(false),
+    show_market_icons: boolean().default(true),
+    enable_neg_risk: boolean().default(false),
+    neg_risk_augmented: boolean().default(false),
+    neg_risk: boolean().default(false),
     neg_risk_market_id: char({ length: 66 }),
     series_slug: text(),
     series_id: text(),
     series_recurrence: text(),
-    status: text()
-      .notNull()
-      .default('active'),
+    status: text().notNull().default('active'),
     rules: text(),
-    active_markets_count: integer()
-      .default(0),
-    total_markets_count: integer()
-      .default(0),
-    created_at: timestamp({ withTimezone: true })
-      .notNull()
-      .defaultNow(),
-    updated_at: timestamp({ withTimezone: true })
-      .notNull()
-      .defaultNow(),
+    active_markets_count: integer().default(0),
+    total_markets_count: integer().default(0),
+    created_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updated_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
     start_date: timestamp({ withTimezone: true }),
     end_date: timestamp({ withTimezone: true }),
     resolved_at: timestamp({ withTimezone: true }),
     community_id: char({ length: 26 }),
   },
+  (table) => ({
+    titleSearchIdx: index('idx_events_title_lower_gin_trgm').using(
+      'gin',
+      sql`LOWER(${table.title}) extensions.gin_trgm_ops`,
+    ),
+    slugSearchIdx: index('idx_events_slug_lower_gin_trgm').using(
+      'gin',
+      sql`LOWER(${table.slug}) extensions.gin_trgm_ops`,
+    ),
+  }),
 )
 
-export const event_live_chart_configs = pgTable(
-  'event_live_chart_configs',
-  {
-    series_slug: text().primaryKey(),
-    topic: text().notNull().default('crypto_prices_chainlink'),
-    event_type: text().notNull().default('update'),
-    symbol: text().notNull(),
-    display_name: text().notNull(),
-    display_symbol: text().notNull(),
-    line_color: text().notNull().default('#F59E0B'),
-    icon_path: text(),
-    enabled: boolean().notNull().default(true),
-    show_price_decimals: boolean().notNull().default(true),
-    active_window_minutes: integer().notNull().default(1440),
-    created_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
-    updated_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
-  },
-)
+export const event_live_chart_configs = pgTable('event_live_chart_configs', {
+  series_slug: text().primaryKey(),
+  topic: text().notNull().default('crypto_prices_chainlink'),
+  event_type: text().notNull().default('update'),
+  symbol: text().notNull(),
+  display_name: text().notNull(),
+  display_symbol: text().notNull(),
+  line_color: text().notNull().default('#F59E0B'),
+  icon_path: text(),
+  enabled: boolean().notNull().default(true),
+  show_price_decimals: boolean().notNull().default(true),
+  active_window_minutes: integer().notNull().default(1440),
+  created_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  updated_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
+})
 
 export const series_social_trackers = pgTable(
   'series_social_trackers',
@@ -153,7 +139,7 @@ export const series_social_trackers = pgTable(
     created_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
     updated_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
-  table => ({
+  (table) => ({
     series_slug_platform_handle_unique: unique('series_social_trackers_series_slug_platform_handle_key').on(
       table.series_slug,
       table.platform,
@@ -175,7 +161,7 @@ export const event_translations = pgTable(
     created_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
     updated_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
-  table => ({
+  (table) => ({
     pk: primaryKey({ columns: [table.event_id, table.locale] }),
   }),
 )
@@ -189,12 +175,9 @@ export const event_creations = pgTable(
     created_by_user_id: text()
       .notNull()
       .references(() => users.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
-    updated_by_user_id: text()
-      .references(() => users.id, { onDelete: 'set null', onUpdate: 'cascade' }),
-    source_event_id: char({ length: 26 })
-      .references(() => events.id, { onDelete: 'set null', onUpdate: 'cascade' }),
-    deployed_event_id: char({ length: 26 })
-      .references(() => events.id, { onDelete: 'set null', onUpdate: 'cascade' }),
+    updated_by_user_id: text().references(() => users.id, { onDelete: 'set null', onUpdate: 'cascade' }),
+    source_event_id: char({ length: 26 }).references(() => events.id, { onDelete: 'set null', onUpdate: 'cascade' }),
+    deployed_event_id: char({ length: 26 }).references(() => events.id, { onDelete: 'set null', onUpdate: 'cascade' }),
     title: text().notNull().default('Untitled draft'),
     slug: text(),
     title_template: text(),
@@ -208,7 +191,10 @@ export const event_creations = pgTable(
     draft_payload: jsonb().$type<Record<string, unknown> | null>(),
     asset_payload: jsonb().$type<Record<string, unknown> | null>(),
     main_category_slug: text(),
-    category_slugs: text().array().notNull().default(sql`'{}'::text[]`),
+    category_slugs: text()
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
     market_mode: text(),
     binary_question: text(),
     binary_outcome_yes: text(),
@@ -227,6 +213,10 @@ export const event_creations = pgTable(
     created_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
     updated_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
+  (table) => ({
+    deployedEventIdIdx: index('idx_event_creations_deployed_event_id').on(table.deployed_event_id),
+    updatedByUserIdIdx: index('idx_event_creations_updated_by_user_id').on(table.updated_by_user_id),
+  }),
 )
 
 export const jobs = pgTable(
@@ -247,46 +237,43 @@ export const jobs = pgTable(
     created_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
     updated_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
-  table => ({
+  (table) => ({
     job_type_dedupe_key_unique: unique('jobs_job_type_dedupe_key_key').on(table.job_type, table.dedupe_key),
   }),
 )
 
-export const markets = pgTable(
-  'markets',
-  {
-    condition_id: text()
-      .primaryKey()
-      .references(() => conditions.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
-    polymarket_condition_id: text(),
-    event_id: char({ length: 26 })
-      .notNull()
-      .references(() => events.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
-    title: text().notNull(),
-    slug: text().notNull(),
-    short_title: text(),
-    question: text(),
-    market_rules: text(),
-    resolution_source: text(),
-    resolution_source_url: text(),
-    resolver: char({ length: 42 }),
-    neg_risk: boolean().default(false).notNull(),
-    neg_risk_other: boolean().default(false).notNull(),
-    neg_risk_market_id: char({ length: 66 }),
-    neg_risk_request_id: char({ length: 66 }),
-    metadata_version: text(),
-    metadata_schema: text(),
-    icon_url: text(),
-    is_active: boolean().default(true).notNull(),
-    is_resolved: boolean().default(false).notNull(),
-    metadata: text(),
-    volume_24h: numeric({ precision: 20, scale: 6 }).default('0').notNull(),
-    volume: numeric({ precision: 20, scale: 6 }).default('0').notNull(),
-    end_time: timestamp({ withTimezone: true }),
-    created_at: timestamp({ withTimezone: true }).defaultNow().notNull(),
-    updated_at: timestamp({ withTimezone: true }).defaultNow().notNull(),
-  },
-)
+export const markets = pgTable('markets', {
+  condition_id: text()
+    .primaryKey()
+    .references(() => conditions.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
+  polymarket_condition_id: text(),
+  event_id: char({ length: 26 })
+    .notNull()
+    .references(() => events.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
+  title: text().notNull(),
+  slug: text().notNull(),
+  short_title: text(),
+  question: text(),
+  market_rules: text(),
+  resolution_source: text(),
+  resolution_source_url: text(),
+  resolver: char({ length: 42 }),
+  neg_risk: boolean().default(false).notNull(),
+  neg_risk_other: boolean().default(false).notNull(),
+  neg_risk_market_id: char({ length: 66 }),
+  neg_risk_request_id: char({ length: 66 }),
+  metadata_version: text(),
+  metadata_schema: text(),
+  icon_url: text(),
+  is_active: boolean().default(true).notNull(),
+  is_resolved: boolean().default(false).notNull(),
+  metadata: text(),
+  volume_24h: numeric({ precision: 20, scale: 6 }).default('0').notNull(),
+  volume: numeric({ precision: 20, scale: 6 }).default('0').notNull(),
+  end_time: timestamp({ withTimezone: true }),
+  created_at: timestamp({ withTimezone: true }).defaultNow().notNull(),
+  updated_at: timestamp({ withTimezone: true }).defaultNow().notNull(),
+})
 
 export const market_context_cache = pgTable(
   'market_context_cache',
@@ -300,7 +287,7 @@ export const market_context_cache = pgTable(
     created_at: timestamp({ withTimezone: true }).defaultNow().notNull(),
     updated_at: timestamp({ withTimezone: true }).defaultNow().notNull(),
   },
-  table => ({
+  (table) => ({
     pk: primaryKey({ columns: [table.condition_id, table.locale] }),
   }),
 )
@@ -312,8 +299,7 @@ export const home_featured_events = pgTable(
       .primaryKey()
       .default(sql`generate_ulid()`),
     target_type: text().notNull().default('event'),
-    event_id: char({ length: 26 })
-      .references(() => events.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
+    event_id: char({ length: 26 }).references(() => events.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
     series_slug: text(),
     enabled: boolean().notNull().default(true),
     rank: integer().notNull().default(0),
@@ -325,7 +311,7 @@ export const home_featured_events = pgTable(
     created_at: timestamp({ withTimezone: true }).defaultNow().notNull(),
     updated_at: timestamp({ withTimezone: true }).defaultNow().notNull(),
   },
-  table => ({
+  (table) => ({
     contextModeCheck: check(
       'home_featured_events_context_mode_check',
       sql`${table.context_mode} IN ('auto', 'news', 'comments', 'hidden')`,
@@ -333,10 +319,7 @@ export const home_featured_events = pgTable(
     enabledRankIdx: index('idx_home_featured_events_enabled_rank').on(table.enabled, table.rank),
     eventIdIdx: index('idx_home_featured_events_event_id').on(table.event_id),
     seriesSlugIdx: index('idx_home_featured_events_series_slug').on(table.series_slug),
-    sourceCheck: check(
-      'home_featured_events_source_check',
-      sql`${table.source} IN ('manual', 'ai')`,
-    ),
+    sourceCheck: check('home_featured_events_source_check', sql`${table.source} IN ('manual', 'ai')`),
     startsAtIdx: index('idx_home_featured_events_starts_at').on(table.starts_at),
     endsAtIdx: index('idx_home_featured_events_ends_at').on(table.ends_at),
     targetReferenceCheck: check(
@@ -346,10 +329,7 @@ export const home_featured_events = pgTable(
         OR (${table.target_type} = 'series' AND ${table.event_id} IS NULL AND TRIM(COALESCE(${table.series_slug}, '')) <> '')
       )`,
     ),
-    targetTypeCheck: check(
-      'home_featured_events_target_type_check',
-      sql`${table.target_type} IN ('event', 'series')`,
-    ),
+    targetTypeCheck: check('home_featured_events_target_type_check', sql`${table.target_type} IN ('event', 'series')`),
   }),
 )
 
@@ -379,9 +359,16 @@ export const home_featured_event_context_items = pgTable(
     created_at: timestamp({ withTimezone: true }).defaultNow().notNull(),
     updated_at: timestamp({ withTimezone: true }).defaultNow().notNull(),
   },
-  table => ({
-    featuredEventLocaleIdx: index('idx_home_featured_context_featured_locale').on(table.featured_event_id, table.locale),
-    eventLocaleExpiresIdx: index('idx_home_featured_context_event_locale_expires').on(table.event_id, table.locale, table.expires_at),
+  (table) => ({
+    featuredEventLocaleIdx: index('idx_home_featured_context_featured_locale').on(
+      table.featured_event_id,
+      table.locale,
+    ),
+    eventLocaleExpiresIdx: index('idx_home_featured_context_event_locale_expires').on(
+      table.event_id,
+      table.locale,
+      table.expires_at,
+    ),
     expiresAtIdx: index('idx_home_featured_context_expires_at').on(table.expires_at),
     itemTypeCheck: check(
       'home_featured_event_context_items_item_type_check',
@@ -433,14 +420,20 @@ export const event_sports = pgTable(
     created_at: timestamp({ withTimezone: true }).defaultNow().notNull(),
     updated_at: timestamp({ withTimezone: true }).defaultNow().notNull(),
   },
-  table => ({
+  (table) => ({
     sourceConfidenceCheck: check(
       'event_sports_source_match_confidence_range',
       sql`${table.sports_source_match_confidence} IS NULL OR (${table.sports_source_match_confidence} >= 0 AND ${table.sports_source_match_confidence} <= 1)`,
     ),
-    sourceEventIdx: index('idx_event_sports_source_event').on(table.sports_source_provider, table.sports_source_event_id),
+    sourceEventIdx: index('idx_event_sports_source_event').on(
+      table.sports_source_provider,
+      table.sports_source_event_id,
+    ),
     sourceGameIdx: index('idx_event_sports_source_game').on(table.sports_source_provider, table.sports_source_game_id),
-    sourceLeagueIdx: index('idx_event_sports_source_league').on(table.sports_source_provider, table.sports_source_league_id),
+    sourceLeagueIdx: index('idx_event_sports_source_league').on(
+      table.sports_source_provider,
+      table.sports_source_league_id,
+    ),
   }),
 )
 
@@ -476,76 +469,77 @@ export const market_sports = pgTable(
     created_at: timestamp({ withTimezone: true }).defaultNow().notNull(),
     updated_at: timestamp({ withTimezone: true }).defaultNow().notNull(),
   },
-  table => ({
+  (table) => ({
     sourceConfidenceCheck: check(
       'market_sports_source_match_confidence_range',
       sql`${table.sports_source_match_confidence} IS NULL OR (${table.sports_source_match_confidence} >= 0 AND ${table.sports_source_match_confidence} <= 1)`,
     ),
-    sourceEventIdx: index('idx_market_sports_source_event').on(table.sports_source_provider, table.sports_source_event_id),
+    sourceEventIdx: index('idx_market_sports_source_event').on(
+      table.sports_source_provider,
+      table.sports_source_event_id,
+    ),
     sourceGameIdx: index('idx_market_sports_source_game').on(table.sports_source_provider, table.sports_source_game_id),
-    sourceLeagueIdx: index('idx_market_sports_source_league').on(table.sports_source_provider, table.sports_source_league_id),
+    sourceLeagueIdx: index('idx_market_sports_source_league').on(
+      table.sports_source_provider,
+      table.sports_source_league_id,
+    ),
   }),
 )
 
-export const sports_menu_items = pgTable(
-  'sports_menu_items',
-  {
-    id: text().primaryKey(),
-    item_type: text().notNull(),
-    label: text(),
-    href: text(),
-    icon_url: text(),
-    parent_id: text(),
-    menu_slug: text(),
-    h1_title: text(),
-    mapped_tags: jsonb().notNull().default(sql`'[]'::jsonb`),
-    url_aliases: jsonb().notNull().default(sql`'[]'::jsonb`),
-    games_enabled: boolean().notNull().default(true),
-    props_enabled: boolean().notNull().default(true),
-    sort_order: integer().notNull().default(0),
-    enabled: boolean().notNull().default(true),
-    sidebar_category: boolean().notNull().default(false),
-    sidebar_enabled: boolean().notNull().default(false),
-    sidebar_featured: boolean().notNull().default(false),
-    sidebar_sort_order: integer().notNull().default(0),
-    created_at: timestamp({ withTimezone: true }).defaultNow().notNull(),
-    updated_at: timestamp({ withTimezone: true }).defaultNow().notNull(),
-  },
-)
+export const sports_menu_items = pgTable('sports_menu_items', {
+  id: text().primaryKey(),
+  item_type: text().notNull(),
+  label: text(),
+  href: text(),
+  icon_url: text(),
+  parent_id: text(),
+  menu_slug: text(),
+  h1_title: text(),
+  mapped_tags: jsonb()
+    .notNull()
+    .default(sql`'[]'::jsonb`),
+  url_aliases: jsonb()
+    .notNull()
+    .default(sql`'[]'::jsonb`),
+  games_enabled: boolean().notNull().default(true),
+  props_enabled: boolean().notNull().default(true),
+  sort_order: integer().notNull().default(0),
+  enabled: boolean().notNull().default(true),
+  sidebar_category: boolean().notNull().default(false),
+  sidebar_enabled: boolean().notNull().default(false),
+  sidebar_featured: boolean().notNull().default(false),
+  sidebar_sort_order: integer().notNull().default(0),
+  created_at: timestamp({ withTimezone: true }).defaultNow().notNull(),
+  updated_at: timestamp({ withTimezone: true }).defaultNow().notNull(),
+})
 
-export const outcomes = pgTable(
-  'outcomes',
-  {
-    condition_id: text()
-      .notNull()
-      .references(() => conditions.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
-    outcome_text: text().notNull(),
-    outcome_index: smallint().notNull(),
-    token_id: text().notNull().primaryKey(),
-    polymarket_token_id: text(),
-    is_winning_outcome: boolean().default(false),
-    payout_value: numeric({ precision: 20, scale: 6 }),
-    created_at: timestamp({ withTimezone: true }).defaultNow().notNull(),
-    updated_at: timestamp({ withTimezone: true }).defaultNow().notNull(),
-  },
-)
+export const outcomes = pgTable('outcomes', {
+  condition_id: text()
+    .notNull()
+    .references(() => conditions.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
+  outcome_text: text().notNull(),
+  outcome_index: smallint().notNull(),
+  token_id: text().notNull().primaryKey(),
+  polymarket_token_id: text(),
+  is_winning_outcome: boolean().default(false),
+  payout_value: numeric({ precision: 20, scale: 6 }),
+  created_at: timestamp({ withTimezone: true }).defaultNow().notNull(),
+  updated_at: timestamp({ withTimezone: true }).defaultNow().notNull(),
+})
 
-export const tags = pgTable(
-  'tags',
-  {
-    id: smallint().primaryKey().generatedAlwaysAsIdentity(),
-    name: text().notNull().unique(),
-    slug: text().notNull().unique(),
-    is_main_category: boolean().default(false),
-    is_hidden: boolean().notNull().default(false),
-    hide_events: boolean().notNull().default(false),
-    event_page_note: text(),
-    display_order: smallint().default(0),
-    active_markets_count: integer().default(0),
-    created_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
-    updated_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
-  },
-)
+export const tags = pgTable('tags', {
+  id: smallint().primaryKey().generatedAlwaysAsIdentity(),
+  name: text().notNull().unique(),
+  slug: text().notNull().unique(),
+  is_main_category: boolean().default(false),
+  is_hidden: boolean().notNull().default(false),
+  hide_events: boolean().notNull().default(false),
+  event_page_note: text(),
+  display_order: smallint().default(0),
+  active_markets_count: integer().default(0),
+  created_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  updated_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
+})
 
 export const tag_translations = pgTable(
   'tag_translations',
@@ -560,36 +554,30 @@ export const tag_translations = pgTable(
     created_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
     updated_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
-  table => ({
+  (table) => ({
     pk: primaryKey({ columns: [table.tag_id, table.locale] }),
   }),
 )
 
-export const event_tags = pgTable(
-  'event_tags',
-  {
-    event_id: char({ length: 26 })
-      .notNull()
-      .references(() => events.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
-    tag_id: smallint()
-      .notNull()
-      .references(() => tags.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
-  },
-)
+export const event_tags = pgTable('event_tags', {
+  event_id: char({ length: 26 })
+    .notNull()
+    .references(() => events.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
+  tag_id: smallint()
+    .notNull()
+    .references(() => tags.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
+})
 
-export const v_main_tag_subcategories = pgView(
-  'v_main_tag_subcategories',
-  {
-    main_tag_id: integer(),
-    main_tag_slug: text(),
-    main_tag_name: text(),
-    main_tag_is_hidden: boolean(),
-    sub_tag_id: integer(),
-    sub_tag_name: text(),
-    sub_tag_slug: text(),
-    sub_tag_is_main_category: boolean(),
-    sub_tag_is_hidden: boolean(),
-    active_markets_count: integer(),
-    last_market_activity_at: timestamp(),
-  },
-).existing()
+export const v_main_tag_subcategories = pgView('v_main_tag_subcategories', {
+  main_tag_id: integer(),
+  main_tag_slug: text(),
+  main_tag_name: text(),
+  main_tag_is_hidden: boolean(),
+  sub_tag_id: integer(),
+  sub_tag_name: text(),
+  sub_tag_slug: text(),
+  sub_tag_is_main_category: boolean(),
+  sub_tag_is_hidden: boolean(),
+  active_markets_count: integer(),
+  last_market_activity_at: timestamp(),
+}).existing()

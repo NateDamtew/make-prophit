@@ -2,7 +2,7 @@
 
 import { SendHorizonalIcon } from 'lucide-react'
 import { useRef, useState } from 'react'
-import { toast } from 'sonner'
+import { toast } from '@/components/ui/toast'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 

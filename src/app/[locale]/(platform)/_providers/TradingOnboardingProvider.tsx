@@ -1,14 +1,19 @@
 'use client'
 
 import type { ReactNode } from 'react'
-import type { TradingOnboardingContextValue } from '@/app/[locale]/(platform)/_providers/TradingOnboardingContext'
-import type { CommunityProfile } from '@/lib/community-profile'
-import type { User } from '@/types'
+
 import { useExtracted } from 'next-intl'
 import { usePathname } from 'next/navigation'
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
-import { createPublicClient, erc20Abi, erc1155Abi, http } from 'viem'
+import { createPublicClient, erc20Abi, erc1155Abi } from 'viem'
 import { useSignMessage, useSignTypedData } from 'wagmi'
+
+import type { TradingOnboardingContextValue } from '@/app/[locale]/(platform)/_providers/TradingOnboardingContext'
+import type { CommunityProfile } from '@/lib/community-profile'
+import type { SumsubVerificationStatus } from '@/lib/sumsub/types'
+import type { ViemRpcUrls } from '@/lib/viem-network'
+import type { User } from '@/types'
+
 import { markApprovalStateWithoutTransactionAction } from '@/app/[locale]/(platform)/_actions/approve-tokens'
 import {
   createDepositWalletAction,
@@ -28,11 +33,7 @@ import { useDepositWalletPolling } from '@/hooks/useDepositWalletPolling'
 import { usePublicRuntimeConfig } from '@/hooks/usePublicRuntimeConfig'
 import { useSignaturePromptRunner } from '@/hooks/useSignaturePromptRunner'
 import { authClient } from '@/lib/auth-client'
-import {
-  clearCommunityAuth,
-  ensureCommunityToken,
-  parseCommunityError,
-} from '@/lib/community-auth'
+import { clearCommunityAuth, ensureCommunityToken, parseCommunityError } from '@/lib/community-auth'
 import {
   COMMUNITY_PROFILE_LOOKUP_TIMEOUT_MS,
   fetchCommunityProfileByAddress,
@@ -48,6 +49,7 @@ import {
   UMA_NEG_RISK_ADAPTER_ADDRESS,
 } from '@/lib/contracts'
 import { fetchReferralLocked } from '@/lib/exchange'
+import { SUMSUB_ENFORCEMENTS } from '@/lib/sumsub/types'
 import {
   buildTradingAuthMessage,
   getTradingAuthDomain,
@@ -56,11 +58,8 @@ import {
 } from '@/lib/trading-auth/client'
 import { isTradingAuthRequiredError } from '@/lib/trading-auth/errors'
 import { hasUsableUserEmail } from '@/lib/user-email'
-import { defaultViemNetwork, resolveViemRpcUrl } from '@/lib/viem-network'
-import {
-  isRecoverableWalletConnectorError,
-  isUserRejectedRequestError,
-} from '@/lib/wallet'
+import { createViemTransport, defaultViemNetwork, resolveViemRpcUrls } from '@/lib/viem-network'
+import { isRecoverableWalletConnectorError, isUserRejectedRequestError } from '@/lib/wallet'
 import { signAndSubmitDepositWalletCalls } from '@/lib/wallet/client'
 import {
   buildAutoRedeemAllowanceCalls,
@@ -71,7 +70,7 @@ import {
 } from '@/lib/wallet/transactions'
 import { mergeSessionUserState, useUser } from '@/stores/useUser'
 
-type OnboardingModal = 'username' | 'email' | 'enable' | 'enable-status' | 'approve' | 'auto-redeem' | null
+type OnboardingModal = 'username' | 'email' | 'sumsub' | 'enable' | 'enable-status' | 'approve' | 'auto-redeem' | null
 type EnableTradingStep = 'idle' | 'enabling' | 'deploying' | 'completed'
 type ApprovalsStep = 'idle' | 'signing' | 'completed'
 interface OpenNextRequirementOptions {
@@ -83,10 +82,7 @@ export function TradingOnboardingProvider({ children }: { children: ReactNode })
   const user = useUser()
 
   return (
-    <TradingOnboardingProviderContent
-      key={user?.id ?? 'guest'}
-      user={user}
-    >
+    <TradingOnboardingProviderContent key={user?.id ?? 'guest'} user={user}>
       {children}
     </TradingOnboardingProviderContent>
   )
@@ -99,6 +95,7 @@ interface TradingOnboardingProviderContentProps {
 
 let routeAllowsTradingAuthPrompt = false
 const routePromptListeners = new Set<() => void>()
+const SUMSUB_ENFORCEMENT_SET: ReadonlySet<string> = new Set(SUMSUB_ENFORCEMENTS)
 
 function subscribeRouteTradingAuthPrompt(onStoreChange: () => void) {
   routePromptListeners.add(onStoreChange)
@@ -121,7 +118,7 @@ function setRouteTradingAuthPrompt(nextValue: boolean) {
   }
 
   routeAllowsTradingAuthPrompt = nextValue
-  routePromptListeners.forEach(listener => listener())
+  routePromptListeners.forEach((listener) => listener())
 }
 
 function useRouteTradingAuthPrompt() {
@@ -135,9 +132,12 @@ function useRouteTradingAuthPrompt() {
 function TradingAuthRoutePromptSync() {
   const pathname = usePathname()
 
-  useEffect(function syncRouteTradingAuthPrompt() {
-    setRouteTradingAuthPrompt(pathname.includes('/event/'))
-  }, [pathname])
+  useEffect(
+    function syncRouteTradingAuthPrompt() {
+      setRouteTradingAuthPrompt(pathname.includes('/event/'))
+    },
+    [pathname],
+  )
 
   return null
 }
@@ -160,10 +160,7 @@ function isGeneratedDepositWalletUsername(username?: string | null, depositWalle
 
 function hasUserProvidedUsername(user: User) {
   const username = user.username?.trim()
-  return Boolean(
-    username
-    && !isGeneratedDepositWalletUsername(username, user.deposit_wallet_address),
-  )
+  return Boolean(username && !isGeneratedDepositWalletUsername(username, user.deposit_wallet_address))
 }
 
 function getUsernameDefaultValue(user: User | null) {
@@ -202,8 +199,7 @@ function useSessionRefresher() {
           return mergeSessionUserState(previous, sessionUser)
         })
       }
-    }
-    catch (error) {
+    } catch (error) {
       console.error('Failed to refresh user session', error)
     }
   }, [])
@@ -235,22 +231,20 @@ function useOnboardingStatus(user: User | null, requiresTradingAuthRefresh: bool
     const hasUsername = Boolean(user && hasUserProvidedUsername(user))
     const needsUsername = Boolean(user && !hasUsername)
     const needsEmail = Boolean(
-      user
-      && !hasUsableUserEmail(user.email)
-      && !onboardingSettings.emailSkippedAt
-      && !onboardingSettings.emailCompletedAt,
+      user &&
+      !hasUsableUserEmail(user.email) &&
+      !onboardingSettings.emailSkippedAt &&
+      !onboardingSettings.emailCompletedAt,
     )
     const hasValidWalletAddress = Boolean(user?.address && /^0x[0-9a-f]{40}$/i.test(user.address))
     const hasDepositWalletAddress = Boolean(user?.deposit_wallet_address)
     const hasDeployedDepositWallet = Boolean(user?.deposit_wallet_address && user?.deposit_wallet_status === 'deployed')
     const isDepositWalletDeploying = Boolean(
-      user?.deposit_wallet_address
-      && (user.deposit_wallet_status === 'deploying' || user.deposit_wallet_status === 'signed'),
+      user?.deposit_wallet_address &&
+      (user.deposit_wallet_status === 'deploying' || user.deposit_wallet_status === 'signed'),
     )
     const hasTradingAuth = Boolean(
-      tradingAuthSettings?.relayer?.enabled
-      && tradingAuthSettings?.clob?.enabled
-      && !requiresTradingAuthRefresh,
+      tradingAuthSettings?.relayer?.enabled && tradingAuthSettings?.clob?.enabled && !requiresTradingAuthRefresh,
     )
     const hasTokenApprovals = Boolean(tradingAuthSettings?.approvals?.enabled)
     const hasAutoRedeemApproval = Boolean(tradingAuthSettings?.autoRedeem?.enabled)
@@ -279,6 +273,7 @@ function resolveNextOnboardingModal({
   hasTradingAuth,
   hasTokenApprovals,
   allowTradingAuthPrompt,
+  needsSumsub,
 }: {
   needsUsername: boolean
   needsEmail: boolean
@@ -287,6 +282,7 @@ function resolveNextOnboardingModal({
   hasTradingAuth: boolean
   hasTokenApprovals: boolean
   allowTradingAuthPrompt: boolean
+  needsSumsub: boolean
 }): Exclude<OnboardingModal, null> | null {
   // Skip ALL onboarding for users without a connected EVM wallet
   // (e.g. Telegram-only users who haven't connected a wallet yet).
@@ -301,6 +297,9 @@ function resolveNextOnboardingModal({
   if (needsEmail) {
     return 'email'
   }
+  if (needsSumsub) {
+    return 'sumsub'
+  }
   if (!hasDeployedDepositWallet) {
     return 'enable'
   }
@@ -311,6 +310,19 @@ function resolveNextOnboardingModal({
     return 'approve'
   }
   return null
+}
+
+function isTradingReady({
+  onboardingStatus,
+  sumsubLoaded,
+  sumsubStatus,
+}: {
+  onboardingStatus: ReturnType<typeof useOnboardingStatus>
+  sumsubLoaded: boolean
+  sumsubStatus: SumsubVerificationStatus
+}) {
+  const sumsubRequired = sumsubStatus.effective && sumsubStatus.enforcement === 'required'
+  return sumsubLoaded && onboardingStatus.tradingReady && (!sumsubRequired || sumsubStatus.status === 'approved')
 }
 
 function openNextModalWhenAvailable({
@@ -361,25 +373,24 @@ function completeDepositWalletDeployment({
     setEnableTradingStep('completed')
     if (!hasTokenApprovals) {
       setActiveModal('approve')
-    }
-    else {
+    } else {
       setActiveModal(null)
     }
   }
 }
 
-async function hasDepositWalletCollateralBalance(depositWalletAddress: `0x${string}`, viemRpcUrl: string) {
+async function hasDepositWalletCollateralBalance(depositWalletAddress: `0x${string}`, viemRpcUrls: ViemRpcUrls) {
   const client = createPublicClient({
     chain: defaultViemNetwork,
-    transport: http(viemRpcUrl),
+    transport: createViemTransport(viemRpcUrls),
   })
 
-  const balance = await client.readContract({
+  const balance = (await client.readContract({
     address: COLLATERAL_TOKEN_ADDRESS,
     abi: erc20Abi,
     functionName: 'balanceOf',
     args: [depositWalletAddress],
-  }) as bigint
+  })) as bigint
 
   return balance > 0n
 }
@@ -403,10 +414,23 @@ function openFundModalAfterTradingReady({
   }
 }
 
-function TradingOnboardingProviderContent({
-  children,
-  user,
-}: TradingOnboardingProviderContentProps) {
+function isSumsubVerificationStatus(value: unknown): value is SumsubVerificationStatus {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+
+  const candidate = value as Partial<SumsubVerificationStatus>
+  return (
+    typeof candidate.enabled === 'boolean' &&
+    typeof candidate.configured === 'boolean' &&
+    typeof candidate.effective === 'boolean' &&
+    SUMSUB_ENFORCEMENT_SET.has(candidate.enforcement ?? '') &&
+    typeof candidate.levelName === 'string' &&
+    ['not_started', 'pending', 'on_hold', 'approved', 'rejected', 'error'].includes(candidate.status ?? '')
+  )
+}
+
+function TradingOnboardingProviderContent({ children, user }: TradingOnboardingProviderContentProps) {
   const [activeModal, setActiveModal] = useState<OnboardingModal>(null)
   const [dismissedModal, setDismissedModal] = useState<OnboardingModal>(null)
   const [fundModalOpen, setFundModalOpen] = useState(false)
@@ -425,7 +449,21 @@ function TradingOnboardingProviderContent({
   const [autoRedeemStep, setAutoRedeemStep] = useState<ApprovalsStep>('idle')
   const [requiresTradingAuthRefresh, setRequiresTradingAuthRefresh] = useState(false)
   const [shouldContinueTradingAuthPrompt, setShouldContinueTradingAuthPrompt] = useState(false)
+  const [sumsubStatus, setSumsubStatus] = useState<SumsubVerificationStatus>({
+    enabled: false,
+    configured: false,
+    effective: false,
+    enforcement: 'disabled',
+    levelName: '',
+    status: 'not_started',
+    approvedAt: null,
+    updatedAt: null,
+  })
+  const [sumsubLoaded, setSumsubLoaded] = useState(false)
+  const [sumsubObserveDismissed, setSumsubObserveDismissed] = useState(false)
   const pendingTradingReadyActionRef = useRef<(() => void) | null>(null)
+  const pendingTradingReadyFlowStartedRef = useRef(false)
+  const sumsubRefreshPromiseRef = useRef<Promise<SumsubVerificationStatus | null> | null>(null)
   const [communityUsernameHint, setCommunityUsernameHint] = useState<{
     address: string
     username: string
@@ -443,83 +481,212 @@ function TradingOnboardingProviderContent({
   const { communityUrl, polygonRpcUrl } = usePublicRuntimeConfig()
   const allowsRouteTradingAuthPrompt = useRouteTradingAuthPrompt()
   const communityApiUrl = communityUrl
-  const viemRpcUrl = useMemo(() => resolveViemRpcUrl(polygonRpcUrl), [polygonRpcUrl])
-  const handleWalletActionError = useCallback((
-    error: unknown,
-    setError: (message: string) => void,
-  ) => {
-    if (isUserRejectedRequestError(error)) {
-      setError(signatureRejectedMessage)
-      return
-    }
+  const viemRpcUrls = useMemo(() => resolveViemRpcUrls(polygonRpcUrl), [polygonRpcUrl])
+  const handleWalletActionError = useCallback(
+    (error: unknown, setError: (message: string) => void) => {
+      if (isUserRejectedRequestError(error)) {
+        setError(signatureRejectedMessage)
+        return
+      }
 
-    if (isRecoverableWalletConnectorError(error)) {
-      setError(walletConnectorReconnectMessage)
-      void openAppKit({ view: 'Connect' })
-      return
-    }
+      if (isRecoverableWalletConnectorError(error)) {
+        setError(walletConnectorReconnectMessage)
+        void openAppKit({ view: 'Connect' })
+        return
+      }
 
-    if (error instanceof Error) {
-      setError(error.message || DEFAULT_ERROR_MESSAGE)
-      return
-    }
+      if (error instanceof Error) {
+        setError(error.message || DEFAULT_ERROR_MESSAGE)
+        return
+      }
 
-    setError(DEFAULT_ERROR_MESSAGE)
-  }, [openAppKit, signatureRejectedMessage, walletConnectorReconnectMessage])
+      setError(DEFAULT_ERROR_MESSAGE)
+    },
+    [openAppKit, signatureRejectedMessage, walletConnectorReconnectMessage],
+  )
 
   const status = useOnboardingStatus(user, requiresTradingAuthRefresh)
+  const sumsubApproved = sumsubStatus.status === 'approved'
+  const sumsubRequired = sumsubStatus.effective && sumsubStatus.enforcement === 'required'
+  const needsSumsub = sumsubStatus.effective && !sumsubApproved
+  const needsSumsubForFlow = needsSumsub && !(sumsubStatus.enforcement === 'observe' && sumsubObserveDismissed)
+  const tradingReady = isTradingReady({ onboardingStatus: status, sumsubLoaded, sumsubStatus })
+
+  const runPendingTradingReadyAction = useCallback(() => {
+    const action = pendingTradingReadyActionRef.current
+    if (!action) {
+      return
+    }
+    pendingTradingReadyActionRef.current = null
+    pendingTradingReadyFlowStartedRef.current = false
+    action()
+  }, [])
+
+  const applySumsubStatus = useCallback(
+    (nextSumsubStatus: SumsubVerificationStatus) => {
+      setSumsubStatus(nextSumsubStatus)
+      setSumsubLoaded(true)
+
+      const approved = nextSumsubStatus.status === 'approved'
+      const nextNeedsSumsub = nextSumsubStatus.effective && !approved
+      const nextNeedsSumsubForFlow =
+        nextNeedsSumsub && !(nextSumsubStatus.enforcement === 'observe' && sumsubObserveDismissed)
+      const allowTradingAuthPrompt = shouldContinueTradingAuthPrompt || allowsRouteTradingAuthPrompt
+      const nextModal = resolveNextOnboardingModal({
+        ...status,
+        needsSumsub: nextNeedsSumsubForFlow,
+        allowTradingAuthPrompt,
+      })
+
+      if (approved) {
+        setSumsubObserveDismissed(false)
+        setDismissedModal(null)
+        setActiveModal((currentModal) => (currentModal === 'sumsub' ? nextModal : currentModal))
+      }
+
+      if (
+        pendingTradingReadyFlowStartedRef.current &&
+        !nextModal &&
+        isTradingReady({
+          onboardingStatus: status,
+          sumsubLoaded: true,
+          sumsubStatus: nextSumsubStatus,
+        })
+      ) {
+        runPendingTradingReadyAction()
+      }
+    },
+    [
+      allowsRouteTradingAuthPrompt,
+      runPendingTradingReadyAction,
+      shouldContinueTradingAuthPrompt,
+      status,
+      sumsubObserveDismissed,
+    ],
+  )
+
+  const refreshSumsubStatus = useCallback(() => {
+    if (!user) {
+      return Promise.resolve(null)
+    }
+
+    if (sumsubRefreshPromiseRef.current) {
+      return sumsubRefreshPromiseRef.current
+    }
+
+    const request = (async () => {
+      try {
+        const response = await fetch('/api/sumsub/status', { cache: 'no-store' })
+        const payload = (await response.json().catch(() => null)) as unknown
+        if (!response.ok) {
+          if (isSumsubVerificationStatus(payload)) {
+            applySumsubStatus(payload)
+            return payload
+          }
+          if (sumsubRequired) {
+            setSumsubStatus((previous) => ({ ...previous, status: 'error' }))
+          }
+          return null
+        }
+        if (!isSumsubVerificationStatus(payload)) {
+          if (sumsubRequired) {
+            setSumsubStatus((previous) => ({ ...previous, status: 'error' }))
+          }
+          return null
+        }
+        applySumsubStatus(payload)
+        return payload
+      } catch {
+        if (sumsubRequired) {
+          setSumsubStatus((previous) => ({ ...previous, status: 'error' }))
+        }
+        return null
+      }
+    })()
+
+    sumsubRefreshPromiseRef.current = request
+    void request.finally(() => {
+      if (sumsubRefreshPromiseRef.current === request) {
+        sumsubRefreshPromiseRef.current = null
+      }
+    })
+    return request
+  }, [applySumsubStatus, sumsubRequired, user])
+
+  useEffect(
+    function loadSumsubStatus() {
+      void refreshSumsubStatus()
+    },
+    [refreshSumsubStatus],
+  )
+
+  useEffect(
+    function pollSumsubStatusWhileOpen() {
+      const reviewInProgress =
+        sumsubStatus.effective && (sumsubStatus.status === 'pending' || sumsubStatus.status === 'on_hold')
+      if (activeModal !== 'sumsub' && !reviewInProgress) {
+        return
+      }
+      const interval = window.setInterval(() => void refreshSumsubStatus(), 5_000)
+      return () => window.clearInterval(interval)
+    },
+    [activeModal, refreshSumsubStatus, sumsubStatus.effective, sumsubStatus.status],
+  )
   const normalizedUserAddress = user?.address?.trim().toLowerCase() ?? ''
   const hasMatchingCommunityUsernameHint = Boolean(
-    communityUsernameHint
-    && normalizedUserAddress
-    && communityUsernameHint.address.trim().toLowerCase() === normalizedUserAddress,
+    communityUsernameHint &&
+    normalizedUserAddress &&
+    communityUsernameHint.address.trim().toLowerCase() === normalizedUserAddress,
   )
   const communityUsernameHintForCurrentUser = hasMatchingCommunityUsernameHint ? communityUsernameHint : null
 
-  useEffect(function preloadCommunityUsernameHint() {
-    if (!user?.address || !status.needsUsername || activeModal !== 'username' || hasMatchingCommunityUsernameHint) {
-      return
-    }
+  useEffect(
+    function preloadCommunityUsernameHint() {
+      if (!user?.address || !status.needsUsername || activeModal !== 'username' || hasMatchingCommunityUsernameHint) {
+        return
+      }
 
-    const controller = new AbortController()
-    const timeoutId = window.setTimeout(() => {
-      controller.abort()
-    }, COMMUNITY_PROFILE_LOOKUP_TIMEOUT_MS)
-    let cancelled = false
+      const controller = new AbortController()
+      const timeoutId = window.setTimeout(() => {
+        controller.abort()
+      }, COMMUNITY_PROFILE_LOOKUP_TIMEOUT_MS)
+      let cancelled = false
 
-    fetchCommunityProfileByAddress({
-      communityApiUrl,
-      address: user.address,
-      signal: controller.signal,
-    })
-      .then((profile) => {
-        if (cancelled) {
-          return
-        }
-
-        const username = profile?.username?.trim()
-        if (username) {
-          setCommunityUsernameHint({
-            address: user.address,
-            username,
-          })
-        }
+      fetchCommunityProfileByAddress({
+        communityApiUrl,
+        address: user.address,
+        signal: controller.signal,
       })
-      .catch((error) => {
-        if (controller.signal.aborted) {
-          return
-        }
-        if (!cancelled) {
-          console.error('Failed to preload community username', error)
-        }
-      })
+        .then((profile) => {
+          if (cancelled) {
+            return
+          }
 
-    return () => {
-      cancelled = true
-      window.clearTimeout(timeoutId)
-      controller.abort()
-    }
-  }, [activeModal, communityApiUrl, hasMatchingCommunityUsernameHint, status.needsUsername, user?.address])
+          const username = profile?.username?.trim()
+          if (username) {
+            setCommunityUsernameHint({
+              address: user.address,
+              username,
+            })
+          }
+        })
+        .catch((error) => {
+          if (controller.signal.aborted) {
+            return
+          }
+          if (!cancelled) {
+            console.error('Failed to preload community username', error)
+          }
+        })
+
+      return () => {
+        cancelled = true
+        window.clearTimeout(timeoutId)
+        controller.abort()
+      }
+    },
+    [activeModal, communityApiUrl, hasMatchingCommunityUsernameHint, status.needsUsername, user?.address],
+  )
 
   useDepositWalletPolling({
     userId: user?.id,
@@ -529,10 +696,14 @@ function TradingOnboardingProviderContent({
     hasDepositWalletAddress: status.hasDepositWalletAddress,
   })
 
-  const nextModal = resolveNextOnboardingModal({
-    ...status,
-    allowTradingAuthPrompt: allowsRouteTradingAuthPrompt,
-  })
+  const nextModal =
+    !sumsubLoaded && !status.needsUsername && !status.needsEmail
+      ? null
+      : resolveNextOnboardingModal({
+          ...status,
+          needsSumsub: needsSumsubForFlow,
+          allowTradingAuthPrompt: allowsRouteTradingAuthPrompt,
+        })
 
   // Social/email logins (Google etc.) already provide an email via the wallet
   // provider. Auto-complete the email step from it instead of re-asking — the
@@ -568,81 +739,122 @@ function TradingOnboardingProviderContent({
     })()
   }, [user, status.needsEmail, walletEmail, refreshSessionUserState])
 
-  useEffect(function syncNextOnboardingModal() {
-    openNextModalWhenAvailable({
-      activeModal,
-      depositModalOpen,
-      dismissedModal,
-      fundModalOpen,
-      nextModal,
-      setActiveModal,
-      user,
-      withdrawModalOpen,
-    })
-  }, [activeModal, depositModalOpen, dismissedModal, fundModalOpen, nextModal, user, withdrawModalOpen])
+  useEffect(
+    function syncNextOnboardingModal() {
+      openNextModalWhenAvailable({
+        activeModal,
+        depositModalOpen,
+        dismissedModal,
+        fundModalOpen,
+        nextModal,
+        setActiveModal,
+        user,
+        withdrawModalOpen,
+      })
+    },
+    [activeModal, depositModalOpen, dismissedModal, fundModalOpen, nextModal, user, withdrawModalOpen],
+  )
 
-  useEffect(function syncDepositWalletDeploymentCompletion() {
-    completeDepositWalletDeployment({
-      enableTradingStep,
-      hasDeployedDepositWallet: status.hasDeployedDepositWallet,
-      hasTokenApprovals: status.hasTokenApprovals,
-      setActiveModal,
-      setEnableTradingStep,
-    })
-  }, [enableTradingStep, status.hasDeployedDepositWallet, status.hasTokenApprovals])
+  useEffect(
+    function syncDepositWalletDeploymentCompletion() {
+      completeDepositWalletDeployment({
+        enableTradingStep,
+        hasDeployedDepositWallet: status.hasDeployedDepositWallet,
+        hasTokenApprovals: status.hasTokenApprovals,
+        setActiveModal,
+        setEnableTradingStep,
+      })
+    },
+    [enableTradingStep, status.hasDeployedDepositWallet, status.hasTokenApprovals],
+  )
 
-  useEffect(function syncFundModalAfterTradingReady() {
-    openFundModalAfterTradingReady({
-      hasDeployedDepositWallet: status.hasDeployedDepositWallet,
-      hasTokenApprovals: status.hasTokenApprovals,
-      setFundModalOpen,
-      setShouldShowFundAfterTradingReady,
-      shouldShowFundAfterTradingReady,
-    })
-  }, [shouldShowFundAfterTradingReady, status.hasDeployedDepositWallet, status.hasTokenApprovals])
+  useEffect(
+    function syncFundModalAfterTradingReady() {
+      openFundModalAfterTradingReady({
+        hasDeployedDepositWallet: status.hasDeployedDepositWallet,
+        hasTokenApprovals: status.hasTokenApprovals,
+        setFundModalOpen,
+        setShouldShowFundAfterTradingReady,
+        shouldShowFundAfterTradingReady,
+      })
+    },
+    [shouldShowFundAfterTradingReady, status.hasDeployedDepositWallet, status.hasTokenApprovals],
+  )
 
-  useEffect(function resumePendingTradingAction() {
-    if (!status.tradingReady || !pendingTradingReadyActionRef.current) {
-      return
-    }
+  const openResolvedRequirement = useCallback(
+    (currentSumsubStatus: SumsubVerificationStatus, options?: OpenNextRequirementOptions) => {
+      if (options?.forceTradingAuth) {
+        setRequiresTradingAuthRefresh(true)
+      }
 
-    const action = pendingTradingReadyActionRef.current
-    pendingTradingReadyActionRef.current = null
-    action()
-  }, [status.tradingReady])
+      setDismissedModal(null)
+      setUsernameError(null)
+      setEmailError(null)
+      setEnableTradingError(null)
+      setTokenApprovalError(null)
+      setAutoRedeemError(null)
+      void refreshSessionUserState()
 
-  const openNextRequirement = useCallback((options?: OpenNextRequirementOptions) => {
-    if (!user) {
-      void openAppKit()
-      return
-    }
+      const allowTradingAuthPrompt =
+        Boolean(options?.allowTradingAuthPrompt) || Boolean(options?.forceTradingAuth) || allowsRouteTradingAuthPrompt
+      setShouldContinueTradingAuthPrompt(allowTradingAuthPrompt)
 
-    if (options?.forceTradingAuth) {
-      setRequiresTradingAuthRefresh(true)
-    }
+      const forcedStatus = options?.forceTradingAuth
+        ? { ...status, hasTradingAuth: false, tradingReady: false }
+        : status
+      const modal = resolveNextOnboardingModal({
+        ...forcedStatus,
+        needsSumsub:
+          currentSumsubStatus.effective &&
+          currentSumsubStatus.status !== 'approved' &&
+          !(currentSumsubStatus.enforcement === 'observe' && sumsubObserveDismissed),
+        allowTradingAuthPrompt,
+      })
+      if (pendingTradingReadyActionRef.current) {
+        pendingTradingReadyFlowStartedRef.current = true
+      }
+      setActiveModal(modal)
 
-    setDismissedModal(null)
-    setUsernameError(null)
-    setEmailError(null)
-    setEnableTradingError(null)
-    setTokenApprovalError(null)
-    setAutoRedeemError(null)
-    void refreshSessionUserState()
+      if (
+        !modal &&
+        isTradingReady({
+          onboardingStatus: forcedStatus,
+          sumsubLoaded: true,
+          sumsubStatus: currentSumsubStatus,
+        })
+      ) {
+        runPendingTradingReadyAction()
+      }
+    },
+    [
+      allowsRouteTradingAuthPrompt,
+      refreshSessionUserState,
+      runPendingTradingReadyAction,
+      status,
+      sumsubObserveDismissed,
+    ],
+  )
 
-    const allowTradingAuthPrompt = Boolean(options?.allowTradingAuthPrompt)
-      || Boolean(options?.forceTradingAuth)
-      || allowsRouteTradingAuthPrompt
-    setShouldContinueTradingAuthPrompt(allowTradingAuthPrompt)
+  const openNextRequirement = useCallback(
+    (options?: OpenNextRequirementOptions) => {
+      if (!user) {
+        void openAppKit()
+        return
+      }
 
-    const forcedStatus = options?.forceTradingAuth
-      ? { ...status, hasTradingAuth: false, tradingReady: false }
-      : status
-    const modal = resolveNextOnboardingModal({
-      ...forcedStatus,
-      allowTradingAuthPrompt,
-    })
-    setActiveModal(modal)
-  }, [allowsRouteTradingAuthPrompt, openAppKit, refreshSessionUserState, status, user])
+      if (sumsubLoaded) {
+        openResolvedRequirement(sumsubStatus, options)
+        return
+      }
+
+      void refreshSumsubStatus().then((loadedSumsubStatus) => {
+        if (loadedSumsubStatus) {
+          openResolvedRequirement(loadedSumsubStatus, options)
+        }
+      })
+    },
+    [openAppKit, openResolvedRequirement, refreshSumsubStatus, sumsubLoaded, sumsubStatus, user],
+  )
 
   const openFundModalIfBalanceEmpty = useCallback(async () => {
     if (!user?.deposit_wallet_address) {
@@ -651,214 +863,257 @@ function TradingOnboardingProviderContent({
     }
 
     try {
-      const hasBalance = await hasDepositWalletCollateralBalance(user.deposit_wallet_address as `0x${string}`, viemRpcUrl)
+      const hasBalance = await hasDepositWalletCollateralBalance(
+        user.deposit_wallet_address as `0x${string}`,
+        viemRpcUrls,
+      )
       if (!hasBalance) {
         setFundModalOpen(true)
       }
-    }
-    catch {
+    } catch {
       setFundModalOpen(true)
     }
-  }, [user?.deposit_wallet_address, viemRpcUrl])
+  }, [user?.deposit_wallet_address, viemRpcUrls])
 
-  const handleModalOpenChange = useCallback((modal: Exclude<OnboardingModal, null>, open: boolean) => {
-    if (open) {
-      setDismissedModal(null)
-      setActiveModal(modal)
-      return
-    }
-    if (modal === 'username' && status.needsUsername) {
-      setDismissedModal(null)
-      setActiveModal('username')
-      return
-    }
-    if (modal === 'email' && status.needsEmail) {
-      setDismissedModal(null)
-      setActiveModal('email')
-      return
-    }
-    // Keep the enable modals pinned while there's active work to do — UNLESS the
-    // deposit wallet is stuck deploying on-chain (relayer can stall for minutes).
-    // In that case honor the close so the user isn't trapped behind a spinner.
-    if (
-      (modal === 'enable' || modal === 'enable-status')
-      && !enableTradingError
-      && !status.isDepositWalletDeploying
-    ) {
-      setDismissedModal(null)
-      setActiveModal(modal)
-      return
-    }
-    if (modal === 'approve' && !tokenApprovalError) {
-      setDismissedModal(null)
-      setActiveModal('approve')
-      return
-    }
-    if (modal === 'auto-redeem') {
+  const handleModalOpenChange = useCallback(
+    (modal: Exclude<OnboardingModal, null>, open: boolean) => {
+      if (open) {
+        setDismissedModal(null)
+        setActiveModal(modal)
+        return
+      }
+      if (modal === 'username' && status.needsUsername) {
+        setDismissedModal(null)
+        setActiveModal('username')
+        return
+      }
+      if (modal === 'email' && status.needsEmail) {
+        setDismissedModal(null)
+        setActiveModal('email')
+        return
+      }
+      if (modal === 'sumsub') {
+        if (sumsubStatus.enforcement === 'observe') {
+          setSumsubObserveDismissed(true)
+          if (tradingReady) {
+            runPendingTradingReadyAction()
+          }
+        }
+        setDismissedModal('sumsub')
+        setActiveModal(null)
+        setShouldContinueTradingAuthPrompt(false)
+        return
+      }
+      // Keep the enable modals pinned while there's active work to do — UNLESS the
+      // deposit wallet is stuck deploying on-chain (relayer can stall for minutes).
+      // In that case honor the close so the user isn't trapped behind a spinner.
+      if (
+        (modal === 'enable' || modal === 'enable-status')
+        && !enableTradingError
+        && !status.isDepositWalletDeploying
+      ) {
+        setDismissedModal(null)
+        setActiveModal(modal)
+        return
+      }
+      if (modal === 'approve' && !tokenApprovalError) {
+        setDismissedModal(null)
+        setActiveModal('approve')
+        return
+      }
+      if (modal === 'auto-redeem') {
+        setDismissedModal(modal)
+        setActiveModal(null)
+        setShouldContinueTradingAuthPrompt(false)
+        setShouldShowFundAfterTradingReady(false)
+        void openFundModalIfBalanceEmpty()
+        return
+      }
       setDismissedModal(modal)
       setActiveModal(null)
       setShouldContinueTradingAuthPrompt(false)
-      setShouldShowFundAfterTradingReady(false)
-      void openFundModalIfBalanceEmpty()
-      return
-    }
-    setDismissedModal(modal)
-    setActiveModal(null)
-    setShouldContinueTradingAuthPrompt(false)
-  }, [
-    enableTradingError,
-    openFundModalIfBalanceEmpty,
-    status.isDepositWalletDeploying,
-    status.needsEmail,
-    status.needsUsername,
-    tokenApprovalError,
-  ])
+    },
+    [
+      enableTradingError,
+      openFundModalIfBalanceEmpty,
+      status.isDepositWalletDeploying,
+      status.needsEmail,
+      status.needsUsername,
+      sumsubStatus.enforcement,
+      tokenApprovalError,
+      tradingReady,
+      runPendingTradingReadyAction,
+    ],
+  )
 
-  const handleUsernameSubmit = useCallback(async (username: string, termsAccepted: boolean) => {
-    if (isUsernameSubmitting) {
-      return
-    }
-    if (!user?.address) {
-      setUsernameError(DEFAULT_ERROR_MESSAGE)
-      return
-    }
-    setIsUsernameSubmitting(true)
-    setUsernameError(null)
-    try {
-      const token = await ensureCommunityToken({
-        address: user.address,
-        signMessageAsync: args => runWithSignaturePrompt(() => signMessageAsync(args)),
-        communityApiUrl,
-        depositWalletAddress: user.deposit_wallet_address ?? null,
-      })
-
-      const response = await updateCommunityProfile({
-        communityApiUrl,
-        token,
-        username,
-      })
-
-      if (response.status === 401) {
-        clearCommunityAuth()
-      }
-      if (!response.ok) {
-        setUsernameError(
-          response.status === 409
-            ? t('That username is already taken.')
-            : await parseCommunityError(response, DEFAULT_ERROR_MESSAGE),
-        )
+  const handleUsernameSubmit = useCallback(
+    async (username: string, termsAccepted: boolean) => {
+      if (isUsernameSubmitting) {
         return
       }
-
-      const payload = await response.json() as CommunityProfile
-      const communityUsername = payload.username?.trim()
-      if (!communityUsername) {
-        setUsernameError(t('Profile verification did not confirm the username.'))
+      if (!user?.address) {
+        setUsernameError(DEFAULT_ERROR_MESSAGE)
         return
       }
+      setIsUsernameSubmitting(true)
+      setUsernameError(null)
+      try {
+        const token = await ensureCommunityToken({
+          address: user.address,
+          signMessageAsync: (args) => runWithSignaturePrompt(() => signMessageAsync(args)),
+          communityApiUrl,
+          depositWalletAddress: user.deposit_wallet_address ?? null,
+        })
 
-      const result = await updateOnboardingUsernameAction({
-        username,
-        communityUsername,
-        termsAccepted,
-      })
-      if (result.error || !result.data) {
-        setUsernameError(
-          result.code === 'username_taken'
-            ? t('That username is already taken.')
-            : result.code === 'community_profile_not_synced'
-              ? t('Profile verification did not confirm the username.')
-              : result.error ?? DEFAULT_ERROR_MESSAGE,
-        )
+        const response = await updateCommunityProfile({
+          communityApiUrl,
+          token,
+          username,
+        })
+
+        if (response.status === 401) {
+          clearCommunityAuth()
+        }
+        if (!response.ok) {
+          setUsernameError(
+            response.status === 409
+              ? t('That username is already taken.')
+              : await parseCommunityError(response, DEFAULT_ERROR_MESSAGE),
+          )
+          return
+        }
+
+        const payload = (await response.json()) as CommunityProfile
+        const communityUsername = payload.username?.trim()
+        if (!communityUsername) {
+          setUsernameError(t('Profile verification did not confirm the username.'))
+          return
+        }
+
+        const result = await updateOnboardingUsernameAction({
+          username,
+          communityUsername,
+          termsAccepted,
+        })
+        if (result.error || !result.data) {
+          setUsernameError(
+            result.code === 'username_taken'
+              ? t('That username is already taken.')
+              : result.code === 'community_profile_not_synced'
+                ? t('Profile verification did not confirm the username.')
+                : (result.error ?? DEFAULT_ERROR_MESSAGE),
+          )
+          return
+        }
+        const data = result.data
+        useUser.setState((previous) => {
+          if (!previous) {
+            return previous
+          }
+          return {
+            ...previous,
+            username: data.username,
+            settings: mergeUserSettings(previous, data.settings),
+          }
+        })
+        void refreshSessionUserState()
+        setDismissedModal(null)
+        const allowTradingAuthPrompt = shouldContinueTradingAuthPrompt || allowsRouteTradingAuthPrompt
+        const nextModal = status.needsEmail
+          ? 'email'
+          : resolveNextOnboardingModal({
+              ...status,
+              needsUsername: false,
+              needsSumsub: needsSumsubForFlow,
+              allowTradingAuthPrompt,
+            })
+        setActiveModal(nextModal)
+        if (!nextModal) {
+          setShouldContinueTradingAuthPrompt(false)
+          if (tradingReady) {
+            runPendingTradingReadyAction()
+          }
+        }
+      } catch (error) {
+        handleWalletActionError(error, setUsernameError)
+      } finally {
+        setIsUsernameSubmitting(false)
+      }
+    },
+    [
+      communityApiUrl,
+      isUsernameSubmitting,
+      refreshSessionUserState,
+      runWithSignaturePrompt,
+      signMessageAsync,
+      shouldContinueTradingAuthPrompt,
+      status,
+      handleWalletActionError,
+      t,
+      user?.address,
+      user?.deposit_wallet_address,
+      allowsRouteTradingAuthPrompt,
+      needsSumsubForFlow,
+      runPendingTradingReadyAction,
+      tradingReady,
+    ],
+  )
+
+  const handleEmailSubmit = useCallback(
+    async (email: string) => {
+      if (isEmailSubmitting) {
         return
       }
-      const data = result.data
-      useUser.setState((previous) => {
-        if (!previous) {
-          return previous
+      setIsEmailSubmitting(true)
+      setEmailError(null)
+      try {
+        const result = await updateOnboardingEmailAction({ email })
+        if (result.error || !result.data) {
+          setEmailError(result.error ?? DEFAULT_ERROR_MESSAGE)
+          return
         }
-        return {
-          ...previous,
-          username: data.username,
-          settings: mergeUserSettings(previous, data.settings),
+        const data = result.data
+        useUser.setState((previous) => {
+          if (!previous) {
+            return previous
+          }
+          return {
+            ...previous,
+            email: data.email,
+            settings: mergeUserSettings(previous, data.settings),
+          }
+        })
+        void refreshSessionUserState()
+        setDismissedModal(null)
+        const allowTradingAuthPrompt = shouldContinueTradingAuthPrompt || allowsRouteTradingAuthPrompt
+        const nextModal = resolveNextOnboardingModal({
+          ...status,
+          needsEmail: false,
+          needsSumsub: needsSumsubForFlow,
+          allowTradingAuthPrompt,
+        })
+        setActiveModal(nextModal)
+        if (!nextModal) {
+          setShouldContinueTradingAuthPrompt(false)
+          if (tradingReady) {
+            runPendingTradingReadyAction()
+          }
         }
-      })
-      void refreshSessionUserState()
-      setDismissedModal(null)
-      const allowTradingAuthPrompt = shouldContinueTradingAuthPrompt || allowsRouteTradingAuthPrompt
-      const nextModal = status.needsEmail
-        ? 'email'
-        : resolveNextOnboardingModal({
-            ...status,
-            needsUsername: false,
-            allowTradingAuthPrompt,
-          })
-      setActiveModal(nextModal)
-      if (!nextModal) {
-        setShouldContinueTradingAuthPrompt(false)
+      } finally {
+        setIsEmailSubmitting(false)
       }
-    }
-    catch (error) {
-      handleWalletActionError(error, setUsernameError)
-    }
-    finally {
-      setIsUsernameSubmitting(false)
-    }
-  }, [
-    communityApiUrl,
-    isUsernameSubmitting,
-    refreshSessionUserState,
-    runWithSignaturePrompt,
-    signMessageAsync,
-    shouldContinueTradingAuthPrompt,
-    status,
-    handleWalletActionError,
-    t,
-    user?.address,
-    user?.deposit_wallet_address,
-    allowsRouteTradingAuthPrompt,
-  ])
-
-  const handleEmailSubmit = useCallback(async (email: string) => {
-    if (isEmailSubmitting) {
-      return
-    }
-    setIsEmailSubmitting(true)
-    setEmailError(null)
-    try {
-      const result = await updateOnboardingEmailAction({ email })
-      if (result.error || !result.data) {
-        setEmailError(result.error ?? DEFAULT_ERROR_MESSAGE)
-        return
-      }
-      const data = result.data
-      useUser.setState((previous) => {
-        if (!previous) {
-          return previous
-        }
-        return {
-          ...previous,
-          email: data.email,
-          settings: mergeUserSettings(previous, data.settings),
-        }
-      })
-      void refreshSessionUserState()
-      setDismissedModal(null)
-      const allowTradingAuthPrompt = shouldContinueTradingAuthPrompt || allowsRouteTradingAuthPrompt
-      const nextModal = resolveNextOnboardingModal({
-        ...status,
-        needsEmail: false,
-        allowTradingAuthPrompt,
-      })
-      setActiveModal(nextModal)
-      if (!nextModal) {
-        setShouldContinueTradingAuthPrompt(false)
-      }
-    }
-    finally {
-      setIsEmailSubmitting(false)
-    }
-  }, [allowsRouteTradingAuthPrompt, isEmailSubmitting, refreshSessionUserState, shouldContinueTradingAuthPrompt, status])
+    },
+    [
+      allowsRouteTradingAuthPrompt,
+      isEmailSubmitting,
+      needsSumsubForFlow,
+      refreshSessionUserState,
+      runPendingTradingReadyAction,
+      shouldContinueTradingAuthPrompt,
+      status,
+      tradingReady,
+    ],
+  )
 
   const handleEmailSkip = useCallback(async () => {
     if (isEmailSubmitting) {
@@ -888,17 +1143,29 @@ function TradingOnboardingProviderContent({
       const nextModal = resolveNextOnboardingModal({
         ...status,
         needsEmail: false,
+        needsSumsub: needsSumsubForFlow,
         allowTradingAuthPrompt,
       })
       setActiveModal(nextModal)
       if (!nextModal) {
         setShouldContinueTradingAuthPrompt(false)
+        if (tradingReady) {
+          runPendingTradingReadyAction()
+        }
       }
-    }
-    finally {
+    } finally {
       setIsEmailSubmitting(false)
     }
-  }, [allowsRouteTradingAuthPrompt, isEmailSubmitting, refreshSessionUserState, shouldContinueTradingAuthPrompt, status])
+  }, [
+    allowsRouteTradingAuthPrompt,
+    isEmailSubmitting,
+    needsSumsubForFlow,
+    refreshSessionUserState,
+    runPendingTradingReadyAction,
+    shouldContinueTradingAuthPrompt,
+    status,
+    tradingReady,
+  ])
 
   const enableTradingAuthForCurrentUser = useCallback(async () => {
     if (!user?.address) {
@@ -910,12 +1177,14 @@ function TradingOnboardingProviderContent({
       address: user.address as `0x${string}`,
       timestamp,
     })
-    const signature = await runWithSignaturePrompt(() => signTypedDataAsync({
-      domain: getTradingAuthDomain(),
-      types: TRADING_AUTH_TYPES,
-      primaryType: TRADING_AUTH_PRIMARY_TYPE,
-      message,
-    }))
+    const signature = await runWithSignaturePrompt(() =>
+      signTypedDataAsync({
+        domain: getTradingAuthDomain(),
+        types: TRADING_AUTH_TYPES,
+        primaryType: TRADING_AUTH_PRIMARY_TYPE,
+        message,
+      }),
+    )
 
     const result = await enableTradingAuthAction({
       signature,
@@ -942,12 +1211,7 @@ function TradingOnboardingProviderContent({
     await refreshSessionUserState()
     setRequiresTradingAuthRefresh(false)
     setDismissedModal(null)
-  }, [
-    refreshSessionUserState,
-    runWithSignaturePrompt,
-    signTypedDataAsync,
-    user?.address,
-  ])
+  }, [refreshSessionUserState, runWithSignaturePrompt, signTypedDataAsync, user?.address])
 
   const handleCreateDepositWallet = useCallback(async () => {
     if (!user?.address || enableTradingStep === 'enabling') {
@@ -987,12 +1251,10 @@ function TradingOnboardingProviderContent({
         setEnableTradingStep('completed')
         setDismissedModal(null)
         setActiveModal(status.hasTokenApprovals ? null : 'approve')
-      }
-      else {
+      } else {
         setEnableTradingStep('deploying')
       }
-    }
-    catch (error) {
+    } catch (error) {
       handleWalletActionError(error, setEnableTradingError)
       setEnableTradingStep('idle')
     }
@@ -1017,13 +1279,14 @@ function TradingOnboardingProviderContent({
       if (status.hasDeployedDepositWallet) {
         setEnableTradingStep('completed')
         setActiveModal(status.hasTokenApprovals ? null : 'approve')
-      }
-      else {
+        if (status.hasTokenApprovals && sumsubLoaded && (!sumsubRequired || sumsubApproved)) {
+          runPendingTradingReadyAction()
+        }
+      } else {
         setEnableTradingStep('idle')
         setActiveModal('enable')
       }
-    }
-    catch (error) {
+    } catch (error) {
       handleWalletActionError(error, setEnableTradingError)
       setEnableTradingStep('idle')
     }
@@ -1031,110 +1294,126 @@ function TradingOnboardingProviderContent({
     enableTradingAuthForCurrentUser,
     enableTradingStep,
     handleWalletActionError,
+    runPendingTradingReadyAction,
+    sumsubApproved,
+    sumsubLoaded,
+    sumsubRequired,
     status.hasDeployedDepositWallet,
     status.hasTokenApprovals,
     user?.address,
   ])
 
-  const resolveReferralExchanges = useCallback(async (depositWallet: `0x${string}`) => {
-    const exchanges = [
-      CTF_EXCHANGE_ADDRESS as `0x${string}`,
-      NEG_RISK_CTF_EXCHANGE_ADDRESS as `0x${string}`,
-    ]
-    const results = await Promise.all(
-      exchanges.map(exchange => fetchReferralLocked(exchange, depositWallet, viemRpcUrl)),
-    )
-    if (results.includes(null)) {
-      console.warn('Failed to read referral status; skipping locked/unknown exchanges.')
-    }
-    return exchanges.filter((_, index) => results[index] === false)
-  }, [viemRpcUrl])
+  const resolveReferralExchanges = useCallback(
+    async (depositWallet: `0x${string}`) => {
+      const exchanges = [CTF_EXCHANGE_ADDRESS as `0x${string}`, NEG_RISK_CTF_EXCHANGE_ADDRESS as `0x${string}`]
+      const results = await Promise.all(
+        exchanges.map((exchange) => fetchReferralLocked(exchange, depositWallet, viemRpcUrls)),
+      )
+      if (results.includes(null)) {
+        console.warn('Failed to read referral status; skipping locked/unknown exchanges.')
+      }
+      return exchanges.filter((_, index) => results[index] === false)
+    },
+    [viemRpcUrls],
+  )
 
-  const resolveMissingApprovalCalls = useCallback(async (depositWalletAddress: `0x${string}`) => {
-    const client = createPublicClient({
-      chain: defaultViemNetwork,
-      transport: http(viemRpcUrl),
-    })
+  const resolveMissingApprovalCalls = useCallback(
+    async (depositWalletAddress: `0x${string}`) => {
+      const client = createPublicClient({
+        chain: defaultViemNetwork,
+        transport: createViemTransport(viemRpcUrls),
+      })
 
-    const collateralSpenders = [
-      CONDITIONAL_TOKENS_CONTRACT,
-      CTF_EXCHANGE_ADDRESS,
-      NEG_RISK_CTF_EXCHANGE_ADDRESS,
-      UMA_NEG_RISK_ADAPTER_ADDRESS,
-    ] as const
-    const conditionalOperators = [
-      CTF_EXCHANGE_ADDRESS,
-      NEG_RISK_CTF_EXCHANGE_ADDRESS,
-      UMA_NEG_RISK_ADAPTER_ADDRESS,
-    ] as const
+      const collateralSpenders = [
+        CONDITIONAL_TOKENS_CONTRACT,
+        CTF_EXCHANGE_ADDRESS,
+        NEG_RISK_CTF_EXCHANGE_ADDRESS,
+        UMA_NEG_RISK_ADAPTER_ADDRESS,
+      ] as const
+      const conditionalOperators = [
+        CTF_EXCHANGE_ADDRESS,
+        NEG_RISK_CTF_EXCHANGE_ADDRESS,
+        UMA_NEG_RISK_ADAPTER_ADDRESS,
+      ] as const
 
-    const [allowances, operatorApprovals] = await Promise.all([
-      Promise.all(collateralSpenders.map(spender =>
-        client.readContract({
-          address: COLLATERAL_TOKEN_ADDRESS,
-          abi: erc20Abi,
-          functionName: 'allowance',
-          args: [depositWalletAddress, spender],
-        }) as Promise<bigint>,
-      )),
-      Promise.all(conditionalOperators.map(operator =>
-        client.readContract({
-          address: CONDITIONAL_TOKENS_CONTRACT,
-          abi: erc1155Abi,
-          functionName: 'isApprovedForAll',
-          args: [depositWalletAddress, operator],
-        }) as Promise<boolean>,
-      )),
-    ])
+      const [allowances, operatorApprovals] = await Promise.all([
+        Promise.all(
+          collateralSpenders.map(
+            (spender) =>
+              client.readContract({
+                address: COLLATERAL_TOKEN_ADDRESS,
+                abi: erc20Abi,
+                functionName: 'allowance',
+                args: [depositWalletAddress, spender],
+              }) as Promise<bigint>,
+          ),
+        ),
+        Promise.all(
+          conditionalOperators.map(
+            (operator) =>
+              client.readContract({
+                address: CONDITIONAL_TOKENS_CONTRACT,
+                abi: erc1155Abi,
+                functionName: 'isApprovedForAll',
+                args: [depositWalletAddress, operator],
+              }) as Promise<boolean>,
+          ),
+        ),
+      ])
 
-    const approvalCalls = collateralSpenders.flatMap((spender, index) =>
-      hasSufficientCollateralAllowance(allowances[index]) ? [] : [buildCollateralApproveCall(spender)],
-    )
-    const operatorCalls = conditionalOperators.flatMap((operator, index) =>
-      operatorApprovals[index] ? [] : [buildConditionalSetApprovalForAllCall(operator)],
-    )
+      const approvalCalls = collateralSpenders.flatMap((spender, index) =>
+        hasSufficientCollateralAllowance(allowances[index]) ? [] : [buildCollateralApproveCall(spender)],
+      )
+      const operatorCalls = conditionalOperators.flatMap((operator, index) =>
+        operatorApprovals[index] ? [] : [buildConditionalSetApprovalForAllCall(operator)],
+      )
 
-    return [...approvalCalls, ...operatorCalls]
-  }, [viemRpcUrl])
+      return [...approvalCalls, ...operatorCalls]
+    },
+    [viemRpcUrls],
+  )
 
-  const ensureAutoRedeemStatusFromChain = useCallback(async (depositWalletAddress: `0x${string}`) => {
-    const client = createPublicClient({
-      chain: defaultViemNetwork,
-      transport: http(viemRpcUrl),
-    })
-    const approved = await client.readContract({
-      address: CONDITIONAL_TOKENS_CONTRACT,
-      abi: erc1155Abi,
-      functionName: 'isApprovedForAll',
-      args: [depositWalletAddress, CTF_AUTO_REDEEM_ADDRESS],
-    }) as boolean
+  const ensureAutoRedeemStatusFromChain = useCallback(
+    async (depositWalletAddress: `0x${string}`) => {
+      const client = createPublicClient({
+        chain: defaultViemNetwork,
+        transport: createViemTransport(viemRpcUrls),
+      })
+      const approved = (await client.readContract({
+        address: CONDITIONAL_TOKENS_CONTRACT,
+        abi: erc1155Abi,
+        functionName: 'isApprovedForAll',
+        args: [depositWalletAddress, CTF_AUTO_REDEEM_ADDRESS],
+      })) as boolean
 
-    if (!approved) {
-      return false
-    }
+      if (!approved) {
+        return false
+      }
 
-    const result = await markAutoRedeemApprovalCompletedAction()
-    const autoRedeem = result.data?.autoRedeem
-    if (result.error || !autoRedeem) {
+      const result = await markAutoRedeemApprovalCompletedAction()
+      const autoRedeem = result.data?.autoRedeem
+      if (result.error || !autoRedeem) {
+        return true
+      }
+
+      useUser.setState((previous) => {
+        if (!previous) {
+          return previous
+        }
+        return {
+          ...previous,
+          settings: mergeUserSettings(previous, {
+            tradingAuth: {
+              autoRedeem,
+            },
+          }),
+        }
+      })
+      void refreshSessionUserState()
       return true
-    }
-
-    useUser.setState((previous) => {
-      if (!previous) {
-        return previous
-      }
-      return {
-        ...previous,
-        settings: mergeUserSettings(previous, {
-          tradingAuth: {
-            autoRedeem,
-          },
-        }),
-      }
-    })
-    void refreshSessionUserState()
-    return true
-  }, [refreshSessionUserState, viemRpcUrl])
+    },
+    [refreshSessionUserState, viemRpcUrls],
+  )
 
   const handleApproveTokens = useCallback(async () => {
     if (!user?.deposit_wallet_address || approvalsStep === 'signing') {
@@ -1164,14 +1443,15 @@ function TradingOnboardingProviderContent({
           exchanges: referralExchanges,
         }),
       ]
-      const result = calls.length > 0
-        ? await signAndSubmitDepositWalletCalls({
-            user,
-            calls,
-            metadata: 'approve_tokens',
-            signTypedDataAsync,
-          })
-        : await markApprovalStateWithoutTransactionAction('approve_tokens')
+      const result =
+        calls.length > 0
+          ? await signAndSubmitDepositWalletCalls({
+              user,
+              calls,
+              metadata: 'approve_tokens',
+              signTypedDataAsync,
+            })
+          : await markApprovalStateWithoutTransactionAction('approve_tokens')
 
       if (result.error) {
         if (isTradingAuthRequiredError(result.error)) {
@@ -1191,12 +1471,10 @@ function TradingOnboardingProviderContent({
         }
         if (result.code === 'deadline_expired') {
           setTokenApprovalError(t('Your signature expired. Click Sign again to create a fresh request.'))
-        }
-        else if (result.code === 'wallet_connector_not_connected') {
+        } else if (result.code === 'wallet_connector_not_connected') {
           setTokenApprovalError(walletConnectorReconnectMessage)
           void openAppKit({ view: 'Connect' })
-        }
-        else {
+        } else {
           setTokenApprovalError(result.error)
         }
         setApprovalsStep('idle')
@@ -1220,6 +1498,15 @@ function TradingOnboardingProviderContent({
         void refreshSessionUserState()
       }
 
+      if (
+        status.hasDeployedDepositWallet &&
+        status.hasTradingAuth &&
+        sumsubLoaded &&
+        (!sumsubRequired || sumsubApproved)
+      ) {
+        runPendingTradingReadyAction()
+      }
+
       setApprovalsStep('completed')
       setDismissedModal(null)
       setAutoRedeemStep('idle')
@@ -1229,13 +1516,11 @@ function TradingOnboardingProviderContent({
         setActiveModal(null)
         setShouldShowFundAfterTradingReady(false)
         await openFundModalIfBalanceEmpty()
-      }
-      else {
+      } else {
         setActiveModal('auto-redeem')
         setShouldShowFundAfterTradingReady(false)
       }
-    }
-    catch (error) {
+    } catch (error) {
       handleWalletActionError(error, setTokenApprovalError)
       setApprovalsStep('idle')
     }
@@ -1249,7 +1534,13 @@ function TradingOnboardingProviderContent({
     refreshSessionUserState,
     resolveMissingApprovalCalls,
     resolveReferralExchanges,
+    runPendingTradingReadyAction,
     signTypedDataAsync,
+    status.hasDeployedDepositWallet,
+    status.hasTradingAuth,
+    sumsubApproved,
+    sumsubLoaded,
+    sumsubRequired,
     ensureAutoRedeemStatusFromChain,
     t,
     walletConnectorReconnectMessage,
@@ -1293,12 +1584,10 @@ function TradingOnboardingProviderContent({
         }
         if (result.code === 'deadline_expired') {
           setAutoRedeemError(t('Your signature expired. Click Sign again to create a fresh request.'))
-        }
-        else if (result.code === 'wallet_connector_not_connected') {
+        } else if (result.code === 'wallet_connector_not_connected') {
           setAutoRedeemError(walletConnectorReconnectMessage)
           void openAppKit({ view: 'Connect' })
-        }
-        else {
+        } else {
           setAutoRedeemError(result.error)
         }
         setAutoRedeemStep('idle')
@@ -1327,8 +1616,7 @@ function TradingOnboardingProviderContent({
       setActiveModal(null)
       setShouldShowFundAfterTradingReady(false)
       await openFundModalIfBalanceEmpty()
-    }
-    catch (error) {
+    } catch (error) {
       handleWalletActionError(error, setAutoRedeemError)
       setAutoRedeemStep('idle')
     }
@@ -1351,27 +1639,28 @@ function TradingOnboardingProviderContent({
       return false
     }
 
-    if (status.tradingReady) {
+    if (tradingReady) {
       return true
     }
 
     openNextRequirement({ allowTradingAuthPrompt: true })
     return false
-  }, [openAppKit, openNextRequirement, status.tradingReady, user])
+  }, [openAppKit, openNextRequirement, tradingReady, user])
 
-  const openTradeRequirements = useCallback((options?: {
-    forceTradingAuth?: boolean
-    onTradingReady?: () => void
-  }) => {
-    const { onTradingReady, ...requirementOptions } = options ?? {}
-    if (onTradingReady) {
-      pendingTradingReadyActionRef.current = onTradingReady
-    }
-    openNextRequirement({
-      ...requirementOptions,
-      allowTradingAuthPrompt: true,
-    })
-  }, [openNextRequirement])
+  const openTradeRequirements = useCallback(
+    (options?: { forceTradingAuth?: boolean; onTradingReady?: () => void }) => {
+      const { onTradingReady, ...requirementOptions } = options ?? {}
+      if (onTradingReady) {
+        pendingTradingReadyActionRef.current = onTradingReady
+        pendingTradingReadyFlowStartedRef.current = false
+      }
+      openNextRequirement({
+        ...requirementOptions,
+        allowTradingAuthPrompt: true,
+      })
+    },
+    [openNextRequirement],
+  )
 
   const promptAutoRedeem = useCallback(() => {
     if (!user) {
@@ -1381,7 +1670,7 @@ function TradingOnboardingProviderContent({
     if (status.hasAutoRedeemApproval) {
       return false
     }
-    if (!status.tradingReady) {
+    if (!tradingReady) {
       openNextRequirement({ allowTradingAuthPrompt: true })
       return false
     }
@@ -1417,7 +1706,7 @@ function TradingOnboardingProviderContent({
     openAppKit,
     openNextRequirement,
     status.hasAutoRedeemApproval,
-    status.tradingReady,
+    tradingReady,
     user,
   ])
 
@@ -1469,23 +1758,28 @@ function TradingOnboardingProviderContent({
     }
   }, [])
 
-  const contextValue: TradingOnboardingContextValue = useMemo(() => ({
-    startDepositFlow,
-    startWithdrawFlow,
-    ensureTradingReady,
-    openTradeRequirements,
-    promptAutoRedeem,
-    hasDepositWallet: status.hasDeployedDepositWallet,
-    openWalletModal,
-  }), [
-    ensureTradingReady,
-    openTradeRequirements,
-    openWalletModal,
-    promptAutoRedeem,
-    startDepositFlow,
-    startWithdrawFlow,
-    status.hasDeployedDepositWallet,
-  ])
+  const contextValue: TradingOnboardingContextValue = useMemo(
+    () => ({
+      startDepositFlow,
+      startWithdrawFlow,
+      ensureTradingReady,
+      openTradeRequirements,
+      promptAutoRedeem,
+      hasDepositWallet: status.hasDeployedDepositWallet,
+      sumsubStatus,
+      openWalletModal,
+    }),
+    [
+      ensureTradingReady,
+      openTradeRequirements,
+      openWalletModal,
+      promptAutoRedeem,
+      startDepositFlow,
+      startWithdrawFlow,
+      status.hasDeployedDepositWallet,
+      sumsubStatus,
+    ],
+  )
 
   const meldUrl = useMemo(() => {
     if (!status.hasDeployedDepositWallet || !user?.deposit_wallet_address) {
@@ -1513,11 +1807,13 @@ function TradingOnboardingProviderContent({
         usernameError={usernameError}
         isUsernameSubmitting={isUsernameSubmitting}
         onUsernameSubmit={handleUsernameSubmit}
-        emailDefaultValue={hasUsableUserEmail(user?.email) ? user?.email ?? '' : ''}
+        emailDefaultValue={hasUsableUserEmail(user?.email) ? (user?.email ?? '') : ''}
         emailError={emailError}
         isEmailSubmitting={isEmailSubmitting}
         onEmailSubmit={handleEmailSubmit}
         onEmailSkip={handleEmailSkip}
+        sumsubStatus={sumsubStatus}
+        onSumsubStatusChange={applySumsubStatus}
         enableTradingStep={status.isDepositWalletDeploying ? 'deploying' : enableTradingStep}
         enableTradingError={enableTradingError}
         onCreateDepositWallet={handleCreateDepositWallet}

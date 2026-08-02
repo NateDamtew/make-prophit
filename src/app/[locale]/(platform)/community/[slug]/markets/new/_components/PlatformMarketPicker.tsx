@@ -2,9 +2,9 @@
 
 import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState, useTransition } from 'react'
-import { toast } from 'sonner'
 import { Search, Link2, Loader2, CheckCircle, TrendingUp } from 'lucide-react'
 import { pullPlatformEventAction } from '../../../_actions/market-actions'
+import { toast } from '@/components/ui/toast'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'

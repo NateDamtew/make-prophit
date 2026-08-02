@@ -1,27 +1,25 @@
-import type { SharesByCondition } from '@/app/[locale]/(platform)/event/[slug]/_hooks/useUserShareBalances'
 import { useQueryClient } from '@tanstack/react-query'
 import { useExtracted } from 'next-intl'
 import { useMemo, useState } from 'react'
-import { toast } from 'sonner'
 import { useSignTypedData } from 'wagmi'
+
 import { useTradingOnboarding } from '@/app/[locale]/(platform)/_providers/TradingOnboardingProvider'
 import ResponsiveTradingDialog from '@/app/[locale]/(platform)/event/[slug]/_components/ResponsiveTradingDialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { toast } from '@/components/ui/toast'
+import { useAppKit } from '@/hooks/useAppKit'
 import { DEPOSIT_WALLET_BALANCE_QUERY_KEY } from '@/hooks/useBalance'
 import { useSignaturePromptRunner } from '@/hooks/useSignaturePromptRunner'
 import { DEFAULT_CONDITION_PARTITION, MICRO_UNIT } from '@/lib/constants'
 import { ZERO_BYTES32 } from '@/lib/contracts'
 import { formatAmountInputValue, toMicro } from '@/lib/formatters'
 import { isCurrentNegRiskAdapterAddress } from '@/lib/neg-risk-adapter'
-import { applyShareDeltas, updateQueryDataWhere } from '@/lib/optimistic-trading'
 import { isTradingAuthRequiredError } from '@/lib/trading-auth/errors'
+import { refreshTradingPositionsAfterMutation } from '@/lib/trading-cache'
 import { cn } from '@/lib/utils'
 import { signAndSubmitDepositWalletCalls } from '@/lib/wallet/client'
-import {
-  buildNegRiskSplitPositionCall,
-  buildSplitPositionCall,
-} from '@/lib/wallet/transactions'
+import { buildNegRiskSplitPositionCall, buildSplitPositionCall } from '@/lib/wallet/transactions'
 import { useNotifications } from '@/stores/useNotifications'
 import { useUser } from '@/stores/useUser'
 
@@ -78,8 +76,9 @@ export default function EventSplitSharesDialog({
   const t = useExtracted()
   const queryClient = useQueryClient()
   const { ensureTradingReady, openTradeRequirements } = useTradingOnboarding()
+  const { open: openAppKit } = useAppKit()
   const user = useUser()
-  const addLocalOrderFillNotification = useNotifications(state => state.addLocalOrderFillNotification)
+  const addLocalOrderFillNotification = useNotifications((state) => state.addLocalOrderFillNotification)
   const { signTypedDataAsync } = useSignTypedData()
   const { runWithSignaturePrompt } = useSignaturePromptRunner()
   const { amount, setAmount, error, setError, isSubmitting, setIsSubmitting } = useSplitFormState()
@@ -185,19 +184,25 @@ export default function EventSplitSharesDialog({
             }),
       ]
 
-      const response = await runWithSignaturePrompt(() => signAndSubmitDepositWalletCalls({
-        user,
-        calls,
-        metadata: 'split_position',
-        signTypedDataAsync,
-      }))
+      const response = await runWithSignaturePrompt((dismissPrompt, restorePrompt) =>
+        signAndSubmitDepositWalletCalls({
+          user,
+          calls,
+          metadata: 'split_position',
+          signTypedDataAsync,
+          onSigning: restorePrompt,
+          onSigned: dismissPrompt,
+        }),
+      )
 
       if (response?.error) {
         if (isTradingAuthRequiredError(response.error)) {
           closeDialog()
           openTradeRequirements({ forceTradingAuth: true })
-        }
-        else {
+        } else if (response.code === 'wallet_connector_not_connected') {
+          toast.error(response.error)
+          void openAppKit({ view: 'Connect' })
+        } else {
           toast.error(response.error)
         }
         setIsSubmitting(false)
@@ -219,25 +224,14 @@ export default function EventSplitSharesDialog({
         description: marketTitle ?? t('Request submitted.'),
       })
 
-      updateQueryDataWhere<SharesByCondition>(
-        queryClient,
-        ['user-conditional-shares'],
-        () => true,
-        current => applyShareDeltas(current, [
-          { conditionId, outcomeIndex: 0 as const, sharesDelta: numericAmount },
-          { conditionId, outcomeIndex: 1 as const, sharesDelta: numericAmount },
-        ]),
-      )
-
+      refreshTradingPositionsAfterMutation(queryClient)
       void queryClient.invalidateQueries({ queryKey: [DEPOSIT_WALLET_BALANCE_QUERY_KEY] })
       setAmount('')
       closeDialog()
-    }
-    catch (error) {
+    } catch (error) {
       console.error('Failed to submit split operation.', error)
       toast.error(t('We could not submit your split request. Please try again.'))
-    }
-    finally {
+    } finally {
       setIsSubmitting(false)
     }
   }
@@ -259,7 +253,7 @@ export default function EventSplitSharesDialog({
         <Input
           id="split-shares-amount"
           value={amount}
-          onChange={event => handleAmountChange(event.target.value)}
+          onChange={(event) => handleAmountChange(event.target.value)}
           placeholder="0.00"
           inputMode="decimal"
           className="h-12 text-base"

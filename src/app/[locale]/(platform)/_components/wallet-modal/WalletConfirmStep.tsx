@@ -1,14 +1,11 @@
 'use client'
 
-import type { LiFiWalletTokenItem } from '@/hooks/useLiFiWalletTokens'
-import {
-  ChevronRightIcon,
-  FuelIcon,
-  InfoIcon,
-  Loader2Icon,
-} from 'lucide-react'
+import { ChevronRightIcon, FuelIcon, InfoIcon } from 'lucide-react'
 import Image from 'next/image'
 import { useState } from 'react'
+
+import type { LiFiWalletTokenItem } from '@/hooks/useLiFiWalletTokens'
+
 import WalletTransferSummary, {
   WalletTransferSummaryDivider,
   WalletTransferSummaryRow,
@@ -16,6 +13,7 @@ import WalletTransferSummary, {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Spinner } from '@/components/ui/spinner'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useDirectUsdcDepositExecution } from '@/hooks/useDirectUsdcDepositExecution'
 import { useLiFiExecution } from '@/hooks/useLiFiExecution'
@@ -40,7 +38,7 @@ function WalletConfirmStep({
   onComplete: () => void
   amountValue: string
   selectedToken?: LiFiWalletTokenItem | null
-  quote?: { toAmountDisplay: string | null, gasUsdDisplay: string | null } | null
+  quote?: { toAmountDisplay: string | null; gasUsdDisplay: string | null } | null
   refreshIndex: number
   executionMode?: 'lifi' | 'direct-usdc'
 }) {
@@ -59,24 +57,19 @@ function WalletConfirmStep({
   const effectiveQuote = quote ?? (executionMode === 'lifi' ? fetchedQuote : null)
   const hasAmount = amountValue.trim() !== ''
   const isQuoteLoading = isLoadingQuote && hasAmount
-  const status: 'quote' | 'gas' | 'ready' = effectiveQuote ? 'ready' : (isLoadingQuote ? 'gas' : 'quote')
-  const {
-    execute: executeLiFi,
-    isExecuting: isExecutingLiFi,
-  } = useLiFiExecution({
+  const status: 'quote' | 'gas' | 'ready' = effectiveQuote ? 'ready' : isLoadingQuote ? 'gas' : 'quote'
+  const { execute: executeLiFi, isExecuting: isExecutingLiFi } = useLiFiExecution({
     fromToken: selectedToken,
     amountValue,
     fromAddress: walletEoaAddress,
     toAddress: walletAddress,
   })
-  const {
-    execute: executeDirectUsdcDeposit,
-    isExecuting: isExecutingDirectUsdcDeposit,
-  } = useDirectUsdcDepositExecution({
-    amountValue,
-    fromAddress: walletEoaAddress,
-    toAddress: walletAddress,
-  })
+  const { execute: executeDirectUsdcDeposit, isExecuting: isExecutingDirectUsdcDeposit } =
+    useDirectUsdcDepositExecution({
+      amountValue,
+      fromAddress: walletEoaAddress,
+      toAddress: walletAddress,
+    })
   const execute = executionMode === 'direct-usdc' ? executeDirectUsdcDeposit : executeLiFi
   const isExecuting = executionMode === 'direct-usdc' ? isExecutingDirectUsdcDeposit : isExecutingLiFi
   const isCtaDisabled = isExecuting || isSubmitting || !effectiveQuote || isLoadingQuote
@@ -89,9 +82,7 @@ function WalletConfirmStep({
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-center">
-        <p className="text-5xl font-semibold text-foreground">
-          {displayAmount}
-        </p>
+        <p className="text-5xl font-semibold text-foreground">{displayAmount}</p>
       </div>
 
       <div className="space-y-3">
@@ -99,15 +90,12 @@ function WalletConfirmStep({
           walletEoaAddress={walletEoaAddress}
           walletAddress={walletAddress}
           siteLabel={siteLabel}
-          extraRows={(
+          extraRows={
             <>
               <WalletTransferSummaryDivider />
-              <WalletTransferSummaryRow
-                label="Estimated time"
-                value="< 1 min"
-              />
+              <WalletTransferSummaryRow label="Estimated time" value="< 1 min" />
             </>
-          )}
+          }
         />
 
         <div className="rounded-lg border">
@@ -116,14 +104,7 @@ function WalletConfirmStep({
               <span>You send</span>
               <span className="flex items-center gap-2 font-semibold text-foreground">
                 <span className="relative">
-                  <Image
-                    src={sendIcon}
-                    alt={sendSymbol}
-                    width={18}
-                    height={18}
-                    className="rounded-full"
-                    unoptimized
-                  />
+                  <Image src={sendIcon} alt={sendSymbol} width={18} height={18} className="rounded-full" unoptimized />
                   <span className="absolute -right-1 -bottom-1 rounded-full bg-background p-0.5">
                     <Image
                       src={chainIcon}
@@ -135,9 +116,7 @@ function WalletConfirmStep({
                     />
                   </span>
                 </span>
-                {displayAmount}
-                {' '}
-                {sendSymbol}
+                {displayAmount} {sendSymbol}
               </span>
             </div>
           </div>
@@ -145,33 +124,31 @@ function WalletConfirmStep({
           <div className="px-4 py-1.5 text-sm">
             <div className="flex items-center justify-between text-muted-foreground">
               <span>You receive</span>
-              {isQuoteLoading
-                ? <Skeleton className="h-4 w-28 rounded-full" />
-                : (
-                    <span className="flex items-center gap-2 font-semibold text-foreground">
-                      <span className="relative">
-                        <Image
-                          src="/images/deposit/transfer/usdc_dark.png"
-                          alt="USDC"
-                          width={18}
-                          height={18}
-                          className="rounded-full"
-                        />
-                        <span className="absolute -right-1 -bottom-1 rounded-full bg-background p-0.5">
-                          <Image
-                            src="/images/deposit/transfer/polygon_dark.png"
-                            alt="Polygon"
-                            width={10}
-                            height={10}
-                            className="rounded-full"
-                          />
-                        </span>
-                      </span>
-                      {receiveAmountDisplay}
-                      {' '}
-                      USDC
+              {isQuoteLoading ? (
+                <Skeleton className="h-4 w-28 rounded-full" />
+              ) : (
+                <span className="flex items-center gap-2 font-semibold text-foreground">
+                  <span className="relative">
+                    <Image
+                      src="/images/deposit/transfer/usdc_dark.png"
+                      alt="USDC"
+                      width={18}
+                      height={18}
+                      className="rounded-full"
+                    />
+                    <span className="absolute -right-1 -bottom-1 rounded-full bg-background p-0.5">
+                      <Image
+                        src="/images/deposit/transfer/polygon_dark.png"
+                        alt="Polygon"
+                        width={10}
+                        height={10}
+                        className="rounded-full"
+                      />
                     </span>
-                  )}
+                  </span>
+                  {receiveAmountDisplay} USDC
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -181,19 +158,19 @@ function WalletConfirmStep({
         <button
           type="button"
           className="flex w-full items-center justify-between text-xs text-muted-foreground"
-          onClick={() => setIsBreakdownOpen(current => !current)}
+          onClick={() => setIsBreakdownOpen((current) => !current)}
           disabled={isQuoteLoading}
         >
           <span>Transaction breakdown</span>
           <span className="flex items-center gap-1">
-            {isQuoteLoading
-              ? <Skeleton className="h-3 w-20 rounded-full" />
-              : (
-                  <>
-                    {!isBreakdownOpen && <span>{gasUsdDisplay ? `$${gasUsdDisplay}` : '—'}</span>}
-                    <ChevronRightIcon className={cn('size-3 transition', { 'rotate-90': isBreakdownOpen })} />
-                  </>
-                )}
+            {isQuoteLoading ? (
+              <Skeleton className="h-3 w-20 rounded-full" />
+            ) : (
+              <>
+                {!isBreakdownOpen && <span>{gasUsdDisplay ? `$${gasUsdDisplay}` : '—'}</span>}
+                <ChevronRightIcon className={cn('size-3 transition', { 'rotate-90': isBreakdownOpen })} />
+              </>
+            )}
           </span>
         </button>
         {isBreakdownOpen && (
@@ -202,9 +179,7 @@ function WalletConfirmStep({
               <span className="flex items-center gap-1">
                 Network cost
                 <Tooltip>
-                  <TooltipTrigger asChild>
-                    <InfoIcon className="size-3" />
-                  </TooltipTrigger>
+                  <TooltipTrigger render={<InfoIcon className="size-3" />} />
                   <TooltipContent>
                     <div className="space-y-1 text-xs text-foreground">
                       <div className="flex items-center justify-between gap-4">
@@ -233,14 +208,8 @@ function WalletConfirmStep({
       </div>
 
       <Badge variant="outline" className="w-full p-3 text-muted-foreground">
-        By clicking on Confirm Order, you agree to our
-        {' '}
-        <a
-          href="/tos"
-          target="_blank"
-          rel="noreferrer"
-          className="underline"
-        >
+        By clicking on Confirm Order, you agree to our{' '}
+        <a href="/tos" target="_blank" rel="noreferrer" className="underline">
           terms
         </a>
         .
@@ -257,13 +226,12 @@ function WalletConfirmStep({
             setIsSubmitting(true)
             await execute()
             onComplete()
-          }
-          finally {
+          } finally {
             setIsSubmitting(false)
           }
         }}
       >
-        {(isLoadingQuote || isSubmitting || isExecuting) && <Loader2Icon className="size-4 animate-spin" />}
+        {(isLoadingQuote || isSubmitting || isExecuting) && <Spinner className="size-4" />}
         {isSubmitting && 'Confirm transaction in your wallet'}
         {!isSubmitting && status === 'quote' && 'Preparing your quote...'}
         {!isSubmitting && status === 'gas' && 'Estimating gas...'}

@@ -4,7 +4,7 @@ import type { useMarketComments } from './useComments'
 import type { CommentTree } from '@/lib/db/queries/community-comments'
 import { MessageSquareIcon, MoreHorizontalIcon, PencilIcon, Trash2Icon } from 'lucide-react'
 import { useState } from 'react'
-import { toast } from 'sonner'
+import { toast } from '@/components/ui/toast'
 import { formatAbsolute, formatRelativeTime } from '@/components/admin-ui/format'
 import { Button } from '@/components/ui/button'
 import {
@@ -134,11 +134,9 @@ export function CommentItem({ comment, controller, currentUserId, isModerator, c
 
             {(canEdit || canDelete) && (
               <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button size="sm" variant="ghost" className="h-7 px-2 text-xs text-muted-foreground">
+                <DropdownMenuTrigger render={<Button size="sm" variant="ghost" className="h-7 px-2 text-xs text-muted-foreground" />}>
                     <MoreHorizontalIcon className="size-3.5" />
-                  </Button>
-                </DropdownMenuTrigger>
+                  </DropdownMenuTrigger>
                 <DropdownMenuContent align="start">
                   {canEdit && (
                     <DropdownMenuItem onClick={() => setEditing(true)}>

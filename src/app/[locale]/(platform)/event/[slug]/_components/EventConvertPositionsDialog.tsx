@@ -1,38 +1,26 @@
 'use client'
 
-import type { SharesByCondition } from '@/app/[locale]/(platform)/event/[slug]/_hooks/useUserShareBalances'
-import type { UserPosition } from '@/types'
 import { useQueryClient } from '@tanstack/react-query'
-import { BadgeCheckIcon, Loader2Icon, LockKeyholeIcon, MoveDownIcon, MoveLeftIcon } from 'lucide-react'
+import { BadgeCheckIcon, LockKeyholeIcon, MoveDownIcon, MoveLeftIcon } from 'lucide-react'
 import { useExtracted } from 'next-intl'
 import { useId, useMemo, useState } from 'react'
-import { toast } from 'sonner'
 import { useSignTypedData } from 'wagmi'
+
 import { useTradingOnboarding } from '@/app/[locale]/(platform)/_providers/TradingOnboardingProvider'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-import {
-  Drawer,
-  DrawerContent,
-  DrawerDescription,
-  DrawerHeader,
-  DrawerTitle,
-} from '@/components/ui/drawer'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from '@/components/ui/drawer'
 import { Input } from '@/components/ui/input'
+import { Spinner } from '@/components/ui/spinner'
+import { toast } from '@/components/ui/toast'
 import { DEPOSIT_WALLET_BALANCE_QUERY_KEY } from '@/hooks/useBalance'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { useSignaturePromptRunner } from '@/hooks/useSignaturePromptRunner'
 import { MICRO_UNIT } from '@/lib/constants'
 import { formatAmountInputValue, formatCurrency, formatSharesLabel } from '@/lib/formatters'
-import { applyPositionDeltasToUserPositions, applyShareDeltas, updateQueryDataWhere } from '@/lib/optimistic-trading'
 import { isTradingAuthRequiredError } from '@/lib/trading-auth/errors'
+import { refreshTradingPositionsAfterMutation } from '@/lib/trading-cache'
 import { cn } from '@/lib/utils'
 import { signAndSubmitDepositWalletCalls } from '@/lib/wallet/client'
 import { buildConvertPositionsCall } from '@/lib/wallet/transactions'
@@ -55,8 +43,6 @@ interface EventConvertPositionsDialogProps {
   open: boolean
   options: ConvertPositionOption[]
   outcomes: ConvertOutcomeOption[]
-  eventId?: string
-  eventSlug?: string
   negRiskMarketId?: string
   isNegRiskAugmented?: boolean
   onOpenChange: (open: boolean) => void
@@ -82,15 +68,14 @@ function useConvertPositionsSelection({
   options: ConvertPositionOption[]
   outcomes: ConvertOutcomeOption[]
 }) {
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set(options.map(option => option.id)))
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set(options.map((option) => option.id)))
 
   function toggleOption(id: string) {
     setSelectedIds((current) => {
       const next = new Set(current)
       if (next.has(id)) {
         next.delete(id)
-      }
-      else {
+      } else {
         next.add(id)
       }
       return next
@@ -110,18 +95,15 @@ function useConvertPositionsSelection({
     return minValue ?? 0
   }, [options, selectedIds])
 
-  const selectedOptions = useMemo(
-    () => options.filter(option => selectedIds.has(option.id)),
-    [options, selectedIds],
-  )
+  const selectedOptions = useMemo(() => options.filter((option) => selectedIds.has(option.id)), [options, selectedIds])
 
   const selectedConditionIds = useMemo(
-    () => new Set(selectedOptions.map(option => option.conditionId)),
+    () => new Set(selectedOptions.map((option) => option.conditionId)),
     [selectedOptions],
   )
 
   const conversionOutcomes = useMemo(
-    () => outcomes.filter(outcome => !selectedConditionIds.has(outcome.conditionId)),
+    () => outcomes.filter((outcome) => !selectedConditionIds.has(outcome.conditionId)),
     [outcomes, selectedConditionIds],
   )
 
@@ -174,8 +156,6 @@ export default function EventConvertPositionsDialog({
   open,
   options,
   outcomes,
-  eventId,
-  eventSlug,
   negRiskMarketId,
   isNegRiskAugmented = false,
   onOpenChange,
@@ -188,8 +168,6 @@ export default function EventConvertPositionsDialog({
     <EventConvertPositionsDialogContent
       options={options}
       outcomes={outcomes}
-      eventId={eventId}
-      eventSlug={eventSlug}
       negRiskMarketId={negRiskMarketId}
       isNegRiskAugmented={isNegRiskAugmented}
       onOpenChange={onOpenChange}
@@ -202,8 +180,6 @@ interface EventConvertPositionsDialogContentProps extends Omit<EventConvertPosit
 function EventConvertPositionsDialogContent({
   options,
   outcomes,
-  eventId,
-  eventSlug,
   negRiskMarketId,
   isNegRiskAugmented = false,
   onOpenChange,
@@ -251,18 +227,13 @@ function EventConvertPositionsDialogContent({
     minimumFractionDigits: 1,
     maximumFractionDigits: 2,
   })
-  const usdcAmount = hasValidAmount && selectedOptions.length > 1
-    ? (selectedOptions.length - 1) * normalizedAmount
-    : 0
+  const usdcAmount = hasValidAmount && selectedOptions.length > 1 ? (selectedOptions.length - 1) * normalizedAmount : 0
   const usdcLabel = formatCurrency(truncateToDecimals(usdcAmount, 2), {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })
   const isSubmitting = submitState !== 'idle'
-  const canSubmit = !isReviewDisabled
-    && Boolean(negRiskMarketId)
-    && selectedIndexSet > 0n
-    && !isSubmitting
+  const canSubmit = !isReviewDisabled && Boolean(negRiskMarketId) && selectedIndexSet > 0n && !isSubmitting
 
   function handleAmountChange(value: string) {
     const sanitized = value.replace(/,/g, '.')
@@ -347,18 +318,19 @@ function EventConvertPositionsDialogContent({
 
       setSubmitState('submitting')
 
-      const response = await runWithSignaturePrompt(() => signAndSubmitDepositWalletCalls({
-        user,
-        calls,
-        metadata: 'convert_positions',
-        signTypedDataAsync,
-      }))
+      const response = await runWithSignaturePrompt(() =>
+        signAndSubmitDepositWalletCalls({
+          user,
+          calls,
+          metadata: 'convert_positions',
+          signTypedDataAsync,
+        }),
+      )
       if (response?.error) {
         if (isTradingAuthRequiredError(response.error)) {
           onOpenChange(false)
           openTradeRequirements({ forceTradingAuth: true })
-        }
-        else {
+        } else {
           toast.error(response.error)
         }
         setSubmitState('idle')
@@ -370,88 +342,14 @@ function EventConvertPositionsDialogContent({
         icon: <ConvertSuccessIcon />,
       })
 
-      const optimisticDeltas = [
-        ...selectedOptions.map(option => ({
-          conditionId: option.conditionId,
-          outcomeIndex: 1 as const,
-          sharesDelta: -normalizedAmount,
-          currentPrice: 0.5,
-          title: option.label,
-          slug: option.conditionId,
-          eventSlug,
-          outcomeText: 'No',
-          isActive: true,
-          isResolved: false,
-        })),
-        ...conversionOutcomes.map(outcome => ({
-          conditionId: outcome.conditionId,
-          outcomeIndex: 0 as const,
-          sharesDelta: normalizedAmount,
-          avgPrice: 0.5,
-          currentPrice: 0.5,
-          title: outcome.label,
-          slug: outcome.conditionId,
-          eventSlug,
-          outcomeText: 'Yes',
-          isActive: true,
-          isResolved: false,
-        })),
-      ]
-      const affectedConditionIds = new Set(optimisticDeltas.map(delta => delta.conditionId))
-
-      updateQueryDataWhere<UserPosition[]>(
-        queryClient,
-        ['order-panel-user-positions'],
-        currentQueryKey => affectedConditionIds.has(String(currentQueryKey[2] ?? '')),
-        current => applyPositionDeltasToUserPositions(current, optimisticDeltas),
-      )
-      updateQueryDataWhere<UserPosition[]>(
-        queryClient,
-        ['user-market-positions'],
-        currentQueryKey =>
-          affectedConditionIds.has(String(currentQueryKey[2] ?? ''))
-          && currentQueryKey[3] === 'active',
-        current => applyPositionDeltasToUserPositions(current, optimisticDeltas),
-      )
-      updateQueryDataWhere<UserPosition[]>(
-        queryClient,
-        ['event-user-positions'],
-        currentQueryKey => currentQueryKey[2] === eventId,
-        current => applyPositionDeltasToUserPositions(current, optimisticDeltas),
-      )
-      updateQueryDataWhere<UserPosition[]>(
-        queryClient,
-        ['user-event-positions'],
-        currentQueryKey =>
-          currentQueryKey[2] === 'active'
-          && Array.from(affectedConditionIds).some(conditionId =>
-            String(currentQueryKey[3] ?? '').includes(conditionId),
-          ),
-        current => applyPositionDeltasToUserPositions(current, optimisticDeltas),
-      )
-      updateQueryDataWhere<SharesByCondition>(
-        queryClient,
-        ['user-conditional-shares'],
-        () => true,
-        current => applyShareDeltas(
-          current,
-          optimisticDeltas.map(delta => ({
-            conditionId: delta.conditionId,
-            outcomeIndex: delta.outcomeIndex,
-            sharesDelta: delta.sharesDelta,
-          })),
-        ),
-      )
-
+      refreshTradingPositionsAfterMutation(queryClient)
       void queryClient.invalidateQueries({ queryKey: [DEPOSIT_WALLET_BALANCE_QUERY_KEY] })
 
       onOpenChange(false)
-    }
-    catch (error) {
+    } catch (error) {
       console.error('Failed to submit convert operation.', error)
       toast.error(t('We could not submit your convert request. Please try again.'))
-    }
-    finally {
+    } finally {
       setSubmitState('idle')
     }
   }
@@ -486,16 +384,15 @@ function EventConvertPositionsDialogContent({
                 />
                 <div className="flex flex-1 items-center gap-2">
                   <span className="text-sm font-semibold text-foreground">{option.label}</span>
-                  <span className={cn(`
-                    inline-flex size-5 items-center justify-center rounded-sm bg-no/20 text-2xs font-semibold text-no
-                  `)}
+                  <span
+                    className={cn(
+                      `inline-flex size-5 items-center justify-center rounded-sm bg-no/20 text-2xs font-semibold text-no`,
+                    )}
                   >
                     {t('No')}
                   </span>
                 </div>
-                <span className="text-sm font-semibold text-muted-foreground tabular-nums">
-                  {sharesLabel}
-                </span>
+                <span className="text-sm font-semibold text-muted-foreground tabular-nums">{sharesLabel}</span>
               </label>
             )
           })}
@@ -522,7 +419,7 @@ function EventConvertPositionsDialogContent({
         </div>
         <Input
           value={amount}
-          onChange={event => handleAmountChange(event.target.value)}
+          onChange={(event) => handleAmountChange(event.target.value)}
           placeholder="0"
           inputMode="decimal"
           className="h-12 text-base"
@@ -547,26 +444,20 @@ function EventConvertPositionsDialogContent({
         <div className="space-y-0">
           <div className="rounded-lg border bg-background p-3">
             <div className="flex flex-col gap-4">
-              {selectedOptions.map(option => (
-                <div
-                  key={option.id}
-                  className="flex items-center justify-between text-sm"
-                >
+              {selectedOptions.map((option) => (
+                <div key={option.id} className="flex items-center justify-between text-sm">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-semibold text-foreground">{option.label}</span>
-                    <span className={cn(`
-                      inline-flex h-5 min-w-5 items-center justify-center rounded-sm bg-no/20 px-1 text-2xs
-                      font-semibold text-no
-                    `)}
+                    <span
+                      className={cn(
+                        `inline-flex h-5 min-w-5 items-center justify-center rounded-sm bg-no/20 px-1 text-2xs font-semibold text-no`,
+                      )}
                     >
                       {t('No')}
                     </span>
                   </div>
                   <span className="text-sm font-semibold text-muted-foreground tabular-nums">
-                    -
-                    {amountLabel}
-                    {' '}
-                    shares
+                    -{amountLabel} shares
                   </span>
                 </div>
               ))}
@@ -581,26 +472,20 @@ function EventConvertPositionsDialogContent({
 
           <div className="rounded-lg border bg-background p-3">
             <div className="flex flex-col gap-4">
-              {conversionOutcomes.map(outcome => (
-                <div
-                  key={outcome.conditionId}
-                  className="flex items-center justify-between text-sm"
-                >
+              {conversionOutcomes.map((outcome) => (
+                <div key={outcome.conditionId} className="flex items-center justify-between text-sm">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-semibold text-foreground">{outcome.label}</span>
-                    <span className={cn(`
-                      inline-flex h-5 min-w-5 items-center justify-center rounded-sm bg-yes/20 px-1 text-2xs
-                      font-semibold text-yes
-                    `)}
+                    <span
+                      className={cn(
+                        `inline-flex h-5 min-w-5 items-center justify-center rounded-sm bg-yes/20 px-1 text-2xs font-semibold text-yes`,
+                      )}
                     >
                       {t('Yes')}
                     </span>
                   </div>
                   <span className="text-sm font-semibold text-muted-foreground tabular-nums">
-                    +
-                    {amountLabel}
-                    {' '}
-                    shares
+                    +{amountLabel} shares
                   </span>
                 </div>
               ))}
@@ -608,30 +493,24 @@ function EventConvertPositionsDialogContent({
                 <div className="flex items-center justify-between text-sm">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-semibold text-foreground">Other</span>
-                    <span className={cn(`
-                      inline-flex h-5 min-w-5 items-center justify-center gap-1 rounded-sm bg-yes/20 px-1 text-2xs
-                      font-semibold text-yes
-                    `)}
+                    <span
+                      className={cn(
+                        `inline-flex h-5 min-w-5 items-center justify-center gap-1 rounded-sm bg-yes/20 px-1 text-2xs font-semibold text-yes`,
+                      )}
                     >
                       <LockKeyholeIcon className="size-3" />
                       {t('Yes')}
                     </span>
                   </div>
                   <span className="text-sm font-semibold text-muted-foreground tabular-nums">
-                    +
-                    {amountLabel}
-                    {' '}
-                    shares
+                    +{amountLabel} shares
                   </span>
                 </div>
               )}
             </div>
             <div className="mt-2 flex items-center justify-between text-sm font-semibold">
               <span className="text-primary">USDC 💸</span>
-              <span className="text-muted-foreground">
-                +
-                {usdcLabel}
-              </span>
+              <span className="text-muted-foreground">+{usdcLabel}</span>
             </div>
           </div>
         </div>
@@ -643,13 +522,9 @@ function EventConvertPositionsDialogContent({
         disabled={!canSubmit}
         onClick={handleSubmit}
       >
-        {submitState === 'signing' && <Loader2Icon className="size-4 animate-spin" />}
-        {submitState === 'submitting' && <Loader2Icon className="size-4 animate-spin" />}
-        {submitState === 'signing'
-          ? 'Awaiting signature'
-          : submitState === 'submitting'
-            ? 'Submitting...'
-            : 'Confirm'}
+        {submitState === 'signing' && <Spinner className="size-4" />}
+        {submitState === 'submitting' && <Spinner className="size-4" />}
+        {submitState === 'signing' ? 'Awaiting signature' : submitState === 'submitting' ? 'Submitting...' : 'Confirm'}
       </Button>
     </div>
   )
@@ -661,10 +536,9 @@ function EventConvertPositionsDialogContent({
   const reviewHeader = (
     <button
       type="button"
-      className={cn(`
-        inline-flex items-center gap-2 text-sm font-semibold text-foreground transition-colors
-        hover:text-foreground/80
-      `)}
+      className={cn(
+        `inline-flex items-center gap-2 text-sm font-semibold text-foreground transition-colors hover:text-foreground/80`,
+      )}
       onClick={() => setStep('select')}
     >
       <MoveLeftIcon className="size-4" />
@@ -677,20 +551,14 @@ function EventConvertPositionsDialogContent({
       <Drawer open onOpenChange={onOpenChange}>
         <DrawerContent className="max-h-[90vh] w-full bg-background px-4 pt-4 pb-6">
           <div className="space-y-6">
-            {step === 'review'
-              ? (
-                  <div className="flex items-center">
-                    {reviewHeader}
-                  </div>
-                )
-              : (
-                  <DrawerHeader className="space-y-3 text-center">
-                    <DrawerTitle className="text-2xl font-bold">{title}</DrawerTitle>
-                    <DrawerDescription className="text-sm text-foreground">
-                      {description}
-                    </DrawerDescription>
-                  </DrawerHeader>
-                )}
+            {step === 'review' ? (
+              <div className="flex items-center">{reviewHeader}</div>
+            ) : (
+              <DrawerHeader className="space-y-3 text-center">
+                <DrawerTitle className="text-2xl font-bold">{title}</DrawerTitle>
+                <DrawerDescription className="text-sm text-foreground">{description}</DrawerDescription>
+              </DrawerHeader>
+            )}
             {content}
           </div>
         </DrawerContent>
@@ -702,20 +570,14 @@ function EventConvertPositionsDialogContent({
     <Dialog open onOpenChange={onOpenChange}>
       <DialogContent className="max-w-sm sm:max-w-md sm:p-6">
         <div className="space-y-6">
-          {step === 'review'
-            ? (
-                <div className="flex items-center">
-                  {reviewHeader}
-                </div>
-              )
-            : (
-                <DialogHeader className="space-y-3">
-                  <DialogTitle className="text-center text-2xl font-bold">{title}</DialogTitle>
-                  <DialogDescription className="text-center text-sm text-foreground">
-                    {description}
-                  </DialogDescription>
-                </DialogHeader>
-              )}
+          {step === 'review' ? (
+            <div className="flex items-center">{reviewHeader}</div>
+          ) : (
+            <DialogHeader className="space-y-3">
+              <DialogTitle className="text-center text-2xl font-bold">{title}</DialogTitle>
+              <DialogDescription className="text-center text-sm text-foreground">{description}</DialogDescription>
+            </DialogHeader>
+          )}
           {content}
         </div>
       </DialogContent>

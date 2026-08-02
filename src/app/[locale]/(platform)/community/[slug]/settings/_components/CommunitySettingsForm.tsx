@@ -2,7 +2,7 @@
 
 import { Globe, ImageIcon, Lock, SaveIcon, Upload } from 'lucide-react'
 import { useRef, useState, useTransition } from 'react'
-import { toast } from 'sonner'
+import { toast } from '@/components/ui/toast'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'

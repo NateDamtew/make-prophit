@@ -80,8 +80,6 @@ export function SignaturePrompt() {
       <Drawer open={open} onOpenChange={handleOpenChange} dismissible={false}>
         <DrawerContent
           className={cn(`w-full border border-border/80 bg-background px-6 pt-4 pb-6 shadow-2xl`)}
-          onEscapeKeyDown={event => event.preventDefault()}
-          onInteractOutside={event => event.preventDefault()}
         >
           <button
             type="button"
@@ -108,15 +106,13 @@ export function SignaturePrompt() {
   }
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange} disablePointerDismissal>
       <DialogContent
         showCloseButton={false}
         className={cn(`
           w-[320px] max-w-[calc(100%-2rem)] rounded-2xl border border-border/80 bg-background p-6 shadow-2xl
           sm:w-[340px]
         `)}
-        onEscapeKeyDown={event => event.preventDefault()}
-        onInteractOutside={event => event.preventDefault()}
       >
         <DialogClose
           className={cn(`

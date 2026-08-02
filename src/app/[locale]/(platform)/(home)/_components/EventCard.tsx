@@ -1,10 +1,12 @@
 'use client'
 
-import type { EventCardSportsMoneylineProps } from '@/app/[locale]/(platform)/(home)/_components/EventCardSportsMoneyline'
-import type { Event, Market } from '@/types'
 import { useExtracted, useLocale } from 'next-intl'
 import dynamic from 'next/dynamic'
 import { useMemo } from 'react'
+
+import type { EventCardSportsMoneylineProps } from '@/app/[locale]/(platform)/(home)/_components/EventCardSportsMoneyline'
+import type { Event, Market } from '@/types'
+
 import EventCardFooter from '@/app/[locale]/(platform)/(home)/_components/EventCardFooter'
 import EventCardHeader from '@/app/[locale]/(platform)/(home)/_components/EventCardHeader'
 import EventCardMarketsList from '@/app/[locale]/(platform)/(home)/_components/EventCardMarketsList'
@@ -20,6 +22,7 @@ import {
 import { useXTrackerTweetCount } from '@/app/[locale]/(platform)/event/[slug]/_hooks/useXTrackerTweetCount'
 import { Card, CardContent } from '@/components/ui/card'
 import { OUTCOME_INDEX } from '@/lib/constants'
+import { resolveCryptoCadenceEventTitle } from '@/lib/crypto-cadence-event'
 import { shouldShowEventNewBadge } from '@/lib/event-new-badge'
 import { isEventResolvedLike } from '@/lib/home-events'
 import { buildChanceByMarket } from '@/lib/market-chance'
@@ -65,9 +68,7 @@ function useResolvedOutcomeIndexByConditionId({
             totalCount,
           })
 
-          return resolvedOutcomeIndex == null
-            ? null
-            : [market.condition_id, resolvedOutcomeIndex] as const
+          return resolvedOutcomeIndex == null ? null : ([market.condition_id, resolvedOutcomeIndex] as const)
         })
         .filter((entry): entry is readonly [string, 0 | 1] => entry != null),
     )
@@ -95,24 +96,25 @@ export default function EventCard({
   const marketsToDisplay = isResolvedEvent
     ? event.markets
     : (() => {
-        const activeMarkets = event.markets.filter(market => !isMarketResolved(market))
+        const activeMarkets = event.markets.filter((market) => !isMarketResolved(market))
         return activeMarkets.length > 0 ? activeMarkets : event.markets
       })()
   const isSingleMarket = marketsToDisplay.length === 1
   const primaryMarket = marketsToDisplay[0]
   const originalMarketCount = Math.max(event.total_markets_count, event.markets.length)
   const shouldUsePrimaryMarketTitle = !isResolvedEvent && isSingleMarket && originalMarketCount > 1
-  const cardTitle = shouldUsePrimaryMarketTitle
-    ? (primaryMarket?.question || primaryMarket?.short_title || primaryMarket?.title || event.title)
-    : event.title
+  const cryptoCadenceTitle = resolveCryptoCadenceEventTitle(event, locale)
+  const cardTitle =
+    cryptoCadenceTitle ??
+    (shouldUsePrimaryMarketTitle
+      ? primaryMarket?.question || primaryMarket?.short_title || primaryMarket?.title || event.title
+      : event.title)
   const yesOutcome = primaryMarket ? resolveHomeCardBinaryOutcome(primaryMarket, OUTCOME_INDEX.YES) : null
   const noOutcome = primaryMarket ? resolveHomeCardBinaryOutcome(primaryMarket, OUTCOME_INDEX.NO) : null
   const shouldShowNewBadge = shouldShowEventNewBadge(event, currentTimestamp)
   const shouldShowLiveBadge = !isResolvedEvent && Boolean(event.has_live_chart)
   const chanceByMarket = buildChanceByMarket(event.markets, priceOverridesByMarket)
-  const homeSportsMoneylineModel = enableHomeSportsMoneylineLayout
-    ? buildHomeSportsMoneylineModel(event)
-    : null
+  const homeSportsMoneylineModel = enableHomeSportsMoneylineLayout ? buildHomeSportsMoneylineModel(event) : null
   const resolvedOutcomeIndexByConditionId = useResolvedOutcomeIndexByConditionId({
     canUseXTrackerResolvedOutcomes,
     event,
@@ -124,27 +126,27 @@ export default function EventCard({
     return chanceByMarket[marketId] ?? 0
   }
 
-  const primaryDisplayChance = primaryMarket && hasHomeCardMarketChance(primaryMarket)
-    ? getDisplayChance(primaryMarket.condition_id)
-    : null
-  const roundedPrimaryDisplayChance = primaryDisplayChance == null
-    ? null
-    : Math.round(primaryDisplayChance)
-  const endedLabel = !isResolvedEvent || !isSingleMarket || !event.resolved_at
-    ? null
-    : (() => {
-        const resolvedDate = new Date(event.resolved_at)
-        if (Number.isNaN(resolvedDate.getTime())) {
-          return null
-        }
-        const dateLabel = new Intl.DateTimeFormat(locale, {
-          month: 'short',
-          day: 'numeric',
-          year: 'numeric',
-          timeZone: 'UTC',
-        }).format(resolvedDate)
-        return t('Ended {date}', { date: dateLabel })
-      })()
+  const primaryDisplayChance =
+    primaryMarket && hasHomeCardMarketChance(primaryMarket, priceOverridesByMarket[primaryMarket.condition_id])
+      ? getDisplayChance(primaryMarket.condition_id)
+      : null
+  const roundedPrimaryDisplayChance = primaryDisplayChance == null ? null : Math.round(primaryDisplayChance)
+  const endedLabel =
+    !isResolvedEvent || !isSingleMarket || !event.resolved_at
+      ? null
+      : (() => {
+          const resolvedDate = new Date(event.resolved_at)
+          if (Number.isNaN(resolvedDate.getTime())) {
+            return null
+          }
+          const dateLabel = new Intl.DateTimeFormat(locale, {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+            timeZone: 'UTC',
+          }).format(resolvedDate)
+          return t('Ended {date}', { date: dateLabel })
+        })()
   const resolvedVolume = event.volume ?? 0
 
   if (homeSportsMoneylineModel) {
@@ -160,21 +162,11 @@ export default function EventCard({
 
   return (
     <Card
-      className={cn(`
-        group flex h-45 flex-col overflow-hidden rounded-xl shadow-md shadow-black/4 transition-all
-        hover:-translate-y-0.5 hover:shadow-black/8
-        dark:hover:bg-secondary
-        [&_img]:pointer-events-none [&_img]:select-none
-      `)}
+      className={cn(
+        `group flex h-45 flex-col overflow-hidden rounded-xl shadow-md shadow-black/4 transition-all hover:-translate-y-0.5 hover:shadow-black/8 dark:hover:bg-secondary [&_img]:pointer-events-none [&_img]:select-none`,
+      )}
     >
-      <CardContent
-        className={
-          cn(`
-            flex h-full flex-col px-3 pt-3
-            ${isResolvedEvent ? 'pb-3' : 'pb-3 md:pb-1'}
-          `)
-        }
-      >
+      <CardContent className={cn(`flex h-full flex-col px-3 pt-3 ${isResolvedEvent ? 'pb-3' : 'pb-3 md:pb-1'}`)}>
         <EventCardHeader
           event={event}
           title={cardTitle}
@@ -185,13 +177,9 @@ export default function EventCard({
 
         <div className="flex flex-1 flex-col">
           <div
-            className={
-              cn(isResolvedEvent && isSingleMarket
-                ? 'mt-6'
-                : isResolvedEvent && !isSingleMarket
-                  ? 'mt-1'
-                  : 'mt-auto')
-            }
+            className={cn(
+              isResolvedEvent && isSingleMarket ? 'mt-6' : isResolvedEvent && !isSingleMarket ? 'mt-1' : 'mt-auto',
+            )}
           >
             {!isSingleMarket && (
               <EventCardMarketsList
@@ -199,6 +187,7 @@ export default function EventCard({
                 markets={marketsToDisplay}
                 isResolvedEvent={isResolvedEvent}
                 getDisplayChance={getDisplayChance}
+                priceOverridesByMarket={priceOverridesByMarket}
                 resolvedOutcomeIndexByConditionId={resolvedOutcomeIndexByConditionId}
               />
             )}

@@ -2,7 +2,6 @@
 
 import { useRouter } from 'next/navigation'
 import { useState, useTransition } from 'react'
-import { toast } from 'sonner'
 import {
   FileEdit,
   Send,
@@ -18,6 +17,7 @@ import {
 import { deleteMarketAction } from '../../../_actions/market-actions'
 import { submitMarketForReviewAction } from '../../../_actions/review-actions'
 import SubmitForReviewDialog from './SubmitForReviewDialog'
+import { toast } from '@/components/ui/toast'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 

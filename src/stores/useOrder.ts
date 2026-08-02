@@ -1,54 +1,19 @@
 'use client'
 
 import type { RefObject } from 'react'
-import type { LimitExpirationOption } from '@/lib/orders/expiration'
-import type { Event, Market, OrderSide, OrderType, Outcome } from '@/types'
+
 import { useEffect, useMemo, useRef } from 'react'
 import { create } from 'zustand'
+
+import type { LimitExpirationOption } from '@/lib/orders/expiration'
+import type { Event, Market, OrderSide, OrderType, Outcome } from '@/types'
+
 import { useOrderBookSummaries } from '@/app/[locale]/(platform)/event/[slug]/_hooks/useOrderBookSummaries'
 import { ORDER_SIDE, ORDER_TYPE, OUTCOME_INDEX } from '@/lib/constants'
 import { toCents } from '@/lib/formatters'
 import { resolveOutcomeUnitPrice } from '@/lib/market-pricing'
 
 const ORDER_TYPE_STORAGE_KEY = 'kuest:order-panel-type'
-
-type ConditionShares = Record<typeof OUTCOME_INDEX.YES | typeof OUTCOME_INDEX.NO, number>
-
-function normalizeConditionShareValue(value: number | undefined) {
-  if (typeof value !== 'number' || !Number.isFinite(value)) {
-    return 0
-  }
-
-  return Math.round(value * 1_000_000) / 1_000_000
-}
-
-function areUserSharesEqual(
-  left: Record<string, ConditionShares>,
-  right: Record<string, ConditionShares>,
-) {
-  const leftKeys = Object.keys(left)
-  const rightKeys = Object.keys(right)
-
-  if (leftKeys.length !== rightKeys.length) {
-    return false
-  }
-
-  return leftKeys.every((conditionId) => {
-    const leftCondition = left[conditionId]
-    const rightCondition = right[conditionId]
-
-    if (!rightCondition) {
-      return false
-    }
-
-    return (
-      normalizeConditionShareValue(leftCondition?.[OUTCOME_INDEX.YES])
-      === normalizeConditionShareValue(rightCondition?.[OUTCOME_INDEX.YES])
-      && normalizeConditionShareValue(leftCondition?.[OUTCOME_INDEX.NO])
-      === normalizeConditionShareValue(rightCondition?.[OUTCOME_INDEX.NO])
-    )
-  })
-}
 
 function areEventsEqual(left: Event | null | undefined, right: Event | null | undefined) {
   return left === right
@@ -72,8 +37,7 @@ function resolveStoredOrderType() {
     if (storedType === ORDER_TYPE.LIMIT || storedType === ORDER_TYPE.MARKET) {
       return storedType
     }
-  }
-  catch {}
+  } catch {}
 
   return ORDER_TYPE.MARKET
 }
@@ -95,8 +59,6 @@ interface OrderState {
   inputRef: RefObject<HTMLInputElement | null>
   lastMouseEvent: any
 
-  userShares: Record<string, ConditionShares>
-
   // Actions
   setEvent: (event: Event) => void
   setMarket: (market: Market) => void
@@ -112,7 +74,6 @@ interface OrderState {
   setIsLoading: (loading: boolean) => void
   setIsMobileOrderPanelOpen: (loading: boolean) => void
   setLastMouseEvent: (lastMouseEvent: any) => void
-  setUserShares: (shares: Record<string, ConditionShares>, options?: { replace?: boolean }) => void
 }
 
 export const useOrder = create<OrderState>()((set, _, store) => ({
@@ -130,46 +91,49 @@ export const useOrder = create<OrderState>()((set, _, store) => ({
   isMobileOrderPanelOpen: false,
   inputRef: { current: null as HTMLInputElement | null },
   lastMouseEvent: null,
-  userShares: {},
+  setEvent: (event: Event) =>
+    set((state) => {
+      if (areEventsEqual(state.event, event)) {
+        return state
+      }
 
-  setEvent: (event: Event) => set((state) => {
-    if (areEventsEqual(state.event, event)) {
-      return state
-    }
+      return { event }
+    }),
+  setMarket: (market: Market) =>
+    set((state) => {
+      if (areMarketsEqual(state.market, market)) {
+        return state
+      }
 
-    return { event }
-  }),
-  setMarket: (market: Market) => set((state) => {
-    if (areMarketsEqual(state.market, market)) {
-      return state
-    }
+      return { market }
+    }),
+  setOutcome: (outcome: Outcome) =>
+    set((state) => {
+      if (areOutcomesEqual(state.outcome, outcome)) {
+        return state
+      }
 
-    return { market }
-  }),
-  setOutcome: (outcome: Outcome) => set((state) => {
-    if (areOutcomesEqual(state.outcome, outcome)) {
-      return state
-    }
-
-    return { outcome }
-  }),
+      return { outcome }
+    }),
   reset: () => set(store.getInitialState()),
-  setSide: (side: OrderSide) => set((state) => {
-    if (state.side === side) {
-      return state
-    }
+  setSide: (side: OrderSide) =>
+    set((state) => {
+      if (state.side === side) {
+        return state
+      }
 
-    return { side }
-  }),
-  setType: (type: OrderType) => set(state => ({
-    type,
-    amount: '',
-    limitPrice: '0.0',
-    limitShares: '0',
-    limitExpirationOption: 'never',
-    limitExpirationTimestamp: null,
-    side: state.side,
-  })),
+      return { side }
+    }),
+  setType: (type: OrderType) =>
+    set((state) => ({
+      type,
+      amount: '',
+      limitPrice: '0.0',
+      limitShares: '0',
+      limitExpirationOption: 'never',
+      limitExpirationTimestamp: null,
+      side: state.side,
+    })),
   setAmount: (amount: string) => set({ amount }),
   setLimitPrice: (price: string) => set({ limitPrice: price }),
   setLimitShares: (shares: string) => set({ limitShares: shares }),
@@ -178,30 +142,18 @@ export const useOrder = create<OrderState>()((set, _, store) => ({
   setIsLoading: (loading: boolean) => set({ isLoading: loading }),
   setIsMobileOrderPanelOpen: (open: boolean) => set({ isMobileOrderPanelOpen: open }),
   setLastMouseEvent: (lastMouseEvent: any) => set({ lastMouseEvent }),
-  setUserShares: (shares: Record<string, ConditionShares>, options?: { replace?: boolean }) => set((state) => {
-    const nextUserShares = options?.replace ? shares : { ...state.userShares, ...shares }
-
-    if (areUserSharesEqual(state.userShares, nextUserShares)) {
-      return state
-    }
-
-    return { userShares: nextUserShares }
-  }),
 }))
 
 export function useOutcomeTopOfBookPrice(
   outcomeIndex: typeof OUTCOME_INDEX.YES | typeof OUTCOME_INDEX.NO,
   sideOverride?: OrderSide,
 ) {
-  const market = useOrder(state => state.market)
-  const orderSide = useOrder(state => state.side)
-  const outcome = market?.outcomes.find(current => current.outcome_index === outcomeIndex)
-    ?? market?.outcomes[outcomeIndex]
+  const market = useOrder((state) => state.market)
+  const orderSide = useOrder((state) => state.side)
+  const outcome =
+    market?.outcomes.find((current) => current.outcome_index === outcomeIndex) ?? market?.outcomes[outcomeIndex]
   const tokenId = outcome?.token_id ? String(outcome.token_id) : null
-  const { data: orderBookSummaries } = useOrderBookSummaries(
-    tokenId ? [tokenId] : [],
-    { enabled: Boolean(tokenId) },
-  )
+  const { data: orderBookSummaries } = useOrderBookSummaries(tokenId ? [tokenId] : [], { enabled: Boolean(tokenId) })
 
   return useMemo(() => {
     return resolveOutcomeUnitPrice(market, outcomeIndex, {
@@ -220,15 +172,15 @@ export function useNoPrice() {
 }
 
 export function useIsSingleMarket() {
-  return useOrder(state => state.event?.total_markets_count === 1)
+  return useOrder((state) => state.event?.total_markets_count === 1)
 }
 
 export function useIsLimitOrder() {
-  return useOrder(state => state.type === ORDER_TYPE.LIMIT)
+  return useOrder((state) => state.type === ORDER_TYPE.LIMIT)
 }
 
 export function useAmountAsNumber() {
-  return useOrder(state => Number.parseFloat(state.amount) || 0)
+  return useOrder((state) => Number.parseFloat(state.amount) || 0)
 }
 
 interface SyncLimitPriceWithOutcomeParams {
@@ -278,27 +230,32 @@ function syncLimitPriceWithOutcome({
 }
 
 export function useSyncLimitPriceWithOutcome() {
-  const outcomeIndex = useOrder(state => state.outcome?.outcome_index)
-  const syncKey = useOrder(state => [
-    state.event?.id ?? 'no-event',
-    state.market?.condition_id ?? 'no-market',
-    state.outcome?.token_id ?? 'no-outcome',
-  ].join(':'))
-  const setLimitPrice = useOrder(state => state.setLimitPrice)
+  const outcomeIndex = useOrder((state) => state.outcome?.outcome_index)
+  const syncKey = useOrder((state) =>
+    [
+      state.event?.id ?? 'no-event',
+      state.market?.condition_id ?? 'no-market',
+      state.outcome?.token_id ?? 'no-outcome',
+    ].join(':'),
+  )
+  const setLimitPrice = useOrder((state) => state.setLimitPrice)
   const yesPrice = useYesPrice()
   const noPrice = useNoPrice()
   const lastSyncKeyRef = useRef(syncKey)
   const hasSyncedRef = useRef(false)
 
-  useEffect(function syncLimitPriceWithSelectedOutcome() {
-    syncLimitPriceWithOutcome({
-      syncKey,
-      lastSyncKeyRef,
-      hasSyncedRef,
-      outcomeIndex,
-      noPrice,
-      yesPrice,
-      setLimitPrice,
-    })
-  }, [noPrice, outcomeIndex, setLimitPrice, syncKey, yesPrice])
+  useEffect(
+    function syncLimitPriceWithSelectedOutcome() {
+      syncLimitPriceWithOutcome({
+        syncKey,
+        lastSyncKeyRef,
+        hasSyncedRef,
+        outcomeIndex,
+        noPrice,
+        yesPrice,
+        setLimitPrice,
+      })
+    },
+    [noPrice, outcomeIndex, setLimitPrice, syncKey, yesPrice],
+  )
 }

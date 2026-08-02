@@ -37,6 +37,11 @@ vi.mock('@/app/[locale]/admin/(general)/_components/AdminGeneralSettingsForm', (
   default: () => React.createElement('div', { 'data-testid': 'admin-general-settings-form' }),
 }))
 
+vi.mock('@/app/[locale]/admin/integrations/_components/AdminIntegrationsForm', () => ({
+  __esModule: true,
+  default: () => React.createElement('div', { 'data-testid': 'admin-integrations-form' }),
+}))
+
 vi.mock('@/app/[locale]/admin/theme/_components/AdminThemeSettingsForm', () => ({
   __esModule: true,
   default: () => React.createElement('div', { 'data-testid': 'admin-theme-settings-form' }),
@@ -57,22 +62,26 @@ describe('admin settings pages runtime behavior', () => {
   it('does not read settings while rendering the page shell', async () => {
     const [
       { default: AdminGeneralSettingsPage },
+      { default: AdminIntegrationsPage },
       { default: AdminThemeSettingsPage },
       { default: AdminMarketContextSettingsPage },
     ] = await Promise.all([
-      import('@/app/[locale]/admin/(general)/page'),
+      import('@/app/[locale]/admin/general/page'),
+      import('@/app/[locale]/admin/integrations/page'),
       import('@/app/[locale]/admin/theme/page'),
       import('@/app/[locale]/admin/market-context/page'),
     ])
 
     const params = Promise.resolve({ locale: 'en' })
+    const searchParams = Promise.resolve({})
 
     await AdminGeneralSettingsPage({ params })
+    await AdminIntegrationsPage({ params, searchParams })
     await AdminThemeSettingsPage({ params } as any)
     await AdminMarketContextSettingsPage({ params } as any)
 
     expect(mocks.io).not.toHaveBeenCalled()
     expect(mocks.getSettings).not.toHaveBeenCalled()
-    expect(mocks.redirect).toHaveBeenCalledWith('/en/admin')
+    expect(mocks.redirect).toHaveBeenCalledWith('/en/admin/general')
   })
 })

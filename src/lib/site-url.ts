@@ -14,8 +14,7 @@ function normalizeSiteUrl(value: string): string {
   let parsed
   try {
     parsed = new URL(withProtocol)
-  }
-  catch {
+  } catch {
     throw new Error(`SITE_URL is not a valid URL: "${value}"`)
   }
 
@@ -27,15 +26,12 @@ function normalizeSiteUrl(value: string): string {
   return `${parsed.protocol}//${parsed.host}${normalizedPath}${parsed.search}${parsed.hash}`
 }
 
-export default function resolveSiteUrl(env: NodeJS.ProcessEnv = process.env): string {
+export default function resolveSiteUrl(env: Readonly<Partial<NodeJS.ProcessEnv>> = process.env): string {
   if (typeof env.SITE_URL === 'string' && env.SITE_URL.trim()) {
     return normalizeSiteUrl(env.SITE_URL)
   }
 
-  if (
-    typeof env.VERCEL_PROJECT_PRODUCTION_URL === 'string'
-    && env.VERCEL_PROJECT_PRODUCTION_URL.trim()
-  ) {
+  if (typeof env.VERCEL_PROJECT_PRODUCTION_URL === 'string' && env.VERCEL_PROJECT_PRODUCTION_URL.trim()) {
     return normalizeSiteUrl(env.VERCEL_PROJECT_PRODUCTION_URL)
   }
 

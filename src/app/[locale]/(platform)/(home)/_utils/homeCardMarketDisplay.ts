@@ -1,4 +1,5 @@
 import type { Market, Outcome } from '@/types'
+
 import { OUTCOME_INDEX } from '@/lib/constants'
 
 export type HomeCardBinaryOutcome = Pick<Outcome, 'outcome_index' | 'outcome_text'>
@@ -14,10 +15,28 @@ function hasPositiveNumber(value: unknown) {
   return typeof value === 'number' && Number.isFinite(value) && value > 0
 }
 
-export function hasHomeCardMarketChance(market: Pick<Market, 'volume' | 'volume_24h' | 'condition'> | null | undefined) {
-  return hasPositiveNumber(market?.volume)
-    || hasPositiveNumber(market?.volume_24h)
-    || hasPositiveNumber(market?.condition?.volume)
+function hasFiniteNumber(value: unknown) {
+  return typeof value === 'number' && Number.isFinite(value)
+}
+
+export function hasHomeCardMarketChance(
+  market: Pick<Market, 'volume' | 'volume_24h' | 'condition' | 'outcomes'> | null | undefined,
+  priceOverride?: number | null,
+) {
+  return (
+    hasFiniteNumber(priceOverride) ||
+    hasPositiveNumber(market?.volume) ||
+    hasPositiveNumber(market?.volume_24h) ||
+    hasPositiveNumber(market?.condition?.volume) ||
+    Boolean(
+      market?.outcomes.some(
+        (outcome) =>
+          hasFiniteNumber(outcome.buy_price) ||
+          hasFiniteNumber(outcome.sell_price) ||
+          hasFiniteNumber(outcome.last_trade_price),
+      ),
+    )
+  )
 }
 
 export function formatHomeCardChanceLabel(value: number | null | undefined) {
@@ -32,7 +51,7 @@ export function resolveHomeCardBinaryOutcome(
   market: Pick<Market, 'outcomes'>,
   outcomeIndex: typeof OUTCOME_INDEX.YES | typeof OUTCOME_INDEX.NO,
 ): HomeCardBinaryOutcome {
-  const matchingOutcome = market.outcomes.find(outcome => outcome.outcome_index === outcomeIndex)
+  const matchingOutcome = market.outcomes.find((outcome) => outcome.outcome_index === outcomeIndex)
   if (matchingOutcome) {
     return {
       outcome_index: matchingOutcome.outcome_index,

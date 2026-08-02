@@ -1,8 +1,7 @@
 import type { EventListSortBy } from '@/lib/event-list-filters'
 
-export const PREDICTION_RESULTS_SORT_PARAM = '_sort'
-export const PREDICTION_RESULTS_STATUS_PARAM = '_status'
-const PREDICTION_RESULTS_INTERNAL_ROUTE_SEGMENT = 'route-filters'
+const PREDICTION_RESULTS_SORT_PARAM = '_sort'
+const PREDICTION_RESULTS_STATUS_PARAM = '_status'
 
 export type PredictionResultsSortOption = 'trending' | 'volume' | 'newest' | 'ending-soon'
 export type PredictionResultsStatusOption = 'active' | 'resolved' | 'all'
@@ -13,19 +12,12 @@ export const DEFAULT_PREDICTION_RESULTS_STATUS: PredictionResultsStatusOption = 
 type PredictionResultsSearchParamsRecord = Record<string, string | string[] | undefined>
 
 function normalizeRouteFilterValue(value: string | null | undefined) {
-  return value
-    ?.trim()
-    .toLowerCase()
-    .replace(/[\s_]+/g, '-')
-    ?? ''
-}
-
-function trimTrailingSlash(pathname: string) {
-  if (pathname.length > 1 && pathname.endsWith('/')) {
-    return pathname.slice(0, -1)
-  }
-
-  return pathname
+  return (
+    value
+      ?.trim()
+      .toLowerCase()
+      .replace(/[\s_]+/g, '-') ?? ''
+  )
 }
 
 export function parsePredictionResultsSort(value: string | null | undefined): PredictionResultsSortOption {
@@ -74,27 +66,6 @@ export function resolvePredictionResultsApiSort(sort: PredictionResultsSortOptio
   }
 }
 
-export function hasPredictionResultsFilterSearchParams(searchParams: Pick<URLSearchParams, 'has'>) {
-  return searchParams.has(PREDICTION_RESULTS_SORT_PARAM) || searchParams.has(PREDICTION_RESULTS_STATUS_PARAM)
-}
-
-export function buildPredictionResultsInternalRoutePath(
-  pathname: string,
-  filters: {
-    sort: PredictionResultsSortOption
-    status: PredictionResultsStatusOption
-  },
-) {
-  const normalizedPathname = trimTrailingSlash(pathname)
-
-  return [
-    normalizedPathname,
-    PREDICTION_RESULTS_INTERNAL_ROUTE_SEGMENT,
-    filters.status,
-    filters.sort,
-  ].join('/')
-}
-
 export function resolvePredictionResultsRequestedApiSort({
   query,
   sort,
@@ -113,41 +84,17 @@ function resolveSearchParamValue(value: string | string[] | null | undefined) {
   return Array.isArray(value) ? value[0] : value
 }
 
-function serializePredictionResultsSearchParams(searchParams: PredictionResultsSearchParamsRecord) {
-  const params = new URLSearchParams()
-
-  for (const [key, value] of Object.entries(searchParams)) {
-    if (Array.isArray(value)) {
-      for (const item of value) {
-        params.append(key, item)
-      }
-      continue
-    }
-
-    if (value !== undefined) {
-      params.append(key, value)
-    }
-  }
-
-  return params.toString()
-}
-
 function hasSearchParamsMethods(
-  searchParams: PredictionResultsSearchParamsRecord | Pick<URLSearchParams, 'get' | 'toString'>,
-): searchParams is Pick<URLSearchParams, 'get' | 'toString'> {
+  searchParams: PredictionResultsSearchParamsRecord | Pick<URLSearchParams, 'get'>,
+): searchParams is Pick<URLSearchParams, 'get'> {
   return typeof searchParams.get === 'function'
 }
 
 export function resolvePredictionResultsFiltersFromSearchParams(
-  searchParams:
-    | PredictionResultsSearchParamsRecord
-    | Pick<URLSearchParams, 'get' | 'toString'>
-    | null
-    | undefined,
+  searchParams: PredictionResultsSearchParamsRecord | Pick<URLSearchParams, 'get'> | null | undefined,
 ) {
   if (!searchParams) {
     return {
-      searchParamsString: '',
       sort: DEFAULT_PREDICTION_RESULTS_SORT,
       status: DEFAULT_PREDICTION_RESULTS_STATUS,
     }
@@ -155,14 +102,12 @@ export function resolvePredictionResultsFiltersFromSearchParams(
 
   if (hasSearchParamsMethods(searchParams)) {
     return {
-      searchParamsString: searchParams.toString(),
       sort: parsePredictionResultsSort(searchParams.get(PREDICTION_RESULTS_SORT_PARAM)),
       status: parsePredictionResultsStatus(searchParams.get(PREDICTION_RESULTS_STATUS_PARAM)),
     }
   }
 
   return {
-    searchParamsString: serializePredictionResultsSearchParams(searchParams),
     sort: parsePredictionResultsSort(resolveSearchParamValue(searchParams[PREDICTION_RESULTS_SORT_PARAM])),
     status: parsePredictionResultsStatus(resolveSearchParamValue(searchParams[PREDICTION_RESULTS_STATUS_PARAM])),
   }
@@ -179,15 +124,13 @@ export function buildPredictionResultsUrlSearchParams(
 
   if (filters.sort === DEFAULT_PREDICTION_RESULTS_SORT) {
     params.delete(PREDICTION_RESULTS_SORT_PARAM)
-  }
-  else {
+  } else {
     params.set(PREDICTION_RESULTS_SORT_PARAM, filters.sort)
   }
 
   if (filters.status === DEFAULT_PREDICTION_RESULTS_STATUS) {
     params.delete(PREDICTION_RESULTS_STATUS_PARAM)
-  }
-  else {
+  } else {
     params.set(PREDICTION_RESULTS_STATUS_PARAM, filters.status)
   }
 

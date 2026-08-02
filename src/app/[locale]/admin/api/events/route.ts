@@ -1,5 +1,8 @@
 import type { NextRequest } from 'next/server'
+
 import { NextResponse } from 'next/server'
+
+import { isAdminEventAttentionFilter } from '@/lib/admin-event-attention'
 import { DEFAULT_ERROR_MESSAGE } from '@/lib/constants'
 import { EventRepository } from '@/lib/db/queries/event'
 import { UserRepository } from '@/lib/db/queries/user'
@@ -37,14 +40,15 @@ export async function GET(request: NextRequest) {
     const mainCategorySlug = searchParams.get('mainCategorySlug')?.trim() || undefined
     const creator = searchParams.get('creator')?.trim() || undefined
     const seriesSlug = searchParams.get('seriesSlug')?.trim() || undefined
+    const hideCrypto = searchParams.get('hideCrypto') === '1'
     const activeOnly = searchParams.get('activeOnly') === '1'
+    const attentionParam = searchParams.get('attention')
+    const attention = isAdminEventAttentionFilter(attentionParam) ? attentionParam : undefined
 
     const sortBy = VALID_SORT_FIELDS.includes(sortByParam as AdminEventsSortBy)
-      ? sortByParam as AdminEventsSortBy
+      ? (sortByParam as AdminEventsSortBy)
       : 'created_at'
-    const sortOrder = sortOrderParam === 'asc' || sortOrderParam === 'desc'
-      ? sortOrderParam
-      : 'desc'
+    const sortOrder = sortOrderParam === 'asc' || sortOrderParam === 'desc' ? sortOrderParam : 'desc'
 
     const { data, error, totalCount, creatorOptions, seriesOptions } = await EventRepository.listAdminEvents({
       limit,
@@ -55,7 +59,9 @@ export async function GET(request: NextRequest) {
       mainCategorySlug,
       creator,
       seriesSlug,
+      hideCrypto,
       activeOnly,
+      attention,
     })
 
     if (error) {
@@ -75,8 +81,7 @@ export async function GET(request: NextRequest) {
       creatorOptions,
       seriesOptions,
     })
-  }
-  catch (error) {
+  } catch (error) {
     console.error('API Error:', error)
     return NextResponse.json(
       {

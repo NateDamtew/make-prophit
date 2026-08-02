@@ -24,15 +24,21 @@ vi.mock('next/image', () => ({
   },
 }))
 
-vi.mock('@/components/ui/tooltip', () => ({
-  Tooltip: function MockTooltip({ children }: any) {
+vi.mock('@/components/ui/popover', () => ({
+  Popover: function MockPopover({ children }: any) {
     return <div>{children}</div>
   },
-  TooltipContent: function MockTooltipContent({ children, ...props }: any) {
+  PopoverContent: function MockPopoverContent({ children, ...props }: any) {
     return <div {...props}>{children}</div>
   },
-  TooltipTrigger: function MockTooltipTrigger({ children }: any) {
-    return <>{children}</>
+  PopoverDescription: function MockPopoverDescription({ children, ...props }: any) {
+    return <p {...props}>{children}</p>
+  },
+  PopoverTitle: function MockPopoverTitle({ children, ...props }: any) {
+    return <h2 {...props}>{children}</h2>
+  },
+  PopoverTrigger: function MockPopoverTrigger({ children, render }: any) {
+    return render ?? <>{children}</>
   },
 }))
 
@@ -43,7 +49,7 @@ interface MockUpstreamCommit {
 
 async function renderCopyVersion(
   upstreamCommit: MockUpstreamCommit | null,
-  config: { commitSha?: string, isVercel?: string } = {},
+  config: { commitSha?: string; isVercel?: string } = {},
 ) {
   vi.resetModules()
   mocks.useQuery.mockReturnValue({ data: upstreamCommit })
@@ -121,9 +127,11 @@ describe('copyVersion', () => {
   it('keeps the upstream lookup disabled when the current commit is unknown', async () => {
     await renderCopyVersion(null, { commitSha: 'unknown' })
 
-    expect(mocks.useQuery).toHaveBeenCalledWith(expect.objectContaining({
-      enabled: false,
-    }))
+    expect(mocks.useQuery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        enabled: false,
+      }),
+    )
     expect(screen.getByTitle('Copy version payload')).toHaveTextContent('v.unknown')
   })
 

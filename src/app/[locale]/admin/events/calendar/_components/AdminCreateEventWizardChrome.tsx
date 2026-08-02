@@ -1,9 +1,13 @@
 'use client'
 
 import type { ReactNode } from 'react'
-import { ArrowLeftIcon, ArrowRightIcon, CheckIcon, Loader2Icon } from 'lucide-react'
+
+import { ArrowLeftIcon, ArrowRightIcon, CheckIcon } from 'lucide-react'
+import { useExtracted } from 'next-intl'
+
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { Spinner } from '@/components/ui/spinner'
 import { cn } from '@/lib/utils'
 
 interface AdminCreateEventStepNavigationProps {
@@ -23,6 +27,8 @@ export function AdminCreateEventStepNavigation({
   isStepValid,
   onStepClick,
 }: AdminCreateEventStepNavigationProps) {
+  const t = useExtracted()
+
   return (
     <Card className="bg-background">
       <CardContent className="py-4">
@@ -47,17 +53,15 @@ export function AdminCreateEventStepNavigation({
                 )}
               >
                 <p className="text-xs tracking-wide text-muted-foreground uppercase">
-                  STEP
-                  {' '}
-                  {step}
+                  {t('STEP')} {step}
                 </p>
                 <div className="mt-0.5 flex items-center justify-between gap-2">
                   <p className="text-base font-medium text-foreground">{label}</p>
                   {done && (
-                    <span className={cn(`
-                      flex size-5 shrink-0 items-center justify-center rounded-full border border-emerald-600
-                      bg-emerald-600 text-background
-                    `)}
+                    <span
+                      className={cn(
+                        `flex size-5 shrink-0 items-center justify-center rounded-full border border-emerald-600 bg-emerald-600 text-background`,
+                      )}
                     >
                       <CheckIcon className="size-3" />
                     </span>
@@ -105,87 +109,67 @@ export function AdminCreateEventFooter({
   onBack,
   onNext,
 }: AdminCreateEventFooterProps) {
-  const signatureBusy = isLoadingPendingRequest
-    || isSigningAuth
-    || isPreparingSignaturePlan
-    || isExecutingSignatures
-    || isFinalizingSignatureFlow
+  const t = useExtracted()
+  const signatureBusy =
+    isLoadingPendingRequest ||
+    isSigningAuth ||
+    isPreparingSignaturePlan ||
+    isExecutingSignatures ||
+    isFinalizingSignatureFlow
 
   return (
     <Card className="bg-background">
       <CardContent className="flex flex-col gap-3 py-4 md:flex-row md:items-center md:justify-between">
         <p className="text-sm text-muted-foreground">
-          Step
-          {' '}
-          {currentStep}
-          {' '}
-          of
-          {' '}
-          {totalSteps}
+          {t('Step')} {currentStep} {t('of')} {totalSteps}
         </p>
 
         <div className="flex gap-2">
           <Button
             type="button"
             variant="outline"
-            className={cn(`
-              border-destructive/30 text-destructive
-              hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive
-            `)}
+            className={cn(
+              `border-destructive/30 text-destructive hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive`,
+            )}
             onClick={onReset}
             disabled={signatureBusy}
           >
-            Reset form
+            {t('Reset form')}
           </Button>
 
-          <Button
-            type="button"
-            variant="outline"
-            onClick={onBack}
-            disabled={signatureBusy}
-          >
+          <Button type="button" variant="outline" onClick={onBack} disabled={signatureBusy}>
             <ArrowLeftIcon className="mr-2 size-4" />
-            Back
+            {t('Back')}
           </Button>
 
-          <Button
-            type="button"
-            onClick={onNext}
-            disabled={(currentStep === 4 && isStepFourChecking) || signatureBusy}
-          >
-            {currentStep === 5
-              ? (
-                  <>
-                    {signatureBusy && (
-                      <Loader2Icon className="mr-2 size-4 animate-spin" />
-                    )}
-                    {isLoadingPendingRequest
-                      ? 'Loading...'
-                      : isSigningAuth
-                        ? 'Signing auth...'
-                        : isPreparingSignaturePlan
-                          ? 'Preparing...'
-                          : isExecutingSignatures
-                            ? 'Signing...'
-                            : isFinalizingSignatureFlow
-                              ? 'Finalizing...'
-                              : signatureFlowDone
-                                ? 'Create another event'
-                                : hasPreparedSignaturePlan
-                                  ? 'Continue signatures'
-                                  : 'Sign & prepare'}
-                  </>
-                )
-              : currentStep === 4
-                ? (
-                    stepFourNextButtonContent
-                  )
-                : (
-                    <>
-                      Next
-                      <ArrowRightIcon className="ml-2 size-4" />
-                    </>
-                  )}
+          <Button type="button" onClick={onNext} disabled={(currentStep === 4 && isStepFourChecking) || signatureBusy}>
+            {currentStep === 5 ? (
+              <>
+                {signatureBusy && <Spinner className="mr-2 size-4" />}
+                {isLoadingPendingRequest
+                  ? t('Loading...')
+                  : isSigningAuth
+                    ? t('Signing auth...')
+                    : isPreparingSignaturePlan
+                      ? t('Preparing...')
+                      : isExecutingSignatures
+                        ? t('Signing...')
+                        : isFinalizingSignatureFlow
+                          ? t('Finalizing...')
+                          : signatureFlowDone
+                            ? t('Create another event')
+                            : hasPreparedSignaturePlan
+                              ? t('Continue signatures')
+                              : t('Sign & prepare')}
+              </>
+            ) : currentStep === 4 ? (
+              stepFourNextButtonContent
+            ) : (
+              <>
+                {t('Next')}
+                <ArrowRightIcon className="ml-2 size-4" />
+              </>
+            )}
           </Button>
         </div>
       </CardContent>

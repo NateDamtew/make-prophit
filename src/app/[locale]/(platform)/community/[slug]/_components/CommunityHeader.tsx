@@ -3,7 +3,7 @@
 import { ActivityIcon, Check, Code2 as Code2Icon, Copy, Globe, Lock, Paintbrush, Plus, Scale, Share2, Star, TrendingUp, Users } from 'lucide-react'
 import Link from 'next/link'
 import { useState, useTransition } from 'react'
-import { toast } from 'sonner'
+import { toast } from '@/components/ui/toast'
 import { ActivityTicker } from '@/components/community-engagement/ActivityTicker'
 import { VerifiedBadge } from '@/components/community-engagement/VerifiedBadge'
 import { Button } from '@/components/ui/button'
@@ -186,37 +186,27 @@ export default function CommunityHeader({ community, memberRole, currentUserId }
                   <Share2 className="mr-1.5 size-3.5" />
                   Invite
                 </Button>
-                <Button size="sm" asChild>
-                  <Link href={`/community/${community.slug}/markets/new` as any}>
+                <Button size="sm" nativeButton={false} render={<Link href={`/community/${community.slug}/markets/new` as any} />}>
                     <Plus className="mr-1.5 size-3.5" />
                     Add Market
-                  </Link>
-                </Button>
+                  </Button>
                 <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline" size="sm" aria-label="Community settings">
+                  <DropdownMenuTrigger render={<Button variant="outline" size="sm" aria-label="Community settings" />}>
                       <Paintbrush className="size-3.5" />
-                    </Button>
-                  </DropdownMenuTrigger>
+                    </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-56">
-                    <DropdownMenuItem asChild>
-                      <Link href={`/community/${community.slug}/theme` as any}>
+                    <DropdownMenuItem render={<Link href={`/community/${community.slug}/theme` as any} />}>
                         <Paintbrush className="size-3.5" />
                         Theme & layout
-                      </Link>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem asChild>
-                      <Link href={`/community/${community.slug}/insights` as any}>
+                      </DropdownMenuItem>
+                    <DropdownMenuItem render={<Link href={`/community/${community.slug}/insights` as any} />}>
                         <ActivityIcon className="size-3.5" />
                         Insights
-                      </Link>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem asChild>
-                      <Link href={`/community/${community.slug}/embed-settings` as any}>
+                      </DropdownMenuItem>
+                    <DropdownMenuItem render={<Link href={`/community/${community.slug}/embed-settings` as any} />}>
                         <Code2Icon className="size-3.5" />
                         Embed settings
-                      </Link>
-                    </DropdownMenuItem>
+                      </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
               </>

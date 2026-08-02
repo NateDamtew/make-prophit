@@ -3,9 +3,9 @@
 import { useRouter } from 'next/navigation'
 import { useTransition } from 'react'
 import Link from 'next/link'
-import { toast } from 'sonner'
 import { RotateCcw, AlertCircle, Loader2, ExternalLink } from 'lucide-react'
 import { retryDeployAction } from '@/app/[locale]/(platform)/community/[slug]/_actions/review-actions'
+import { toast } from '@/components/ui/toast'
 import { Button } from '@/components/ui/button'
 
 interface Market {

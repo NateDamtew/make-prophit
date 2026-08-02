@@ -20,6 +20,7 @@ import { DEFAULT_THEME_SITE_NAME } from '@/lib/theme-site-identity'
 import { ensureUserTradingAuthSecretFingerprint } from '@/lib/trading-auth/server'
 import { sanitizeTradingAuthSettings } from '@/lib/trading-auth/utils'
 import { isWalletPlaceholderEmail } from '@/lib/user-email'
+
 import * as schema from './db/schema'
 
 function getChainIdFromMessage(message: string): string {
@@ -59,7 +60,10 @@ function parseTimestampMs(value: unknown): number | null {
   if (typeof value === 'number') {
     return Number.isFinite(value) ? value : null
   }
-  const parsed = Date.parse(String(value))
+  if (typeof value !== 'string') {
+    return null
+  }
+  const parsed = Date.parse(value)
   return Number.isNaN(parsed) ? null : parsed
 }
 
@@ -73,8 +77,7 @@ function parseAffiliateCookie(rawValue: string | null) {
       affiliateCode: typeof parsed.affiliateCode === 'string' ? parsed.affiliateCode : undefined,
       timestamp: typeof parsed.timestamp === 'number' ? parsed.timestamp : undefined,
     }
-  }
-  catch {
+  } catch {
     return null
   }
 }
@@ -120,12 +123,7 @@ function siweTwoFactorRedirect() {
               expiresAt: new Date(Date.now() + TWO_FACTOR_PENDING_MAX_AGE * 1000),
             })
 
-            await ctx.setSignedCookie(
-              twoFactorCookie.name,
-              identifier,
-              ctx.context.secret,
-              twoFactorCookie.attributes,
-            )
+            await ctx.setSignedCookie(twoFactorCookie.name, identifier, ctx.context.secret, twoFactorCookie.attributes)
 
             return ctx.json({ twoFactorRedirect: true })
           }),
@@ -199,8 +197,7 @@ export const auth = betterAuth({
               affiliate_user_id: affiliateUserId,
             })
             ctx.setCookie(AFFILIATE_COOKIE_NAME, '', { path: '/', maxAge: 0 })
-          }
-          catch (error) {
+          } catch (error) {
             ctx.context.logger.error('Failed to record affiliate referral', error)
           }
         },
@@ -406,12 +403,9 @@ export const auth = betterAuth({
       const userId = String((user as any).id ?? '')
       const email = isWalletPlaceholderEmail(user.email, [SIWE_EMAIL_DOMAIN]) ? '' : user.email
       const rawSettings = (user as any).settings as Record<string, any> | undefined
-      const hydratedSettings = rawSettings && userId
-        ? await ensureUserTradingAuthSecretFingerprint(userId, rawSettings)
-        : rawSettings
-      const settings = hydratedSettings
-        ? sanitizeTradingAuthSettings(hydratedSettings)
-        : hydratedSettings
+      const hydratedSettings =
+        rawSettings && userId ? await ensureUserTradingAuthSecretFingerprint(userId, rawSettings) : rawSettings
+      const settings = hydratedSettings ? sanitizeTradingAuthSettings(hydratedSettings) : hydratedSettings
 
       return {
         user: {

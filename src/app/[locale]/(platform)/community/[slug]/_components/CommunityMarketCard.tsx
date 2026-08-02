@@ -168,16 +168,12 @@ export default function CommunityMarketCard({
                 )
               : (
                   <div className="mt-auto mb-2 grid grid-cols-2 gap-2">
-                    <Button asChild variant="yes" size="outcome">
-                      <AppLink intentPrefetch href={href as any}>
+                    <Button variant="yes" size="outcome" nativeButton={false} render={<AppLink intentPrefetch href={href as any} />}>
                         <span className="truncate">Yes</span>
-                      </AppLink>
-                    </Button>
-                    <Button asChild variant="no" size="outcome">
-                      <AppLink intentPrefetch href={href as any}>
+                      </Button>
+                    <Button variant="no" size="outcome" nativeButton={false} render={<AppLink intentPrefetch href={href as any} />}>
                         <span className="truncate">No</span>
-                      </AppLink>
-                    </Button>
+                      </Button>
                   </div>
                 )}
           </div>

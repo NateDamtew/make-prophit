@@ -6,7 +6,8 @@ import type { ThemeMode } from '@/lib/theme-settings'
 import { useExtracted } from 'next-intl'
 import Form from 'next/form'
 import { useActionState, useEffect, useMemo, useRef, useState } from 'react'
-import { toast } from 'sonner'
+
+
 import { updateThemeSettingsAction } from '@/app/[locale]/admin/theme/_actions/update-theme-settings'
 import RadiusControl from '@/app/[locale]/admin/theme/_components/RadiusControl'
 import ThemePreviewCard from '@/app/[locale]/admin/theme/_components/ThemePreviewCard'
@@ -15,6 +16,7 @@ import { Button } from '@/components/ui/button'
 import { InputError } from '@/components/ui/input-error'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { toast } from '@/components/ui/toast'
 import {
   buildThemeCssText,
   DEFAULT_THEME_PRESET_ID,
@@ -44,7 +46,7 @@ function AdminThemeSettingsFormInner({
 
   const [state, formAction, isPending] = useActionState(updateThemeSettingsAction, initialState)
   const wasPendingRef = useRef(isPending)
-  const persistedThemeRef = useRef<{ preset: string | null, cssText: string | null } | null>(null)
+  const persistedThemeRef = useRef<{ preset: string | null; cssText: string | null } | null>(null)
 
   const [preset, setPreset] = useState<string>(initialPreset)
   const [radius, setRadius] = useState(initialRadius)
@@ -61,24 +63,12 @@ function AdminThemeSettingsFormInner({
 
   const [lightOverrides, setLightOverrides] = useState<ThemeOverrides>(initialLightParse.data ?? {})
   const [darkOverrides, setDarkOverrides] = useState<ThemeOverrides>(initialDarkParse.data ?? {})
-  const parsedPreset = useMemo(
-    () => validateThemePresetId(preset) ?? DEFAULT_THEME_PRESET_ID,
-    [preset],
-  )
-  const radiusValidation = useMemo(
-    () => validateThemeRadius(radius, t('Corner roundness')),
-    [radius, t],
-  )
+  const parsedPreset = useMemo(() => validateThemePresetId(preset) ?? DEFAULT_THEME_PRESET_ID, [preset])
+  const radiusValidation = useMemo(() => validateThemeRadius(radius, t('Corner roundness')), [radius, t])
 
-  const lightJsonValue = useMemo(
-    () => formatThemeOverridesJson(lightOverrides),
-    [lightOverrides],
-  )
+  const lightJsonValue = useMemo(() => formatThemeOverridesJson(lightOverrides), [lightOverrides])
 
-  const darkJsonValue = useMemo(
-    () => formatThemeOverridesJson(darkOverrides),
-    [darkOverrides],
-  )
+  const darkJsonValue = useMemo(() => formatThemeOverridesJson(darkOverrides), [darkOverrides])
   const draftCssText = useMemo(
     () => buildThemeCssText(lightOverrides, darkOverrides, radiusValidation.value),
     [darkOverrides, lightOverrides, radiusValidation.value],
@@ -96,9 +86,8 @@ function AdminThemeSettingsFormInner({
 
     const currentThemeStyle = document.getElementById('theme-vars')
     if (cssText) {
-      const styleElement = currentThemeStyle instanceof HTMLStyleElement
-        ? currentThemeStyle
-        : document.createElement('style')
+      const styleElement =
+        currentThemeStyle instanceof HTMLStyleElement ? currentThemeStyle : document.createElement('style')
 
       styleElement.id = 'theme-vars'
       styleElement.textContent = cssText
@@ -120,7 +109,7 @@ function AdminThemeSettingsFormInner({
 
     persistedThemeRef.current = {
       preset: rootElement.getAttribute('data-theme-preset'),
-      cssText: currentThemeStyle instanceof HTMLStyleElement ? currentThemeStyle.textContent ?? '' : null,
+      cssText: currentThemeStyle instanceof HTMLStyleElement ? (currentThemeStyle.textContent ?? '') : null,
     }
 
     return function restorePersistedTheme() {
@@ -131,16 +120,14 @@ function AdminThemeSettingsFormInner({
 
       if (persistedTheme.preset) {
         rootElement.setAttribute('data-theme-preset', persistedTheme.preset)
-      }
-      else {
+      } else {
         rootElement.removeAttribute('data-theme-preset')
       }
 
       const latestThemeStyle = document.getElementById('theme-vars')
       if (persistedTheme.cssText !== null) {
-        const styleElement = latestThemeStyle instanceof HTMLStyleElement
-          ? latestThemeStyle
-          : document.createElement('style')
+        const styleElement =
+          latestThemeStyle instanceof HTMLStyleElement ? latestThemeStyle : document.createElement('style')
 
         styleElement.id = 'theme-vars'
         styleElement.textContent = persistedTheme.cssText
@@ -148,34 +135,38 @@ function AdminThemeSettingsFormInner({
         if (!latestThemeStyle) {
           document.body.prepend(styleElement)
         }
-      }
-      else if (latestThemeStyle) {
+      } else if (latestThemeStyle) {
         latestThemeStyle.remove()
       }
     }
   }, [])
 
-  useEffect(function syncThemePreview() {
-    applyThemeToDocument(parsedPreset, draftCssText)
-  }, [draftCssText, parsedPreset])
+  useEffect(
+    function syncThemePreview() {
+      applyThemeToDocument(parsedPreset, draftCssText)
+    },
+    [draftCssText, parsedPreset],
+  )
 
-  useEffect(function handleSubmitResult() {
-    const transitionedToIdle = wasPendingRef.current && !isPending
+  useEffect(
+    function handleSubmitResult() {
+      const transitionedToIdle = wasPendingRef.current && !isPending
 
-    if (transitionedToIdle && state.error === null) {
-      persistedThemeRef.current = {
-        preset: parsedPreset,
-        cssText: draftCssText || null,
+      if (transitionedToIdle && state.error === null) {
+        persistedThemeRef.current = {
+          preset: parsedPreset,
+          cssText: draftCssText || null,
+        }
+
+        toast.success(t('Theme settings updated successfully!'))
+      } else if (transitionedToIdle && state.error) {
+        toast.error(state.error)
       }
 
-      toast.success(t('Theme settings updated successfully!'))
-    }
-    else if (transitionedToIdle && state.error) {
-      toast.error(state.error)
-    }
-
-    wasPendingRef.current = isPending
-  }, [draftCssText, isPending, parsedPreset, state.error, t])
+      wasPendingRef.current = isPending
+    },
+    [draftCssText, isPending, parsedPreset, state.error, t],
+  )
 
   return (
     <Form action={formAction} className="grid gap-6 rounded-lg border p-6">
@@ -189,12 +180,17 @@ function AdminThemeSettingsFormInner({
         <div className="grid items-start gap-6 self-start">
           <div className="grid gap-2">
             <Label htmlFor="theme-preset">{t('Preset')}</Label>
-            <Select value={preset} onValueChange={handlePresetChange} disabled={isPending}>
+            <Select
+              items={presetOptions.map((option) => ({ label: option.label, value: option.id }))}
+              value={preset}
+              onValueChange={(value) => value !== null && handlePresetChange(value)}
+              disabled={isPending}
+            >
               <SelectTrigger id="theme-preset" className="h-12! w-full">
                 <SelectValue placeholder={t('Select preset')} />
               </SelectTrigger>
               <SelectContent>
-                {presetOptions.map(option => (
+                {presetOptions.map((option) => (
                   <SelectItem key={option.id} value={option.id}>
                     <div className="grid gap-0.5 text-left">
                       <span>{option.label}</span>
@@ -246,10 +242,10 @@ function AdminThemeSettingsFormInner({
             lightOverrides={lightOverrides}
             darkOverrides={darkOverrides}
             onLightChange={(token, value) => {
-              setLightOverrides(prev => ({ ...prev, [token]: value }))
+              setLightOverrides((prev) => ({ ...prev, [token]: value }))
             }}
             onDarkChange={(token, value) => {
-              setDarkOverrides(prev => ({ ...prev, [token]: value }))
+              setDarkOverrides((prev) => ({ ...prev, [token]: value }))
             }}
             onLightReset={(token) => {
               setLightOverrides((prev) => {
@@ -269,11 +265,7 @@ function AdminThemeSettingsFormInner({
             lightParseError={initialLightParse.error}
             darkParseError={initialDarkParse.error}
           />
-          <Button
-            type="submit"
-            className="w-full"
-            disabled={isPending || Boolean(radiusValidation.error)}
-          >
+          <Button type="submit" className="w-full" disabled={isPending || Boolean(radiusValidation.error)}>
             {isPending ? t('Saving...') : t('Save changes')}
           </Button>
         </div>

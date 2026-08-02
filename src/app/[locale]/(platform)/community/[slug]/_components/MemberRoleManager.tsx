@@ -1,10 +1,10 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { toast } from 'sonner'
 import { ChevronDown, Crown, Gavel, User, Check } from 'lucide-react'
 import { setMemberRoleAction } from '../_actions/community-actions'
 import { cn } from '@/lib/utils'
+import { toast } from '@/components/ui/toast'
 
 interface Props {
   communityId: string

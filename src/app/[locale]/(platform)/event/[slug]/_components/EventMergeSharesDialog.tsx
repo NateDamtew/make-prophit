@@ -1,23 +1,23 @@
-import type { SharesByCondition } from '@/app/[locale]/(platform)/event/[slug]/_hooks/useUserShareBalances'
-import type { UserPosition } from '@/types'
 import { useQueryClient } from '@tanstack/react-query'
 import { CheckIcon } from 'lucide-react'
 import { useExtracted } from 'next-intl'
 import { useMemo, useState } from 'react'
-import { toast } from 'sonner'
 import { useSignTypedData } from 'wagmi'
+
 import { useTradingOnboarding } from '@/app/[locale]/(platform)/_providers/TradingOnboardingProvider'
 import ResponsiveTradingDialog from '@/app/[locale]/(platform)/event/[slug]/_components/ResponsiveTradingDialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { toast } from '@/components/ui/toast'
+import { useAppKit } from '@/hooks/useAppKit'
 import { DEPOSIT_WALLET_BALANCE_QUERY_KEY } from '@/hooks/useBalance'
 import { useSignaturePromptRunner } from '@/hooks/useSignaturePromptRunner'
 import { DEFAULT_CONDITION_PARTITION, MICRO_UNIT } from '@/lib/constants'
 import { ZERO_BYTES32 } from '@/lib/contracts'
 import { formatAmountInputValue, toMicro } from '@/lib/formatters'
 import { isCurrentNegRiskAdapterAddress } from '@/lib/neg-risk-adapter'
-import { applyPositionDeltasToUserPositions, applyShareDeltas, updateQueryDataWhere } from '@/lib/optimistic-trading'
 import { isTradingAuthRequiredError } from '@/lib/trading-auth/errors'
+import { refreshTradingPositionsAfterMutation } from '@/lib/trading-cache'
 import { cn } from '@/lib/utils'
 import { signAndSubmitDepositWalletCalls } from '@/lib/wallet/client'
 import { buildMergePositionCall } from '@/lib/wallet/transactions'
@@ -28,9 +28,6 @@ interface EventMergeSharesDialogProps {
   open: boolean
   availableShares: number
   conditionId?: string
-  eventId?: string
-  eventSlug?: string
-  marketSlug?: string
   eventPath?: string | null
   marketTitle?: string
   marketIconUrl?: string | null
@@ -57,9 +54,6 @@ export default function EventMergeSharesDialog({
   open,
   availableShares,
   conditionId,
-  eventId,
-  eventSlug,
-  marketSlug,
   eventPath,
   marketTitle,
   marketIconUrl,
@@ -70,11 +64,13 @@ export default function EventMergeSharesDialog({
   const t = useExtracted()
   const queryClient = useQueryClient()
   const { ensureTradingReady, openTradeRequirements } = useTradingOnboarding()
+  const { open: openAppKit } = useAppKit()
   const user = useUser()
-  const addLocalOrderFillNotification = useNotifications(state => state.addLocalOrderFillNotification)
+  const addLocalOrderFillNotification = useNotifications((state) => state.addLocalOrderFillNotification)
   const { signTypedDataAsync } = useSignTypedData()
   const { runWithSignaturePrompt } = useSignaturePromptRunner()
-  const { amount, setAmount, error, setError, isSubmitting, setIsSubmitting, resetFormState } = useMergeSharesFormState()
+  const { amount, setAmount, error, setError, isSubmitting, setIsSubmitting, resetFormState } =
+    useMergeSharesFormState()
 
   function formatFullPrecision(value: number) {
     if (!Number.isFinite(value)) {
@@ -188,19 +184,23 @@ export default function EventMergeSharesDialog({
         }),
       ]
 
-      const response = await runWithSignaturePrompt(() => signAndSubmitDepositWalletCalls({
-        user,
-        calls,
-        metadata: 'merge_position',
-        signTypedDataAsync,
-      }))
+      const response = await runWithSignaturePrompt(() =>
+        signAndSubmitDepositWalletCalls({
+          user,
+          calls,
+          metadata: 'merge_position',
+          signTypedDataAsync,
+        }),
+      )
 
       if (response?.error) {
         if (isTradingAuthRequiredError(response.error)) {
           closeDialog()
           openTradeRequirements({ forceTradingAuth: true })
-        }
-        else {
+        } else if (response.code === 'wallet_connector_not_connected') {
+          toast.error(response.error)
+          void openAppKit({ view: 'Connect' })
+        } else {
           toast.error(response.error)
         }
         setIsSubmitting(false)
@@ -223,77 +223,13 @@ export default function EventMergeSharesDialog({
         icon: <SuccessIcon />,
       })
 
-      const optimisticDeltas = [
-        {
-          conditionId,
-          outcomeIndex: 0 as const,
-          sharesDelta: -numericAmount,
-          currentPrice: 0.5,
-          title: marketTitle,
-          slug: marketSlug ?? conditionId,
-          eventSlug,
-          iconUrl: marketIconUrl,
-          outcomeText: 'Yes',
-          isActive: true,
-          isResolved: false,
-        },
-        {
-          conditionId,
-          outcomeIndex: 1 as const,
-          sharesDelta: -numericAmount,
-          currentPrice: 0.5,
-          title: marketTitle,
-          slug: marketSlug ?? conditionId,
-          eventSlug,
-          iconUrl: marketIconUrl,
-          outcomeText: 'No',
-          isActive: true,
-          isResolved: false,
-        },
-      ]
-
-      updateQueryDataWhere<UserPosition[]>(
-        queryClient,
-        ['order-panel-user-positions'],
-        currentQueryKey => currentQueryKey[2] === conditionId,
-        current => applyPositionDeltasToUserPositions(current, optimisticDeltas),
-      )
-      updateQueryDataWhere<UserPosition[]>(
-        queryClient,
-        ['user-market-positions'],
-        currentQueryKey => currentQueryKey[2] === conditionId && currentQueryKey[3] === 'active',
-        current => applyPositionDeltasToUserPositions(current, optimisticDeltas),
-      )
-      updateQueryDataWhere<UserPosition[]>(
-        queryClient,
-        ['event-user-positions'],
-        currentQueryKey => currentQueryKey[2] === eventId,
-        current => applyPositionDeltasToUserPositions(current, optimisticDeltas),
-      )
-      updateQueryDataWhere<UserPosition[]>(
-        queryClient,
-        ['user-event-positions'],
-        currentQueryKey => currentQueryKey[2] === 'active' && String(currentQueryKey[3] ?? '').includes(conditionId),
-        current => applyPositionDeltasToUserPositions(current, optimisticDeltas),
-      )
-      updateQueryDataWhere<SharesByCondition>(
-        queryClient,
-        ['user-conditional-shares'],
-        () => true,
-        current => applyShareDeltas(current, [
-          { conditionId, outcomeIndex: 0 as const, sharesDelta: -numericAmount },
-          { conditionId, outcomeIndex: 1 as const, sharesDelta: -numericAmount },
-        ]),
-      )
-
+      refreshTradingPositionsAfterMutation(queryClient)
       void queryClient.invalidateQueries({ queryKey: [DEPOSIT_WALLET_BALANCE_QUERY_KEY] })
       closeDialog()
-    }
-    catch (error) {
+    } catch (error) {
       console.error('Failed to submit merge operation.', error)
       toast.error(t('We could not submit your merge request. Please try again.'))
-    }
-    finally {
+    } finally {
       setIsSubmitting(false)
     }
   }
@@ -315,7 +251,7 @@ export default function EventMergeSharesDialog({
         <Input
           id="merge-shares-amount"
           value={amount}
-          onChange={event => handleAmountChange(event.target.value)}
+          onChange={(event) => handleAmountChange(event.target.value)}
           placeholder="0.00"
           inputMode="decimal"
           className="h-12 text-base"

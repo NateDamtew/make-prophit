@@ -2,6 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import * as React from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+
 import AdminGeneralSettingsForm from '@/app/[locale]/admin/(general)/_components/AdminGeneralSettingsForm'
 import { DEFAULT_HOME_FEATURED_SETTINGS } from '@/lib/home-featured-settings'
 
@@ -17,30 +18,37 @@ const mocks = vi.hoisted(() => ({
 }))
 
 const marketContextProps = {
-  initialArbitrageEnabled: false,
-  initialArbitrageMultiWalletEnabled: false,
   initialMarketContextSettings: {
     enabled: true,
     prompt: 'Summarize the current market context clearly.',
   },
-  marketContextVariables: [{
-    key: 'event-title',
-    label: 'Event title',
-    description: 'Full event headline.',
-  }],
+  marketContextVariables: [
+    {
+      key: 'event-title',
+      label: 'Event title',
+      description: 'Full event headline.',
+    },
+  ],
 }
 
 vi.mock('next-intl', () => ({
-  useExtracted: () => (value: string, variables?: Record<string, string>) => (
+  useExtracted: () => (value: string, variables?: Record<string, string>) =>
     Object.entries(variables ?? {}).reduce(
       (message, [key, replacement]) => message.replaceAll(`{${key}}`, replacement),
       value,
-    )
-  ),
+    ),
 }))
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ refresh: vi.fn() }),
+}))
+
+vi.mock('@/i18n/navigation', () => ({
+  Link: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }) => (
+    <a href={href} {...props}>
+      {children}
+    </a>
+  ),
 }))
 
 vi.mock('@/hooks/useIsMobile', () => ({
@@ -52,7 +60,7 @@ vi.mock('next/image', () => ({
   default: ({ fill: _fill, unoptimized: _unoptimized, ...props }: any) => React.createElement('img', props),
 }))
 
-vi.mock('sonner', () => ({
+vi.mock('@/components/ui/toast', () => ({
   toast: {
     success: (...args: any[]) => mocks.toastSuccess(...args),
     error: (...args: any[]) => mocks.toastError(...args),
@@ -75,6 +83,7 @@ vi.mock('@/app/[locale]/admin/(general)/_components/AllowedMarketCreatorsManager
 
 describe('adminGeneralSettingsForm', () => {
   beforeEach(() => {
+    window.history.replaceState(window.history.state, '', window.location.pathname)
     mocks.removeTermsOfServicePdfAction.mockReset()
     mocks.updateGeneralSettingsAction.mockReset()
     mocks.optimizeSideCardImage.mockReset()
@@ -116,6 +125,59 @@ describe('adminGeneralSettingsForm', () => {
     })
   })
 
+  it('allows Brand identity opened by an onboarding fragment to collapse', async () => {
+    const user = userEvent.setup()
+    window.history.replaceState(window.history.state, '', '#theme-site-name')
+    render(
+      <AdminGeneralSettingsForm
+        {...marketContextProps}
+        locale="en"
+        initialThemeSiteSettings={{
+          siteName: 'Kuest',
+          siteDescription: 'Prediction market',
+          logoMode: 'svg',
+          logoSvg: '<svg xmlns="http://www.w3.org/2000/svg"></svg>',
+          logoImagePath: '',
+          logoImageUrl: null,
+          pwaIcon192Path: '',
+          pwaIcon192Url: '/icon-192.png',
+          pwaIcon512Path: '',
+          pwaIcon512Url: '/icon-512.png',
+          googleAnalyticsId: '',
+          discordLink: '',
+          twitterLink: '',
+          facebookLink: '',
+          instagramLink: '',
+          tiktokLink: '',
+          linkedinLink: '',
+          youtubeLink: '',
+          supportUrl: '',
+          customJavascriptCodes: [],
+          feeRecipientWallet: '',
+          lifiIntegrator: '',
+          lifiApiKey: '',
+          lifiApiKeyConfigured: false,
+        }}
+        initialGlobalAnnouncement={{
+          message: '',
+          linkUrl: '',
+          disabledOn: [],
+          disableFaucetBanner: false,
+        }}
+        initialBlockedCountries={[]}
+        initialTermsOfServicePdfPath=""
+        initialTermsOfServicePdfUrl={null}
+      />,
+    )
+    const trigger = screen.getByRole('button', { name: /Brand identity/i })
+
+    expect(trigger).toHaveAttribute('aria-expanded', 'true')
+    await user.click(trigger)
+
+    expect(trigger).toHaveAttribute('aria-expanded', 'false')
+    expect(window.location.hash).toBe('')
+  })
+
   it('invokes the remove PDF action from the legal section', async () => {
     const user = userEvent.setup()
     mocks.removeTermsOfServicePdfAction.mockResolvedValueOnce({ error: null })
@@ -123,6 +185,7 @@ describe('adminGeneralSettingsForm', () => {
     const { container } = render(
       <AdminGeneralSettingsForm
         {...marketContextProps}
+        locale="en"
         initialThemeSiteSettings={{
           siteName: 'Kuest',
           siteDescription: 'Prediction market',
@@ -158,21 +221,13 @@ describe('adminGeneralSettingsForm', () => {
         initialBlockedCountries={[]}
         initialTermsOfServicePdfPath="legal/current-terms.pdf"
         initialTermsOfServicePdfUrl="https://cdn.example.com/legal/current-terms.pdf"
-        openRouterSettings={{
-          defaultModel: '',
-          isApiKeyConfigured: false,
-          isModelSelectEnabled: false,
-          modelOptions: [],
-        }}
-        sportsSourceSettings={{
-          isPandaScoreTokenConfigured: false,
-          isTheSportsDbApiKeyConfigured: false,
-        }}
       />,
     )
 
     await user.click(screen.getByRole('button', { name: /Legal/i }))
-    expect((container.querySelector('input[name="tos_pdf_path"]') as HTMLInputElement).value).toBe('legal/current-terms.pdf')
+    expect((container.querySelector('input[name="tos_pdf_path"]') as HTMLInputElement).value).toBe(
+      'legal/current-terms.pdf',
+    )
     await user.click(screen.getByRole('button', { name: /Remove uploaded PDF/i }))
 
     await waitFor(() => {
@@ -181,11 +236,12 @@ describe('adminGeneralSettingsForm', () => {
     })
   })
 
-  it('renders and updates the arbitrage integration controls', async () => {
+  it('places featured markets above Market Context and submits it through the global form', async () => {
     const user = userEvent.setup()
     const { container } = render(
       <AdminGeneralSettingsForm
         {...marketContextProps}
+        locale="en"
         initialThemeSiteSettings={{
           siteName: 'Kuest',
           siteDescription: 'Prediction market',
@@ -221,82 +277,6 @@ describe('adminGeneralSettingsForm', () => {
         initialBlockedCountries={[]}
         initialTermsOfServicePdfPath=""
         initialTermsOfServicePdfUrl={null}
-        openRouterSettings={{
-          defaultModel: '',
-          isApiKeyConfigured: false,
-          isModelSelectEnabled: false,
-          modelOptions: [],
-        }}
-        sportsSourceSettings={{
-          isPandaScoreTokenConfigured: false,
-          isTheSportsDbApiKeyConfigured: false,
-        }}
-      />,
-    )
-
-    await user.click(screen.getByRole('button', { name: 'Integrations' }))
-    const arbitrageToggle = screen.getByRole('switch', { name: 'Arbitrage with Polymarket' })
-    expect(arbitrageToggle).not.toBeChecked()
-    expect(screen.queryByRole('switch', { name: 'Separate Polymarket wallets' })).not.toBeInTheDocument()
-
-    await user.click(arbitrageToggle)
-    expect((container.querySelector('input[name="arbitrage_enabled"]') as HTMLInputElement).value).toBe('true')
-
-    const multiWalletToggle = screen.getByRole('switch', { name: 'Separate Polymarket wallets' })
-    await user.click(multiWalletToggle)
-    expect((container.querySelector('input[name="arbitrage_multi_wallet_enabled"]') as HTMLInputElement).value).toBe('true')
-  })
-
-  it('places Market Context above featured markets and submits it through the global form', async () => {
-    const user = userEvent.setup()
-    const { container } = render(
-      <AdminGeneralSettingsForm
-        {...marketContextProps}
-        initialThemeSiteSettings={{
-          siteName: 'Kuest',
-          siteDescription: 'Prediction market',
-          logoMode: 'svg',
-          logoSvg: '<svg xmlns="http://www.w3.org/2000/svg"></svg>',
-          logoImagePath: '',
-          logoImageUrl: null,
-          pwaIcon192Path: '',
-          pwaIcon192Url: '/icon-192.png',
-          pwaIcon512Path: '',
-          pwaIcon512Url: '/icon-512.png',
-          googleAnalyticsId: '',
-          discordLink: '',
-          twitterLink: '',
-          facebookLink: '',
-          instagramLink: '',
-          tiktokLink: '',
-          linkedinLink: '',
-          youtubeLink: '',
-          supportUrl: '',
-          customJavascriptCodes: [],
-          feeRecipientWallet: '',
-          lifiIntegrator: '',
-          lifiApiKey: '',
-          lifiApiKeyConfigured: false,
-        }}
-        initialGlobalAnnouncement={{
-          message: '',
-          linkUrl: '',
-          disabledOn: [],
-          disableFaucetBanner: false,
-        }}
-        initialBlockedCountries={[]}
-        initialTermsOfServicePdfPath=""
-        initialTermsOfServicePdfUrl={null}
-        openRouterSettings={{
-          defaultModel: '',
-          isApiKeyConfigured: false,
-          isModelSelectEnabled: false,
-          modelOptions: [],
-        }}
-        sportsSourceSettings={{
-          isPandaScoreTokenConfigured: false,
-          isTheSportsDbApiKeyConfigured: false,
-        }}
       />,
     )
 
@@ -304,9 +284,11 @@ describe('adminGeneralSettingsForm', () => {
     const marketContextButton = screen.getByRole('button', { name: 'Market Context' })
     const featuredMarketsButton = screen.getByRole('button', { name: 'Featured markets' })
     expect(marketContextButton).toHaveAttribute('aria-expanded', 'false')
-    expect(marketContextButton.compareDocumentPosition(featuredMarketsButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(
+      featuredMarketsButton.compareDocumentPosition(marketContextButton) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
     expect(container.querySelector('input[name="site_name"]')).toBeTruthy()
-    expect(container.querySelector('input[name="google_analytics_id"]')).toBeTruthy()
+    expect(container.querySelector('input[name="google_analytics_id"]')).toBeNull()
     expect(container.querySelector('input[name="tos_pdf_path"]')).toBeTruthy()
 
     await user.click(screen.getByRole('button', { name: /Brand identity/i }))
@@ -332,7 +314,10 @@ describe('adminGeneralSettingsForm', () => {
     const formData = mocks.updateGeneralSettingsAction.mock.calls[0]?.[1] as FormData
     expect(formData.get('market_context_prompt')).toBe('Summarize current market context clearly.')
     expect(formData.get('market_context_enabled')).toBe('false')
-  })
+    // Upstream caps this at 10s; the fork uses the project-wide 30s budget from
+    // vitest.config.ts — this case drives a lot of base-ui interaction through
+    // jsdom and overruns 10s on slower dev machines.
+  }, 30_000)
 
   it('uses mobile drawers for featured market editors and saves drafts from the global action', async () => {
     const user = userEvent.setup()
@@ -341,6 +326,7 @@ describe('adminGeneralSettingsForm', () => {
     render(
       <AdminGeneralSettingsForm
         {...marketContextProps}
+        locale="en"
         initialThemeSiteSettings={{
           siteName: 'Kuest',
           siteDescription: 'Prediction market',
@@ -376,32 +362,24 @@ describe('adminGeneralSettingsForm', () => {
         initialBlockedCountries={[]}
         initialTermsOfServicePdfPath=""
         initialTermsOfServicePdfUrl={null}
-        initialHomeFeaturedEvents={[{
-          targetType: 'event',
-          eventId: 'event-1',
-          seriesSlug: null,
-          title: 'Example market',
-          slug: 'example-market',
-          iconUrl: null,
-          enabled: true,
-          rank: 0,
-          source: 'manual',
-          startsAt: null,
-          endsAt: null,
-          contextMode: 'auto',
-          autoRolloverEnabled: false,
-          contextItems: [],
-        }]}
-        openRouterSettings={{
-          defaultModel: '',
-          isApiKeyConfigured: false,
-          isModelSelectEnabled: false,
-          modelOptions: [],
-        }}
-        sportsSourceSettings={{
-          isPandaScoreTokenConfigured: false,
-          isTheSportsDbApiKeyConfigured: false,
-        }}
+        initialHomeFeaturedEvents={[
+          {
+            targetType: 'event',
+            eventId: 'event-1',
+            seriesSlug: null,
+            title: 'Example market',
+            slug: 'example-market',
+            iconUrl: null,
+            enabled: true,
+            rank: 0,
+            source: 'manual',
+            startsAt: null,
+            endsAt: null,
+            contextMode: 'auto',
+            autoRolloverEnabled: false,
+            contextItems: [],
+          },
+        ]}
       />,
     )
 
@@ -409,13 +387,14 @@ describe('adminGeneralSettingsForm', () => {
 
     await user.click(screen.getByRole('button', { name: 'Add market' }))
     const addMarketDrawer = screen.getByRole('dialog', { name: 'Add featured markets' })
-    expect(addMarketDrawer).toHaveAttribute('data-vaul-drawer')
+    expect(addMarketDrawer).toHaveAttribute('data-slot', 'drawer-popup')
+    expect(addMarketDrawer.querySelector('[data-slot="drawer-swipe-handle"]')).toBeInTheDocument()
     await user.click(within(addMarketDrawer).getByRole('button', { name: 'Done' }))
 
     await user.click(screen.getByRole('button', { name: 'Selection and context settings' }))
 
     const dialog = screen.getByRole('dialog', { name: 'Selection and context settings' })
-    expect(dialog).toHaveAttribute('data-vaul-drawer')
+    expect(dialog).toHaveAttribute('data-slot', 'drawer-popup')
     expect(within(dialog).getByRole('switch', { name: 'Sports live/today' })).toBeVisible()
     expect(within(dialog).getByRole('switch', { name: 'New events' })).toBeVisible()
 
@@ -424,12 +403,12 @@ describe('adminGeneralSettingsForm', () => {
 
     await user.click(screen.getByRole('button', { name: 'Side card' }))
     const sideCardDrawer = screen.getByRole('dialog', { name: 'Side card' })
-    expect(sideCardDrawer).toHaveAttribute('data-vaul-drawer')
+    expect(sideCardDrawer).toHaveAttribute('data-slot', 'drawer-popup')
     await user.click(within(sideCardDrawer).getByRole('button', { name: 'Done' }))
 
     await user.click(screen.getByRole('button', { name: 'Manage context' }))
     const contextDrawer = screen.getByRole('dialog', { name: 'Manage context' })
-    expect(contextDrawer).toHaveAttribute('data-vaul-drawer')
+    expect(contextDrawer).toHaveAttribute('data-slot', 'drawer-popup')
     await user.click(within(contextDrawer).getByRole('button', { name: 'Cancel' }))
 
     expect(mocks.updateGeneralSettingsAction).not.toHaveBeenCalled()
@@ -451,6 +430,7 @@ describe('adminGeneralSettingsForm', () => {
     const { container } = render(
       <AdminGeneralSettingsForm
         {...marketContextProps}
+        locale="en"
         initialThemeSiteSettings={{
           siteName: 'Kuest',
           siteDescription: 'Prediction market',
@@ -493,16 +473,6 @@ describe('adminGeneralSettingsForm', () => {
             useImage: true,
           },
         }}
-        openRouterSettings={{
-          defaultModel: '',
-          isApiKeyConfigured: false,
-          isModelSelectEnabled: false,
-          modelOptions: [],
-        }}
-        sportsSourceSettings={{
-          isPandaScoreTokenConfigured: false,
-          isTheSportsDbApiKeyConfigured: false,
-        }}
       />,
     )
 
@@ -518,10 +488,7 @@ describe('adminGeneralSettingsForm', () => {
     await user.click(screen.getByRole('button', { name: /Save settings/i }))
 
     await waitFor(() => expect(mocks.updateGeneralSettingsAction).toHaveBeenCalledOnce())
-    const [previousState, formData] = mocks.updateGeneralSettingsAction.mock.calls[0] as [
-      { error: null },
-      FormData,
-    ]
+    const [previousState, formData] = mocks.updateGeneralSettingsAction.mock.calls[0] as [{ error: null }, FormData]
     expect(previousState).toEqual({ error: null })
     expect(formData.get('home_featured_side_card_image')).toBe(optimizedFile)
   })
@@ -533,6 +500,7 @@ describe('adminGeneralSettingsForm', () => {
     render(
       <AdminGeneralSettingsForm
         {...marketContextProps}
+        locale="en"
         initialThemeSiteSettings={{
           siteName: 'Kuest',
           siteDescription: 'Prediction market',
@@ -590,16 +558,6 @@ describe('adminGeneralSettingsForm', () => {
               },
             ],
           },
-        }}
-        openRouterSettings={{
-          defaultModel: '',
-          isApiKeyConfigured: false,
-          isModelSelectEnabled: false,
-          modelOptions: [],
-        }}
-        sportsSourceSettings={{
-          isPandaScoreTokenConfigured: false,
-          isTheSportsDbApiKeyConfigured: false,
         }}
       />,
     )

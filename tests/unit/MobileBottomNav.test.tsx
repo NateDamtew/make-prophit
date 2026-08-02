@@ -1,4 +1,6 @@
 import { render, screen } from '@testing-library/react'
+import { cloneElement } from 'react'
+
 import MobileBottomNav from '@/app/[locale]/(platform)/_components/MobileBottomNav'
 
 const mocks = vi.hoisted(() => ({
@@ -9,9 +11,10 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('next/dynamic', () => ({
   __esModule: true,
-  default: () => function MockDynamicComponent() {
-    return <div data-testid="mobile-bottom-nav-dynamic" />
-  },
+  default: () =>
+    function MockDynamicComponent() {
+      return <div data-testid="mobile-bottom-nav-dynamic" />
+    },
 }))
 
 vi.mock('next-intl', () => ({
@@ -32,14 +35,14 @@ vi.mock('@/components/ThemeSelector', () => ({
 }))
 
 vi.mock('@/components/ui/button', () => ({
-  Button: function MockButton({ children, ...props }: any) {
-    return <button {...props}>{children}</button>
+  Button: function MockButton({ children, nativeButton: _nativeButton, render, ...props }: any) {
+    return render ?? <button {...props}>{children}</button>
   },
 }))
 
 vi.mock('@/components/ui/drawer', () => ({
   Drawer: ({ children }: any) => <div>{children}</div>,
-  DrawerClose: ({ children }: any) => <>{children}</>,
+  DrawerClose: ({ children, render: close }: any) => cloneElement(close, {}, children),
   DrawerContent: ({ children, ...props }: any) => <div {...props}>{children}</div>,
   DrawerHeader: ({ children, ...props }: any) => <div {...props}>{children}</div>,
   DrawerTitle: ({ children }: any) => <div>{children}</div>,
@@ -76,7 +79,11 @@ vi.mock('@/hooks/usePwaInstall', () => ({
 
 vi.mock('@/i18n/navigation', () => ({
   Link: function MockLink({ children, href, ...props }: any) {
-    return <a href={href} {...props}>{children}</a>
+    return (
+      <a href={href} {...props}>
+        {children}
+      </a>
+    )
   },
   usePathname: () => '/crypto',
   useRouter: () => ({ push: vi.fn() }),

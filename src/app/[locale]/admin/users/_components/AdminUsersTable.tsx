@@ -1,13 +1,14 @@
 'use client'
 
 import { useExtracted } from 'next-intl'
+
 import { DataTable } from '@/app/[locale]/admin/_components/DataTable'
 import { useAdminUsersTable } from '@/app/[locale]/admin/_hooks/useAdminUsers'
+
 import { useAdminUsersColumns } from './columns'
 
 export default function AdminUsersTable() {
   const t = useExtracted()
-  const columns = useAdminUsersColumns()
   const {
     users,
     totalCount,
@@ -23,7 +24,9 @@ export default function AdminUsersTable() {
     handleSortChange,
     handlePageChange,
     handlePageSizeChange,
+    sumsubActive,
   } = useAdminUsersTable()
+  const columns = useAdminUsersColumns(sumsubActive)
 
   function handleSortChangeWithTranslation(column: string | null, order: 'asc' | 'desc' | null) {
     if (column === null || order === null) {

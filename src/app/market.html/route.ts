@@ -1,5 +1,7 @@
 import type { NextRequest } from 'next/server'
+
 import type { SupportedLocale } from '@/i18n/locales'
+
 import { DEFAULT_LOCALE, SUPPORTED_LOCALES } from '@/i18n/locales'
 import { EventRepository } from '@/lib/db/queries/event'
 import { EMBED_SCRIPT_URL, normalizeEmbedBaseUrl, requireEmbedValue } from '@/lib/embed-widget'
@@ -8,14 +10,14 @@ import { slugifySiteName } from '@/lib/slug'
 import { loadRuntimeThemeState } from '@/lib/theme-settings'
 
 function escapeAttr(value: string) {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/"/g, '&quot;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
+  return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
-async function resolveInitialCategoryMarketSlug(categorySlug: string, locale: SupportedLocale) {
+async function resolveInitialCategoryMarketSlug(
+  categorySlug: string,
+  mainCategorySlug: string,
+  locale: SupportedLocale,
+) {
   if (!categorySlug) {
     return ''
   }
@@ -23,6 +25,7 @@ async function resolveInitialCategoryMarketSlug(categorySlug: string, locale: Su
   try {
     const { data: marketSlugs, error } = await EventRepository.listEventMarketSlugs({
       tag: categorySlug,
+      mainTag: mainCategorySlug,
       locale,
       limit: 1,
     })
@@ -32,8 +35,7 @@ async function resolveInitialCategoryMarketSlug(categorySlug: string, locale: Su
     }
 
     return marketSlugs[0] ?? ''
-  }
-  catch (error) {
+  } catch (error) {
     console.error('Failed to resolve initial category market slug', error)
   }
 
@@ -45,9 +47,10 @@ export async function GET(request: NextRequest) {
   const marketSlug = searchParams.get('market') ?? ''
   const eventSlug = searchParams.get('event') ?? ''
   const categorySlug = searchParams.get('category')?.trim() ?? searchParams.get('tag')?.trim() ?? ''
+  const mainCategorySlug = searchParams.get('mainTag')?.trim() ?? ''
   const embedLocale = searchParams.get('locale')?.trim() ?? ''
   const resolvedLocale = SUPPORTED_LOCALES.includes(embedLocale as SupportedLocale)
-    ? embedLocale as SupportedLocale
+    ? (embedLocale as SupportedLocale)
     : DEFAULT_LOCALE
   const rotateCategory = searchParams.get('rotate') !== 'false'
   const shouldRotateCategory = Boolean(categorySlug) && rotateCategory
@@ -56,7 +59,7 @@ export async function GET(request: NextRequest) {
   const features = new Set(
     (searchParams.get('features') ?? '')
       .split(',')
-      .map(value => value.trim())
+      .map((value) => value.trim())
       .filter(Boolean),
   )
 
@@ -72,15 +75,14 @@ export async function GET(request: NextRequest) {
   const elementName = `${slugifySiteName(siteName)}-market-embed`
   const siteLogoUrl = runtimeTheme.site.logoUrl
   const initialCategoryMarketSlug = categorySlug
-    ? await resolveInitialCategoryMarketSlug(categorySlug, resolvedLocale)
+    ? await resolveInitialCategoryMarketSlug(categorySlug, mainCategorySlug, resolvedLocale)
     : ''
   const resolvedMarketSlug = marketSlug || initialCategoryMarketSlug
 
   const attrs: string[] = [`theme="${theme}"`]
   if (resolvedMarketSlug) {
     attrs.push(`market="${escapeAttr(resolvedMarketSlug)}"`)
-  }
-  else if (eventSlug) {
+  } else if (eventSlug) {
     attrs.push(`event="${escapeAttr(eventSlug)}"`)
   }
   if (showVolume) {
@@ -150,6 +152,7 @@ export async function GET(request: NextRequest) {
       (function setupCategoryRotation() {
         const shouldRotate = ${JSON.stringify(shouldRotateCategory)};
         const category = ${JSON.stringify(categorySlug)};
+        const mainCategory = ${JSON.stringify(mainCategorySlug)};
         const locale = ${JSON.stringify(resolvedLocale)};
         if (!shouldRotate || !category) {
           return
@@ -246,6 +249,9 @@ export async function GET(request: NextRequest) {
             offset: '0',
             locale,
           });
+          if (mainCategory) {
+            params.set('mainTag', mainCategory);
+          }
 
           const response = await fetch('/api/events/market-slugs?' + params.toString(), {
             method: 'GET',

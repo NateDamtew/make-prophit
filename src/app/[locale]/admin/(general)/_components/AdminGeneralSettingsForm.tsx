@@ -1,31 +1,30 @@
 'use client'
 
+import { useExtracted } from 'next-intl'
+import { useActionState, useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react'
+
 import type { GeneralSettingsActionState } from '@/app/[locale]/admin/(general)/_actions/update-general-settings'
 import type { AdminThemeSiteSettingsInitialState } from '@/app/[locale]/admin/theme/_types/theme-form-state'
 import type { MarketContextVariable } from '@/lib/ai/market-context-template'
-import type { CustomJavascriptCodeConfig, CustomJavascriptCodeDisablePage } from '@/lib/custom-javascript-code'
+import type { CustomJavascriptCodeDisablePage } from '@/lib/custom-javascript-code'
 import type { HomeFeaturedEventAdminItem, HomeFeaturedSettings } from '@/types'
-import { useExtracted } from 'next-intl'
-import { useActionState, useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react'
-import { toast } from 'sonner'
+
 import {
   removeTermsOfServicePdfAction,
   updateGeneralSettingsAction,
 } from '@/app/[locale]/admin/(general)/_actions/update-general-settings'
 import { Button } from '@/components/ui/button'
 import { InputError } from '@/components/ui/input-error'
-import { serializeCustomJavascriptCodes } from '@/lib/custom-javascript-code'
+import { toast } from '@/components/ui/toast'
+import { clearLocationHash, useLocationHash } from '@/hooks/useLocationHash'
 import { serializeHomeFeaturedEventsForSave } from '@/lib/home-featured-payload'
-import {
-  DEFAULT_HOME_FEATURED_SETTINGS,
-  serializeHomeFeaturedSideCardSlides,
-} from '@/lib/home-featured-settings'
+import { DEFAULT_HOME_FEATURED_SETTINGS, serializeHomeFeaturedSideCardSlides } from '@/lib/home-featured-settings'
 import { optimizeSideCardImage } from '@/lib/side-card-image-client'
 import { sanitizeSvg } from '@/lib/utils'
+
 import BrandIdentitySection from './BrandIdentitySection'
 import GlobalAnnouncementSection from './GlobalAnnouncementSection'
 import HomeFeaturedMarketsSection from './HomeFeaturedMarketsSection'
-import IntegrationsSection from './IntegrationsSection'
 import LegalSection from './LegalSection'
 import MarketContextSection from './MarketContextSection'
 import MarketFeeSection from './MarketFeeSection'
@@ -35,29 +34,8 @@ const initialState: GeneralSettingsActionState = {
   error: null,
 }
 
-const AUTOMATIC_MODEL_VALUE = '__AUTOMATIC__'
-
 function formatBlockedCountriesValue(countries: string[]) {
   return countries.join(', ')
-}
-
-interface ModelOption {
-  id: string
-  label: string
-  contextWindow?: number
-}
-
-interface OpenRouterGeneralSettings {
-  defaultModel?: string
-  isApiKeyConfigured: boolean
-  isModelSelectEnabled: boolean
-  modelOptions: ModelOption[]
-  modelsError?: string
-}
-
-interface SportsSourceGeneralSettings {
-  isPandaScoreTokenConfigured: boolean
-  isTheSportsDbApiKeyConfigured: boolean
 }
 
 interface InitialGlobalAnnouncementSettings {
@@ -80,29 +58,20 @@ interface AdminGeneralSettingsFormProps {
   initialTermsOfServicePdfPath: string
   initialTermsOfServicePdfUrl: string | null
   initialMarketContextSettings: InitialMarketContextSettings
-  initialArbitrageEnabled: boolean
-  initialArbitrageMultiWalletEnabled: boolean
   marketContextVariables: MarketContextVariable[]
   initialHomeFeaturedSettings?: HomeFeaturedSettings
   initialHomeFeaturedSideCardImageUrl?: string | null
   initialHomeFeaturedEvents?: HomeFeaturedEventAdminItem[]
-  openRouterSettings: OpenRouterGeneralSettings
-  sportsSourceSettings: SportsSourceGeneralSettings
 }
 
-interface CustomJavascriptCodeDraft extends CustomJavascriptCodeConfig {
-  id: string
-}
-
-function createCustomJavascriptCodeDraft(id: number, code: CustomJavascriptCodeConfig): CustomJavascriptCodeDraft {
-  return {
-    id: `custom-javascript-code-${id}`,
-    ...code,
-  }
-}
-
-function toCustomJavascriptCodeConfig({ id: _id, ...code }: CustomJavascriptCodeDraft): CustomJavascriptCodeConfig {
-  return code
+function SettingsCategoryDivider({ label }: { label: string }) {
+  return (
+    <div className="flex items-center gap-4">
+      <span className="h-px flex-1 bg-border" aria-hidden="true" />
+      <h2 className="text-sm font-medium tracking-[0.2em] text-muted-foreground uppercase">{label}</h2>
+      <span className="h-px flex-1 bg-border" aria-hidden="true" />
+    </div>
+  )
 }
 
 function AdminGeneralSettingsFormInner({
@@ -113,15 +82,12 @@ function AdminGeneralSettingsFormInner({
   initialTermsOfServicePdfPath,
   initialTermsOfServicePdfUrl,
   initialMarketContextSettings,
-  initialArbitrageEnabled,
-  initialArbitrageMultiWalletEnabled,
   marketContextVariables,
   initialHomeFeaturedSettings,
   initialHomeFeaturedEvents,
-  openRouterSettings,
-  sportsSourceSettings,
 }: AdminGeneralSettingsFormProps) {
   const t = useExtracted()
+  const locationHash = useLocationHash()
   const settingsSavedMessage = t('Settings saved successfully!')
   const resolvedInitialHomeFeaturedSettings = initialHomeFeaturedSettings ?? DEFAULT_HOME_FEATURED_SETTINGS
   const resolvedInitialHomeFeaturedEvents = initialHomeFeaturedEvents ?? []
@@ -135,7 +101,6 @@ function AdminGeneralSettingsFormInner({
   const initialPwaIcon512Path = initialThemeSiteSettings.pwaIcon512Path
   const initialPwaIcon192Url = initialThemeSiteSettings.pwaIcon192Url
   const initialPwaIcon512Url = initialThemeSiteSettings.pwaIcon512Url
-  const initialGoogleAnalyticsId = initialThemeSiteSettings.googleAnalyticsId
   const initialDiscordLink = initialThemeSiteSettings.discordLink
   const initialTwitterLink = initialThemeSiteSettings.twitterLink
   const initialFacebookLink = initialThemeSiteSettings.facebookLink
@@ -148,14 +113,6 @@ function AdminGeneralSettingsFormInner({
   const initialGlobalAnnouncementLinkUrl = initialGlobalAnnouncement.linkUrl
   const initialGlobalAnnouncementDisabledOn = initialGlobalAnnouncement.disabledOn
   const initialGlobalAnnouncementDisableFaucetBanner = initialGlobalAnnouncement.disableFaucetBanner
-  const initialCustomJavascriptCodes = initialThemeSiteSettings.customJavascriptCodes
-  const initialLiFiIntegrator = initialThemeSiteSettings.lifiIntegrator
-  const initialLiFiApiKey = initialThemeSiteSettings.lifiApiKey
-  const initialLiFiApiKeyConfigured = initialThemeSiteSettings.lifiApiKeyConfigured
-  const initialOpenRouterModel = openRouterSettings.defaultModel ?? ''
-  const initialOpenRouterApiKeyConfigured = openRouterSettings.isApiKeyConfigured
-  const initialPandaScoreTokenConfigured = sportsSourceSettings.isPandaScoreTokenConfigured
-  const initialTheSportsDbApiKeyConfigured = sportsSourceSettings.isTheSportsDbApiKeyConfigured
   const initialMarketContextEnabled = initialMarketContextSettings.enabled
   const initialMarketContextPrompt = initialMarketContextSettings.prompt
   const initialHomeFeaturedEnabled = resolvedInitialHomeFeaturedSettings.enabled
@@ -190,8 +147,7 @@ function AdminGeneralSettingsFormInner({
 
       if (result.error) {
         toast.error(result.error)
-      }
-      else {
+      } else {
         optimizedSideCardImagesRef.current.clear()
         toast.success(settingsSavedMessage)
       }
@@ -202,8 +158,6 @@ function AdminGeneralSettingsFormInner({
   )
   const [state, formAction, isPending] = useActionState(submitGeneralSettingsAction, initialState)
   const [isRemovingTermsOfServicePdf, startRemovingTermsOfServicePdf] = useTransition()
-  const nextCustomJavascriptCodeIdRef = useRef(0)
-
   const [siteName, setSiteName] = useState(initialSiteName)
   const [siteDescription, setSiteDescription] = useState(initialSiteDescription)
   const [logoMode, setLogoMode] = useState(initialLogoMode)
@@ -211,7 +165,6 @@ function AdminGeneralSettingsFormInner({
   const [logoImagePath, setLogoImagePath] = useState(initialLogoImagePath)
   const [pwaIcon192Path] = useState(initialPwaIcon192Path)
   const [pwaIcon512Path] = useState(initialPwaIcon512Path)
-  const [googleAnalyticsId, setGoogleAnalyticsId] = useState(initialGoogleAnalyticsId)
   const [discordLink, setDiscordLink] = useState(initialDiscordLink)
   const [twitterLink, setTwitterLink] = useState(initialTwitterLink)
   const [facebookLink, setFacebookLink] = useState(initialFacebookLink)
@@ -229,39 +182,28 @@ function AdminGeneralSettingsFormInner({
   const [globalAnnouncementDisableFaucetBanner, setGlobalAnnouncementDisableFaucetBanner] = useState(
     initialGlobalAnnouncementDisableFaucetBanner,
   )
-  const [customJavascriptCodes, setCustomJavascriptCodes] = useState<CustomJavascriptCodeDraft[]>(
-    () => initialCustomJavascriptCodes.map(code => createCustomJavascriptCodeDraft(nextCustomJavascriptCodeIdRef.current++, code)),
-  )
   const [tosPdfPath, setTosPdfPath] = useState(initialTermsOfServicePdfPath)
-  const [lifiIntegrator, setLifiIntegrator] = useState(initialLiFiIntegrator)
-  const [lifiApiKey, setLifiApiKey] = useState(initialLiFiApiKey)
-  const [arbitrageEnabled, setArbitrageEnabled] = useState(initialArbitrageEnabled)
-  const [arbitrageMultiWalletEnabled, setArbitrageMultiWalletEnabled] = useState(
-    initialArbitrageMultiWalletEnabled,
-  )
-  const [openRouterApiKey, setOpenRouterApiKey] = useState('')
-  const [pandaScoreToken, setPandaScoreToken] = useState('')
-  const [theSportsDbApiKey, setTheSportsDbApiKey] = useState('')
-  const [openRouterModel, setOpenRouterModel] = useState(initialOpenRouterModel)
-  const [openRouterSelectValue, setOpenRouterSelectValue] = useState(
-    initialOpenRouterModel || AUTOMATIC_MODEL_VALUE,
-  )
-  const [openRouterModelOptions, setOpenRouterModelOptions] = useState<ModelOption[]>(openRouterSettings.modelOptions)
-  const [openRouterModelsError, setOpenRouterModelsError] = useState<string | undefined>(openRouterSettings.modelsError)
-  const [isRefreshingOpenRouterModels, setIsRefreshingOpenRouterModels] = useState(false)
   const [marketContextEnabled, setMarketContextEnabled] = useState(initialMarketContextEnabled)
   const [marketContextPrompt, setMarketContextPrompt] = useState(initialMarketContextPrompt)
   const [homeFeaturedEnabled, setHomeFeaturedEnabled] = useState(initialHomeFeaturedEnabled)
   const [homeFeaturedUseAi, setHomeFeaturedUseAi] = useState(initialHomeFeaturedUseAi)
   const [homeFeaturedMaxCards, setHomeFeaturedMaxCards] = useState(initialHomeFeaturedMaxCards)
-  const [homeFeaturedDefaultContextMode, setHomeFeaturedDefaultContextMode] = useState(initialHomeFeaturedDefaultContextMode)
+  const [homeFeaturedDefaultContextMode, setHomeFeaturedDefaultContextMode] = useState(
+    initialHomeFeaturedDefaultContextMode,
+  )
   const [homeFeaturedNewsSources, setHomeFeaturedNewsSources] = useState(initialHomeFeaturedNewsSources.join('\n'))
-  const [homeFeaturedCommentBlacklist, setHomeFeaturedCommentBlacklist] = useState(initialHomeFeaturedCommentBlacklist.join('\n'))
+  const [homeFeaturedCommentBlacklist, setHomeFeaturedCommentBlacklist] = useState(
+    initialHomeFeaturedCommentBlacklist.join('\n'),
+  )
   const [homeFeaturedMinVolume24h, setHomeFeaturedMinVolume24h] = useState(initialHomeFeaturedMinVolume24h)
-  const [homeFeaturedIncludeSportsToday, setHomeFeaturedIncludeSportsToday] = useState(initialHomeFeaturedIncludeSportsToday)
+  const [homeFeaturedIncludeSportsToday, setHomeFeaturedIncludeSportsToday] = useState(
+    initialHomeFeaturedIncludeSportsToday,
+  )
   const [homeFeaturedIncludeNewEvents, setHomeFeaturedIncludeNewEvents] = useState(initialHomeFeaturedIncludeNewEvents)
   const [homeFeaturedSideCard, setHomeFeaturedSideCard] = useState(initialHomeFeaturedSideCard)
-  const [homeFeaturedEvents, setHomeFeaturedEvents] = useState<HomeFeaturedEventAdminItem[]>(resolvedInitialHomeFeaturedEvents)
+  const [homeFeaturedEvents, setHomeFeaturedEvents] = useState<HomeFeaturedEventAdminItem[]>(
+    resolvedInitialHomeFeaturedEvents,
+  )
   const [selectedLogoFile, setSelectedLogoFile] = useState<File | null>(null)
   const [selectedTermsOfServicePdfFile, setSelectedTermsOfServicePdfFile] = useState<File | null>(null)
   const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null)
@@ -270,11 +212,21 @@ function AdminGeneralSettingsFormInner({
   const [sideCardImagePreviewUrls, setSideCardImagePreviewUrls] = useState<Record<string, string>>({})
   const [processingSideCardImageIds, setProcessingSideCardImageIds] = useState<string[]>([])
   const [openSections, setOpenSections] = useState<string[]>([])
+  const visibleOpenSections = useMemo(
+    () =>
+      locationHash === 'theme-site-name' || locationHash === 'theme-logo-file'
+        ? Array.from(new Set([...openSections, 'brand-identity']))
+        : openSections,
+    [locationHash, openSections],
+  )
   const isSideCardImageProcessing = processingSideCardImageIds.length > 0
 
-  useEffect(function trackSideCardImagePreviewUrls() {
-    sideCardImagePreviewUrlsRef.current = sideCardImagePreviewUrls
-  }, [sideCardImagePreviewUrls])
+  useEffect(
+    function trackSideCardImagePreviewUrls() {
+      sideCardImagePreviewUrlsRef.current = sideCardImagePreviewUrls
+    },
+    [sideCardImagePreviewUrls],
+  )
 
   useEffect(function revokeSideCardImagePreviewUrlsOnUnmount() {
     const previewUrlsRef = sideCardImagePreviewUrlsRef
@@ -292,30 +244,35 @@ function AdminGeneralSettingsFormInner({
     }
   }, [])
 
-  useEffect(function revokeObjectUrls() {
-    return function cleanup() {
-      if (logoPreviewUrl) {
-        URL.revokeObjectURL(logoPreviewUrl)
+  useEffect(
+    function revokeObjectUrls() {
+      return function cleanup() {
+        if (logoPreviewUrl) {
+          URL.revokeObjectURL(logoPreviewUrl)
+        }
+        if (pwaIcon192PreviewUrl) {
+          URL.revokeObjectURL(pwaIcon192PreviewUrl)
+        }
+        if (pwaIcon512PreviewUrl) {
+          URL.revokeObjectURL(pwaIcon512PreviewUrl)
+        }
       }
-      if (pwaIcon192PreviewUrl) {
-        URL.revokeObjectURL(pwaIcon192PreviewUrl)
-      }
-      if (pwaIcon512PreviewUrl) {
-        URL.revokeObjectURL(pwaIcon512PreviewUrl)
-      }
-    }
-  }, [logoPreviewUrl, pwaIcon192PreviewUrl, pwaIcon512PreviewUrl])
+    },
+    [logoPreviewUrl, pwaIcon192PreviewUrl, pwaIcon512PreviewUrl],
+  )
 
   const imagePreview = useMemo(() => logoPreviewUrl ?? initialLogoImageUrl, [initialLogoImageUrl, logoPreviewUrl])
-  const pwaIcon192Preview = useMemo(() => pwaIcon192PreviewUrl ?? initialPwaIcon192Url, [initialPwaIcon192Url, pwaIcon192PreviewUrl])
-  const pwaIcon512Preview = useMemo(() => pwaIcon512PreviewUrl ?? initialPwaIcon512Url, [initialPwaIcon512Url, pwaIcon512PreviewUrl])
+  const pwaIcon192Preview = useMemo(
+    () => pwaIcon192PreviewUrl ?? initialPwaIcon192Url,
+    [initialPwaIcon192Url, pwaIcon192PreviewUrl],
+  )
+  const pwaIcon512Preview = useMemo(
+    () => pwaIcon512PreviewUrl ?? initialPwaIcon512Url,
+    [initialPwaIcon512Url, pwaIcon512PreviewUrl],
+  )
   const serializedHomeFeaturedSideCardSlides = useMemo(
     () => serializeHomeFeaturedSideCardSlides(homeFeaturedSideCard.slides),
     [homeFeaturedSideCard.slides],
-  )
-  const serializedCustomJavascriptCodes = useMemo(
-    () => serializeCustomJavascriptCodes(customJavascriptCodes.map(toCustomJavascriptCodeConfig)),
-    [customJavascriptCodes],
   )
   const serializedGlobalAnnouncementDisabledOn = useMemo(
     () => JSON.stringify(globalAnnouncementDisabledOn),
@@ -326,14 +283,17 @@ function AdminGeneralSettingsFormInner({
     () => JSON.stringify(serializeHomeFeaturedEventsForSave(homeFeaturedEvents, locale)),
     [homeFeaturedEvents, locale],
   )
-  const customJavascriptCodeDisablePageOptions = useMemo(() => ([
-    { value: 'home' as const, label: t('Home') },
-    { value: 'event' as const, label: '/event' },
-    { value: 'portfolio' as const, label: '/portfolio' },
-    { value: 'settings' as const, label: '/settings' },
-    { value: 'docs' as const, label: '/docs' },
-    { value: 'admin' as const, label: '/admin' },
-  ]), [t])
+  const customJavascriptCodeDisablePageOptions = useMemo(
+    () => [
+      { value: 'home' as const, label: t('Home') },
+      { value: 'event' as const, label: '/event' },
+      { value: 'portfolio' as const, label: '/portfolio' },
+      { value: 'settings' as const, label: '/settings' },
+      { value: 'docs' as const, label: '/docs' },
+      { value: 'admin' as const, label: '/admin' },
+    ],
+    [t],
+  )
 
   const sanitizedLogoSvg = useMemo(() => sanitizeSvg(logoSvg), [logoSvg])
   const svgPreviewUrl = useMemo(
@@ -342,14 +302,6 @@ function AdminGeneralSettingsFormInner({
   )
 
   const hasUploadedTermsOfServicePdf = Boolean(initialTermsOfServicePdfUrl && tosPdfPath.trim())
-  const trimmedOpenRouterApiKey = openRouterApiKey.trim()
-  const openRouterModelSelectEnabled = openRouterSettings.isModelSelectEnabled || Boolean(trimmedOpenRouterApiKey)
-
-  function handleOpenRouterModelChange(nextValue: string) {
-    setOpenRouterSelectValue(nextValue)
-    setOpenRouterModel(nextValue === AUTOMATIC_MODEL_VALUE ? '' : nextValue)
-  }
-
   function handleToggleBlockedCountry(code: string, checked: boolean) {
     setBlockedCountries((previous) => {
       if (checked) {
@@ -360,7 +312,7 @@ function AdminGeneralSettingsFormInner({
         return [...previous, code]
       }
 
-      return previous.filter(countryCode => countryCode !== code)
+      return previous.filter((countryCode) => countryCode !== code)
     })
   }
 
@@ -383,11 +335,11 @@ function AdminGeneralSettingsFormInner({
     })
 
     if (!file) {
-      setProcessingSideCardImageIds(previous => previous.filter(id => id !== slideId))
+      setProcessingSideCardImageIds((previous) => previous.filter((id) => id !== slideId))
       return
     }
 
-    setProcessingSideCardImageIds(previous => previous.includes(slideId) ? previous : [...previous, slideId])
+    setProcessingSideCardImageIds((previous) => (previous.includes(slideId) ? previous : [...previous, slideId]))
     try {
       const optimizedFile = await optimizeSideCardImage(file)
       if (requestId !== sideCardImageProcessingRequestRef.current.get(slideId)) {
@@ -396,9 +348,8 @@ function AdminGeneralSettingsFormInner({
 
       const previewUrl = URL.createObjectURL(optimizedFile)
       optimizedSideCardImagesRef.current.set(slideId, optimizedFile)
-      setSideCardImagePreviewUrls(previous => ({ ...previous, [slideId]: previewUrl }))
-    }
-    catch (error) {
+      setSideCardImagePreviewUrls((previous) => ({ ...previous, [slideId]: previewUrl }))
+    } catch (error) {
       if (requestId !== sideCardImageProcessingRequestRef.current.get(slideId)) {
         return
       }
@@ -406,113 +357,27 @@ function AdminGeneralSettingsFormInner({
       console.error('Failed to optimize side card image', error)
       optimizedSideCardImagesRef.current.delete(slideId)
       toast.error(t('Could not process the side card image. Please try another image.'))
-    }
-    finally {
+    } finally {
       if (requestId === sideCardImageProcessingRequestRef.current.get(slideId)) {
-        setProcessingSideCardImageIds(previous => previous.filter(id => id !== slideId))
+        setProcessingSideCardImageIds((previous) => previous.filter((id) => id !== slideId))
       }
     }
   }
 
   function toggleSection(value: string) {
-    setOpenSections((previous) => {
-      if (previous.includes(value)) {
-        return previous.filter(section => section !== value)
-      }
-
-      return [...previous, value]
-    })
-  }
-
-  function updateCustomJavascriptCode(
-    index: number,
-    updater: (code: CustomJavascriptCodeDraft) => CustomJavascriptCodeDraft,
-  ) {
-    setCustomJavascriptCodes(previous => previous.map((code, codeIndex) => (
-      codeIndex === index ? updater(code) : code
-    )))
-  }
-
-  function handleAddCustomJavascriptCode() {
-    setCustomJavascriptCodes(previous => [
-      ...previous,
-      createCustomJavascriptCodeDraft(nextCustomJavascriptCodeIdRef.current++, {
-        name: '',
-        snippet: '',
-        disabledOn: [],
-      }),
-    ])
-  }
-
-  function handleRemoveCustomJavascriptCode(index: number) {
-    setCustomJavascriptCodes(previous => previous.filter((_, codeIndex) => codeIndex !== index))
-  }
-
-  function handleToggleCustomJavascriptCodeDisableOn(
-    index: number,
-    value: CustomJavascriptCodeDisablePage,
-    checked: boolean,
-  ) {
-    updateCustomJavascriptCode(index, (code) => {
-      const disabledOn = checked
-        ? Array.from(new Set([...code.disabledOn, value]))
-        : code.disabledOn.filter(entry => entry !== value)
-
-      return {
-        ...code,
-        disabledOn,
-      }
-    })
+    const isOpen = visibleOpenSections.includes(value)
+    if (value === 'brand-identity' && (locationHash === 'theme-site-name' || locationHash === 'theme-logo-file')) {
+      clearLocationHash()
+    }
+    setOpenSections((previous) => (isOpen ? previous.filter((section) => section !== value) : [...previous, value]))
   }
 
   function handleToggleGlobalAnnouncementDisableOn(value: CustomJavascriptCodeDisablePage, checked: boolean) {
     setGlobalAnnouncementDisabledOn((previous) => {
-      const next = checked
-        ? Array.from(new Set([...previous, value]))
-        : previous.filter(entry => entry !== value)
+      const next = checked ? Array.from(new Set([...previous, value])) : previous.filter((entry) => entry !== value)
 
       return next
     })
-  }
-
-  async function handleRefreshOpenRouterModels() {
-    if (!trimmedOpenRouterApiKey) {
-      return
-    }
-
-    try {
-      setIsRefreshingOpenRouterModels(true)
-      setOpenRouterModelsError(undefined)
-      const response = await fetch('/admin/api/openrouter-models', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ apiKey: trimmedOpenRouterApiKey }),
-      })
-
-      if (!response.ok) {
-        const payload = await response.json().catch(() => ({}))
-        setOpenRouterModelsError(payload?.error ?? t('Unable to load models. Please verify the API key.'))
-        return
-      }
-
-      const payload = await response.json() as { models?: ModelOption[] }
-      const refreshedModels = Array.isArray(payload?.models) ? payload.models : []
-      setOpenRouterModelOptions(refreshedModels)
-
-      if (openRouterSelectValue !== AUTOMATIC_MODEL_VALUE && refreshedModels.every(model => model.id !== openRouterSelectValue)) {
-        setOpenRouterSelectValue(AUTOMATIC_MODEL_VALUE)
-        setOpenRouterModel('')
-      }
-    }
-    catch (error) {
-      console.error('Failed to refresh OpenRouter models', error)
-      setOpenRouterModelsError(t('Unable to load models. Please verify the API key.'))
-    }
-    finally {
-      setIsRefreshingOpenRouterModels(false)
-    }
   }
 
   function handleRemoveTermsOfServicePdf() {
@@ -528,8 +393,7 @@ function AdminGeneralSettingsFormInner({
         setTosPdfPath('')
         setSelectedTermsOfServicePdfFile(null)
         toast.success(t('Terms of Use PDF removed.'))
-      }
-      catch (error) {
+      } catch (error) {
         console.error('Failed to remove Terms of Use PDF', error)
         toast.error(t('Unable to remove the Terms of Use PDF right now.'))
       }
@@ -543,11 +407,9 @@ function AdminGeneralSettingsFormInner({
       <input type="hidden" name="logo_svg" value={logoSvg} />
       <input type="hidden" name="pwa_icon_192_path" value={pwaIcon192Path} />
       <input type="hidden" name="pwa_icon_512_path" value={pwaIcon512Path} />
-      <input type="hidden" name="openrouter_model" value={openRouterModel} />
       <input type="hidden" name="market_context_enabled" value={String(marketContextEnabled)} />
       <input type="hidden" name="market_context_prompt" value={marketContextPrompt} />
       <input type="hidden" name="tos_pdf_path" value={tosPdfPath} />
-      <input type="hidden" name="custom_javascript_codes_json" value={serializedCustomJavascriptCodes} />
       <input type="hidden" name="global_announcement_disabled_on_json" value={serializedGlobalAnnouncementDisabledOn} />
       <input
         type="hidden"
@@ -580,15 +442,17 @@ function AdminGeneralSettingsFormInner({
           accept="image/png,image/jpeg"
           className="sr-only"
           disabled={isPending || isSideCardImageProcessing}
-          onChange={event => void handleSideCardImageChange('legacy', event.target.files?.[0] ?? null)}
+          onChange={(event) => void handleSideCardImageChange('legacy', event.target.files?.[0] ?? null)}
         />
       )}
       <input type="hidden" name="home_featured_events_json" value={serializedHomeFeaturedEvents} />
 
       <div className="grid min-w-0 gap-6">
+        <SettingsCategoryDivider label={t('Brand & communication')} />
+
         <BrandIdentitySection
           isPending={isPending}
-          openSections={openSections}
+          openSections={visibleOpenSections}
           onToggleSection={toggleSection}
           siteName={siteName}
           setSiteName={setSiteName}
@@ -618,7 +482,7 @@ function AdminGeneralSettingsFormInner({
 
         <SocialCommunitySection
           isPending={isPending}
-          openSections={openSections}
+          openSections={visibleOpenSections}
           onToggleSection={toggleSection}
           discordLink={discordLink}
           setDiscordLink={setDiscordLink}
@@ -640,7 +504,7 @@ function AdminGeneralSettingsFormInner({
 
         <GlobalAnnouncementSection
           isPending={isPending}
-          openSections={openSections}
+          openSections={visibleOpenSections}
           onToggleSection={toggleSection}
           globalAnnouncementMessage={globalAnnouncementMessage}
           onGlobalAnnouncementMessageChange={setGlobalAnnouncementMessage}
@@ -653,21 +517,12 @@ function AdminGeneralSettingsFormInner({
           customJavascriptCodeDisablePageOptions={customJavascriptCodeDisablePageOptions}
         />
 
-        <MarketContextSection
-          isPending={isPending}
-          openSections={openSections}
-          onToggleSection={toggleSection}
-          enabled={marketContextEnabled}
-          onEnabledChange={setMarketContextEnabled}
-          prompt={marketContextPrompt}
-          onPromptChange={setMarketContextPrompt}
-          variables={marketContextVariables}
-        />
+        <SettingsCategoryDivider label={t('Market discovery')} />
 
         <HomeFeaturedMarketsSection
           locale={locale}
           isPending={isPending || isSideCardImageProcessing}
-          openSections={openSections}
+          openSections={visibleOpenSections}
           onToggleSection={toggleSection}
           enabled={homeFeaturedEnabled}
           onEnabledChange={setHomeFeaturedEnabled}
@@ -696,10 +551,25 @@ function AdminGeneralSettingsFormInner({
           onFeaturedEventsChange={setHomeFeaturedEvents}
         />
 
+        <MarketContextSection
+          isPending={isPending}
+          openSections={visibleOpenSections}
+          onToggleSection={toggleSection}
+          enabled={marketContextEnabled}
+          onEnabledChange={setMarketContextEnabled}
+          prompt={marketContextPrompt}
+          onPromptChange={setMarketContextPrompt}
+          variables={marketContextVariables}
+        />
+
+        <SettingsCategoryDivider label={t('Platform controls')} />
+
+        <MarketFeeSection isPending={isPending} openSections={visibleOpenSections} onToggleSection={toggleSection} />
+
         <LegalSection
           isPending={isPending}
           isRemovingTermsOfServicePdf={isRemovingTermsOfServicePdf}
-          openSections={openSections}
+          openSections={visibleOpenSections}
           onToggleSection={toggleSection}
           selectedTermsOfServicePdfFile={selectedTermsOfServicePdfFile}
           setSelectedTermsOfServicePdfFile={setSelectedTermsOfServicePdfFile}
@@ -709,52 +579,6 @@ function AdminGeneralSettingsFormInner({
           blockedCountries={blockedCountries}
           onToggleBlockedCountry={handleToggleBlockedCountry}
           onClearBlockedCountries={handleClearBlockedCountries}
-        />
-
-        <IntegrationsSection
-          isPending={isPending}
-          openSections={openSections}
-          onToggleSection={toggleSection}
-          googleAnalyticsId={googleAnalyticsId}
-          onGoogleAnalyticsIdChange={setGoogleAnalyticsId}
-          openRouterApiKey={openRouterApiKey}
-          onOpenRouterApiKeyChange={setOpenRouterApiKey}
-          openRouterSelectValue={openRouterSelectValue}
-          onOpenRouterModelChange={handleOpenRouterModelChange}
-          openRouterModelSelectEnabled={openRouterModelSelectEnabled}
-          openRouterModelOptions={openRouterModelOptions}
-          openRouterModelsError={openRouterModelsError}
-          isRefreshingOpenRouterModels={isRefreshingOpenRouterModels}
-          trimmedOpenRouterApiKey={trimmedOpenRouterApiKey}
-          onRefreshOpenRouterModels={handleRefreshOpenRouterModels}
-          initialOpenRouterApiKeyConfigured={initialOpenRouterApiKeyConfigured}
-          pandaScoreToken={pandaScoreToken}
-          onPandaScoreTokenChange={setPandaScoreToken}
-          initialPandaScoreTokenConfigured={initialPandaScoreTokenConfigured}
-          theSportsDbApiKey={theSportsDbApiKey}
-          onTheSportsDbApiKeyChange={setTheSportsDbApiKey}
-          initialTheSportsDbApiKeyConfigured={initialTheSportsDbApiKeyConfigured}
-          lifiIntegrator={lifiIntegrator}
-          onLifiIntegratorChange={setLifiIntegrator}
-          lifiApiKey={lifiApiKey}
-          onLifiApiKeyChange={setLifiApiKey}
-          initialLiFiApiKeyConfigured={initialLiFiApiKeyConfigured}
-          arbitrageEnabled={arbitrageEnabled}
-          onArbitrageEnabledChange={setArbitrageEnabled}
-          arbitrageMultiWalletEnabled={arbitrageMultiWalletEnabled}
-          onArbitrageMultiWalletEnabledChange={setArbitrageMultiWalletEnabled}
-          customJavascriptCodes={customJavascriptCodes}
-          onAddCustomJavascriptCode={handleAddCustomJavascriptCode}
-          onRemoveCustomJavascriptCode={handleRemoveCustomJavascriptCode}
-          onUpdateCustomJavascriptCode={updateCustomJavascriptCode}
-          onToggleCustomJavascriptCodeDisableOn={handleToggleCustomJavascriptCodeDisableOn}
-          customJavascriptCodeDisablePageOptions={customJavascriptCodeDisablePageOptions}
-        />
-
-        <MarketFeeSection
-          isPending={isPending}
-          openSections={openSections}
-          onToggleSection={toggleSection}
         />
       </div>
 
@@ -782,14 +606,10 @@ export default function AdminGeneralSettingsForm(props: AdminGeneralSettingsForm
     initialTermsOfServicePdfPath: props.initialTermsOfServicePdfPath,
     initialTermsOfServicePdfUrl: props.initialTermsOfServicePdfUrl,
     initialMarketContextSettings: props.initialMarketContextSettings,
-    initialArbitrageEnabled: props.initialArbitrageEnabled,
-    initialArbitrageMultiWalletEnabled: props.initialArbitrageMultiWalletEnabled,
     marketContextVariables: props.marketContextVariables,
     initialHomeFeaturedSettings: props.initialHomeFeaturedSettings ?? DEFAULT_HOME_FEATURED_SETTINGS,
     initialHomeFeaturedSideCardImageUrl: props.initialHomeFeaturedSideCardImageUrl,
     initialHomeFeaturedEvents: props.initialHomeFeaturedEvents ?? [],
-    openRouterSettings: props.openRouterSettings,
-    sportsSourceSettings: props.sportsSourceSettings,
   })
 
   return <AdminGeneralSettingsFormInner key={formResetKey} {...props} />

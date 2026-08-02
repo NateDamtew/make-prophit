@@ -1,9 +1,9 @@
 import type { Event, EventSeriesEntry } from '@/types'
 import type { DataPoint } from '@/types/PredictionChartTypes'
+
 import { formatCurrency } from '@/lib/formatters'
-import {
-  resolveLiveSeriesTopicPriceDigits,
-} from './liveSeriesPricePrecision'
+
+import { resolveLiveSeriesTopicPriceDigits } from './liveSeriesPricePrecision'
 
 export const SERIES_KEY = 'live_price'
 export const LIVE_WINDOW_MS = 40 * 1000
@@ -37,7 +37,7 @@ export interface LiveSeriesPriceSnapshot {
   series_slug: string
   instrument: string
   interval: '5m' | '15m' | '1h' | '4h' | '1d'
-  source: 'chainlink' | 'massive'
+  source: 'binance' | 'chainlink' | 'pyth'
   interval_ms: number
   event_window_start_ms: number
   event_window_end_ms: number
@@ -47,6 +47,42 @@ export interface LiveSeriesPriceSnapshot {
   latest_window_end_ms: number | null
   latest_source_timestamp_ms: number | null
   is_event_closed: boolean
+}
+
+export type LiveSeriesPriceSnapshotStatus = 'loading' | 'ready' | 'unavailable'
+export type LiveSeriesReferenceClassification = 'binance_daily' | 'other'
+
+export function classifyLiveSeriesReference({
+  topic,
+  activeWindowMinutes,
+}: {
+  topic: string
+  activeWindowMinutes: number
+}): LiveSeriesReferenceClassification {
+  const normalizedTopic = topic.trim().toLowerCase()
+  const normalizedWindowMinutes = Number(activeWindowMinutes)
+
+  return normalizedTopic.startsWith('crypto_prices') && normalizedWindowMinutes === 24 * 60 ? 'binance_daily' : 'other'
+}
+
+export function isCanonicalBinanceDailySnapshot(snapshot: LiveSeriesPriceSnapshot | null) {
+  return snapshot?.source === 'binance' && snapshot.interval === '1d'
+}
+
+export function requiresCanonicalBinanceDailyClose({
+  snapshot,
+  snapshotStatus,
+  seriesClassification,
+}: {
+  snapshot: LiveSeriesPriceSnapshot | null
+  snapshotStatus: LiveSeriesPriceSnapshotStatus
+  seriesClassification: LiveSeriesReferenceClassification
+}) {
+  if (seriesClassification === 'binance_daily') {
+    return true
+  }
+
+  return snapshotStatus === 'ready' && isCanonicalBinanceDailySnapshot(snapshot)
 }
 
 function normalizeTimestamp(value: unknown, fallbackTimestamp = 0) {
@@ -85,8 +121,7 @@ export function readPersistedLivePrice(topic: string, symbol: string): Persisted
       price,
       timestamp,
     }
-  }
-  catch {
+  } catch {
     return null
   }
 }
@@ -103,9 +138,7 @@ export function writePersistedLivePrice(topic: string, symbol: string, price: nu
       timestamp: normalizeTimestamp(timestamp),
     }
     window.localStorage.setItem(key, JSON.stringify(payload))
-  }
-  catch {
-  }
+  } catch {}
 }
 
 function matchesSymbol(symbol: string | null, targetSymbol: string) {
@@ -118,16 +151,12 @@ function matchesSymbol(symbol: string | null, targetSymbol: string) {
   return symbolsAreEquivalent(symbol, targetSymbol)
 }
 
-function extractPointsFromArray(
-  entries: any[],
-  fallbackSymbol: string | null = null,
-  fallbackTimestamp = 0,
-) {
+function extractPointsFromArray(entries: any[], fallbackSymbol: string | null = null, fallbackTimestamp = 0) {
   if (!Array.isArray(entries) || entries.length === 0) {
     return []
   }
 
-  const points: Array<{ price: number, timestamp: number, symbol: string | null }> = []
+  const points: Array<{ price: number; timestamp: number; symbol: string | null }> = []
 
   for (const point of entries) {
     if (!point || typeof point !== 'object') {
@@ -154,12 +183,11 @@ export function extractLivePriceUpdates(payload: any, topic: string, symbol: str
     return []
   }
 
-  const updates: Array<{ price: number, timestamp: number, symbol: string | null }> = []
+  const updates: Array<{ price: number; timestamp: number; symbol: string | null }> = []
   const candidates: any[] = []
   if (Array.isArray(payload)) {
     candidates.push(...payload)
-  }
-  else {
+  } else {
     candidates.push(payload)
   }
 
@@ -169,8 +197,7 @@ export function extractLivePriceUpdates(payload: any, topic: string, symbol: str
 
   if (Array.isArray(payload?.data)) {
     candidates.push(...payload.data)
-  }
-  else if (payload?.data && typeof payload.data === 'object') {
+  } else if (payload?.data && typeof payload.data === 'object') {
     candidates.push(payload.data)
   }
 
@@ -184,15 +211,16 @@ export function extractLivePriceUpdates(payload: any, topic: string, symbol: str
       continue
     }
 
-    const rawSymbol = candidate?.data?.symbol
-      ?? candidate?.symbol
-      ?? candidate?.data?.pair
-      ?? candidate?.pair
-      ?? candidate?.data?.asset
-      ?? candidate?.asset
-      ?? candidate?.data?.base
-      ?? candidate?.base
-      ?? candidate?.payload?.symbol
+    const rawSymbol =
+      candidate?.data?.symbol ??
+      candidate?.symbol ??
+      candidate?.data?.pair ??
+      candidate?.pair ??
+      candidate?.data?.asset ??
+      candidate?.asset ??
+      candidate?.data?.base ??
+      candidate?.base ??
+      candidate?.payload?.symbol
 
     const candidateSymbol = typeof rawSymbol === 'string' ? rawSymbol : null
 
@@ -204,14 +232,15 @@ export function extractLivePriceUpdates(payload: any, topic: string, symbol: str
       updates.push(...extractPointsFromArray(candidate.payload.data, candidateSymbol, fallbackTimestamp))
     }
 
-    const rawPrice = candidate?.data?.price
-      ?? candidate?.price
-      ?? candidate?.data?.value
-      ?? candidate?.value
-      ?? candidate?.data?.p
-      ?? candidate?.p
-      ?? candidate?.payload?.value
-      ?? candidate?.payload?.price
+    const rawPrice =
+      candidate?.data?.price ??
+      candidate?.price ??
+      candidate?.data?.value ??
+      candidate?.value ??
+      candidate?.data?.p ??
+      candidate?.p ??
+      candidate?.payload?.value ??
+      candidate?.payload?.price
 
     const price = Number(rawPrice)
     if (!Number.isFinite(price) || price <= 0) {
@@ -219,13 +248,13 @@ export function extractLivePriceUpdates(payload: any, topic: string, symbol: str
     }
 
     const timestamp = normalizeTimestamp(
-      candidate?.data?.timestamp
-      ?? candidate?.timestamp
-      ?? candidate?.data?.ts
-      ?? candidate?.ts
-      ?? candidate?.data?.t
-      ?? candidate?.t
-      ?? candidate?.payload?.timestamp,
+      candidate?.data?.timestamp ??
+        candidate?.timestamp ??
+        candidate?.data?.ts ??
+        candidate?.ts ??
+        candidate?.data?.t ??
+        candidate?.t ??
+        candidate?.payload?.timestamp,
       fallbackTimestamp,
     )
 
@@ -236,13 +265,13 @@ export function extractLivePriceUpdates(payload: any, topic: string, symbol: str
     })
   }
 
-  const filtered = updates.filter(update => !update.symbol || matchesSymbol(update.symbol, symbol))
+  const filtered = updates.filter((update) => !update.symbol || matchesSymbol(update.symbol, symbol))
   if (!filtered.length) {
     return []
   }
 
   const sorted = filtered.sort((a, b) => a.timestamp - b.timestamp)
-  const deduped: Array<{ price: number, timestamp: number, symbol: string | null }> = []
+  const deduped: Array<{ price: number; timestamp: number; symbol: string | null }> = []
 
   for (const update of sorted) {
     const last = deduped.at(-1)
@@ -261,7 +290,9 @@ export function isSnapshotMessage(payload: any) {
     return false
   }
 
-  const messageType = String(payload?.type ?? '').trim().toLowerCase()
+  const messageType = String(payload?.type ?? '')
+    .trim()
+    .toLowerCase()
   if (messageType !== 'subscribe') {
     return false
   }
@@ -366,7 +397,7 @@ export function keepWithinLiveWindow(points: DataPoint[], cutoffMs: number) {
     return points
   }
 
-  const trimmed = points.filter(point => point.date.getTime() >= cutoffMs)
+  const trimmed = points.filter((point) => point.date.getTime() >= cutoffMs)
   if (trimmed.length > 0) {
     return trimmed
   }
@@ -377,21 +408,19 @@ export function keepWithinLiveWindow(points: DataPoint[], cutoffMs: number) {
     return []
   }
 
-  return [{
-    date: new Date(cutoffMs + 1),
-    [SERIES_KEY]: lastPrice,
-  }]
+  return [
+    {
+      date: new Date(cutoffMs + 1),
+      [SERIES_KEY]: lastPrice,
+    },
+  ]
 }
 
 function readLiveSeriesPoint(point: DataPoint) {
   const timestamp = point.date.getTime()
   const price = point[SERIES_KEY]
 
-  if (
-    !Number.isFinite(timestamp)
-    || typeof price !== 'number'
-    || !Number.isFinite(price)
-  ) {
+  if (!Number.isFinite(timestamp) || typeof price !== 'number' || !Number.isFinite(price)) {
     return null
   }
 
@@ -399,7 +428,7 @@ function readLiveSeriesPoint(point: DataPoint) {
 }
 
 function resolveLiveSeriesPriceAt(points: DataPoint[], timestamp: number) {
-  let previousPoint: { timestamp: number, price: number } | null = null
+  let previousPoint: { timestamp: number; price: number } | null = null
 
   for (const point of points) {
     const currentPoint = readLiveSeriesPoint(point)
@@ -441,9 +470,9 @@ export function resolveLivePriceTransitionDuration(
   currentMessageTimestamp: number,
 ) {
   if (
-    previousMessageTimestamp == null
-    || !Number.isFinite(previousMessageTimestamp)
-    || !Number.isFinite(currentMessageTimestamp)
+    previousMessageTimestamp == null ||
+    !Number.isFinite(previousMessageTimestamp) ||
+    !Number.isFinite(currentMessageTimestamp)
   ) {
     return LIVE_PRICE_TRANSITION_MS
   }
@@ -451,10 +480,7 @@ export function resolveLivePriceTransitionDuration(
   const messageIntervalMs = Math.max(0, currentMessageTimestamp - previousMessageTimestamp)
   return Math.min(
     LIVE_PRICE_TRANSITION_MS,
-    Math.max(
-      LIVE_PRICE_TRANSITION_MIN_MS,
-      Math.round(messageIntervalMs * LIVE_PRICE_TRANSITION_CADENCE_RATIO),
-    ),
+    Math.max(LIVE_PRICE_TRANSITION_MIN_MS, Math.round(messageIntervalMs * LIVE_PRICE_TRANSITION_CADENCE_RATIO)),
   )
 }
 
@@ -464,11 +490,7 @@ export function appendLivePriceTransition(
   transitionStartMs: number,
   transitionDurationMs = LIVE_PRICE_TRANSITION_MS,
 ) {
-  if (
-    !Number.isFinite(targetPrice)
-    || targetPrice <= 0
-    || !Number.isFinite(transitionStartMs)
-  ) {
+  if (!Number.isFinite(targetPrice) || targetPrice <= 0 || !Number.isFinite(transitionStartMs)) {
     return points
   }
 
@@ -476,7 +498,7 @@ export function appendLivePriceTransition(
   const latestScheduledPoint = [...points]
     .reverse()
     .map(readLiveSeriesPoint)
-    .find(point => point !== null)
+    .find((point) => point !== null)
 
   // Repeated WS values should keep an in-flight trajectory instead of restarting it.
   if (latestScheduledPoint?.price === targetPrice) {
@@ -513,17 +535,18 @@ export function appendLivePriceTransition(
   }
 
   const frameCount = Math.max(1, Math.ceil(durationMs / LIVE_CLOCK_FRAME_MS))
-  const transitionPoints: DataPoint[] = [{
-    date: new Date(startTimestamp),
-    [SERIES_KEY]: startPrice,
-  }]
+  const transitionPoints: DataPoint[] = [
+    {
+      date: new Date(startTimestamp),
+      [SERIES_KEY]: startPrice,
+    },
+  ]
   let lastTimestamp = startTimestamp
 
   for (let frame = 1; frame <= frameCount; frame += 1) {
     const progress = frame / frameCount
-    const pointTimestamp = frame === frameCount
-      ? startTimestamp + durationMs
-      : Math.round(startTimestamp + durationMs * progress)
+    const pointTimestamp =
+      frame === frameCount ? startTimestamp + durationMs : Math.round(startTimestamp + durationMs * progress)
 
     if (pointTimestamp <= lastTimestamp) {
       continue
@@ -531,9 +554,7 @@ export function appendLivePriceTransition(
 
     transitionPoints.push({
       date: new Date(pointTimestamp),
-      [SERIES_KEY]: frame === frameCount
-        ? targetPrice
-        : startPrice + (targetPrice - startPrice) * smoothStep(progress),
+      [SERIES_KEY]: frame === frameCount ? targetPrice : startPrice + (targetPrice - startPrice) * smoothStep(progress),
     })
     lastTimestamp = pointTimestamp
   }
@@ -546,14 +567,16 @@ export function resolveLiveSeriesDisplayPrice({
   finalPrice,
   renderedPrice,
   fallbackCurrentPrice,
+  requiresCanonicalClose,
 }: {
   isEventClosed: boolean
   finalPrice: number | null
   renderedPrice: number | null
   fallbackCurrentPrice: number | null
+  requiresCanonicalClose: boolean
 }) {
   if (isEventClosed) {
-    return finalPrice ?? renderedPrice
+    return finalPrice ?? (requiresCanonicalClose ? null : renderedPrice)
   }
 
   return renderedPrice ?? fallbackCurrentPrice
@@ -630,9 +653,7 @@ export function parseUtcDate(value: string | null | undefined) {
     return null
   }
 
-  const normalized = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(trimmed)
-    ? `${trimmed.replace(' ', 'T')}Z`
-    : trimmed
+  const normalized = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(trimmed) ? `${trimmed.replace(' ', 'T')}Z` : trimmed
   const timestamp = Date.parse(normalized)
   if (!Number.isFinite(timestamp)) {
     return null
@@ -661,10 +682,10 @@ export function findLiveSeriesEvent(
 
     const endTimestamp = parseUtcDate(seriesEvent.end_date)
     if (
-      endTimestamp == null
-      || nowTimestamp < endTimestamp - tradingWindowMs
-      || nowTimestamp >= endTimestamp
-      || endTimestamp >= liveEventEndTimestamp
+      endTimestamp == null ||
+      nowTimestamp < endTimestamp - tradingWindowMs ||
+      nowTimestamp >= endTimestamp ||
+      endTimestamp >= liveEventEndTimestamp
     ) {
       continue
     }
@@ -682,14 +703,15 @@ export function resolveEventEndTimestamp(event: Event) {
     return eventResolved
   }
 
-  const resolvedMarkets = event.markets.filter(market => market.is_resolved || market.condition?.resolved)
-  const canUseResolvedMarketTimestamp = event.status === 'resolved'
-    || event.status === 'archived'
-    || event.total_markets_count <= 1
-    || resolvedMarkets.length === event.markets.length
+  const resolvedMarkets = event.markets.filter((market) => market.is_resolved || market.condition?.resolved)
+  const canUseResolvedMarketTimestamp =
+    event.status === 'resolved' ||
+    event.status === 'archived' ||
+    event.total_markets_count <= 1 ||
+    resolvedMarkets.length === event.markets.length
   const resolvedConditionTimestamps = canUseResolvedMarketTimestamp
     ? resolvedMarkets
-        .map(market => parseUtcDate(market.condition?.resolved_at))
+        .map((market) => parseUtcDate(market.condition?.resolved_at))
         .filter((timestamp): timestamp is number => timestamp != null)
     : []
 
@@ -740,6 +762,51 @@ export function inferIntervalMsFromSeriesSlug(seriesSlug: string | null | undefi
   return 24 * 60 * 60 * 1000
 }
 
+export function isShortLiveSeriesCadence(tradingWindowMs: number) {
+  return tradingWindowMs === 5 * 60 * 1000 || tradingWindowMs === 15 * 60 * 1000
+}
+
+export function resolveLiveSeriesCountdown(endTimestamp: number, nowTimestamp: number) {
+  const hasClientTimestamp = Number.isFinite(nowTimestamp) && nowTimestamp > 0
+  const totalSeconds =
+    Number.isFinite(endTimestamp) && hasClientTimestamp
+      ? Math.max(0, Math.floor((endTimestamp - nowTimestamp) / 1000))
+      : 0
+  const showDays = totalSeconds > 24 * 60 * 60
+  const days = showDays ? Math.floor(totalSeconds / (24 * 60 * 60)) : 0
+  const hours = showDays ? Math.floor((totalSeconds % (24 * 60 * 60)) / 3600) : Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 60
+
+  return {
+    totalSeconds,
+    showDays,
+    days,
+    hours,
+    minutes,
+    seconds,
+  }
+}
+
+export function resolveDisplayedLiveSeriesBaselinePrice({
+  baselinePrice,
+  isEventClosed,
+  nowTimestamp,
+  tradingWindowStartTimestamp,
+  tradingWindowMs,
+}: {
+  baselinePrice: number | null
+  isEventClosed: boolean
+  nowTimestamp: number
+  tradingWindowStartTimestamp: number
+  tradingWindowMs: number
+}) {
+  const isFutureShortCadenceEvent =
+    isShortLiveSeriesCadence(tradingWindowMs) && !isEventClosed && nowTimestamp < tradingWindowStartTimestamp
+
+  return isFutureShortCadenceEvent ? null : baselinePrice
+}
+
 export type CountdownUnit = 'day' | 'hr' | 'min' | 'sec'
 
 export function countdownLabel(unit: CountdownUnit, value: number) {
@@ -760,7 +827,13 @@ export function toCountdownLeftLabel(showDays: boolean, days: number, hours: num
   return `${hours} ${hours === 1 ? 'Hr' : 'Hrs'} ${minutes} ${minutes === 1 ? 'Min' : 'Mins'} ${seconds} ${seconds === 1 ? 'Sec' : 'Secs'}`
 }
 
-export function getVisibleCountdownUnits(showDays: boolean, days: number, hours: number, minutes: number, seconds: number) {
+export function getVisibleCountdownUnits(
+  showDays: boolean,
+  days: number,
+  hours: number,
+  minutes: number,
+  seconds: number,
+) {
   if (showDays) {
     return [
       { unit: 'day' as const, value: days },
@@ -803,9 +876,9 @@ export function isUsEquityMarketOpen(timestamp: number) {
     hour12: false,
   }).formatToParts(new Date(timestamp))
 
-  const weekday = parts.find(part => part.type === 'weekday')?.value ?? ''
-  const hourValue = Number(parts.find(part => part.type === 'hour')?.value ?? '0')
-  const minuteValue = Number(parts.find(part => part.type === 'minute')?.value ?? '0')
+  const weekday = parts.find((part) => part.type === 'weekday')?.value ?? ''
+  const hourValue = Number(parts.find((part) => part.type === 'hour')?.value ?? '0')
+  const minuteValue = Number(parts.find((part) => part.type === 'minute')?.value ?? '0')
   const minutesOfDay = hourValue * 60 + minuteValue
 
   if (weekday === 'Sat' || weekday === 'Sun') {

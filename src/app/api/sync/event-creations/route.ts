@@ -97,10 +97,12 @@ function isPrepareAcceptedResponse(value: unknown): value is PrepareAcceptedResp
   }
 
   const candidate = value as Partial<PrepareAcceptedResponse>
-  return typeof candidate.requestId === 'string'
-    && typeof candidate.chainId === 'number'
-    && typeof candidate.creator === 'string'
-    && typeof candidate.status === 'string'
+  return (
+    typeof candidate.requestId === 'string' &&
+    typeof candidate.chainId === 'number' &&
+    typeof candidate.creator === 'string' &&
+    typeof candidate.status === 'string'
+  )
 }
 
 function isPendingRequestItem(value: unknown): value is PendingRequestItem {
@@ -109,12 +111,14 @@ function isPendingRequestItem(value: unknown): value is PendingRequestItem {
   }
 
   const candidate = value as Partial<PendingRequestItem>
-  return typeof candidate.requestId === 'string'
-    && typeof candidate.payloadHash === 'string'
-    && typeof candidate.status === 'string'
-    && typeof candidate.creator === 'string'
-    && typeof candidate.chainId === 'number'
-    && Array.isArray(candidate.txs)
+  return (
+    typeof candidate.requestId === 'string' &&
+    typeof candidate.payloadHash === 'string' &&
+    typeof candidate.status === 'string' &&
+    typeof candidate.creator === 'string' &&
+    typeof candidate.chainId === 'number' &&
+    Array.isArray(candidate.txs)
+  )
 }
 
 function isPendingResponse(value: unknown): value is { request: PendingRequestItem | null } {
@@ -147,7 +151,7 @@ function readApiError(payload: unknown) {
 }
 
 function sleep(ms: number) {
-  return new Promise(resolve => setTimeout(resolve, ms))
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 function getChain(chainId: number) {
@@ -197,7 +201,7 @@ async function fetchMarketConfig() {
     method: 'GET',
     cache: 'no-store',
   })
-  const payload = await response.json().catch(() => null) as MarketConfigResponse | null
+  const payload = (await response.json().catch(() => null)) as MarketConfigResponse | null
   if (!response.ok) {
     throw new Error(`Market config failed (${response.status})`)
   }
@@ -218,7 +222,7 @@ async function fetchPendingRequest(creator: string, chainId: number, requestId?:
     method: 'GET',
     cache: 'no-store',
   })
-  const payload = await response.json().catch(() => null) as unknown
+  const payload = (await response.json().catch(() => null)) as unknown
   const apiError = readApiError(payload)
   if (!response.ok || apiError || !isPendingResponse(payload)) {
     throw new Error(apiError || `Pending request lookup failed (${response.status})`)
@@ -293,7 +297,12 @@ async function persistConfirmedTxs(requestId: string, creator: string, txs: Pend
   }
 }
 
-async function appendStoredAsset(formData: FormData, key: string, asset: ReturnType<typeof normalizeEventCreationAssetPayload>['eventImage'], required: boolean) {
+async function appendStoredAsset(
+  formData: FormData,
+  key: string,
+  asset: ReturnType<typeof normalizeEventCreationAssetPayload>['eventImage'],
+  required: boolean,
+) {
   if (!asset?.publicUrl) {
     if (required) {
       throw new Error(`${key} is missing.`)
@@ -333,16 +342,22 @@ async function prepareRequest(input: {
       payloadHash: input.payloadHash,
     }),
   })
-  const authPayload = await authResponse.json().catch(() => null) as {
+  const authPayload = (await authResponse.json().catch(() => null)) as {
     requestId?: string
     nonce?: `0x${string}`
     expiresAt?: number
     payloadHash?: string
     creator?: string
     chainId?: number
-    domain?: { name?: string, version?: string, verifyingContract?: string }
+    domain?: { name?: string; version?: string; verifyingContract?: string }
   } | null
-  if (!authResponse.ok || !authPayload?.requestId || !authPayload.nonce || !authPayload.expiresAt || !authPayload.domain?.verifyingContract) {
+  if (
+    !authResponse.ok ||
+    !authPayload?.requestId ||
+    !authPayload.nonce ||
+    !authPayload.expiresAt ||
+    !authPayload.domain?.verifyingContract
+  ) {
     throw new Error(readApiError(authPayload) || `Auth challenge failed (${authResponse.status})`)
   }
 
@@ -376,13 +391,16 @@ async function prepareRequest(input: {
 
   const body = new FormData()
   body.append('payload', input.payloadJson)
-  body.append('auth', JSON.stringify({
-    requestId: authPayload.requestId,
-    nonce: authPayload.nonce,
-    expiresAt: authPayload.expiresAt,
-    payloadHash: input.payloadHash,
-    signature,
-  }))
+  body.append(
+    'auth',
+    JSON.stringify({
+      requestId: authPayload.requestId,
+      nonce: authPayload.nonce,
+      expiresAt: authPayload.expiresAt,
+      payloadHash: input.payloadHash,
+      signature,
+    }),
+  )
 
   await appendStoredAsset(body, 'eventImage', input.assets.eventImage, true)
   for (const [optionId, asset] of Object.entries(input.assets.optionImages)) {
@@ -396,7 +414,7 @@ async function prepareRequest(input: {
     method: 'POST',
     body,
   })
-  const payload = await response.json().catch(() => null) as unknown
+  const payload = (await response.json().catch(() => null)) as unknown
   const apiError = readApiError(payload)
   if (!response.ok || apiError || !isPrepareAcceptedResponse(payload)) {
     throw new Error(apiError || `Prepare failed (${response.status})`)
@@ -418,11 +436,7 @@ async function loadPendingJobs(now: Date) {
       available_at: jobs.available_at,
     })
     .from(jobs)
-    .where(and(
-      eq(jobs.job_type, JOB_TYPE),
-      eq(jobs.status, 'pending'),
-      lte(jobs.available_at, now),
-    ))
+    .where(and(eq(jobs.job_type, JOB_TYPE), eq(jobs.status, 'pending'), lte(jobs.available_at, now)))
     .orderBy(asc(jobs.available_at), asc(jobs.updated_at))
     .limit(JOB_BATCH_SIZE)
 
@@ -437,11 +451,7 @@ async function claimJob(job: JobRow, now: Date) {
       reserved_at: now,
       last_error: null,
     })
-    .where(and(
-      eq(jobs.id, job.id),
-      eq(jobs.status, 'pending'),
-      lte(jobs.available_at, now),
-    ))
+    .where(and(eq(jobs.id, job.id), eq(jobs.status, 'pending'), lte(jobs.available_at, now)))
     .returning({
       id: jobs.id,
       job_type: jobs.job_type,
@@ -471,7 +481,7 @@ async function completeJob(job: JobRow) {
 
 function buildRetryAt(attempts: number) {
   const backoffMinutes = Math.min(60, 5 * attempts)
-  return new Date(Date.now() + (backoffMinutes * 60_000))
+  return new Date(Date.now() + backoffMinutes * 60_000)
 }
 
 async function scheduleRetry(job: JobRow, error: unknown) {
@@ -505,7 +515,9 @@ async function processClaimedJob(job: JobRow, defaultChainId: number) {
 
   const draft = draftResult.data
   const configuredSigners = loadEventCreationSignersFromEnv()
-  const selectedSigner = configuredSigners.find(item => item.address.toLowerCase() === (draft.walletAddress ?? '').toLowerCase())
+  const selectedSigner = configuredSigners.find(
+    (item) => item.address.toLowerCase() === (draft.walletAddress ?? '').toLowerCase(),
+  )
   if (!selectedSigner) {
     throw new Error('Selected server wallet is not configured in EVENT_CREATION_SIGNER_PRIVATE_KEYS.')
   }
@@ -584,30 +596,33 @@ async function processClaimedJob(job: JobRow, defaultChainId: number) {
     chain,
     transport: http(chain.rpcUrls.default.http[0]),
   })
-  const confirmedMap = new Map(confirmedTxs.map(item => [item.id, item.hash] as const))
+  const confirmedMap = new Map(confirmedTxs.map((item) => [item.id, item.hash] as const))
 
   async function executeTxPlan(txPlan: PendingRequestTxPlanItem[]) {
     for (const tx of txPlan) {
       let hash = confirmedMap.get(tx.id) as `0x${string}` | undefined
 
       if (!hash) {
-        hash = await walletClient.sendTransaction({
+        hash = (await walletClient.sendTransaction({
           account,
           chain,
           to: getAddress(tx.to),
           data: tx.data as `0x${string}`,
           value: BigInt(tx.value),
-        }) as `0x${string}`
+        })) as `0x${string}`
 
         const receipt = await publicClient.waitForTransactionReceipt({
           hash,
         })
         assertSuccessfulTransactionReceipt(receipt, hash)
 
-        confirmedTxs = [...confirmedTxs.filter(item => item.id !== tx.id), {
-          id: tx.id,
-          hash,
-        }]
+        confirmedTxs = [
+          ...confirmedTxs.filter((item) => item.id !== tx.id),
+          {
+            id: tx.id,
+            hash,
+          },
+        ]
         confirmedMap.set(tx.id, hash)
         await persistConfirmedTxs(activePending.requestId, creator, confirmedTxs)
 
@@ -641,7 +656,7 @@ async function processClaimedJob(job: JobRow, defaultChainId: number) {
         txs: confirmedTxs,
       }),
     })
-    const finalizePayload = await finalizeResponse.json().catch(() => null) as {
+    const finalizePayload = (await finalizeResponse.json().catch(() => null)) as {
       requestId?: string
       status?: string
       metadataUpdateTxPlan?: PendingRequestTxPlanItem[]
@@ -655,7 +670,7 @@ async function processClaimedJob(job: JobRow, defaultChainId: number) {
   async function executeMetadataUpdateTxPlan(metadataUpdateTxPlan?: PendingRequestTxPlanItem[]) {
     const resolvedTxPlan = metadataUpdateTxPlan?.length
       ? metadataUpdateTxPlan
-      : (await fetchPendingRequest(creator, chain.id, activePending.requestId))?.metadataUpdateTxPlan ?? []
+      : ((await fetchPendingRequest(creator, chain.id, activePending.requestId))?.metadataUpdateTxPlan ?? [])
     if (resolvedTxPlan.length === 0) {
       throw new Error('Metadata update tx plan is missing.')
     }
@@ -722,7 +737,7 @@ async function runSync() {
 
   let processed = 0
   let failed = 0
-  const errors: Array<{ jobId: string, message: string }> = []
+  const errors: Array<{ jobId: string; message: string }> = []
 
   if (pendingJobs.length === 0) {
     return {
@@ -745,8 +760,7 @@ async function runSync() {
     try {
       await processClaimedJob(claimed, defaultChainId)
       processed += 1
-    }
-    catch (error) {
+    } catch (error) {
       failed += 1
       const errorMessage = truncateEventCreationError(error)
       errors.push({
@@ -796,10 +810,14 @@ async function handleRequest(request: Request) {
     request,
     jobName: 'event-creation-sync',
     handler: runSync,
-    onError: error => buildCronJsonResponse({
-      success: false,
-      error: truncateEventCreationError(error),
-    }, 500),
+    onError: (error) =>
+      buildCronJsonResponse(
+        {
+          success: false,
+          error: truncateEventCreationError(error),
+        },
+        500,
+      ),
   })
 }
 

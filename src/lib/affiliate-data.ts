@@ -1,4 +1,4 @@
-import { formatCurrency, formatPercent } from '@/lib/formatters'
+import { formatPercent } from '@/lib/formatters'
 
 interface AffiliateSettingsResponse {
   builderTakerFeePercent: number
@@ -22,9 +22,9 @@ export interface AffiliateDataError {
   error: string
 }
 
-export type AffiliateDataResult
-  = | { success: true, data: FormattedAffiliateSettings }
-    | { success: false, error: AffiliateDataError }
+export type AffiliateDataResult =
+  | { success: true; data: FormattedAffiliateSettings }
+  | { success: false; error: AffiliateDataError }
 
 export async function fetchAffiliateSettingsFromAPI(): Promise<AffiliateDataResult> {
   try {
@@ -61,8 +61,7 @@ export async function fetchAffiliateSettingsFromAPI(): Promise<AffiliateDataResu
       success: true,
       data: formattedData,
     }
-  }
-  catch (error) {
+  } catch (error) {
     console.error('Error fetching affiliate settings from API:', error)
     return {
       success: false,
@@ -73,10 +72,6 @@ export async function fetchAffiliateSettingsFromAPI(): Promise<AffiliateDataResu
   }
 }
 
-export function calculateTradingFee(amount: number, feeDecimal: number): number {
-  return amount * feeDecimal
-}
-
 export function calculateAffiliateCommission(feeAmount: number, affiliateShareDecimal: number): number {
   return feeAmount * affiliateShareDecimal
 }
@@ -85,21 +80,12 @@ export function calculateOperatorShare(feeAmount: number, operatorShareDecimal: 
   return feeAmount * operatorShareDecimal
 }
 
-export function createFeeCalculationExample(
-  tradeAmount: number,
-  affiliateSettings: FormattedAffiliateSettings,
-) {
-  const operatorTakerFee = calculateTradingFee(tradeAmount, affiliateSettings.builderTakerFeeDecimal)
-  const affiliateCommission = calculateAffiliateCommission(operatorTakerFee, affiliateSettings.affiliateShareDecimal)
-  const operatorShare = calculateOperatorShare(operatorTakerFee, affiliateSettings.operatorShareDecimal)
+export function createTradingFeeRateExample(affiliateSettings: FormattedAffiliateSettings, clobFeeBps: number) {
+  const configuredFeeBps = Math.round(affiliateSettings.builderTakerFeeDecimal * 10_000)
+  const tradingFeeBps = Math.max(0, clobFeeBps) + Math.max(0, configuredFeeBps)
 
   return {
-    tradeAmount: formatCurrency(tradeAmount, { includeSymbol: false }),
-    operatorTakerFee: formatCurrency(operatorTakerFee, { includeSymbol: false }),
-    affiliateCommission: formatCurrency(affiliateCommission, { includeSymbol: false }),
-    operatorShare: formatCurrency(operatorShare, { includeSymbol: false }),
-    builderTakerFeePercent: affiliateSettings.builderTakerFeePercent,
-    affiliateSharePercent: affiliateSettings.affiliateSharePercent,
-    operatorSharePercent: affiliateSettings.operatorSharePercent,
+    tradingFeeBps,
+    tradingFeePercent: formatPercent(tradingFeeBps / 100, { includeSymbol: false }),
   }
 }

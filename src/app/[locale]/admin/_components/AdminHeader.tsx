@@ -48,14 +48,14 @@ function CommandTrigger() {
   )
 }
 
-export default function AdminHeader() {
+export default function AdminHeader({ feeRecipientWallet }: { feeRecipientWallet: string }) {
   const { mobileOpen, setMobileOpen } = useAdminSidebar()
 
   return (
     <header className="sticky top-0 z-30 border-b border-border/60 bg-background/95 backdrop-blur-sm">
       <div className={cn('flex h-15 w-full items-center gap-3 px-4 md:h-16 lg:px-6')}>
         {/* Mobile nav trigger */}
-        <Drawer direction="left" open={mobileOpen} onOpenChange={setMobileOpen}>
+        <Drawer swipeDirection="left" open={mobileOpen} onOpenChange={setMobileOpen}>
           <button
             type="button"
             onClick={() => setMobileOpen(true)}
@@ -84,7 +84,7 @@ export default function AdminHeader() {
 
         <div className="ms-auto flex items-center gap-2 sm:gap-3">
           <CommandTrigger />
-          <AdminHeaderActions />
+          <AdminHeaderActions feeRecipientWallet={feeRecipientWallet} />
         </div>
       </div>
     </header>

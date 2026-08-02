@@ -1,7 +1,9 @@
 import type { NextConfig } from 'next'
+
 import { withSentryConfig } from '@sentry/nextjs'
 import { createMDX } from 'fumadocs-mdx/next'
 import createNextIntlPlugin from 'next-intl/plugin'
+
 import { resolveCommitSha } from '@/lib/git'
 import { getOptimizedImageHostPatterns } from '@/lib/image/image-optimization'
 
@@ -42,14 +44,17 @@ const config: NextConfig = {
     },
     typedEnv: true,
     turbopackRustReactCompiler: true,
+    turbopackFileSystemCacheForBuild: true,
+    useTypeScriptCli: true,
+    inlineCss: true,
   },
   images: {
     unoptimized: process.env.DISABLE_IMAGE_OPTIMIZATION === 'true',
     loader: 'custom',
     loaderFile: './src/lib/image/image-loader.ts',
-    deviceSizes: [256],
+    deviceSizes: [256, 384, 640, 768],
     imageSizes: [16, 20, 24, 32, 36, 40, 42, 44, 48, 56, 64, 96, 128],
-    remotePatterns: optimizedImageHostPatterns.map(hostname => ({
+    remotePatterns: optimizedImageHostPatterns.map((hostname) => ({
       protocol: 'https',
       hostname,
       port: '',
@@ -71,7 +76,7 @@ const config: NextConfig = {
           },
           {
             key: 'Content-Security-Policy',
-            value: 'default-src \'self\'; script-src \'self\'',
+            value: "default-src 'self'; script-src 'self'",
           },
         ],
       },

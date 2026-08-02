@@ -2,10 +2,10 @@
 
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
-import { toast } from 'sonner'
 import { ChevronRight, ChevronLeft, Users, Lock, Globe, Check } from 'lucide-react'
 import { createCommunityAction } from '@/app/[locale]/(platform)/community/[slug]/_actions/community-actions'
 import { getMaxMembersForJurySize } from '@/lib/community-config'
+import { toast } from '@/components/ui/toast'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'

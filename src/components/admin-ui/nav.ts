@@ -9,6 +9,7 @@ import {
   HeartPulseIcon,
   LanguagesIcon,
   LayoutDashboardIcon,
+  PlugIcon,
   RefreshCwIcon,
   SettingsIcon,
   ShieldCheckIcon,
@@ -82,6 +83,7 @@ export const ADMIN_NAV: AdminNavGroup[] = [
     label: 'Configure',
     items: [
       { id: 'general', label: 'General', href: '/admin', icon: SettingsIcon, keywords: ['settings', 'identity', 'branding'] },
+      { id: 'integrations', label: 'Integrations', href: '/admin/integrations', icon: PlugIcon, keywords: ['sumsub', 'kyc', 'meld', 'providers'] },
       { id: 'theme', label: 'Theme', href: '/admin/theme', icon: SwatchBookIcon, keywords: ['colors', 'appearance'] },
       { id: 'locales', label: 'Locales', href: '/admin/locales', icon: LanguagesIcon, keywords: ['languages', 'i18n'] },
       { id: 'categories', label: 'Categories', href: '/admin/categories', icon: TagsIcon, keywords: ['tags'] },

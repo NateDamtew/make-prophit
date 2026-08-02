@@ -204,7 +204,7 @@ function WalletSendForm({
         <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-2">
             <Label>Receive token</Label>
-            <Select value={receiveToken} onValueChange={setReceiveToken}>
+            <Select value={receiveToken} onValueChange={value => setReceiveToken(value ?? '')}>
               <SelectTrigger className="h-12 w-full justify-between">
                 <div className="flex items-center gap-2">
                   {selectedToken && (
@@ -218,7 +218,7 @@ function WalletSendForm({
                   <span className="text-sm font-medium">{selectedToken?.label ?? 'Select token'}</span>
                 </div>
               </SelectTrigger>
-              <SelectContent position="popper" side="bottom" align="start" sideOffset={6}>
+              <SelectContent side="bottom" align="start" sideOffset={6}>
                 {WITHDRAW_TOKEN_OPTIONS.map(option => (
                   <SelectItem key={option.value} value={option.value} disabled={!option.enabled}>
                     <div className="flex items-center gap-2">
@@ -232,7 +232,7 @@ function WalletSendForm({
           </div>
           <div className="space-y-2">
             <Label>Receive chain</Label>
-            <Select value={receiveChain} onValueChange={setReceiveChain}>
+            <Select value={receiveChain} onValueChange={value => setReceiveChain(value ?? '')}>
               <SelectTrigger className="h-12 w-full justify-between">
                 <div className="flex items-center gap-2">
                   {selectedChain && (
@@ -246,7 +246,7 @@ function WalletSendForm({
                   <span className="text-sm font-medium">{selectedChain?.label ?? 'Select chain'}</span>
                 </div>
               </SelectTrigger>
-              <SelectContent position="popper" side="bottom" align="start" sideOffset={6}>
+              <SelectContent side="bottom" align="start" sideOffset={6}>
                 {WITHDRAW_CHAIN_OPTIONS.map(option => (
                   <SelectItem key={option.value} value={option.value} disabled={!option.enabled}>
                     <div className="flex items-center gap-2">
@@ -293,12 +293,10 @@ function WalletSendForm({
               <div className="space-y-2 text-xs text-muted-foreground">
                 <div className="flex items-center justify-between">
                   <Tooltip>
-                    <TooltipTrigger asChild>
-                      <div className="flex items-center gap-2">
+                    <TooltipTrigger render={<div className="flex items-center gap-2" />}>
                         <span>Network cost</span>
                         <InfoIcon className="size-4" />
-                      </div>
-                    </TooltipTrigger>
+                      </TooltipTrigger>
                     <TooltipContent>
                       <div className="space-y-1 text-xs text-foreground">
                         <div className="flex items-center justify-between gap-4">
@@ -323,12 +321,10 @@ function WalletSendForm({
                 </div>
                 <div className="flex items-center justify-between">
                   <Tooltip>
-                    <TooltipTrigger asChild>
-                      <div className="flex items-center gap-2">
+                    <TooltipTrigger render={<div className="flex items-center gap-2" />}>
                         <span>Price impact</span>
                         <InfoIcon className="size-4" />
-                      </div>
-                    </TooltipTrigger>
+                      </TooltipTrigger>
                     <TooltipContent>
                       <div className="space-y-1 text-xs text-foreground">
                         <div className="flex items-center justify-between gap-4">
@@ -350,12 +346,10 @@ function WalletSendForm({
                 </div>
                 <div className="flex items-center justify-between">
                   <Tooltip>
-                    <TooltipTrigger asChild>
-                      <div className="flex items-center gap-2">
+                    <TooltipTrigger render={<div className="flex items-center gap-2" />}>
                         <span>Max slippage</span>
                         <InfoIcon className="size-4" />
-                      </div>
-                    </TooltipTrigger>
+                      </TooltipTrigger>
                     <TooltipContent>
                       Slippage occurs due to price changes during trade execution. Minimum received: $0.00
                     </TooltipContent>

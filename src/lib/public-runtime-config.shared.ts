@@ -51,7 +51,9 @@ export function normalizePublicRuntimeEnvValue(value: string | undefined, fallba
   return normalized && normalized.length > 0 ? normalized : fallback
 }
 
-export function resolvePublicRuntimeEnv(env: NodeJS.ProcessEnv): Omit<PublicRuntimeConfig, 'commitSha' | 'siteUrl'> {
+export function resolvePublicRuntimeEnv(
+  env: Readonly<Partial<NodeJS.ProcessEnv>>,
+): Omit<PublicRuntimeConfig, 'commitSha' | 'siteUrl'> {
   return {
     clobUrl: normalizePublicRuntimeEnvValue(env.CLOB_URL, defaultPublicRuntimeConfig.clobUrl),
     communityUrl: normalizePublicRuntimeEnvValue(env.COMMUNITY_URL, defaultPublicRuntimeConfig.communityUrl),
@@ -63,7 +65,10 @@ export function resolvePublicRuntimeEnv(env: NodeJS.ProcessEnv): Omit<PublicRunt
     isVercel: env.VERCEL_ENV ? 'true' : 'false',
     chainId: parseNetworkChainId(env.CHAIN_ID, defaultPublicRuntimeConfig.chainId),
     polygonRpcUrl: normalizePublicRuntimeEnvValue(env.POLYGON_RPC_URL),
-    priceReferenceUrl: normalizePublicRuntimeEnvValue(env.PRICE_REFERENCE_URL, defaultPublicRuntimeConfig.priceReferenceUrl),
+    priceReferenceUrl: normalizePublicRuntimeEnvValue(
+      env.PRICE_REFERENCE_URL,
+      defaultPublicRuntimeConfig.priceReferenceUrl,
+    ),
     relayerUrl: normalizePublicRuntimeEnvValue(env.RELAYER_URL, defaultPublicRuntimeConfig.relayerUrl),
     reownAppKitProjectId: normalizePublicRuntimeEnvValue(env.REOWN_APPKIT_PROJECT_ID),
     sdkDownloadUrl: normalizePublicRuntimeEnvValue(env.SDK_DOWNLOAD_URL, defaultPublicRuntimeConfig.sdkDownloadUrl),

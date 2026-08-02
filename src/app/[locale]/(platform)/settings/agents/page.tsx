@@ -208,12 +208,10 @@ export default async function AgentsSettingsPage({ params }: AgentsRouteParams) 
               </p>
             </div>
           </div>
-          <Button asChild variant="outline" size="sm" className="w-full sm:w-auto">
-            <Link href="/docs/api-reference/clients-sdks">
+          <Button variant="outline" size="sm" className="w-full sm:w-auto" nativeButton={false} render={<Link href="/docs/api-reference/clients-sdks" />}>
               {t('Open documentation')}
               <ArrowRightIcon className="size-4" />
-            </Link>
-          </Button>
+            </Button>
         </div>
       </div>
     </section>

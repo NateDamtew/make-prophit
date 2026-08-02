@@ -1,20 +1,37 @@
 'use client'
 
 import { useQuery } from '@tanstack/react-query'
+import { TriangleAlertIcon } from 'lucide-react'
 import { useExtracted } from 'next-intl'
 import { useCallback, useMemo } from 'react'
-import { toast } from 'sonner'
-import { createPublicClient, formatUnits, getAddress, http, isAddress } from 'viem'
-import { Button } from '@/components/ui/button'
+import { createPublicClient, formatUnits, getAddress, isAddress } from 'viem'
+
+import { Button, buttonVariants } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import { toast } from '@/components/ui/toast'
 import { useAppKitAccount } from '@/hooks/useAppKitAccount'
 import { useBalance } from '@/hooks/useBalance'
 import { usePublicRuntimeConfig } from '@/hooks/usePublicRuntimeConfig'
+import { Link } from '@/i18n/navigation'
+import { FEE_CLAIM_EXCHANGE_ADDRESSES } from '@/lib/contracts'
+import { baseUnitsToNumber } from '@/lib/data-api/fees'
 import { resolveProposerWhitelistAddress } from '@/lib/proposer-whitelist'
-import { defaultViemNetwork, resolveViemRpcUrl } from '@/lib/viem-network'
+import { cn } from '@/lib/utils'
+import { createViemTransport, defaultViemNetwork, resolveViemRpcUrls } from '@/lib/viem-network'
 import { useUser } from '@/stores/useUser'
 
 const ADMIN_POL_BALANCE_QUERY_KEY = 'admin-eoa-pol-balance'
+const ADMIN_CLAIMABLE_FEES_QUERY_KEY = 'admin-claimable-fees'
+
+const exchangeFeeAbi = [
+  {
+    name: 'claimableFees',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'account', type: 'address' }],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+] as const
 
 function formatAdminBalance(value: number | null | undefined, decimals = 2) {
   if (!Number.isFinite(value)) {
@@ -27,26 +44,31 @@ function formatAdminBalance(value: number | null | undefined, decimals = 2) {
   })
 }
 
-export default function AdminHeaderBalances() {
+export default function AdminHeaderBalances({ feeRecipientWallet }: { feeRecipientWallet: string }) {
   const t = useExtracted()
   const user = useUser()
   const { polygonRpcUrl } = usePublicRuntimeConfig()
-  const rpcUrl = useMemo(() => resolveViemRpcUrl(polygonRpcUrl), [polygonRpcUrl])
+  const rpcUrls = useMemo(() => resolveViemRpcUrls(polygonRpcUrl), [polygonRpcUrl])
   const { address: connectedAddress } = useAppKitAccount()
   const publicClient = useMemo(
-    () => createPublicClient({
-      chain: defaultViemNetwork,
-      transport: http(rpcUrl),
-    }),
-    [rpcUrl],
+    () =>
+      createPublicClient({
+        chain: defaultViemNetwork,
+        transport: createViemTransport(rpcUrls),
+      }),
+    [rpcUrls],
   )
   const eoaAddress = useMemo(
     () => resolveProposerWhitelistAddress(connectedAddress, user?.address),
     [connectedAddress, user?.address],
   )
   const normalizedEoaAddress = useMemo(
-    () => eoaAddress && isAddress(eoaAddress) ? getAddress(eoaAddress) : null,
+    () => (eoaAddress && isAddress(eoaAddress) ? getAddress(eoaAddress) : null),
     [eoaAddress],
+  )
+  const normalizedFeeRecipient = useMemo(
+    () => (isAddress(feeRecipientWallet) ? getAddress(feeRecipientWallet) : null),
+    [feeRecipientWallet],
   )
   const { balance: usdcBalance, isLoadingBalance: isLoadingUsdcBalance } = useBalance({
     enabled: Boolean(normalizedEoaAddress),
@@ -68,6 +90,41 @@ export default function AdminHeaderBalances() {
       return Number(formatUnits(rawBalance, 18))
     },
   })
+  const {
+    data: claimableFees,
+    isError: isClaimableFeesError,
+    isLoading: isLoadingClaimableFees,
+  } = useQuery({
+    queryKey: [ADMIN_CLAIMABLE_FEES_QUERY_KEY, normalizedFeeRecipient],
+    enabled: Boolean(publicClient && normalizedFeeRecipient),
+    staleTime: 30_000,
+    refetchInterval: 30_000,
+    queryFn: async () => {
+      if (!normalizedFeeRecipient) {
+        return 0
+      }
+      const results = await Promise.allSettled(
+        FEE_CLAIM_EXCHANGE_ADDRESSES.map((exchange) =>
+          publicClient.readContract({
+            address: exchange,
+            abi: exchangeFeeAbi,
+            functionName: 'claimableFees',
+            args: [normalizedFeeRecipient],
+          }),
+        ),
+      )
+      const values = results.map((result) => {
+        if (result.status === 'rejected') {
+          throw new Error('Could not read claimable fees from every exchange.', { cause: result.reason })
+        }
+        return result.value
+      })
+      const total = values.reduce((sum, value) => sum + value, 0n)
+      return baseUnitsToNumber(total, 6)
+    },
+  })
+  const isClaimableFeesStale = isClaimableFeesError && claimableFees != null
+  const claimableFeesStaleLabel = t('Last confirmed value; refresh failed.')
 
   const handleCopyEoa = useCallback(async () => {
     if (!normalizedEoaAddress) {
@@ -77,15 +134,14 @@ export default function AdminHeaderBalances() {
     try {
       await navigator.clipboard.writeText(normalizedEoaAddress)
       toast.success(t('EOA wallet copied.'))
-    }
-    catch (error) {
+    } catch (error) {
       console.error('Failed to copy admin EOA wallet address:', error)
       toast.error(t('Could not copy EOA wallet.'))
     }
   }, [normalizedEoaAddress, t])
 
   return (
-    <div className="grid grid-cols-2 gap-x-1">
+    <div className="grid grid-cols-3 gap-x-1">
       <Button
         type="button"
         variant="ghost"
@@ -96,9 +152,7 @@ export default function AdminHeaderBalances() {
       >
         <div className="translate-y-px text-xs/tight font-medium text-muted-foreground">{t('Admin POL')}</div>
         <div className="-translate-y-px text-base/tight font-semibold text-foreground">
-          {isLoadingPolBalance
-            ? <Skeleton className="h-5 w-12" />
-            : formatAdminBalance(polBalance)}
+          {isLoadingPolBalance ? <Skeleton className="h-5 w-12" /> : formatAdminBalance(polBalance)}
         </div>
       </Button>
 
@@ -112,11 +166,36 @@ export default function AdminHeaderBalances() {
       >
         <div className="translate-y-px text-xs/tight font-medium text-muted-foreground">{t('Admin USDC')}</div>
         <div className="-translate-y-px text-base/tight font-semibold text-foreground">
-          {isLoadingUsdcBalance
-            ? <Skeleton className="h-5 w-12" />
-            : formatAdminBalance(usdcBalance.raw)}
+          {isLoadingUsdcBalance ? <Skeleton className="h-5 w-12" /> : formatAdminBalance(usdcBalance.raw)}
         </div>
       </Button>
+
+      <Link
+        href="/admin/affiliate"
+        className={cn(
+          buttonVariants({ variant: 'ghost', size: 'header' }),
+          'flex h-11 flex-col items-center justify-center gap-0.5 rounded-[6px] px-2.5 py-1',
+        )}
+      >
+        <div className="translate-y-px text-xs/tight font-medium text-muted-foreground">{t('Fees')}</div>
+        <div className="-translate-y-px text-base/tight font-semibold text-foreground">
+          {isLoadingClaimableFees ? (
+            <Skeleton className="h-5 w-12" />
+          ) : claimableFees == null ? (
+            '—'
+          ) : (
+            <span className="inline-flex items-center gap-1">
+              {formatAdminBalance(claimableFees)}
+              {isClaimableFeesStale && (
+                <span className="inline-flex text-amber-500 dark:text-amber-400" title={claimableFeesStaleLabel}>
+                  <TriangleAlertIcon className="size-3.5" aria-hidden />
+                  <span className="sr-only">{claimableFeesStaleLabel}</span>
+                </span>
+              )}
+            </span>
+          )}
+        </div>
+      </Link>
     </div>
   )
 }

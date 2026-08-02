@@ -80,57 +80,57 @@ export type HomeFeaturedSource = 'manual' | 'ai'
 export type HomeFeaturedContextMode = 'auto' | 'news' | 'comments' | 'hidden'
 type HomeFeaturedContextItemType = 'news' | 'comment'
 export type HomeFeaturedCardKind = 'neg-risk' | 'sports' | 'standard'
-export type HomeFeaturedSideCardIcon
-  = | 'activity'
-    | 'award'
-    | 'badge-alert'
-    | 'badge-cent'
-    | 'badge-check'
-    | 'badge-dollar-sign'
-    | 'badge-euro'
-    | 'badge-info'
-    | 'badge-japanese-yen'
-    | 'badge-percent'
-    | 'badge-plus'
-    | 'badge-russian-ruble'
-    | 'badge-x'
-    | 'bitcoin'
-    | 'bot'
-    | 'brain'
-    | 'briefcase-business'
-    | 'building-2'
-    | 'calendar-clock'
-    | 'chart-candlestick'
-    | 'chart-line'
-    | 'circle-user-round'
-    | 'clapperboard'
-    | 'cloud-sun'
-    | 'coins'
-    | 'flame'
-    | 'flag'
-    | 'gamepad-2'
-    | 'globe'
-    | 'goal'
-    | 'id-card'
-    | 'landmark'
-    | 'line-chart'
-    | 'map'
-    | 'medal'
-    | 'newspaper'
-    | 'rocket'
-    | 'satellite'
-    | 'scale'
-    | 'shield-check'
-    | 'sparkles'
-    | 'tags'
-    | 'target'
-    | 'ticket-percent'
-    | 'trending-up'
-    | 'trophy'
-    | 'volleyball'
-    | 'vote'
-    | 'wallet'
-    | 'zap'
+export type HomeFeaturedSideCardIcon =
+  | 'activity'
+  | 'award'
+  | 'badge-alert'
+  | 'badge-cent'
+  | 'badge-check'
+  | 'badge-dollar-sign'
+  | 'badge-euro'
+  | 'badge-info'
+  | 'badge-japanese-yen'
+  | 'badge-percent'
+  | 'badge-plus'
+  | 'badge-russian-ruble'
+  | 'badge-x'
+  | 'bitcoin'
+  | 'bot'
+  | 'brain'
+  | 'briefcase-business'
+  | 'building-2'
+  | 'calendar-clock'
+  | 'chart-candlestick'
+  | 'chart-line'
+  | 'circle-user-round'
+  | 'clapperboard'
+  | 'cloud-sun'
+  | 'coins'
+  | 'flame'
+  | 'flag'
+  | 'gamepad-2'
+  | 'globe'
+  | 'goal'
+  | 'id-card'
+  | 'landmark'
+  | 'line-chart'
+  | 'map'
+  | 'medal'
+  | 'newspaper'
+  | 'rocket'
+  | 'satellite'
+  | 'scale'
+  | 'shield-check'
+  | 'sparkles'
+  | 'tags'
+  | 'target'
+  | 'ticket-percent'
+  | 'trending-up'
+  | 'trophy'
+  | 'volleyball'
+  | 'vote'
+  | 'wallet'
+  | 'zap'
 
 export interface HomeFeaturedEventAdminItem {
   id?: string
@@ -156,6 +156,7 @@ export interface HomeFeaturedContextItem {
   source: string
   title: string
   avatarUrl: string | null
+  avatarSeed?: string | null
   faviconUrl: string | null
   url: string | null
   publishedAt: string | null
@@ -334,6 +335,7 @@ export interface Outcome {
   is_winning_outcome: boolean
   payout_value?: number
   buy_price?: number
+  last_trade_price?: number
   sell_price?: number
   created_at: string
   updated_at: string
@@ -464,15 +466,7 @@ export interface Comment {
 
 type NotificationCategory = 'trade' | 'system' | 'general'
 
-type NotificationLinkType
-  = | 'none'
-    | 'market'
-    | 'event'
-    | 'order'
-    | 'settings'
-    | 'profile'
-    | 'external'
-    | 'custom'
+type NotificationLinkType = 'none' | 'market' | 'event' | 'order' | 'settings' | 'profile' | 'external' | 'custom'
 
 export interface Notification {
   id: string
@@ -574,9 +568,7 @@ export interface UserOpenOrder {
   }
 }
 
-export type QueryResult<T>
-  = | { data: T, error: null }
-    | { data: null, error: string }
+export type QueryResult<T> = { data: T; error: null } | { data: null; error: string }
 
 export interface SearchResultItems {
   events: Event[]

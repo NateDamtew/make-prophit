@@ -1,8 +1,10 @@
 'use client'
 
 import type { ComponentProps } from 'react'
+
 import { InfoIcon } from 'lucide-react'
 import { useExtracted } from 'next-intl'
+
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 
@@ -43,21 +45,19 @@ export function PositionValueCell({
           costClassName,
         )}
       >
-        <span>
-          {costLabel
-            ? t('Cost {amount}', { amount: costLabel })
-            : t('Cost —')}
-        </span>
+        <span>{costLabel ? t('Cost {amount}', { amount: costLabel }) : t('Cost —')}</span>
         <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              type="button"
-              className="inline-flex size-3.5 items-center justify-center text-muted-foreground hover:text-foreground"
-              aria-label={t('Cost includes trading fees')}
-            >
-              <InfoIcon className="size-3" aria-hidden />
-            </button>
-          </TooltipTrigger>
+          <TooltipTrigger
+            render={
+              <button
+                type="button"
+                className="inline-flex size-3.5 items-center justify-center text-muted-foreground hover:text-foreground"
+                aria-label={t('Cost includes trading fees')}
+              >
+                <InfoIcon className="size-3" aria-hidden />
+              </button>
+            }
+          />
           <TooltipContent side="top" className="max-w-48 text-xs normal-case">
             {t('Cost includes trading fees paid on fills.')}
           </TooltipContent>
@@ -78,11 +78,7 @@ export function PositionReturnSummary({
   ...spanProps
 }: PositionReturnSummaryProps) {
   return (
-    <span
-      ref={ref}
-      {...spanProps}
-      className={cn('inline-flex flex-wrap items-center gap-1', className)}
-    >
+    <span ref={ref} {...spanProps} className={cn('inline-flex flex-wrap items-center gap-1', className)}>
       <span
         className={cn(
           'inline-flex items-center',
@@ -92,13 +88,7 @@ export function PositionReturnSummary({
       >
         {valueLabel}
       </span>
-      {percentLabel && (
-        <span className={percentClassName}>
-          (
-          {percentLabel}
-          )
-        </span>
-      )}
+      {percentLabel && <span className={percentClassName}>({percentLabel})</span>}
     </span>
   )
 }

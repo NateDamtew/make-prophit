@@ -2,22 +2,25 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   getPublicAssetUrl: vi.fn((path: string) => `https://assets.example/${path}`),
-  getUserPublicAddress: vi.fn((user: { deposit_wallet_address?: string | null, address?: string | null }) => user.deposit_wallet_address || user.address || ''),
+  getUserPublicAddress: vi.fn(
+    (user: { deposit_wallet_address?: string | null; address?: string | null }) =>
+      user.deposit_wallet_address || user.address || '',
+  ),
   searchPublicProfiles: vi.fn(),
 }))
 
 vi.mock('@/lib/db/queries/user', () => ({
   UserRepository: {
-    searchPublicProfiles: (...args: any[]) => mocks.searchPublicProfiles(...args),
+    searchPublicProfiles: mocks.searchPublicProfiles,
   },
 }))
 
 vi.mock('@/lib/storage', () => ({
-  getPublicAssetUrl: (...args: any[]) => mocks.getPublicAssetUrl(...args),
+  getPublicAssetUrl: mocks.getPublicAssetUrl,
 }))
 
 vi.mock('@/lib/user-address', () => ({
-  getUserPublicAddress: (...args: any[]) => mocks.getUserPublicAddress(...args),
+  getUserPublicAddress: mocks.getUserPublicAddress,
 }))
 
 const { GET } = await import('@/app/api/users/route')

@@ -1,23 +1,32 @@
 ---
 title: Fee Examples
-description: Practical examples using the live trading-fee configuration
+description: Apply the site's live fee rate to common order flows
 ---
 
-## Example A: market buy
+Actual fees are calculated from execution price and filled quantity, not from unfilled
+order quantity.
 
-A $100 notional market buy applies the current taker fee rate of <TradingFeeDisplay />.
+## Market buy
 
-<FeeCalculationExample amount={100} />
+Enter the outcome token ID to load the complete live rate for the market:
 
-## Example B: limit order with partial fills
+<TradingFeeLookup />
 
-If a $300 limit order fills in 3 parts, each fill is charged separately and the final fee is the sum of all fills.
+Use the order preview for the estimated dollar amount. A rate parameter should not be
+applied as a flat percentage of the entered order amount.
 
-## Example C: affiliate-attributed trade
+## Partially filled limit order
 
-When a referral is present, the fee is split automatically:
+Suppose a Limit order fills in three separate trades. Each fill is charged from its
+execution price and quantity, and the final fee is the sum of those entries. Unfilled
+quantity does not incur a fee.
 
-- Affiliate share: <AffiliateShareDisplay />
-- Operator share: <PlatformShareDisplay />
+## Affiliate-attributed trade
 
-<FeeCalculationExample amount={300} />
+When an order carries a valid referral, the trader pays the same fee. Eligible affiliate
+commission is tracked automatically at the site's current rate.
+
+<Callout type="info">
+  Always use the order preview and completed history as the source of truth. Fee schedules can vary by market and change
+  over time.
+</Callout>

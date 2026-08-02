@@ -1,7 +1,10 @@
 import { getExtracted, setRequestLocale } from 'next-intl/server'
 import { Suspense } from 'react'
+
 import AdminCategoriesTable from '@/app/[locale]/admin/categories/_components/AdminCategoriesTable'
 import { Skeleton } from '@/components/ui/skeleton'
+
+export const instant = false
 
 function AdminCategoriesTableFallback() {
   return (

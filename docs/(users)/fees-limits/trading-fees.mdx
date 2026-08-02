@@ -1,37 +1,33 @@
 ---
 title: Trading Fees
-description: How fees are calculated and where to verify them in the UI
+description: See when fees apply and where to verify the amount
 ---
 
-## Current operator fee
+Trading fees vary by market and are applied automatically when an order fills. The order
+preview shows the estimated amount before you sign.
 
-- Current configured taker rate: <strong><TradingFeeDisplay /></strong>
-- Source: live affiliate settings configured by the platform admin
-- Display: fee estimate appears in the order flow before you submit
+## Current fee rate
 
-<Callout type="info" title="Fee formula">
-  Operator taker fee (USDC) = order notional × <TradingFeeDisplay />.
-</Callout>
+Enter an outcome token ID to load the complete rate currently used for that market:
 
-## Market vs limit orders
+<TradingFeeLookup />
 
-- <strong>Market orders</strong> execute immediately and apply the configured taker fee.
-- <strong>Limit orders</strong> apply maker or taker fees when fills happen.
-- There is no guaranteed maker rebate in this platform flow unless explicitly configured.
+The displayed percentage is a rate parameter, not a flat percentage of the order
+notional. The final fee depends on the execution price and filled quantity.
 
-## Affiliate split
+## Market and limit orders
 
-When a valid referral is attached to the order:
+- **Market orders** execute as taker orders and use the market's live fee schedule.
+- **Limit orders** incur the applicable maker or taker fee when each fill occurs.
+- A partially filled order can produce several fee entries, one for each fill.
+- A maker rebate applies only when the site has explicitly configured one.
 
-- Affiliate receives: <strong><AffiliateShareDisplay /></strong> of operator fee
-- Operator retains: <strong><PlatformShareDisplay /></strong> of operator fee
+## Affiliate attribution
 
-If no referral is attached, the operator retains the full fee.
+A valid referral does not change the fee paid by the trader. Eligible commission is
+tracked separately using the site's current affiliate rate.
 
-<FeeCalculationExample amount={100} />
+## Verify a fee
 
-## Where to confirm fee amounts
-
-- Order preview (before signing)
-- Portfolio history after fill
-- Affiliate settings/dashboard for commission context
+Check the order preview before signing and **Portfolio → History** after execution. The
+live values shown by the site take precedence over examples in this guide.

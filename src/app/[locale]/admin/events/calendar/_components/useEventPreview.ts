@@ -1,6 +1,9 @@
-import type { EventCreationMode, FormState } from './admin-create-event-form-types'
+import { useExtracted, useLocale } from 'next-intl'
 import { useMemo } from 'react'
+
 import { normalizeDateTimeLocalValue } from '@/lib/datetime-local'
+
+import type { EventCreationMode, FormState } from './admin-create-event-form-types'
 
 export function useEventPreview({
   creationMode,
@@ -23,27 +26,31 @@ export function useEventPreview({
   recurringResolvedTitle: string
   titleTemplate: string
 }) {
+  const t = useExtracted()
+  const locale = useLocale()
   const previewEndDate = useMemo(() => {
     const normalizedEndDate = normalizeDateTimeLocalValue(form.endDateIso)
     if (!normalizedEndDate) {
-      return 'Resolution date not set'
+      return t('Resolution date not set')
     }
     const parsed = new Date(normalizedEndDate)
     if (Number.isNaN(parsed.getTime())) {
       return normalizedEndDate
     }
-    return parsed.toLocaleString()
-  }, [form.endDateIso])
+    return parsed.toLocaleString(locale)
+  }, [form.endDateIso, locale, t])
   const previewTitle = useMemo(
-    () => creationMode === 'recurring'
-      ? (recurringResolvedTitle || titleTemplate.trim() || 'Untitled event')
-      : (form.title || 'Untitled event'),
-    [creationMode, form.title, recurringResolvedTitle, titleTemplate],
+    () =>
+      creationMode === 'recurring'
+        ? recurringResolvedTitle || titleTemplate.trim() || t('Untitled event')
+        : form.title || t('Untitled event'),
+    [creationMode, form.title, recurringResolvedTitle, t, titleTemplate],
   )
   const previewSlug = useMemo(
-    () => creationMode === 'recurring'
-      ? (recurringResolvedSlug || effectiveRecurringSlugTemplate || 'event-slug')
-      : (form.slug || 'event-slug'),
+    () =>
+      creationMode === 'recurring'
+        ? recurringResolvedSlug || effectiveRecurringSlugTemplate || 'event-slug'
+        : form.slug || 'event-slug',
     [creationMode, effectiveRecurringSlugTemplate, form.slug, recurringResolvedSlug],
   )
   const previewMarkets = useMemo(() => {
@@ -84,14 +91,8 @@ export function useEventPreview({
     optionImagePreviewUrls,
     previewTitle,
   ])
-  const tradePreviewMarket = useMemo(
-    () => previewMarkets[0] ?? null,
-    [previewMarkets],
-  )
-  const previewEventUrl = useMemo(
-    () => `${previewSiteOrigin}/event/${previewSlug}`,
-    [previewSiteOrigin, previewSlug],
-  )
+  const tradePreviewMarket = useMemo(() => previewMarkets[0] ?? null, [previewMarkets])
+  const previewEventUrl = useMemo(() => `${previewSiteOrigin}/event/${previewSlug}`, [previewSiteOrigin, previewSlug])
   const isMultiMarketPreview = form.marketMode === 'multi_multiple' || form.marketMode === 'multi_unique'
 
   return {

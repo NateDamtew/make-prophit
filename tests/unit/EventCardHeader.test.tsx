@@ -1,18 +1,28 @@
-import type { AnchorHTMLAttributes } from 'react'
+import type { AnchorHTMLAttributes, ReactNode } from 'react'
+
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
+
 import EventCardHeader from '@/app/[locale]/(platform)/(home)/_components/EventCardHeader'
+
+vi.mock('react', async (importOriginal) => {
+  const react = await importOriginal<typeof import('react')>()
+
+  return {
+    ...react,
+    ViewTransition: function MockViewTransition({ children }: { children?: ReactNode }) {
+      return <>{children}</>
+    },
+  }
+})
 
 vi.mock('next-intl', () => ({
   useExtracted: () => (message: string) => message,
+  useLocale: () => 'en',
 }))
 
 vi.mock('@/i18n/navigation', () => ({
-  Link: function MockLink({
-    children,
-    href,
-    ...props
-  }: AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }) {
+  Link: function MockLink({ children, href, ...props }: AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }) {
     return (
       <a href={href} {...props}>
         {children}
@@ -45,27 +55,37 @@ const EVENT = {
 } as any
 
 describe('eventCardHeader', () => {
-  it('shows an unavailable chance label for single-market cards without displayable volume', () => {
+  it('clamps multi-market event titles to two lines', () => {
+    render(
+      <EventCardHeader event={EVENT} title={EVENT.title} isSingleMarket={false} roundedPrimaryDisplayChance={null} />,
+    )
+
+    expect(screen.getByRole('heading', { name: EVENT.title })).toHaveClass('line-clamp-2')
+  })
+
+  it('hides the chance block for single-market cards without quotes or trades', () => {
     render(
       <EventCardHeader
         event={EVENT}
         title={EVENT.title}
         isSingleMarket
-        primaryMarket={{
-          ...EVENT.markets[0],
-          volume: 0,
-          volume_24h: 0,
-          outcomes: [],
-          condition: {
-            resolved: false,
+        primaryMarket={
+          {
+            ...EVENT.markets[0],
             volume: 0,
-          },
-        } as any}
+            volume_24h: 0,
+            outcomes: [],
+            condition: {
+              resolved: false,
+              volume: 0,
+            },
+          } as any
+        }
         roundedPrimaryDisplayChance={null}
       />,
     )
 
-    expect(screen.getByText('—')).toBeInTheDocument()
-    expect(screen.getByText('chance')).toBeInTheDocument()
+    expect(screen.queryByText('—')).not.toBeInTheDocument()
+    expect(screen.queryByText('chance')).not.toBeInTheDocument()
   })
 })

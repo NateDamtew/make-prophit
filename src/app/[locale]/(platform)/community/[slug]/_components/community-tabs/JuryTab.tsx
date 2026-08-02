@@ -3,7 +3,7 @@
 import type { CommunityMarketSummary, CommunityMemberSummary, CommunitySummary } from './types'
 import { Gavel } from 'lucide-react'
 import { useState, useTransition } from 'react'
-import { toast } from 'sonner'
+import { toast } from '@/components/ui/toast'
 import { Button } from '@/components/ui/button'
 import { castJuryVoteAction } from '../../_actions/community-actions'
 import { VoteButton } from './shared'

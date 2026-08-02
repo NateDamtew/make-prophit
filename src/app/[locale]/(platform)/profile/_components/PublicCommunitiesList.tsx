@@ -104,18 +104,14 @@ function StatsBar({ communities }: { communities: CommunityListItem[] }) {
 function ActionButtons() {
   return (
     <div className="flex gap-2">
-      <Button asChild className="flex-1">
-        <Link href={'/communities/new' as any}>
+      <Button className="flex-1" nativeButton={false} render={<Link href={'/communities/new' as any} />}>
           <Plus className="mr-1.5 size-4" />
           Create Community
-        </Link>
-      </Button>
-      <Button asChild variant="outline" className="flex-1">
-        <Link href={'/communities' as any}>
+        </Button>
+      <Button variant="outline" className="flex-1" nativeButton={false} render={<Link href={'/communities' as any} />}>
           <Compass className="mr-1.5 size-4" />
           Explore
-        </Link>
-      </Button>
+        </Button>
     </div>
   )
 }

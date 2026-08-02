@@ -1,19 +1,22 @@
 import type { Route } from 'next'
-import type { Event, PublicProfile, SearchLoadingStates, SearchResultItems } from '@/types'
-import { ArrowRightIcon, LoaderIcon } from 'lucide-react'
+
+import { ArrowRightIcon } from 'lucide-react'
 import { useExtracted } from 'next-intl'
+
+import type { Event, PublicProfile, SearchLoadingStates, SearchResultItems } from '@/types'
+
 import { usePlatformNavigationData } from '@/app/[locale]/(platform)/_providers/PlatformNavigationProvider'
 import EventIconImage from '@/components/EventIconImage'
 import ProfileLink from '@/components/ProfileLink'
 import { buttonVariants } from '@/components/ui/button'
+import { Spinner } from '@/components/ui/spinner'
+import { Tabs, TabsContent } from '@/components/ui/tabs'
 import { saveRecentSearchEvent } from '@/hooks/useRecentSearchEvents'
 import { Link } from '@/i18n/navigation'
 import { resolveEventPagePath } from '@/lib/events-routing'
-import {
-  buildSearchCategoryMatches,
-  resolvePredictionResultsHref,
-} from '@/lib/prediction-search'
+import { buildSearchCategoryMatches, resolvePredictionResultsHref } from '@/lib/prediction-search'
 import { cn } from '@/lib/utils'
+
 import { SearchTabs } from './SearchTabs'
 
 const EVENT_RESULTS_DROPDOWN_LIMIT = 5
@@ -42,24 +45,21 @@ export function SearchResults({
 
   const showTabs = query.length >= 2
 
-  if ((isLoading.events && isLoading.profiles) && events.length === 0 && profiles.length === 0) {
+  if (isLoading.events && isLoading.profiles && events.length === 0 && profiles.length === 0) {
     return (
-      <div className={cn(`
-        absolute inset-x-0 top-full z-50 mt-0 w-full rounded-lg rounded-t-none border border-t-0 bg-background shadow-lg
-      `)}
-      >
-        {showTabs && (
-          <SearchTabs
-            activeTab={activeTab}
-            onTabChange={onTabChange}
-            isLoading={isLoading}
-          />
+      <Tabs
+        value={activeTab}
+        onValueChange={(value) => onTabChange(value as 'events' | 'profiles')}
+        className={cn(
+          `absolute inset-x-0 top-full z-50 mt-0 w-full rounded-lg rounded-t-none border border-t-0 bg-background shadow-lg`,
         )}
-        <div className="flex items-center justify-center p-4">
-          <LoaderIcon className="size-4 animate-spin text-muted-foreground" />
+      >
+        {showTabs && <SearchTabs activeTab={activeTab} isLoading={isLoading} />}
+        <TabsContent value={activeTab} className="mt-0 flex items-center justify-center p-4">
+          <Spinner className="size-4 text-muted-foreground" />
           <span className="ml-2 text-sm text-muted-foreground">{t('Searching...')}</span>
-        </div>
-      </div>
+        </TabsContent>
+      </Tabs>
     )
   }
 
@@ -68,54 +68,44 @@ export function SearchResults({
   }
 
   return (
-    <div
+    <Tabs
+      value={activeTab}
+      onValueChange={(value) => onTabChange(value as 'events' | 'profiles')}
       data-testid="search-results"
-      className={cn(`
-        absolute inset-x-0 top-full z-50 mt-0 rounded-lg rounded-t-none border border-t-0 bg-background shadow-lg
-      `)}
-    >
-      {showTabs && (
-        <SearchTabs
-          activeTab={activeTab}
-          onTabChange={onTabChange}
-          isLoading={isLoading}
-        />
+      className={cn(
+        `absolute inset-x-0 top-full z-50 mt-0 rounded-lg rounded-t-none border border-t-0 bg-background shadow-lg`,
       )}
+    >
+      {showTabs && <SearchTabs activeTab={activeTab} isLoading={isLoading} />}
 
       <div className="max-h-96 overflow-y-auto">
-        {activeTab === 'events' && (
-          <div id="events-panel" role="tabpanel" aria-labelledby="events-tab">
-            {isLoading.events && events.length === 0
-              ? (
-                  <div className="flex items-center justify-center p-4">
-                    <LoaderIcon className="size-4 animate-spin text-muted-foreground" />
-                    <span className="ml-2 text-sm text-muted-foreground">{t('Searching events...')}</span>
-                  </div>
-                )
-              : (
-                  <EventResults
-                    events={events}
-                    query={query}
-                    isLoading={isLoading.events}
-                    onHrefNavigate={onHrefNavigate}
-                    onResultClick={onResultClick}
-                  />
-                )}
-          </div>
-        )}
-
-        {activeTab === 'profiles' && (
-          <div id="profiles-panel" role="tabpanel" aria-labelledby="profiles-tab">
-            <ProfileResults
-              profiles={profiles}
-              isLoading={isLoading.profiles}
+        <TabsContent value="events" className="mt-0">
+          {isLoading.events && events.length === 0 ? (
+            <div className="flex items-center justify-center p-4">
+              <Spinner className="size-4 text-muted-foreground" />
+              <span className="ml-2 text-sm text-muted-foreground">{t('Searching events...')}</span>
+            </div>
+          ) : (
+            <EventResults
+              events={events}
               query={query}
+              isLoading={isLoading.events}
+              onHrefNavigate={onHrefNavigate}
               onResultClick={onResultClick}
             />
-          </div>
-        )}
+          )}
+        </TabsContent>
+
+        <TabsContent value="profiles" className="mt-0">
+          <ProfileResults
+            profiles={profiles}
+            isLoading={isLoading.profiles}
+            query={query}
+            onResultClick={onResultClick}
+          />
+        </TabsContent>
       </div>
-    </div>
+    </Tabs>
   )
 }
 
@@ -127,13 +117,7 @@ interface EventResultsProps {
   onResultClick: () => void
 }
 
-function EventResults({
-  events,
-  query,
-  isLoading,
-  onHrefNavigate,
-  onResultClick,
-}: EventResultsProps) {
+function EventResults({ events, query, isLoading, onHrefNavigate, onResultClick }: EventResultsProps) {
   const t = useExtracted()
   const { tags } = usePlatformNavigationData()
   const categories = buildSearchCategoryMatches(tags, query)
@@ -150,47 +134,39 @@ function EventResults({
   }
 
   if (events.length === 0 && categories.length === 0 && !allResultsHref && !isLoading && query.length >= 2) {
-    return (
-      <div className="p-4 text-center text-sm text-muted-foreground">
-        {t('No events found')}
-      </div>
-    )
+    return <div className="p-4 text-center text-sm text-muted-foreground">{t('No events found')}</div>
   }
 
   return (
     <div className="flex flex-col">
       {categories.length > 0 && (
         <div className="flex flex-wrap gap-2 border-b px-3 py-2">
-          {categories.map(category => (
-            onHrefNavigate
-              ? (
-                  <button
-                    key={category.href}
-                    type="button"
-                    onClick={() => navigateToHref(category.href as Route)}
-                    className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'rounded-lg')}
-                  >
-                    <span className="truncate">{category.label}</span>
-                  </button>
-                )
-              : (
-                  <Link
-                    key={category.href}
-                    href={category.href}
-                    onClick={onResultClick}
-                    className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), `rounded-lg`)}
-                  >
-                    <span className="truncate">{category.label}</span>
-                  </Link>
-                )
-          ))}
+          {categories.map((category) =>
+            onHrefNavigate ? (
+              <button
+                key={category.href}
+                type="button"
+                onClick={() => navigateToHref(category.href as Route)}
+                className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'rounded-lg')}
+              >
+                <span className="truncate">{category.label}</span>
+              </button>
+            ) : (
+              <Link
+                key={category.href}
+                href={category.href}
+                onClick={onResultClick}
+                className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), `rounded-lg`)}
+              >
+                <span className="truncate">{category.label}</span>
+              </Link>
+            ),
+          )}
         </div>
       )}
 
       {events.length === 0 && !isLoading && query.length >= 2 && (
-        <div className="p-4 text-center text-sm text-muted-foreground">
-          {t('No events found')}
-        </div>
+        <div className="p-4 text-center text-sm text-muted-foreground">{t('No events found')}</div>
       )}
 
       {visibleEvents.map((result) => {
@@ -219,9 +195,11 @@ function EventResults({
               </div>
 
               <div className="min-w-0 flex-1">
-                <h3 className={cn('truncate text-sm font-medium', isResolvedEvent
-                  ? 'text-muted-foreground'
-                  : `text-foreground`)}
+                <h3
+                  className={cn(
+                    'truncate text-sm font-medium',
+                    isResolvedEvent ? 'text-muted-foreground' : `text-foreground`,
+                  )}
                 >
                   {result.title}
                 </h3>
@@ -230,81 +208,69 @@ function EventResults({
 
             <div className="flex flex-col items-end text-right">
               <span className={cn('text-lg font-bold', isResolvedEvent ? 'text-muted-foreground' : 'text-foreground')}>
-                {result.markets[0].probability.toFixed(0)}
-                %
+                {result.markets[0].probability.toFixed(0)}%
               </span>
             </div>
           </>
         )
 
-        return onHrefNavigate
-          ? (
-              <button
-                key={`${result.id}-${result.slug}`}
-                type="button"
-                onClick={() => {
-                  persistRecentEvent()
-                  navigateToHref(eventHref)
-                }}
-                data-testid="search-result-item"
-                className={cn(
-                  'flex w-full items-center justify-between p-3 text-left transition-colors hover:bg-accent',
-                  { 'last:rounded-b-lg': !allResultsHref },
-                )}
-              >
-                {resultContent}
-              </button>
-            )
-          : (
-              <Link
-                key={`${result.id}-${result.slug}`}
-                href={eventHref}
-                onClick={() => {
-                  persistRecentEvent()
-                  onResultClick()
-                }}
-                data-testid="search-result-item"
-                className={cn(
-                  'flex items-center justify-between p-3 transition-colors hover:bg-accent',
-                  { 'last:rounded-b-lg': !allResultsHref },
-                )}
-              >
-                {resultContent}
-              </Link>
-            )
+        return onHrefNavigate ? (
+          <button
+            key={`${result.id}-${result.slug}`}
+            type="button"
+            onClick={() => {
+              persistRecentEvent()
+              navigateToHref(eventHref)
+            }}
+            data-testid="search-result-item"
+            className={cn('flex w-full items-center justify-between p-3 text-left transition-colors hover:bg-accent', {
+              'last:rounded-b-lg': !allResultsHref,
+            })}
+          >
+            {resultContent}
+          </button>
+        ) : (
+          <Link
+            key={`${result.id}-${result.slug}`}
+            href={eventHref}
+            onClick={() => {
+              persistRecentEvent()
+              onResultClick()
+            }}
+            data-testid="search-result-item"
+            className={cn('flex items-center justify-between p-3 transition-colors hover:bg-accent', {
+              'last:rounded-b-lg': !allResultsHref,
+            })}
+          >
+            {resultContent}
+          </Link>
+        )
       })}
 
-      {allResultsHref && (
-        onHrefNavigate
-          ? (
-              <button
-                type="button"
-                onClick={() => navigateToHref(allResultsHref)}
-                className={cn(`
-                  flex w-full items-center justify-between gap-2 rounded-b-lg border-t p-3 text-left text-sm font-medium
-                  text-primary transition-colors
-                  hover:bg-accent hover:text-primary
-                `)}
-              >
-                <span>{t('See all results')}</span>
-                <ArrowRightIcon className="size-4" />
-              </button>
-            )
-          : (
-              <Link
-                href={allResultsHref}
-                onClick={onResultClick}
-                className={cn(`
-                  flex items-center justify-between gap-2 rounded-b-lg border-t p-3 text-sm font-medium text-primary
-                  transition-colors
-                  hover:bg-accent hover:text-primary
-                `)}
-              >
-                <span>{t('See all results')}</span>
-                <ArrowRightIcon className="size-4" />
-              </Link>
-            )
-      )}
+      {allResultsHref &&
+        (onHrefNavigate ? (
+          <button
+            type="button"
+            onClick={() => navigateToHref(allResultsHref)}
+            className={cn(
+              `flex w-full items-center justify-between gap-2 rounded-b-lg border-t p-3 text-left text-sm font-medium text-primary transition-colors hover:bg-accent hover:text-primary`,
+            )}
+          >
+            <span>{t('See all results')}</span>
+            <ArrowRightIcon className="size-4" />
+          </button>
+        ) : (
+          <Link
+            href={allResultsHref}
+            onClick={onResultClick}
+            className={cn(
+              `flex items-center justify-between gap-2 rounded-b-lg border-t p-3 text-sm font-medium text-primary transition-colors hover:bg-accent hover:text-primary`,
+            )}
+          >
+            <span>{t('See all results')}</span>
+            <ArrowRightIcon className="size-4" />
+          </Link>
+        ))}
     </div>
   )
 }
@@ -316,24 +282,27 @@ interface ProfileResultsProps {
   onResultClick: () => void
 }
 
+function formatProfileJoinedAt(value: unknown) {
+  if (value instanceof Date) {
+    return value.toISOString()
+  }
+  return typeof value === 'string' ? value : ''
+}
+
 function ProfileResults({ profiles, isLoading, query, onResultClick }: ProfileResultsProps) {
   const t = useExtracted()
 
   if (isLoading) {
     return (
       <div className="flex items-center justify-center p-4">
-        <LoaderIcon className="size-4 animate-spin text-muted-foreground" />
+        <Spinner className="size-4 text-muted-foreground" />
         <span className="ml-2 text-sm text-muted-foreground">{t('Searching...')}</span>
       </div>
     )
   }
 
   if (profiles.length === 0 && query.length >= 2) {
-    return (
-      <div className="p-4 text-center text-sm text-muted-foreground">
-        {t('No profiles found')}
-      </div>
-    )
+    return <div className="p-4 text-center text-sm text-muted-foreground">{t('No profiles found')}</div>
   }
 
   if (profiles.length === 0) {
@@ -342,7 +311,7 @@ function ProfileResults({ profiles, isLoading, query, onResultClick }: ProfileRe
 
   return (
     <div className="max-h-96 overflow-y-auto">
-      {profiles.map(profile => (
+      {profiles.map((profile) => (
         <div
           key={`${profile.address}-${profile.username}`}
           onClick={onResultClick}
@@ -355,7 +324,7 @@ function ProfileResults({ profiles, isLoading, query, onResultClick }: ProfileRe
               username: profile.username,
               image: profile.image,
             }}
-            joinedAt={`${profile.created_at}`}
+            joinedAt={formatProfileJoinedAt(profile.created_at)}
           />
         </div>
       ))}

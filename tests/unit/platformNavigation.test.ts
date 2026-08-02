@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+
 import {
   buildChildParentMap,
   buildPlatformNavigationTags,
@@ -15,7 +16,9 @@ describe('platform navigation helpers', () => {
       newLabel: 'New',
       communitiesLabel: 'Communities',
       globalChilds: [{ slug: 'ukraine', name: 'Ukraine', count: 9 }],
-      mainTags: [{ slug: 'geopolitics', name: 'Geopolitics', childs: [{ slug: 'ukraine', name: 'Ukraine', count: 9 }] }],
+      mainTags: [
+        { slug: 'geopolitics', name: 'Geopolitics', childs: [{ slug: 'ukraine', name: 'Ukraine', count: 9 }] },
+      ],
     })
 
     // Nav order: trending, communities (no childs), new, then the main tags.
@@ -27,10 +30,12 @@ describe('platform navigation helpers', () => {
   })
 
   it('creates a child-parent map from main tags', () => {
-    expect(buildChildParentMap([
-      { slug: 'politics', childs: [{ slug: 'trump', name: 'Trump' }] },
-      { slug: 'geopolitics', childs: [{ slug: 'ukraine', name: 'Ukraine' }] },
-    ])).toEqual({
+    expect(
+      buildChildParentMap([
+        { slug: 'politics', childs: [{ slug: 'trump', name: 'Trump' }] },
+        { slug: 'geopolitics', childs: [{ slug: 'ukraine', name: 'Ukraine' }] },
+      ]),
+    ).toEqual({
       trump: 'politics',
       ukraine: 'geopolitics',
     })

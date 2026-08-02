@@ -3,7 +3,7 @@
 import type { ColumnDef } from '@tanstack/react-table'
 import type { SyncJobRow, useSyncJobsTable } from '@/app/[locale]/admin/sync-jobs/_hooks/useSyncJobs'
 import { RotateCwIcon } from 'lucide-react'
-import { toast } from 'sonner'
+import { toast } from '@/components/ui/toast'
 import { formatAbsolute, formatRelativeTime } from '@/components/admin-ui/format'
 import { StatusBadge } from '@/components/admin-ui/StatusBadge'
 import { Button } from '@/components/ui/button'

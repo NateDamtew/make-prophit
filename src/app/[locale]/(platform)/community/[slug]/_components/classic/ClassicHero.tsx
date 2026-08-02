@@ -3,7 +3,7 @@
 import { ActivityIcon, Check, Code2 as Code2Icon, Copy, Globe, Lock, MoreHorizontal, Paintbrush, Plus, Settings as SettingsIcon, Share2, Star } from 'lucide-react'
 import Link from 'next/link'
 import { useState, useTransition } from 'react'
-import { toast } from 'sonner'
+import { toast } from '@/components/ui/toast'
 import { VerifiedBadge } from '@/components/community-engagement/VerifiedBadge'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -240,47 +240,35 @@ export default function ClassicHero({ community, memberRole, currentUserId }: Pr
           <div className="flex shrink-0 items-center gap-2 self-start sm:self-end">
             {isAdmin && (
               <>
-                <Button size="sm" asChild>
-                  <Link href={`/community/${community.slug}/markets/new` as any}>
+                <Button size="sm" nativeButton={false} render={<Link href={`/community/${community.slug}/markets/new` as any} />}>
                     <Plus className="mr-1.5 size-3.5" />
                     Add Market
-                  </Link>
-                </Button>
+                  </Button>
                 <Button variant="outline" size="sm" onClick={handleGenerateInvite}>
                   <Share2 className="mr-1.5 size-3.5" />
                   Invite
                 </Button>
                 <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline" size="icon" aria-label="More">
+                  <DropdownMenuTrigger render={<Button variant="outline" size="icon" aria-label="More" />}>
                       <MoreHorizontal className="size-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
+                    </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-56">
-                    <DropdownMenuItem asChild>
-                      <Link href={`/community/${community.slug}/settings` as any}>
+                    <DropdownMenuItem render={<Link href={`/community/${community.slug}/settings` as any} />}>
                         <SettingsIcon className="size-3.5" />
                         Settings
-                      </Link>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem asChild>
-                      <Link href={`/community/${community.slug}/theme` as any}>
+                      </DropdownMenuItem>
+                    <DropdownMenuItem render={<Link href={`/community/${community.slug}/theme` as any} />}>
                         <Paintbrush className="size-3.5" />
                         Theme & layout
-                      </Link>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem asChild>
-                      <Link href={`/community/${community.slug}/insights` as any}>
+                      </DropdownMenuItem>
+                    <DropdownMenuItem render={<Link href={`/community/${community.slug}/insights` as any} />}>
                         <ActivityIcon className="size-3.5" />
                         Insights
-                      </Link>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem asChild>
-                      <Link href={`/community/${community.slug}/embed-settings` as any}>
+                      </DropdownMenuItem>
+                    <DropdownMenuItem render={<Link href={`/community/${community.slug}/embed-settings` as any} />}>
                         <Code2Icon className="size-3.5" />
                         Embed settings
-                      </Link>
-                    </DropdownMenuItem>
+                      </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
               </>

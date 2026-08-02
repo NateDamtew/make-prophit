@@ -220,28 +220,59 @@ html:active-view-transition-type(home-featured-navigation) {
   view-transition-name: none;
 }
 
-[data-featured-navigation-shell='previous'] {
-  view-transition-name: home-featured-navigation-previous-shell;
-}
-
-[data-featured-navigation-text='previous'] {
-  view-transition-name: home-featured-navigation-previous-text;
-}
-
-[data-featured-navigation-shell='next'] {
-  view-transition-name: home-featured-navigation-next-shell;
-}
-
-[data-featured-navigation-text='next'] {
-  view-transition-name: home-featured-navigation-next-text;
-}
-
-::view-transition-group(home-featured-navigation-previous-shell),
 ::view-transition-group(home-featured-navigation-previous-text),
-::view-transition-group(home-featured-navigation-next-shell),
 ::view-transition-group(home-featured-navigation-next-text) {
   animation-duration: 340ms;
   animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+::view-transition-group(.event-shared-icon),
+::view-transition-group(.event-shared-title) {
+  animation-duration: 340ms;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+::view-transition-image-pair(.event-shared-icon) {
+  animation-name: via-blur;
+}
+
+::view-transition-old(.event-shared-title) {
+  display: none;
+}
+
+::view-transition-new(.event-shared-title) {
+  animation: none;
+  object-fit: none;
+  object-position: left top;
+}
+
+@keyframes via-blur {
+  30% {
+    filter: blur(3px);
+  }
+}
+
+:root:is(
+    :has(w3m-modal.open),
+    .appkit-modal-open,
+    :has([data-slot='drawer-popup'][data-open])
+  )::view-transition-group(home-featured-navigation-previous-text),
+:root:is(
+    :has(w3m-modal.open),
+    .appkit-modal-open,
+    :has([data-slot='drawer-popup'][data-open])
+  )::view-transition-group(home-featured-navigation-next-text),
+:root:is(
+    :has(w3m-modal.open),
+    .appkit-modal-open,
+    :has([data-slot='drawer-popup'][data-open])
+  )::view-transition-group(.event-shared-icon),
+:root:is(
+    :has(w3m-modal.open),
+    .appkit-modal-open,
+    :has([data-slot='drawer-popup'][data-open])
+  )::view-transition-group(.event-shared-title) {
+  display: none;
 }
 
 ::view-transition-old(home-featured-navigation-previous-text),
@@ -256,17 +287,28 @@ html:active-view-transition-type(home-featured-navigation) {
   mix-blend-mode: normal;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  ::view-transition-group(home-featured-navigation-previous-shell),
-  ::view-transition-group(home-featured-navigation-previous-text),
-  ::view-transition-group(home-featured-navigation-next-shell),
-  ::view-transition-group(home-featured-navigation-next-text),
-  ::view-transition-old(home-featured-navigation-previous-text),
-  ::view-transition-old(home-featured-navigation-next-text),
-  ::view-transition-new(home-featured-navigation-previous-text),
-  ::view-transition-new(home-featured-navigation-next-text) {
-    animation: none;
-  }
+::view-transition {
+  pointer-events: none;
+}
+
+w3m-modal.open {
+  z-index: 999;
+}
+
+:root:has(w3m-modal.open) body,
+.appkit-modal-open body {
+  pointer-events: auto !important;
+}
+
+:root:has(w3m-modal.open) [data-slot='dialog-overlay'],
+:root:has(w3m-modal.open) [data-slot='dialog-content'],
+:root:has(w3m-modal.open) [data-slot='drawer-overlay'],
+:root:has(w3m-modal.open) [data-slot='drawer-content'],
+.appkit-modal-open [data-slot='dialog-overlay'],
+.appkit-modal-open [data-slot='dialog-content'],
+.appkit-modal-open [data-slot='drawer-overlay'],
+.appkit-modal-open [data-slot='drawer-content'] {
+  pointer-events: none;
 }
 
 @layer base {
@@ -292,37 +334,17 @@ html:active-view-transition-type(home-featured-navigation) {
   }
 
   button:not([disabled]),
-  [role="button"]:not([disabled]) {
+  [role='button']:not([disabled]) {
     cursor: pointer;
-  }
-
-  w3m-modal.open {
-    z-index: 999;
-  }
-
-  :root:has(w3m-modal.open) body,
-  .appkit-modal-open body {
-    pointer-events: auto !important;
-  }
-
-  :root:has(w3m-modal.open) [data-slot='dialog-overlay'],
-  :root:has(w3m-modal.open) [data-slot='dialog-content'],
-  :root:has(w3m-modal.open) [data-slot='drawer-overlay'],
-  :root:has(w3m-modal.open) [data-slot='drawer-content'],
-  .appkit-modal-open [data-slot='dialog-overlay'],
-  .appkit-modal-open [data-slot='dialog-content'],
-  .appkit-modal-open [data-slot='drawer-overlay'],
-  .appkit-modal-open [data-slot='drawer-content'] {
-    pointer-events: none;
   }
 }
 
 @utility container {
-  @apply max-w-333 mx-auto px-4 2xl:px-0;
+  @apply mx-auto max-w-333 px-4 2xl:px-0;
 }
 
 @utility container-sm {
-  @apply max-w-5xl mx-auto px-4 2xl:px-0;
+  @apply mx-auto max-w-5xl px-4 2xl:px-0;
 }
 
 @utility animate-order-shake {

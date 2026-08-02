@@ -1,9 +1,12 @@
 'use client'
 
 import type { Route } from 'next'
+
+import { useEffect, useMemo, useReducer, useState } from 'react'
+
 import type { LeaderboardFilters } from '@/app/[locale]/(platform)/leaderboard/_utils/leaderboardFilters'
 import type { BiggestWinEntry, LeaderboardEntry } from '@/app/[locale]/(platform)/leaderboard/_utils/leaderboardTypes'
-import { useEffect, useMemo, useReducer, useState } from 'react'
+
 import BiggestWinsSidebar from '@/app/[locale]/(platform)/leaderboard/_components/BiggestWinsSidebar'
 import LeaderboardFiltersBar from '@/app/[locale]/(platform)/leaderboard/_components/LeaderboardFiltersBar'
 import LeaderboardListRow from '@/app/[locale]/(platform)/leaderboard/_components/LeaderboardListRow'
@@ -17,7 +20,6 @@ import {
   buildLeaderboardScopeKey,
   fetchBiggestWins,
   hydrateEntriesWithPortfolioPnl,
-  LIST_ROW_COLUMNS,
   normalizeLeaderboardResponse,
   normalizeWalletAddress,
   PAGE_SIZE,
@@ -37,6 +39,10 @@ import {
   formatVolumeCurrency,
   getMedalProps,
 } from '@/app/[locale]/(platform)/leaderboard/_utils/leaderboardFormatters'
+import {
+  LEADERBOARD_LAYOUT_CLASS_NAME,
+  LEADERBOARD_ROW_CLASS_NAME,
+} from '@/app/[locale]/(platform)/leaderboard/_utils/leaderboardStyles'
 import { usePublicRuntimeConfig } from '@/hooks/usePublicRuntimeConfig'
 import { useRouter } from '@/i18n/navigation'
 import { cn } from '@/lib/utils'
@@ -48,7 +54,7 @@ export default function LeaderboardClient({ initialFilters }: { initialFilters: 
   const { dataUrl } = usePublicRuntimeConfig()
   const leaderboardApiUrl = useMemo(() => resolveLeaderboardApiUrl(dataUrl), [dataUrl])
   const initialFiltersKey = buildFiltersKey(initialFilters)
-  const [filtersState, setFiltersState] = useState<{ key: string, value: LeaderboardFilters }>(() => ({
+  const [filtersState, setFiltersState] = useState<{ key: string; value: LeaderboardFilters }>(() => ({
     key: initialFiltersKey,
     value: initialFilters,
   }))
@@ -58,7 +64,7 @@ export default function LeaderboardClient({ initialFilters }: { initialFilters: 
   const [searchQuery, setSearchQuery] = useState('')
   const filters = filtersState.key === initialFiltersKey ? filtersState.value : initialFilters
   const leaderboardScopeKey = buildLeaderboardScopeKey(filters, searchQuery)
-  const [pageState, setPageState] = useState<{ key: string, value: number }>({
+  const [pageState, setPageState] = useState<{ key: string; value: number }>({
     key: leaderboardScopeKey,
     value: 1,
   })
@@ -89,159 +95,180 @@ export default function LeaderboardClient({ initialFilters }: { initialFilters: 
     [filters.category, filters.period, filters.order],
   )
 
-  useEffect(function debounceSearchInput() {
-    const timeoutId = window.setTimeout(() => {
-      setSearchQuery(searchInput.trim())
-    }, 300)
+  useEffect(
+    function debounceSearchInput() {
+      const timeoutId = window.setTimeout(() => {
+        setSearchQuery(searchInput.trim())
+      }, 300)
 
-    return function cleanupDebounce() {
-      window.clearTimeout(timeoutId)
-    }
-  }, [searchInput])
+      return function cleanupDebounce() {
+        window.clearTimeout(timeoutId)
+      }
+    },
+    [searchInput],
+  )
 
-  useEffect(function fetchLeaderboardEntries() {
-    const controller = new AbortController()
+  useEffect(
+    function fetchLeaderboardEntries() {
+      const controller = new AbortController()
 
-    const params = new URLSearchParams({
-      limit: String(PAGE_SIZE),
-      offset: String((page - 1) * PAGE_SIZE),
-      category: resolveCategoryApiValue(filters.category),
-      timePeriod: resolvePeriodApiValue(filters.period),
-      orderBy: resolveOrderApiValue(filters.order),
-    })
-    if (searchQuery) {
-      params.set('userName', searchQuery)
-    }
-
-    fetch(`${leaderboardApiUrl}/leaderboard?${params.toString()}`, { signal: controller.signal })
-      .then(async (response) => {
-        if (!response.ok) {
-          const errorBody = await response.json().catch(() => null)
-          throw new Error(errorBody?.error || 'Failed to load leaderboard.')
-        }
-        return response.json()
+      const params = new URLSearchParams({
+        limit: String(PAGE_SIZE),
+        offset: String((page - 1) * PAGE_SIZE),
+        category: resolveCategoryApiValue(filters.category),
+        timePeriod: resolvePeriodApiValue(filters.period),
+        orderBy: resolveOrderApiValue(filters.order),
       })
-      .then(async (result) => {
-        const normalized = normalizeLeaderboardResponse(result)
-        const hydrated = await hydrateEntriesWithPortfolioPnl(normalized, currentFilters, controller.signal)
-        if (controller.signal.aborted) {
-          return
-        }
-        setEntries(sortEntriesForDisplay(hydrated, currentFilters, page))
+      if (searchQuery) {
+        params.set('userName', searchQuery)
+      }
+
+      fetch(`${leaderboardApiUrl}/leaderboard?${params.toString()}`, { signal: controller.signal })
+        .then(async (response) => {
+          if (!response.ok) {
+            const errorBody = await response.json().catch(() => null)
+            throw new Error(errorBody?.error || 'Failed to load leaderboard.')
+          }
+          return response.json()
+        })
+        .then(async (result) => {
+          const normalized = normalizeLeaderboardResponse(result)
+          const hydrated = await hydrateEntriesWithPortfolioPnl(normalized, currentFilters, controller.signal)
+          if (controller.signal.aborted) {
+            return
+          }
+          setEntries(sortEntriesForDisplay(hydrated, currentFilters, page))
+        })
+        .catch((_error) => {
+          if (controller.signal.aborted) {
+            return
+          }
+          setEntries([])
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) {
+            setLoadedLeaderboardKey(leaderboardRequestKey)
+          }
+        })
+
+      return function cleanupFetchLeaderboard() {
+        controller.abort()
+      }
+    },
+    [
+      filters.category,
+      filters.period,
+      filters.order,
+      searchQuery,
+      page,
+      leaderboardRequestKey,
+      currentFilters,
+      leaderboardApiUrl,
+    ],
+  )
+
+  useEffect(
+    function fetchUserEntry() {
+      if (!userAddress) {
+        return
+      }
+
+      const controller = new AbortController()
+
+      const params = new URLSearchParams({
+        limit: '1',
+        offset: '0',
+        category: resolveCategoryApiValue(filters.category),
+        timePeriod: resolvePeriodApiValue(filters.period),
+        orderBy: resolveOrderApiValue(filters.order),
+        user: userAddress,
       })
-      .catch((_error) => {
-        if (controller.signal.aborted) {
-          return
-        }
-        setEntries([])
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) {
-          setLoadedLeaderboardKey(leaderboardRequestKey)
-        }
-      })
 
-    return function cleanupFetchLeaderboard() {
-      controller.abort()
-    }
-  }, [filters.category, filters.period, filters.order, searchQuery, page, leaderboardRequestKey, currentFilters, leaderboardApiUrl])
+      fetch(`${leaderboardApiUrl}/leaderboard?${params.toString()}`, { signal: controller.signal })
+        .then(async (response) => {
+          if (!response.ok) {
+            const errorBody = await response.json().catch(() => null)
+            throw new Error(errorBody?.error || 'Failed to load leaderboard user entry.')
+          }
+          return response.json()
+        })
+        .then(async (result) => {
+          const [entry] = normalizeLeaderboardResponse(result)
+          if (!entry) {
+            setUserEntry(null)
+            return
+          }
 
-  useEffect(function fetchUserEntry() {
-    if (!userAddress) {
-      return
-    }
-
-    const controller = new AbortController()
-
-    const params = new URLSearchParams({
-      limit: '1',
-      offset: '0',
-      category: resolveCategoryApiValue(filters.category),
-      timePeriod: resolvePeriodApiValue(filters.period),
-      orderBy: resolveOrderApiValue(filters.order),
-      user: userAddress,
-    })
-
-    fetch(`${leaderboardApiUrl}/leaderboard?${params.toString()}`, { signal: controller.signal })
-      .then(async (response) => {
-        if (!response.ok) {
-          const errorBody = await response.json().catch(() => null)
-          throw new Error(errorBody?.error || 'Failed to load leaderboard user entry.')
-        }
-        return response.json()
-      })
-      .then(async (result) => {
-        const [entry] = normalizeLeaderboardResponse(result)
-        if (!entry) {
+          const [hydrated] = await hydrateEntriesWithPortfolioPnl([entry], currentFilters, controller.signal)
+          if (controller.signal.aborted) {
+            return
+          }
+          setUserEntry(hydrated ?? entry)
+        })
+        .catch((_error) => {
+          if (controller.signal.aborted) {
+            return
+          }
           setUserEntry(null)
-          return
-        }
+        })
 
-        const [hydrated] = await hydrateEntriesWithPortfolioPnl([entry], currentFilters, controller.signal)
-        if (controller.signal.aborted) {
-          return
-        }
-        setUserEntry(hydrated ?? entry)
-      })
-      .catch((_error) => {
-        if (controller.signal.aborted) {
-          return
-        }
-        setUserEntry(null)
-      })
+      return function cleanupFetchUserEntry() {
+        controller.abort()
+      }
+    },
+    [filters.category, filters.period, filters.order, userAddress, currentFilters, leaderboardApiUrl],
+  )
 
-    return function cleanupFetchUserEntry() {
-      controller.abort()
-    }
-  }, [filters.category, filters.period, filters.order, userAddress, currentFilters, leaderboardApiUrl])
+  useEffect(
+    function fetchBiggestWinsData() {
+      const category = resolveCategoryApiValue(filters.category)
+      const period = resolvePeriodApiValue(filters.period)
+      const cacheKey = `${leaderboardApiUrl}:${category}:${period}`
+      const cached = BIGGEST_WINS_CACHE.get(cacheKey)
+      if (cached) {
+        setBiggestWins(cached)
+        setIsBiggestWinsLoading(false)
+        return
+      }
 
-  useEffect(function fetchBiggestWinsData() {
-    const category = resolveCategoryApiValue(filters.category)
-    const period = resolvePeriodApiValue(filters.period)
-    const cacheKey = `${leaderboardApiUrl}:${category}:${period}`
-    const cached = BIGGEST_WINS_CACHE.get(cacheKey)
-    if (cached) {
-      setBiggestWins(cached)
-      setIsBiggestWinsLoading(false)
-      return
-    }
+      let isActive = true
+      setIsBiggestWinsLoading(true)
 
-    let isActive = true
-    setIsBiggestWinsLoading(true)
+      const existing = BIGGEST_WINS_IN_FLIGHT.get(cacheKey)
+      const request = existing ?? fetchBiggestWins(leaderboardApiUrl, category, period)
 
-    const existing = BIGGEST_WINS_IN_FLIGHT.get(cacheKey)
-    const request = existing ?? fetchBiggestWins(leaderboardApiUrl, category, period)
+      if (!existing) {
+        BIGGEST_WINS_IN_FLIGHT.set(cacheKey, request)
+      }
 
-    if (!existing) {
-      BIGGEST_WINS_IN_FLIGHT.set(cacheKey, request)
-    }
+      request
+        .then((result) => {
+          BIGGEST_WINS_CACHE.set(cacheKey, result)
+          if (isActive) {
+            setBiggestWins(result)
+          }
+        })
+        .catch(() => {
+          if (isActive) {
+            setBiggestWins([])
+          }
+        })
+        .finally(() => {
+          BIGGEST_WINS_IN_FLIGHT.delete(cacheKey)
+          if (isActive) {
+            setIsBiggestWinsLoading(false)
+          }
+        })
 
-    request
-      .then((result) => {
-        BIGGEST_WINS_CACHE.set(cacheKey, result)
-        if (isActive) {
-          setBiggestWins(result)
-        }
-      })
-      .catch(() => {
-        if (isActive) {
-          setBiggestWins([])
-        }
-      })
-      .finally(() => {
-        BIGGEST_WINS_IN_FLIGHT.delete(cacheKey)
-        if (isActive) {
-          setIsBiggestWinsLoading(false)
-        }
-      })
-
-    return function cleanupFetchBiggestWins() {
-      isActive = false
-    }
-  }, [filters.category, filters.period, leaderboardApiUrl])
+      return function cleanupFetchBiggestWins() {
+        isActive = false
+      }
+    },
+    [filters.category, filters.period, leaderboardApiUrl],
+  )
 
   const categoryLabel = useMemo(
-    () => CATEGORY_OPTIONS.find(option => option.value === filters.category)?.label ?? 'All Categories',
+    () => CATEGORY_OPTIONS.find((option) => option.value === filters.category)?.label ?? 'All Categories',
     [filters.category],
   )
 
@@ -265,28 +292,13 @@ export default function LeaderboardClient({ initialFilters }: { initialFilters: 
     })
   }
 
-  const rowClassName = cn(
-    `
-      group relative z-0 grid w-full ${LIST_ROW_COLUMNS}
-      min-h-[82px] items-center gap-4 py-5 pr-2 pl-3 text-sm
-      before:pointer-events-none before:absolute before:-inset-x-3 before:inset-y-0 before:-z-10 before:rounded-lg
-      before:bg-black/5 before:opacity-0 before:transition-opacity before:duration-200 before:content-['']
-      hover:before:opacity-100
-      dark:before:bg-white/5
-    `,
-  )
-
   const profitColumnClass = cn(
     'text-right tabular-nums',
-    filters.order === 'profit'
-      ? 'text-base font-semibold text-foreground'
-      : 'text-sm text-muted-foreground',
+    filters.order === 'profit' ? 'text-base font-semibold text-foreground' : 'text-sm text-muted-foreground',
   )
   const volumeColumnClass = cn(
     'text-right tabular-nums',
-    filters.order === 'volume'
-      ? 'text-base font-semibold text-foreground'
-      : 'text-sm text-muted-foreground',
+    filters.order === 'volume' ? 'text-base font-semibold text-foreground' : 'text-sm text-muted-foreground',
   )
 
   const biggestWinsPeriodLabel = useMemo(() => {
@@ -348,12 +360,7 @@ export default function LeaderboardClient({ initialFilters }: { initialFilters: 
 
   return (
     <div className="relative w-full">
-      <div className={cn(`
-        grid w-full gap-8
-        lg:grid-cols-[minmax(0,1fr)_380px]
-        xl:grid-cols-[minmax(0,54.5rem)_23.75rem] xl:justify-between xl:gap-6
-      `)}
-      >
+      <div className={LEADERBOARD_LAYOUT_CLASS_NAME}>
         <section className="flex min-w-0 flex-col gap-6">
           <h1 className="text-2xl font-semibold text-foreground md:text-3xl">Leaderboard</h1>
 
@@ -366,25 +373,26 @@ export default function LeaderboardClient({ initialFilters }: { initialFilters: 
               onUpdateFilters={updateFilters}
             />
             <div className={listContainerClassName}>
-              {isLoading && <LeaderboardListSkeleton count={10} rowClassName={rowClassName} />}
+              {isLoading && <LeaderboardListSkeleton count={10} rowClassName={LEADERBOARD_ROW_CLASS_NAME} />}
 
-              {!isLoading && entries.map((entry, index) => {
-                const rowKey = [
-                  resolveLeaderboardProxyWallet(entry) || entry.userName || entry.xUsername || '',
-                  entry.rank ?? index + 1,
-                ].join('-')
-                return (
-                  <LeaderboardListRow
-                    key={rowKey}
-                    entry={entry}
-                    index={index}
-                    filters={filters}
-                    rowClassName={rowClassName}
-                    profitColumnClass={profitColumnClass}
-                    volumeColumnClass={volumeColumnClass}
-                  />
-                )
-              })}
+              {!isLoading &&
+                entries.map((entry, index) => {
+                  const rowKey = [
+                    resolveLeaderboardProxyWallet(entry) || entry.userName || entry.xUsername || '',
+                    entry.rank ?? index + 1,
+                  ].join('-')
+                  return (
+                    <LeaderboardListRow
+                      key={rowKey}
+                      entry={entry}
+                      index={index}
+                      filters={filters}
+                      rowClassName={LEADERBOARD_ROW_CLASS_NAME}
+                      profitColumnClass={profitColumnClass}
+                      volumeColumnClass={volumeColumnClass}
+                    />
+                  )
+                })}
             </div>
             {pinnedEntry && (
               <PinnedUserRow

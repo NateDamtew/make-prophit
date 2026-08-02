@@ -2,7 +2,7 @@
 
 import { SendIcon } from 'lucide-react'
 import { useState } from 'react'
-import { toast } from 'sonner'
+import { toast } from '@/components/ui/toast'
 import { PageHeader } from '@/components/admin-ui/PageHeader'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'

@@ -1,15 +1,23 @@
 import type { Metadata } from 'next'
-import type { SupportedLocale } from '@/i18n/locales'
+
 import { setRequestLocale } from 'next-intl/server'
 import { notFound } from 'next/navigation'
+
+import type { SupportedLocale } from '@/i18n/locales'
+
 import {
   buildDynamicHomeCategoryMetadata,
   DynamicHomeCategoryPageContent,
   generateDynamicHomeCategoryStaticParams,
 } from '@/app/[locale]/(platform)/_lib/dynamic-home-category-page'
-import { buildPublicProfileMetadata, PublicProfilePageContent } from '@/app/[locale]/(platform)/_lib/public-profile-page'
+import {
+  buildPublicProfileMetadata,
+  PublicProfilePageContent,
+} from '@/app/[locale]/(platform)/_lib/public-profile-page'
 import { isPlatformReservedRootSlug, normalizePublicProfileSlug } from '@/lib/platform-routing'
 import { shouldBypassPublicShellPlaceholder, STATIC_PARAMS_PLACEHOLDER } from '@/lib/static-params'
+
+export const instant = false
 
 export const generateStaticParams = generateDynamicHomeCategoryStaticParams
 
@@ -42,13 +50,7 @@ async function generatePlatformSlugMetadata({
   return buildDynamicHomeCategoryMetadata(locale, slug)
 }
 
-async function renderPlatformSlugPage({
-  locale,
-  slug,
-}: {
-  locale: SupportedLocale
-  slug: string
-}) {
+async function renderPlatformSlugPage({ locale, slug }: { locale: SupportedLocale; slug: string }) {
   if (slug === STATIC_PARAMS_PLACEHOLDER) {
     if (shouldBypassPublicShellPlaceholder(slug)) {
       return null

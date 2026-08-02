@@ -1,10 +1,13 @@
 import { describe, expect, it, vi } from 'vitest'
+
 import { ORDER_SIDE, ORDER_TYPE } from '@/lib/constants'
-import { buildOrderPayload, calculateOrderAmounts, submitOrder } from '@/lib/orders'
+import { buildOrderPayload, calculateOrderAmounts, submitOrder, submitOrders } from '@/lib/orders'
 
 const storeOrderActionMock = vi.fn()
+const storeOrdersActionMock = vi.fn()
 vi.mock('@/app/[locale]/(platform)/event/[slug]/_actions/store-order', () => ({
   storeOrderAction: (...args: any[]) => storeOrderActionMock(...args),
+  storeOrdersAction: (...args: any[]) => storeOrdersActionMock(...args),
 }))
 
 describe('calculateOrderAmounts', () => {
@@ -147,19 +150,98 @@ describe('submitOrder', () => {
       order: payload,
       signature: '0xsigned',
       orderType: ORDER_TYPE.MARKET,
+      postOnly: true,
       conditionId: 'cond-1',
       slug: 'event',
     })
 
-    expect(storeOrderActionMock).toHaveBeenCalledWith(expect.objectContaining({
-      salt: '1',
-      token_id: '1',
-      maker_amount: '2',
-      taker_amount: '3',
-      signature: '0xsigned',
-      type: ORDER_TYPE.MARKET,
-      condition_id: 'cond-1',
-      slug: 'event',
-    }))
+    expect(storeOrderActionMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        salt: '1',
+        token_id: '1',
+        maker_amount: '2',
+        taker_amount: '3',
+        signature: '0xsigned',
+        type: ORDER_TYPE.MARKET,
+        post_only: true,
+        condition_id: 'cond-1',
+        slug: 'event',
+      }),
+    )
+  })
+
+  it('serializes multiple orders and forwards them in one batch action', async () => {
+    storeOrdersActionMock.mockResolvedValueOnce({ error: null, results: [] })
+
+    const address = '0x0000000000000000000000000000000000000001' as `0x${string}`
+    const baseOrder = {
+      salt: 1n,
+      maker: address,
+      signer: address,
+      taker: address,
+      token_id: 1n,
+      maker_amount: 2n,
+      taker_amount: 3n,
+      expiration: 4n,
+      nonce: 5n,
+      fee_rate_bps: 6n,
+      side: ORDER_SIDE.BUY,
+      signature_type: 3,
+      timestamp: 7n,
+      metadata: '0x0000000000000000000000000000000000000000000000000000000000000000' as `0x${string}`,
+      builder: '0x0000000000000000000000000000000000000000000000000000000000000000' as `0x${string}`,
+    }
+
+    await submitOrders([
+      {
+        order: baseOrder,
+        signature: '0xyes',
+        orderType: ORDER_TYPE.MARKET,
+        conditionId: 'cond-1',
+        slug: 'event',
+      },
+      {
+        order: { ...baseOrder, salt: 2n, token_id: 2n },
+        signature: '0xno',
+        orderType: ORDER_TYPE.MARKET,
+        conditionId: 'cond-1',
+        slug: 'event',
+      },
+    ])
+
+    expect(storeOrdersActionMock).toHaveBeenCalledWith([
+      {
+        ...baseOrder,
+        salt: '1',
+        token_id: '1',
+        maker_amount: '2',
+        taker_amount: '3',
+        expiration: '4',
+        nonce: '5',
+        fee_rate_bps: '6',
+        timestamp: '7',
+        signature: '0xyes',
+        type: ORDER_TYPE.MARKET,
+        clob_type: undefined,
+        condition_id: 'cond-1',
+        slug: 'event',
+      },
+      {
+        ...baseOrder,
+        salt: '2',
+        token_id: '2',
+        maker_amount: '2',
+        taker_amount: '3',
+        expiration: '4',
+        nonce: '5',
+        fee_rate_bps: '6',
+        timestamp: '7',
+        signature: '0xno',
+        type: ORDER_TYPE.MARKET,
+        clob_type: undefined,
+        condition_id: 'cond-1',
+        slug: 'event',
+      },
+    ])
   })
 })

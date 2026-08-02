@@ -1,7 +1,19 @@
-import type { EventLiveChartConfig } from '@/types'
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+import type { EventLiveChartConfig } from '@/types'
+
 import { useLiveSeriesPriceSnapshot } from '@/app/[locale]/(platform)/event/[slug]/_hooks/useLiveSeriesPriceSnapshot'
+
+function getRequestUrl(input: unknown) {
+  if (typeof input === 'string') {
+    return input
+  }
+  if (input instanceof URL) {
+    return input.href
+  }
+  return input instanceof Request ? input.url : ''
+}
 
 describe('useLiveSeriesPriceSnapshot', () => {
   let now: number
@@ -20,7 +32,7 @@ describe('useLiveSeriesPriceSnapshot', () => {
   })
 
   it('requests a current snapshot again when a live tab becomes visible', async () => {
-    const fetchMock = vi.fn(async () => ({
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL) => ({
       ok: true,
       json: async () => ({
         opening_price: 100,
@@ -37,15 +49,17 @@ describe('useLiveSeriesPriceSnapshot', () => {
       active_window_minutes: 60,
     } as EventLiveChartConfig
 
-    renderHook(() => useLiveSeriesPriceSnapshot({
-      config,
-      subscriptionSymbol: 'BTC',
-      explicitEndTimestamp: null,
-      startTimestamp: null,
-    }))
+    renderHook(() =>
+      useLiveSeriesPriceSnapshot({
+        config,
+        subscriptionSymbol: 'BTC',
+        explicitEndTimestamp: null,
+        startTimestamp: null,
+      }),
+    )
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
-    const firstUrl = new URL(String(fetchMock.mock.calls[0]?.[0]), window.location.origin)
+    const firstUrl = new URL(getRequestUrl(fetchMock.mock.calls[0]?.[0]), window.location.origin)
     expect(firstUrl.searchParams.get('eventEndMs')).toBe(String(now))
 
     now += 2 * 60 * 60 * 1000
@@ -54,7 +68,43 @@ describe('useLiveSeriesPriceSnapshot', () => {
     })
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
-    const resumedUrl = new URL(String(fetchMock.mock.calls[1]?.[0]), window.location.origin)
+    const resumedUrl = new URL(getRequestUrl(fetchMock.mock.calls[1]?.[0]), window.location.origin)
     expect(resumedUrl.searchParams.get('eventEndMs')).toBe(String(now))
+  })
+
+  it('exposes loading and unavailable states before a reference snapshot is confirmed', async () => {
+    let resolveFetch: ((value: { ok: boolean }) => void) | null = null
+    const fetchMock = vi.fn(
+      () =>
+        new Promise<{ ok: boolean }>((resolve) => {
+          resolveFetch = resolve
+        }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const config = {
+      series_slug: 'snapshot-status-test',
+      topic: 'crypto_prices_chainlink',
+      active_window_minutes: 1440,
+    } as EventLiveChartConfig
+
+    const { result } = renderHook(() =>
+      useLiveSeriesPriceSnapshot({
+        config,
+        subscriptionSymbol: 'BTC',
+        explicitEndTimestamp: now - 1000,
+        startTimestamp: null,
+      }),
+    )
+
+    expect(result.current.referenceSnapshotStatus).toBe('loading')
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+
+    await act(async () => {
+      resolveFetch?.({ ok: false })
+    })
+
+    await waitFor(() => expect(result.current.referenceSnapshotStatus).toBe('unavailable'))
+    expect(result.current.referenceSnapshot).toBeNull()
   })
 })

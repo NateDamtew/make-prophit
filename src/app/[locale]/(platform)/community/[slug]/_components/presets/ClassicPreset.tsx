@@ -76,21 +76,18 @@ export default function ClassicPreset({ community, members, markets, reviews, me
             </div>
             {activeTab === 'markets' && (
               <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button
+                <DropdownMenuTrigger render={<button
                     type="button"
                     className="
                       mb-3 inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border/80 px-2.5 py-1
                       text-2xs font-semibold tracking-wider text-muted-foreground uppercase transition-colors
                       hover:border-primary/40 hover:text-foreground
-                    "
-                  >
+                    " />}>
                     Sort:
                     {' '}
                     {SORT_LABELS[sort]}
                     <ChevronDown className="size-3" />
-                  </button>
-                </DropdownMenuTrigger>
+                  </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-44">
                   {(Object.keys(SORT_LABELS) as SortKey[]).map(key => (
                     <DropdownMenuItem key={key} onClick={() => setSort(key)}>
@@ -175,12 +172,10 @@ function MarketsGrid({ markets, communitySlug, isAdmin }: { markets: PresetMarke
           </p>
         </div>
         {isAdmin && (
-          <Button asChild size="sm">
-            <Link href={`/community/${communitySlug}/markets/new` as any}>
+          <Button size="sm" nativeButton={false} render={<Link href={`/community/${communitySlug}/markets/new` as any} />}>
               <Plus className="mr-1.5 size-3.5" />
               Create First Market
-            </Link>
-          </Button>
+            </Button>
         )}
       </div>
     )

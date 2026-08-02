@@ -1,15 +1,24 @@
 import type { Metadata } from 'next'
-import type { SupportedLocale } from '@/i18n/locales'
+
 import { setRequestLocale } from 'next-intl/server'
+import { cacheTag } from 'next/cache'
 import { notFound } from 'next/navigation'
+
+import type { SupportedLocale } from '@/i18n/locales'
+
 import EventContent from '@/app/[locale]/(platform)/event/[slug]/_components/EventContent'
 import EventStructuredData from '@/components/seo/EventStructuredData'
 import { redirect } from '@/i18n/navigation'
+import { cacheTags } from '@/lib/cache-tags'
 import { buildTranslatedEventFaqItems } from '@/lib/event-faq-server'
 import { buildEventPageMetadata } from '@/lib/event-open-graph'
 import { getEventRouteBySlug, loadEventPagePublicContentData } from '@/lib/event-page-data'
 import { resolveEventBasePath, resolveEventPagePath } from '@/lib/events-routing'
-import { getPublicShellStaticParams, shouldBypassPublicShellPlaceholder, STATIC_PARAMS_PLACEHOLDER } from '@/lib/static-params'
+import {
+  getPublicShellStaticParams,
+  shouldBypassPublicShellPlaceholder,
+  STATIC_PARAMS_PLACEHOLDER,
+} from '@/lib/static-params'
 import { loadRuntimeThemeState } from '@/lib/theme-settings'
 
 export const instant = false
@@ -34,14 +43,10 @@ export async function generateMetadata({ params }: PageProps<'/[locale]/event/[s
   })
 }
 
-async function CachedEventPageContent({
-  locale,
-  slug,
-}: {
-  locale: SupportedLocale
-  slug: string
-}) {
+async function CachedEventPageContent({ locale, slug }: { locale: SupportedLocale; slug: string }) {
   'use cache'
+
+  cacheTag(cacheTags.event(slug))
 
   const eventRoute = await getEventRouteBySlug(slug)
   if (!eventRoute) {

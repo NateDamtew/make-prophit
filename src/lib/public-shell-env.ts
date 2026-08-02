@@ -20,14 +20,13 @@ function parseBooleanEnv(value: string | undefined) {
 }
 
 function hasBuildSiteUrlEnv(env: NodeJS.ProcessEnv) {
-  return hasNonEmptyEnvValue(env.SITE_URL)
-    || hasNonEmptyEnvValue(env.VERCEL_PROJECT_PRODUCTION_URL)
+  return hasNonEmptyEnvValue(env.SITE_URL) || hasNonEmptyEnvValue(env.VERCEL_PROJECT_PRODUCTION_URL)
 }
 
 export function hasPublicShellPrerenderEnv(env: NodeJS.ProcessEnv) {
-  return hasBuildSiteUrlEnv(env)
-    && hasNonEmptyEnvValue(env.POSTGRES_URL)
-    && hasNonEmptyEnvValue(env.REOWN_APPKIT_PROJECT_ID)
+  return (
+    hasBuildSiteUrlEnv(env) && hasNonEmptyEnvValue(env.POSTGRES_URL) && hasNonEmptyEnvValue(env.REOWN_APPKIT_PROJECT_ID)
+  )
 }
 
 export function resolvePublicShellPrerenderMode(env: NodeJS.ProcessEnv) {

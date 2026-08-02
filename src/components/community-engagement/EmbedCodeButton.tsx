@@ -2,7 +2,7 @@
 
 import { CheckIcon, Code2Icon, CopyIcon, ExternalLinkIcon, MonitorIcon, SmartphoneIcon, TabletIcon } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { toast } from 'sonner'
+import { toast } from '@/components/ui/toast'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -135,12 +135,10 @@ export function EmbedCodeButton({ communitySlug, marketId, siteOrigin, defaultHe
                   "
                 />
               </label>
-              <Button asChild variant="ghost" size="sm">
-                <a href={embedUrl} target="_blank" rel="noopener noreferrer">
+              <Button variant="ghost" size="sm" nativeButton={false} render={<a href={embedUrl} target="_blank" rel="noopener noreferrer" />}>
                   <ExternalLinkIcon className="size-3.5" />
                   Open raw embed
-                </a>
-              </Button>
+                </Button>
             </div>
 
             {/* Snippet */}

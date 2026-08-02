@@ -6,7 +6,7 @@ import type { FontHint, LayoutPreset, SurfaceMode } from '@/lib/db/schema/commun
 import { ActivityIcon, ChevronLeftIcon, GavelIcon, MegaphoneIcon, NewspaperIcon, RotateCcwIcon, SaveIcon, TrophyIcon, UsersIcon } from 'lucide-react'
 import Link from 'next/link'
 import { useMemo, useState } from 'react'
-import { toast } from 'sonner'
+import { toast } from '@/components/ui/toast'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'

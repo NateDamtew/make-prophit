@@ -2,7 +2,7 @@
 
 import { CheckIcon, CopyIcon, EyeIcon, EyeOffIcon, KeyRoundIcon, ShieldAlertIcon } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { toast } from 'sonner'
+import { toast } from '@/components/ui/toast'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'

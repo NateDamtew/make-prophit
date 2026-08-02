@@ -23,6 +23,9 @@ export const CLOB_ORDER_TYPE = {
   GTD: 'GTD',
 } as const
 
+export const MAX_CLOB_BATCH_ORDERS = 15
+export const MAX_ORDER_SUBMISSION_ORDERS = 28
+
 export const OUTCOME_INDEX = {
   YES: 0,
   NO: 1,
