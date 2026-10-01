@@ -386,6 +386,10 @@ async function getCachedMenuEntries(vertical: SportsVertical): Promise<QueryResu
 }
 
 async function getCachedLayoutData(vertical: SportsVertical): Promise<QueryResult<SportsMenuLayoutData>> {
+  'use cache'
+  cacheLife('default')
+  cacheTag(cacheTags.eventsList, cacheTags.sportsMenuStructure)
+
   const [rows, activeCountRows] = await Promise.all([getRequiredSportsMenuRows(), getCachedActiveSportsCountRows()])
 
   return runQuery(async () => {
