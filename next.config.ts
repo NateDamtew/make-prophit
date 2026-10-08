@@ -57,6 +57,11 @@ const config: NextConfig = {
     //     type safety is enforced at the pre-push gate instead.
     // Re-test both if the build container ever gets more memory.
     turbopackFileSystemCacheForBuild: false,
+    // The first Bun build (Next 16.4) was SIGKILL'd again by the 8 GB Hobby
+    // container mid-compile on 2026-10-08. Skipping source map generation is
+    // the biggest compile-memory saving; nothing consumes them (no Sentry
+    // upload is configured), at the cost of minified production stack traces.
+    turbopackSourceMaps: false,
   },
   images: {
     unoptimized: process.env.DISABLE_IMAGE_OPTIMIZATION === 'true',
