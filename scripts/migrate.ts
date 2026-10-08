@@ -210,15 +210,40 @@ async function applyMigrations(sql: ReservedSql, isSupabase: boolean): Promise<v
   const appliedMigrationVersions = new Set(appliedMigrationRows.map((row) => row.version))
 
   // FORK: upstream rebaselined every migration into 2026_09_15_* files for fresh
-  // mainnet databases (#1496). An existing install already has that schema from
-  // the pre-rebaseline migrations, so running the baseline would re-apply ~130
-  // ALTERs and fail the deploy. Detect a legacy install and record the baseline
-  // as applied instead. Schema tweaks folded into the baseline are NOT applied
-  // here — reconcile them separately against a database copy.
+  // mainnet databases (#1496). An existing install already has most of that
+  // schema from the pre-rebaseline migrations, so running the baseline would
+  // re-apply ~130 ALTERs and fail the deploy. On a legacy install we instead:
+  //   1. apply the pre-rebaseline upstream migrations this database never ran
+  //      (kept verbatim in ./legacy-catchup — upstream deleted them when it
+  //      folded them into the baseline), each in its own transaction;
+  //   2. record the baseline as applied.
+  // Fresh databases never take this path: they run the baseline itself.
   const BASELINE_PREFIX = '2026_09_15_'
   const isLegacyInstall = [...appliedMigrationVersions].some((version) => version < BASELINE_PREFIX)
   const hasBaseline = [...appliedMigrationVersions].some((version) => version.startsWith(BASELINE_PREFIX))
   if (isLegacyInstall && !hasBaseline) {
+    const catchupDir = path.join(migrationsDir, 'legacy-catchup')
+    const catchupFiles = fs.existsSync(catchupDir)
+      ? fs
+          .readdirSync(catchupDir)
+          .filter((file) => file.endsWith('.sql'))
+          .sort()
+      : []
+    for (const file of catchupFiles) {
+      const version = file.replace('.sql', '')
+      if (appliedMigrationVersions.has(version)) {
+        continue
+      }
+      console.log(`🔄 Applying legacy catch-up ${file}`)
+      const catchupSql = rewriteMigrationSqlForMode(fs.readFileSync(path.join(catchupDir, file), 'utf8'), isSupabase)
+      await withReservedTransaction(sql, async (tx) => {
+        await tx.unsafe(catchupSql, []).simple()
+        await tx`INSERT INTO migrations (version) VALUES (${version})`
+      })
+      appliedMigrationVersions.add(version)
+      console.log(`✅ Applied legacy catch-up ${file}`)
+    }
+
     const baselineVersions = migrationFiles
       .filter((file) => file.startsWith(BASELINE_PREFIX))
       .map((file) => file.replace('.sql', ''))
