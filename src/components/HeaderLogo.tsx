@@ -31,10 +31,9 @@ export default function HeaderLogo({ labelSuffix }: HeaderLogoProps) {
       <span className="relative">
         {label}
         <span
-          className={cn(`
-            absolute -top-2.5 right-0 inline-flex items-center rounded-full bg-primary/15 px-1.5 py-0.5 text-[0.35em]
-            leading-none font-semibold tracking-wider text-primary uppercase
-          `)}
+          className={cn(
+            `absolute -top-2.5 right-0 inline-flex items-center rounded-full bg-primary/15 px-1.5 py-0.5 text-[0.35em] leading-none font-semibold tracking-wider text-primary uppercase`,
+          )}
         >
           Beta
         </span>

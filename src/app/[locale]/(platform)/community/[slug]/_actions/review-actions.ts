@@ -3,12 +3,9 @@
 import { eq } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
+
 import { recordCommunityEvent } from '@/lib/communities/events'
-import {
-  notifyMarketApproved,
-  notifyMarketRejected,
-  notifyMarketSubmitted,
-} from '@/lib/community-notifications'
+import { notifyMarketApproved, notifyMarketRejected, notifyMarketSubmitted } from '@/lib/community-notifications'
 import { DEFAULT_ERROR_MESSAGE } from '@/lib/constants'
 import { CommunityRepository } from '@/lib/db/queries/community'
 import { EventCreationRepository } from '@/lib/db/queries/event-creations'
@@ -74,11 +71,7 @@ export async function submitMarketForReviewAction(
  * Super admin rejects a submitted market with feedback.
  * Market returns to draft so community admin can revise.
  */
-export async function rejectMarketAction(
-  marketId: string,
-  communitySlug: string,
-  feedback: string,
-) {
+export async function rejectMarketAction(marketId: string, communitySlug: string, feedback: string) {
   const user = await UserRepository.getCurrentUser({ disableCookieCache: true, minimal: true })
   if (!user?.is_admin) {
     return { error: 'Only platform admins can review markets.', data: null }
@@ -161,11 +154,7 @@ export async function approveMarketAction(
   }
 
   // Load the market
-  const [market] = await db
-    .select()
-    .from(community_markets)
-    .where(eq(community_markets.id, marketId))
-    .limit(1)
+  const [market] = await db.select().from(community_markets).where(eq(community_markets.id, marketId)).limit(1)
   if (!market) {
     return { error: 'Market not found.', data: null }
   }
@@ -214,7 +203,7 @@ export async function approveMarketAction(
       mainCategorySlug: market.main_category_slug,
       categories: [
         { label: market.main_category_slug, slug: market.main_category_slug },
-        ...market.category_slugs.map(s => ({ label: s, slug: s })),
+        ...market.category_slugs.map((s) => ({ label: s, slug: s })),
       ],
       marketMode: 'binary',
       binaryQuestion: finalTitle,

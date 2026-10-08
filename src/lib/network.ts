@@ -20,8 +20,8 @@ export function parseNetworkChainId(value: string | number | null | undefined, f
 // CHAIN_ID=80002) to match it, and remove both at mainnet launch. Everything
 // keys off this: chainId, IS_TEST_MODE, the collateral token (test USDC vs
 // native USDC), viem/wagmi networks, and the explorer base.
-export const DEFAULT_NETWORK_KEY: DefaultNetworkKey
-  = process.env.NEXT_PUBLIC_NETWORK_KEY === 'amoy' ? 'amoy' : 'polygon'
+export const DEFAULT_NETWORK_KEY: DefaultNetworkKey =
+  process.env.NEXT_PUBLIC_NETWORK_KEY === 'amoy' ? 'amoy' : 'polygon'
 
 const NETWORK_CONFIG = {
   amoy: {

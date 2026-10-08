@@ -1,6 +1,10 @@
 'use server'
 
-import type { CreateTonDepositResult, TonDepositQuoteResult } from '@/app/[locale]/(platform)/_actions/ton-deposit.types'
+import type {
+  CreateTonDepositResult,
+  TonDepositQuoteResult,
+} from '@/app/[locale]/(platform)/_actions/ton-deposit.types'
+
 import { UserRepository } from '@/lib/db/queries/user'
 import { getDepositWalletAddress } from '@/lib/deposit-wallet'
 import { commitQuote, getPublicQuote, getRhinoConfig, getUserQuote, RhinoApiError } from '@/lib/rhino/client'
@@ -21,8 +25,7 @@ export async function getTonDepositQuoteAction(amount: string): Promise<TonDepos
   try {
     const quote = await getPublicQuote({ ...TON_DEPOSIT_ROUTE, amount, mode: 'pay' })
     return { error: null, quote }
-  }
-  catch (error) {
+  } catch (error) {
     if (error instanceof RhinoApiError) {
       console.warn('[ton-deposit] public quote failed', error.status, error.body)
     }
@@ -49,8 +52,7 @@ export async function createTonDepositAction(
 
   try {
     // Deterministic — funds can land here even before the contract is deployed.
-    const recipient = user.deposit_wallet_address
-      ?? await getDepositWalletAddress(user.address as `0x${string}`)
+    const recipient = user.deposit_wallet_address ?? (await getDepositWalletAddress(user.address as `0x${string}`))
 
     const quote = await getUserQuote({
       ...TON_DEPOSIT_ROUTE,
@@ -90,12 +92,10 @@ export async function createTonDepositAction(
         recipient,
       },
     }
-  }
-  catch (error) {
+  } catch (error) {
     if (error instanceof RhinoApiError) {
       console.warn('[ton-deposit] create deposit failed', error.status, error.body)
-    }
-    else {
+    } else {
       console.error('[ton-deposit] create deposit error', error)
     }
     return { error: DEFAULT_QUOTE_ERROR, payment: null }

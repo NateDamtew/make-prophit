@@ -4,7 +4,6 @@ import { beforeEach, describe, expect, it, mock } from 'bun:test'
 import { getAddress } from 'viem'
 
 import AdminProposersDialog from '@/app/[locale]/admin/events/calendar/_components/AdminProposersDialog'
-
 import { DEFAULT_CHAIN_ID, POLYGON_MAINNET_CHAIN_ID } from '@/lib/network'
 
 import { hoisted, stubGlobal } from '../bun-test-helpers'

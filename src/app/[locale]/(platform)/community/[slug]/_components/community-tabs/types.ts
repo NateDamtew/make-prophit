@@ -36,7 +36,7 @@ export interface CommunityMarketSummary {
   resolution_date: Date | null
   event_id: string | null
   created_at: Date
-  votes?: { yes: number, no: number, disputed: number }
+  votes?: { yes: number; no: number; disputed: number }
 }
 
 export interface CommunityReviewSummary {

@@ -1,8 +1,9 @@
 'use client'
 
-import type { PublicResolverStats } from '@/app/api/users/resolver-stats/route'
 import { useQuery } from '@tanstack/react-query'
 import { useMemo } from 'react'
+
+import type { PublicResolverStats } from '@/app/api/users/resolver-stats/route'
 
 interface UseResolverStatsResult {
   /** Look up stats for a user. Returns null while loading or if the user isn't in the batch. */
@@ -26,8 +27,8 @@ export function useResolverStats(userIds: string[]): UseResolverStatsResult {
       if (!res.ok) {
         return new Map()
       }
-      const body = await res.json() as { data: PublicResolverStats[] }
-      return new Map((body.data ?? []).map(s => [s.user_id, s]))
+      const body = (await res.json()) as { data: PublicResolverStats[] }
+      return new Map((body.data ?? []).map((s) => [s.user_id, s]))
     },
   })
 

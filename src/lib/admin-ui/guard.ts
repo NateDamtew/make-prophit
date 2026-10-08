@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation'
+
 import { UserRepository } from '@/lib/db/queries/user'
 
 export interface AdminActor {
@@ -8,14 +9,7 @@ export interface AdminActor {
 }
 
 function toActorLabel(user: any): string {
-  return (
-    user?.username
-    || user?.name
-    || user?.email
-    || user?.address
-    || user?.id
-    || 'unknown'
-  )
+  return user?.username || user?.name || user?.email || user?.address || user?.id || 'unknown'
 }
 
 /**

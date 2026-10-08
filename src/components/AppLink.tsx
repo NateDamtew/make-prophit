@@ -1,7 +1,9 @@
 'use client'
 
 import type { ComponentPropsWithoutRef, ComponentRef, Ref } from 'react'
+
 import { useState } from 'react'
+
 import { Link } from '@/i18n/navigation'
 
 type NextLinkPrefetch = ComponentPropsWithoutRef<typeof Link>['prefetch']
@@ -15,9 +17,7 @@ type AppLinkRef = ComponentRef<typeof Link>
 function useIntentPrefetch(intentPrefetch: boolean, prefetch: NextLinkPrefetch | false) {
   const [shouldPrefetch, setShouldPrefetch] = useState(false)
   const nextPrefetch = prefetch === false ? null : prefetch
-  const resolvedPrefetch = intentPrefetch
-    ? (shouldPrefetch ? nextPrefetch : false)
-    : prefetch
+  const resolvedPrefetch = intentPrefetch ? (shouldPrefetch ? nextPrefetch : false) : prefetch
 
   function enableIntentPrefetch() {
     setShouldPrefetch(true)
@@ -26,7 +26,15 @@ function useIntentPrefetch(intentPrefetch: boolean, prefetch: NextLinkPrefetch |
   return { resolvedPrefetch, enableIntentPrefetch }
 }
 
-function AppLink({ ref, intentPrefetch = false, onFocus, onMouseEnter, onTouchStart, prefetch = false, ...props }: AppLinkProps) {
+function AppLink({
+  ref,
+  intentPrefetch = false,
+  onFocus,
+  onMouseEnter,
+  onTouchStart,
+  prefetch = false,
+  ...props
+}: AppLinkProps) {
   const { resolvedPrefetch, enableIntentPrefetch } = useIntentPrefetch(intentPrefetch, prefetch)
 
   return (

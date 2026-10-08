@@ -2,8 +2,9 @@
 
 import { SendHorizonalIcon } from 'lucide-react'
 import { useRef, useState } from 'react'
-import { toast } from '@/components/ui/toast'
+
 import { Button } from '@/components/ui/button'
+import { toast } from '@/components/ui/toast'
 import { cn } from '@/lib/utils'
 
 interface CommentComposerProps {
@@ -40,11 +41,9 @@ export function CommentComposer({
       await onSubmit(trimmed)
       setBody('')
       taRef.current?.focus()
-    }
-    catch (error) {
+    } catch (error) {
       toast.error((error as Error).message)
-    }
-    finally {
+    } finally {
       setSubmitting(false)
     }
   }
@@ -65,23 +64,20 @@ export function CommentComposer({
       <textarea
         ref={taRef}
         value={body}
-        onChange={e => setBody(e.target.value.slice(0, MAX_LENGTH))}
+        onChange={(e) => setBody(e.target.value.slice(0, MAX_LENGTH))}
         onKeyDown={handleKeyDown}
         placeholder={placeholder}
         rows={compact ? 2 : 3}
         autoFocus={autoFocus}
-        className="
-          w-full resize-none rounded-md border border-border/70 bg-background px-3 py-2 text-sm outline-none
-          placeholder:text-muted-foreground
-          focus:border-primary focus:ring-1 focus:ring-primary
-        "
+        className="w-full resize-none rounded-md border border-border/70 bg-background px-3 py-2 text-sm outline-none placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary"
       />
       <div className="flex items-center justify-between gap-2">
-        <span className={cn(
-          'text-xs',
-          remaining < 200 ? 'text-amber-600' : 'text-muted-foreground/70',
-          remaining < 0 && 'text-(--no)',
-        )}
+        <span
+          className={cn(
+            'text-xs',
+            remaining < 200 ? 'text-amber-600' : 'text-muted-foreground/70',
+            remaining < 0 && 'text-(--no)',
+          )}
         >
           {remaining < 200 ? `${remaining} left` : '⌘+Enter to post'}
         </span>

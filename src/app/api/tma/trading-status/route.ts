@@ -1,6 +1,8 @@
 import { connection, NextResponse } from 'next/server'
+
 import { getDepositWalletAddress, isDepositWalletDeployed } from '@/lib/deposit-wallet'
 import { normalizeAddress } from '@/lib/wallet'
+
 import { requireTmaUser } from '../_lib'
 
 /**
@@ -29,8 +31,7 @@ export async function GET() {
     try {
       depositWalletAddress = await getDepositWalletAddress(address as `0x${string}`)
       depositWalletDeployed = await isDepositWalletDeployed(depositWalletAddress as `0x${string}`)
-    }
-    catch (error) {
+    } catch (error) {
       console.error('[tma/trading-status] deposit wallet lookup failed', error)
     }
   }

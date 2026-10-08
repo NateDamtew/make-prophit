@@ -1,5 +1,7 @@
-import type { AdminActor } from '@/lib/admin-ui/guard'
 import { desc, ilike, or, sql } from 'drizzle-orm'
+
+import type { AdminActor } from '@/lib/admin-ui/guard'
+
 import { adminAuditLog } from '@/lib/db/schema/admin-ui/audit-log'
 import { db } from '@/lib/drizzle'
 
@@ -27,8 +29,7 @@ export async function recordAuditEvent(input: RecordAuditEventInput): Promise<vo
       summary: input.summary ?? null,
       diff: input.diff ?? null,
     })
-  }
-  catch (error) {
+  } catch (error) {
     console.error('Failed to record admin audit event', { action: input.action, error })
   }
 }
@@ -44,22 +45,25 @@ export interface AuditFeedItem {
 }
 
 /** Paginated audit events with optional free-text search. Powers the Audit Log viewer. */
-export async function listAuditEvents(params: {
-  limit?: number
-  offset?: number
-  search?: string
-} = {}): Promise<{ rows: AuditFeedItem[], totalCount: number }> {
+export async function listAuditEvents(
+  params: {
+    limit?: number
+    offset?: number
+    search?: string
+  } = {},
+): Promise<{ rows: AuditFeedItem[]; totalCount: number }> {
   const { limit = 50, offset = 0, search } = params
   const boundedLimit = Math.min(Math.max(limit, 1), 200)
 
-  const where = search && search.trim()
-    ? or(
-        ilike(adminAuditLog.action, `%${search.trim()}%`),
-        ilike(adminAuditLog.actor_label, `%${search.trim()}%`),
-        ilike(adminAuditLog.summary, `%${search.trim()}%`),
-        ilike(adminAuditLog.target_type, `%${search.trim()}%`),
-      )
-    : undefined
+  const where =
+    search && search.trim()
+      ? or(
+          ilike(adminAuditLog.action, `%${search.trim()}%`),
+          ilike(adminAuditLog.actor_label, `%${search.trim()}%`),
+          ilike(adminAuditLog.summary, `%${search.trim()}%`),
+          ilike(adminAuditLog.target_type, `%${search.trim()}%`),
+        )
+      : undefined
 
   try {
     const [rows, [{ count }]] = await Promise.all([
@@ -70,11 +74,14 @@ export async function listAuditEvents(params: {
         .orderBy(desc(adminAuditLog.created_at))
         .limit(boundedLimit)
         .offset(Math.max(offset, 0)),
-      db.select({ count: sql<number>`count(*)::int` }).from(adminAuditLog).where(where),
+      db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(adminAuditLog)
+        .where(where),
     ])
 
     return {
-      rows: rows.map(row => ({
+      rows: rows.map((row) => ({
         id: row.id,
         actorLabel: row.actor_label,
         action: row.action,
@@ -85,8 +92,7 @@ export async function listAuditEvents(params: {
       })),
       totalCount: Number(count),
     }
-  }
-  catch (error) {
+  } catch (error) {
     console.error('Failed to list audit events', error)
     return { rows: [], totalCount: 0 }
   }
@@ -95,13 +101,9 @@ export async function listAuditEvents(params: {
 /** Most recent audit events, newest first. Powers the Overview activity feed. */
 export async function getRecentAuditEvents(limit = 12): Promise<AuditFeedItem[]> {
   try {
-    const rows = await db
-      .select()
-      .from(adminAuditLog)
-      .orderBy(desc(adminAuditLog.created_at))
-      .limit(limit)
+    const rows = await db.select().from(adminAuditLog).orderBy(desc(adminAuditLog.created_at)).limit(limit)
 
-    return rows.map(row => ({
+    return rows.map((row) => ({
       id: row.id,
       actorLabel: row.actor_label,
       action: row.action,
@@ -110,8 +112,7 @@ export async function getRecentAuditEvents(limit = 12): Promise<AuditFeedItem[]>
       summary: row.summary,
       createdAt: row.created_at.toISOString(),
     }))
-  }
-  catch (error) {
+  } catch (error) {
     console.error('Failed to load audit events', error)
     return []
   }

@@ -1,6 +1,7 @@
 'use client'
 
 import { PanelLeftCloseIcon, PanelLeftOpenIcon } from 'lucide-react'
+
 import { AdminNavList } from '@/components/admin-ui/shell/AdminNavList'
 import { useAdminSidebar } from '@/components/admin-ui/shell/SidebarProvider'
 import { cn } from '@/lib/utils'
@@ -17,10 +18,7 @@ export default function AdminSidebar() {
   return (
     <aside
       className={cn(
-        `
-          sticky top-0 hidden h-svh shrink-0 flex-col border-r border-border/60 bg-card transition-[width] duration-200
-          lg:flex
-        `,
+        `sticky top-0 hidden h-svh shrink-0 flex-col border-r border-border/60 bg-card transition-[width] duration-200 lg:flex`,
         collapsed ? 'w-16' : 'w-60',
       )}
     >
@@ -33,18 +31,12 @@ export default function AdminSidebar() {
           type="button"
           onClick={toggleCollapsed}
           className={cn(
-            `
-              flex h-9 w-full items-center gap-3 rounded-md px-3 text-sm font-medium text-muted-foreground
-              transition-colors
-              hover:bg-accent/60 hover:text-foreground
-            `,
+            `flex h-9 w-full items-center gap-3 rounded-md px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground`,
             collapsed && 'justify-center px-0',
           )}
           title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
-          {collapsed
-            ? <PanelLeftOpenIcon className="size-4.5" />
-            : <PanelLeftCloseIcon className="size-4.5" />}
+          {collapsed ? <PanelLeftOpenIcon className="size-4.5" /> : <PanelLeftCloseIcon className="size-4.5" />}
           {!collapsed && <span>Collapse</span>}
         </button>
       </div>

@@ -1,5 +1,7 @@
 import type { NextRequest } from 'next/server'
+
 import { NextResponse } from 'next/server'
+
 import { CommunityEventsRepository } from '@/lib/db/queries/community-events'
 
 /**
@@ -15,8 +17,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const pageIndex = Math.max(Number.parseInt(searchParams.get('pageIndex') || '0', 10) || 0, 0)
     const result = await CommunityEventsRepository.listForCommunity(communityId, limit, pageIndex * limit)
     return NextResponse.json(result)
-  }
-  catch (error) {
+  } catch (error) {
     console.error('List community events error', error)
     return NextResponse.json({ error: 'Failed to load activity.' }, { status: 500 })
   }

@@ -1,8 +1,11 @@
 'use client'
 
 import type { Route } from 'next'
-import type { PlatformNavigationTag } from '@/lib/platform-navigation'
+
 import { TrendingUpIcon, UsersIcon } from 'lucide-react'
+
+import type { PlatformNavigationTag } from '@/lib/platform-navigation'
+
 import AppLink from '@/components/AppLink'
 import { cn } from '@/lib/utils'
 

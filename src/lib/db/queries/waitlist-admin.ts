@@ -1,5 +1,7 @@
-import type { WaitlistRow, WaitlistStatus } from '@/lib/db/schema/waitlist/tables'
 import { and, asc, desc, eq, ilike, or, sql } from 'drizzle-orm'
+
+import type { WaitlistRow, WaitlistStatus } from '@/lib/db/schema/waitlist/tables'
+
 import { WAITLIST_STATUSES, waitlists } from '@/lib/db/schema/waitlist/tables'
 import { db } from '@/lib/drizzle'
 
@@ -43,34 +45,17 @@ function buildFilters(search?: string, status?: WaitlistStatus | 'all') {
 
 export const WaitlistAdminRepository = {
   async list(params: ListWaitlistParams = {}): Promise<ListWaitlistResult> {
-    const {
-      limit = 50,
-      offset = 0,
-      search,
-      status = 'all',
-      sortBy = 'created_at',
-      sortOrder = 'desc',
-    } = params
+    const { limit = 50, offset = 0, search, status = 'all', sortBy = 'created_at', sortOrder = 'desc' } = params
 
     const boundedLimit = Math.min(Math.max(limit, 1), 200)
     const where = buildFilters(search, status)
 
-    const sortColumn
-      = sortBy === 'email'
-        ? waitlists.email
-        : sortBy === 'status'
-          ? waitlists.status
-          : waitlists.created_at
+    const sortColumn =
+      sortBy === 'email' ? waitlists.email : sortBy === 'status' ? waitlists.status : waitlists.created_at
     const orderBy = sortOrder === 'asc' ? asc(sortColumn) : desc(sortColumn)
 
     const [rows, [{ count }]] = await Promise.all([
-      db
-        .select()
-        .from(waitlists)
-        .where(where)
-        .orderBy(orderBy)
-        .limit(boundedLimit)
-        .offset(Math.max(offset, 0)),
+      db.select().from(waitlists).where(where).orderBy(orderBy).limit(boundedLimit).offset(Math.max(offset, 0)),
       db
         .select({ count: sql<number>`count(*)::int` })
         .from(waitlists)
@@ -109,13 +94,13 @@ export const WaitlistAdminRepository = {
   },
 
   /** Per-status counts plus total. Powers the KPI strip and Overview. */
-  async stats(): Promise<{ total: number, byStatus: Record<WaitlistStatus, number> }> {
+  async stats(): Promise<{ total: number; byStatus: Record<WaitlistStatus, number> }> {
     const rows = await db
       .select({ status: waitlists.status, count: sql<number>`count(*)::int` })
       .from(waitlists)
       .groupBy(waitlists.status)
 
-    const byStatus = Object.fromEntries(WAITLIST_STATUSES.map(s => [s, 0])) as Record<WaitlistStatus, number>
+    const byStatus = Object.fromEntries(WAITLIST_STATUSES.map((s) => [s, 0])) as Record<WaitlistStatus, number>
     let total = 0
     for (const row of rows) {
       const status = row.status as WaitlistStatus
@@ -130,7 +115,7 @@ export const WaitlistAdminRepository = {
   },
 
   /** Daily signup counts for the last `days` days, oldest first. Feeds sparklines. */
-  async dailySignups(days = 30): Promise<Array<{ date: string, count: number }>> {
+  async dailySignups(days = 30): Promise<Array<{ date: string; count: number }>> {
     const rows = await db
       .select({
         date: sql<string>`to_char(date_trunc('day', ${waitlists.created_at}), 'YYYY-MM-DD')`,
@@ -141,7 +126,7 @@ export const WaitlistAdminRepository = {
       .groupBy(sql`date_trunc('day', ${waitlists.created_at})`)
       .orderBy(sql`date_trunc('day', ${waitlists.created_at}) asc`)
 
-    return rows.map(r => ({ date: r.date, count: Number(r.count) }))
+    return rows.map((r) => ({ date: r.date, count: Number(r.count) }))
   },
 
   async allForExport(status?: WaitlistStatus | 'all'): Promise<WaitlistRow[]> {

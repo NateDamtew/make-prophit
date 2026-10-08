@@ -1,8 +1,10 @@
 'use client'
 
 import { ActivityIcon } from 'lucide-react'
+
 import { formatRelativeTime } from '@/components/admin-ui/format'
 import { cn } from '@/lib/utils'
+
 import { describeFeedItem } from './activity-format'
 import { useCommunityActivity } from './useCommunityActivity'
 
@@ -11,7 +13,7 @@ import { useCommunityActivity } from './useCommunityActivity'
  * Designed to live in CommunityHeader; collapses to nothing when there's no
  * activity yet so it never adds visual noise.
  */
-export function ActivityTicker({ communityId, className }: { communityId: string, className?: string }) {
+export function ActivityTicker({ communityId, className }: { communityId: string; className?: string }) {
   const query = useCommunityActivity(communityId, 1)
   const item = query.data?.items?.[0]
 

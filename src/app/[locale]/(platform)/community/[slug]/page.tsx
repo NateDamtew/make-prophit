@@ -1,8 +1,11 @@
 import type { Metadata } from 'next'
-import type { SupportedLocale } from '@/i18n/locales'
+
 import { setRequestLocale } from 'next-intl/server'
 import { notFound } from 'next/navigation'
 import { Suspense } from 'react'
+
+import type { SupportedLocale } from '@/i18n/locales'
+
 import { CommunityThemeStyle } from '@/components/community-themes/CommunityThemeStyle'
 import { WhiteLabelBrandBar } from '@/components/community-themes/WhiteLabelBrandBar'
 import { CommunityRepository } from '@/lib/db/queries/community'
@@ -11,6 +14,7 @@ import { CommunityMonetizationRepository } from '@/lib/db/queries/community-mone
 import { CommunityThemeRepository } from '@/lib/db/queries/community-theme'
 import { UserRepository } from '@/lib/db/queries/user'
 import { STATIC_PARAMS_PLACEHOLDER } from '@/lib/static-params'
+
 import ClassicHero from './_components/classic/ClassicHero'
 import { CommunityPresetSwitch } from './_components/presets/PresetDispatcher'
 
@@ -66,18 +70,9 @@ async function CommunityContent({ slug }: { slug: string }) {
   }
 
   const user = await UserRepository.getCurrentUser({ minimal: true })
-  const { data: memberRole } = user
-    ? await CommunityRepository.getMemberRole(community.id, user.id)
-    : { data: null }
+  const { data: memberRole } = user ? await CommunityRepository.getMemberRole(community.id, user.id) : { data: null }
 
-  const [
-    { data: members },
-    { data: markets },
-    { data: reviews },
-    monetization,
-    theme,
-    whiteLabel,
-  ] = await Promise.all([
+  const [{ data: members }, { data: markets }, { data: reviews }, monetization, theme, whiteLabel] = await Promise.all([
     CommunityRepository.listMembers(community.id),
     CommunityRepository.listMarketsWithVoteTallies(community.id),
     CommunityRepository.listReviews(community.id),
@@ -102,17 +97,10 @@ async function CommunityContent({ slug }: { slug: string }) {
       <CommunityThemeStyle scopeId={themeScopeId} theme={theme} />
       {showWhiteLabel && (
         <div className="mb-4">
-          <WhiteLabelBrandBar
-            communityName={community.name}
-            communityIcon={community.icon_url ?? null}
-          />
+          <WhiteLabelBrandBar communityName={community.name} communityIcon={community.icon_url ?? null} />
         </div>
       )}
-      <ClassicHero
-        community={communityWithVerified}
-        memberRole={memberRole}
-        currentUserId={user?.id ?? null}
-      />
+      <ClassicHero community={communityWithVerified} memberRole={memberRole} currentUserId={user?.id ?? null} />
       <div className="mt-6">
         <CommunityPresetSwitch
           preset={theme.layout_preset}
@@ -129,11 +117,7 @@ async function CommunityContent({ slug }: { slug: string }) {
   )
 }
 
-export default async function CommunityDetailPage({
-  params,
-}: {
-  params: Promise<{ locale: string, slug: string }>
-}) {
+export default async function CommunityDetailPage({ params }: { params: Promise<{ locale: string; slug: string }> }) {
   const { locale, slug } = await params
   setRequestLocale(locale as SupportedLocale)
 

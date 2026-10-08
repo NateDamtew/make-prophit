@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm'
 import { char, jsonb, pgTable, text, timestamp } from 'drizzle-orm/pg-core'
+
 import { communities } from '@/lib/db/schema/communities/tables'
 
 export interface CommunityEmbedTheme {
@@ -18,8 +19,14 @@ export const community_embed_configs = pgTable('community_embed_configs', {
   community_id: char({ length: 26 })
     .primaryKey()
     .references(() => communities.id, { onDelete: 'cascade' }),
-  theme: jsonb().$type<CommunityEmbedTheme>().notNull().default(sql`'{"mode":"auto"}'::jsonb`),
-  allowed_domains: text().array().notNull().default(sql`'{}'::text[]`),
+  theme: jsonb()
+    .$type<CommunityEmbedTheme>()
+    .notNull()
+    .default(sql`'{"mode":"auto"}'::jsonb`),
+  allowed_domains: text()
+    .array()
+    .notNull()
+    .default(sql`'{}'::text[]`),
   created_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
   updated_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
 })

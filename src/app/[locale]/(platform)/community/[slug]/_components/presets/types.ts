@@ -41,7 +41,7 @@ export interface PresetMarket {
   created_at: Date
   main_category_slug?: string | null
   category_slugs?: string[] | null
-  votes?: { yes: number, no: number, disputed: number }
+  votes?: { yes: number; no: number; disputed: number }
 }
 
 interface PresetReview {

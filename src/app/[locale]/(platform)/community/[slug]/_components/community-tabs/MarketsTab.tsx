@@ -36,9 +36,7 @@ export function MarketsTab({ community, markets, memberRole, isJuror }: MarketsT
       <div className="flex flex-col items-center justify-center gap-4 py-16 text-center">
         <div className="relative">
           <div className="absolute inset-0 animate-pulse rounded-full bg-primary/10 blur-xl" />
-          <div
-            className="relative flex size-20 items-center justify-center rounded-2xl bg-linear-to-br from-primary/20 to-primary/5"
-          >
+          <div className="relative flex size-20 items-center justify-center rounded-2xl bg-linear-to-br from-primary/20 to-primary/5">
             <TrendingUp className="size-9 text-primary/80" />
           </div>
         </div>

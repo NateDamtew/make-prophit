@@ -1,8 +1,10 @@
 'use client'
 
-import type { PresetMember, PresetProps } from './types'
 import { MessageCircleIcon, TrendingUpIcon, UsersIcon } from 'lucide-react'
 import { useMemo } from 'react'
+
+import type { PresetMember, PresetProps } from './types'
+
 import { ActivityTab } from '../community-tabs/ActivityTab'
 import CommunityMarketCard from '../CommunityMarketCard'
 
@@ -20,10 +22,7 @@ import CommunityMarketCard from '../CommunityMarketCard'
 export default function ForumPreset({ community, markets, members, memberRole }: PresetProps) {
   const isJuror = memberRole === 'juror' || memberRole === 'admin'
 
-  const activeMarkets = useMemo(
-    () => markets.filter(m => m.status === 'active').slice(0, 6),
-    [markets],
-  )
+  const activeMarkets = useMemo(() => markets.filter((m) => m.status === 'active').slice(0, 6), [markets])
 
   const memberStats = useMemo(() => buildMemberStats(members), [members])
 
@@ -54,7 +53,7 @@ export default function ForumPreset({ community, markets, members, memberRole }:
               <span className="text-2xs text-muted-foreground">{activeMarkets.length} active</span>
             </header>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {activeMarkets.map(market => (
+              {activeMarkets.map((market) => (
                 <CommunityMarketCard
                   key={market.id}
                   communitySlug={community.slug}
@@ -79,7 +78,7 @@ export default function ForumPreset({ community, markets, members, memberRole }:
             <span className="ms-auto text-2xs text-muted-foreground">{members.length} total</span>
           </header>
           <ul className="space-y-2">
-            {memberStats.spotlight.map(m => (
+            {memberStats.spotlight.map((m) => (
               <li key={m.user_id} className="flex items-center gap-2 rounded-sm px-1 py-1.5 hover:bg-accent/50">
                 <Avatar member={m} />
                 <div className="min-w-0 flex-1">
@@ -90,16 +89,14 @@ export default function ForumPreset({ community, markets, members, memberRole }:
             ))}
           </ul>
           {memberStats.summary && (
-            <p className="mt-3 border-t border-border/60 pt-3 text-2xs text-muted-foreground">
-              {memberStats.summary}
-            </p>
+            <p className="mt-3 border-t border-border/60 pt-3 text-2xs text-muted-foreground">{memberStats.summary}</p>
           )}
         </section>
 
         {community.rules && (
           <section className="rounded-sm border bg-card p-4">
             <h2 className="text-sm font-semibold">House rules</h2>
-            <p className="mt-2 whitespace-pre-wrap text-sm text-foreground/80">{community.rules}</p>
+            <p className="mt-2 text-sm whitespace-pre-wrap text-foreground/80">{community.rules}</p>
           </section>
         )}
       </aside>
@@ -110,9 +107,11 @@ export default function ForumPreset({ community, markets, members, memberRole }:
 function Avatar({ member }: { member: PresetMember }) {
   return (
     <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">
-      {member.image
-        ? <img src={member.image} alt="" className="size-7 rounded-full object-cover" />
-        : (member.username?.[0] ?? '?').toUpperCase()}
+      {member.image ? (
+        <img src={member.image} alt="" className="size-7 rounded-full object-cover" />
+      ) : (
+        (member.username?.[0] ?? '?').toUpperCase()
+      )}
     </div>
   )
 }
@@ -128,10 +127,11 @@ function buildMemberStats(members: PresetMember[]) {
     return new Date(a.joined_at).getTime() - new Date(b.joined_at).getTime()
   })
   const spotlight = sorted.slice(0, 8)
-  const adminCount = members.filter(m => m.role === 'admin').length
-  const jurorCount = members.filter(m => m.role === 'juror').length
-  const summary = members.length > 0
-    ? `${adminCount} admin · ${jurorCount} juror${jurorCount === 1 ? '' : 's'} · ${members.length - adminCount - jurorCount} member${members.length - adminCount - jurorCount === 1 ? '' : 's'}`
-    : null
+  const adminCount = members.filter((m) => m.role === 'admin').length
+  const jurorCount = members.filter((m) => m.role === 'juror').length
+  const summary =
+    members.length > 0
+      ? `${adminCount} admin · ${jurorCount} juror${jurorCount === 1 ? '' : 's'} · ${members.length - adminCount - jurorCount} member${members.length - adminCount - jurorCount === 1 ? '' : 's'}`
+      : null
   return { spotlight, summary }
 }

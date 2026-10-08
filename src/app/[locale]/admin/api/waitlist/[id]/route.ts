@@ -1,7 +1,10 @@
 import type { NextRequest } from 'next/server'
-import type { WaitlistStatus } from '@/lib/db/schema/waitlist/tables'
+
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
+
+import type { WaitlistStatus } from '@/lib/db/schema/waitlist/tables'
+
 import { recordAuditEvent } from '@/lib/admin-ui/audit'
 import { getAdminActor } from '@/lib/admin-ui/guard'
 import { WaitlistAdminRepository } from '@/lib/db/queries/waitlist-admin'
@@ -23,8 +26,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   let body: unknown
   try {
     body = await request.json()
-  }
-  catch {
+  } catch {
     return NextResponse.json({ error: 'Invalid JSON.' }, { status: 400 })
   }
 
@@ -66,8 +68,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     }
 
     return NextResponse.json({ data: serialize(updated) })
-  }
-  catch (error) {
+  } catch (error) {
     console.error('Admin waitlist patch error', error)
     return NextResponse.json({ error: 'Failed to update entry.' }, { status: 500 })
   }
@@ -95,8 +96,7 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
       summary: `Deleted ${existing.email} from the waitlist`,
     })
     return NextResponse.json({ success: true })
-  }
-  catch (error) {
+  } catch (error) {
     console.error('Admin waitlist delete error', error)
     return NextResponse.json({ error: 'Failed to delete entry.' }, { status: 500 })
   }

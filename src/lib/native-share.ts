@@ -53,8 +53,7 @@ export async function shareOrCopy(input: NativeShareInput): Promise<ShareResult>
     try {
       await navigator.share(shareData)
       return 'shared'
-    }
-    catch (error) {
+    } catch (error) {
       // The user dismissing the share sheet throws AbortError — not a failure.
       if (error instanceof DOMException && error.name === 'AbortError') {
         return 'cancelled'
@@ -66,8 +65,7 @@ export async function shareOrCopy(input: NativeShareInput): Promise<ShareResult>
   try {
     await navigator.clipboard.writeText(input.url)
     return 'copied'
-  }
-  catch {
+  } catch {
     return 'failed'
   }
 }
@@ -88,16 +86,15 @@ export interface NativeFileShareInput {
  */
 export function canNativeShareFiles(files: File[]): boolean {
   if (
-    typeof navigator === 'undefined'
-    || typeof navigator.share !== 'function'
-    || typeof navigator.canShare !== 'function'
+    typeof navigator === 'undefined' ||
+    typeof navigator.share !== 'function' ||
+    typeof navigator.canShare !== 'function'
   ) {
     return false
   }
   try {
     return navigator.canShare({ files })
-  }
-  catch {
+  } catch {
     return false
   }
 }
@@ -122,8 +119,7 @@ export async function shareFiles(input: NativeFileShareInput): Promise<ShareResu
       ...(input.url ? { url: input.url } : {}),
     })
     return 'shared'
-  }
-  catch (error) {
+  } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') {
       return 'cancelled'
     }

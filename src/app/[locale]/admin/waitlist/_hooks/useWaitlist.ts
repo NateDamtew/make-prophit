@@ -1,8 +1,9 @@
 'use client'
 
-import type { WaitlistStatus } from '@/lib/db/schema/waitlist/tables'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useMemo, useState } from 'react'
+
+import type { WaitlistStatus } from '@/lib/db/schema/waitlist/tables'
 
 export interface WaitlistEntry {
   id: string
@@ -87,7 +88,7 @@ export function useWaitlistTable() {
   }, [queryClient])
 
   const updateStatus = useMutation({
-    mutationFn: async ({ id, status: next }: { id: string, status: WaitlistStatus }) => {
+    mutationFn: async ({ id, status: next }: { id: string; status: WaitlistStatus }) => {
       const res = await fetch(`/admin/api/waitlist/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -137,8 +138,7 @@ export function useWaitlistTable() {
     if (!column || !order) {
       setSortBy('created_at')
       setSortOrder('desc')
-    }
-    else {
+    } else {
       const field = (['email', 'created_at', 'status'].includes(column) ? column : 'created_at') as WaitlistSortField
       setSortBy(field)
       setSortOrder(order)

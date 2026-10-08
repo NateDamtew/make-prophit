@@ -1,6 +1,8 @@
 import type { NextRequest } from 'next/server'
+
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
+
 import { recordAuditEvent } from '@/lib/admin-ui/audit'
 import { getAdminActor } from '@/lib/admin-ui/guard'
 import { CommunityIntegrityRepository } from '@/lib/db/queries/community-integrity'
@@ -28,8 +30,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   let body: unknown
   try {
     body = await request.json()
-  }
-  catch {
+  } catch {
     return NextResponse.json({ error: 'Invalid JSON.' }, { status: 400 })
   }
 
@@ -46,7 +47,10 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     if (parsed.data.community_fee_bps !== undefined && parsed.data.community_fee_bps !== existing.community_fee_bps) {
       ops.push(CommunityMonetizationRepository.setFeeBps(id, parsed.data.community_fee_bps))
     }
-    if (parsed.data.fee_payout_address !== undefined && parsed.data.fee_payout_address !== existing.fee_payout_address) {
+    if (
+      parsed.data.fee_payout_address !== undefined &&
+      parsed.data.fee_payout_address !== existing.fee_payout_address
+    ) {
       ops.push(CommunityMonetizationRepository.setPayoutAddress(id, parsed.data.fee_payout_address))
     }
     if (parsed.data.white_label !== undefined) {
@@ -65,8 +69,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     })
 
     return NextResponse.json({ data: after })
-  }
-  catch (error) {
+  } catch (error) {
     console.error('Admin community update error', error)
     return NextResponse.json({ error: 'Failed to update community.' }, { status: 500 })
   }

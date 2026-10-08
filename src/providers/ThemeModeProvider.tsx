@@ -1,8 +1,10 @@
 'use client'
 
 import type { ReactNode } from 'react'
-import type { ThemeMode } from '@/lib/theme-settings'
+
 import { createContext, useContext } from 'react'
+
+import type { ThemeMode } from '@/lib/theme-settings'
 
 const ThemeModeContext = createContext<ThemeMode>('both')
 
@@ -16,9 +18,5 @@ interface ThemeModeProviderProps {
 }
 
 export default function ThemeModeProvider({ themeMode, children }: ThemeModeProviderProps) {
-  return (
-    <ThemeModeContext value={themeMode}>
-      {children}
-    </ThemeModeContext>
-  )
+  return <ThemeModeContext value={themeMode}>{children}</ThemeModeContext>
 }

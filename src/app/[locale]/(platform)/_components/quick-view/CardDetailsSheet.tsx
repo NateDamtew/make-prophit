@@ -1,8 +1,9 @@
 'use client'
 
-import type { QuickViewCard } from './useQuickViewDeck'
 import { CalendarIcon, ExternalLinkIcon, FileTextIcon, LinkIcon, XIcon } from 'lucide-react'
 import { useEffect } from 'react'
+
+import type { QuickViewCard } from './useQuickViewDeck'
 
 interface CardDetailsSheetProps {
   card: QuickViewCard | null
@@ -78,12 +79,9 @@ export default function CardDetailsSheet({ card, open, onClose, affiliateCode }:
 
       {/* Sheet */}
       <div
-        className={`
-          fixed inset-x-0 bottom-0 z-50 mx-auto flex max-h-[85dvh] w-full max-w-md flex-col overflow-hidden
-          rounded-t-3xl border bg-card shadow-2xl transition-transform duration-300 ease-out
-          ${
-    open ? 'translate-y-0' : 'translate-y-full'
-    }`}
+        className={`fixed inset-x-0 bottom-0 z-50 mx-auto flex max-h-[85dvh] w-full max-w-md flex-col overflow-hidden rounded-t-3xl border bg-card shadow-2xl transition-transform duration-300 ease-out ${
+          open ? 'translate-y-0' : 'translate-y-full'
+        }`}
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
         role="dialog"
         aria-modal="true"
@@ -98,9 +96,7 @@ export default function CardDetailsSheet({ card, open, onClose, affiliateCode }:
         <div className="flex items-start justify-between gap-3 px-5 py-3">
           <div className="min-w-0">
             {card.category && (
-              <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-                {card.category}
-              </p>
+              <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">{card.category}</p>
             )}
             <h2 className="mt-1 text-lg/snug font-bold text-pretty">{card.title}</h2>
           </div>
@@ -108,10 +104,7 @@ export default function CardDetailsSheet({ card, open, onClose, affiliateCode }:
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="
-              flex size-9 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors
-              hover:bg-muted hover:text-foreground
-            "
+            className="flex size-9 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
             <XIcon className="size-5" />
           </button>
@@ -123,16 +116,12 @@ export default function CardDetailsSheet({ card, open, onClose, affiliateCode }:
           <div className="mb-4 grid grid-cols-3 gap-2 rounded-2xl border bg-background/40 p-3">
             <div className="text-center">
               <p className="text-2xs font-semibold tracking-wide text-muted-foreground uppercase">Chance</p>
-              <p className="mt-0.5 text-base font-extrabold tabular-nums">
-                {card.yesChance}
-                %
-              </p>
+              <p className="mt-0.5 text-base font-extrabold tabular-nums">{card.yesChance}%</p>
             </div>
             <div className="border-x text-center">
               <p className="text-2xs font-semibold tracking-wide text-muted-foreground uppercase">Volume</p>
               <p className="mt-0.5 text-base font-extrabold tabular-nums">
-                $
-                {Intl.NumberFormat('en', { notation: 'compact' }).format(card.volume)}
+                ${Intl.NumberFormat('en', { notation: 'compact' }).format(card.volume)}
               </p>
             </div>
             <div className="text-center">
@@ -144,10 +133,7 @@ export default function CardDetailsSheet({ card, open, onClose, affiliateCode }:
           {/* Question */}
           {card.question && (
             <section className="mb-4">
-              <h3 className="
-                mb-1.5 flex items-center gap-1.5 text-xs font-bold tracking-wide text-muted-foreground uppercase
-              "
-              >
+              <h3 className="mb-1.5 flex items-center gap-1.5 text-xs font-bold tracking-wide text-muted-foreground uppercase">
                 <FileTextIcon className="size-3.5" />
                 Question
               </h3>
@@ -156,37 +142,24 @@ export default function CardDetailsSheet({ card, open, onClose, affiliateCode }:
           )}
 
           {/* Resolution rules */}
-          {card.rules
-            ? (
-                <section className="mb-4">
-                  <h3 className="
-                    mb-1.5 flex items-center gap-1.5 text-xs font-bold tracking-wide text-muted-foreground uppercase
-                  "
-                  >
-                    <CalendarIcon className="size-3.5" />
-                    Resolution Rules
-                  </h3>
-                  <p className="text-sm/relaxed whitespace-pre-wrap text-muted-foreground">
-                    {card.rules}
-                  </p>
-                </section>
-              )
-            : (
-                <section className="
-                  mb-4 rounded-xl border border-dashed bg-muted/20 px-3 py-4 text-center text-xs text-muted-foreground
-                "
-                >
-                  No resolution rules provided for this market.
-                </section>
-              )}
+          {card.rules ? (
+            <section className="mb-4">
+              <h3 className="mb-1.5 flex items-center gap-1.5 text-xs font-bold tracking-wide text-muted-foreground uppercase">
+                <CalendarIcon className="size-3.5" />
+                Resolution Rules
+              </h3>
+              <p className="text-sm/relaxed whitespace-pre-wrap text-muted-foreground">{card.rules}</p>
+            </section>
+          ) : (
+            <section className="mb-4 rounded-xl border border-dashed bg-muted/20 px-3 py-4 text-center text-xs text-muted-foreground">
+              No resolution rules provided for this market.
+            </section>
+          )}
 
           {/* Resolution source */}
           {card.resolutionSource && (
             <section className="mb-4">
-              <h3 className="
-                mb-1.5 flex items-center gap-1.5 text-xs font-bold tracking-wide text-muted-foreground uppercase
-              "
-              >
+              <h3 className="mb-1.5 flex items-center gap-1.5 text-xs font-bold tracking-wide text-muted-foreground uppercase">
                 <LinkIcon className="size-3.5" />
                 Resolution Source
               </h3>
@@ -201,11 +174,7 @@ export default function CardDetailsSheet({ card, open, onClose, affiliateCode }:
             href={eventHref}
             target="_blank"
             rel="noopener noreferrer"
-            className="
-              flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-primary text-base font-bold
-              text-primary-foreground transition-opacity
-              active:opacity-80
-            "
+            className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-primary text-base font-bold text-primary-foreground transition-opacity active:opacity-80"
           >
             Open full market
             <ExternalLinkIcon className="size-4" />

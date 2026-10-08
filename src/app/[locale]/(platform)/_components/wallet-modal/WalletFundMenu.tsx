@@ -1,6 +1,13 @@
 'use client'
 
-import { ArrowLeftRightIcon, CircleDollarSignIcon, CreditCardIcon, ExternalLinkIcon, SendIcon, WalletIcon } from 'lucide-react'
+import {
+  ArrowLeftRightIcon,
+  CircleDollarSignIcon,
+  CreditCardIcon,
+  ExternalLinkIcon,
+  SendIcon,
+  WalletIcon,
+} from 'lucide-react'
 import { useExtracted } from 'next-intl'
 import { useTheme } from 'next-themes'
 import Image from 'next/image'

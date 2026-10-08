@@ -1,13 +1,14 @@
 'use client'
 
+import { ChevronRight, ChevronLeft, Users, Lock, Globe, Check } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
-import { ChevronRight, ChevronLeft, Users, Lock, Globe, Check } from 'lucide-react'
+
 import { createCommunityAction } from '@/app/[locale]/(platform)/community/[slug]/_actions/community-actions'
-import { getMaxMembersForJurySize } from '@/lib/community-config'
-import { toast } from '@/components/ui/toast'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { toast } from '@/components/ui/toast'
+import { getMaxMembersForJurySize } from '@/lib/community-config'
 import { cn } from '@/lib/utils'
 
 type Step = 1 | 2 | 3
@@ -23,7 +24,7 @@ function slugify(name: string) {
     .slice(0, 50)
 }
 
-function StepIndicator({ step, currentStep }: { step: number, currentStep: Step }) {
+function StepIndicator({ step, currentStep }: { step: number; currentStep: Step }) {
   const isCompleted = currentStep > step
   const isCurrent = currentStep === step
 
@@ -96,7 +97,7 @@ export default function CreateCommunityForm() {
       }
     }
     setError(null)
-    setStep(s => (s < 3 ? s + 1 : s) as Step)
+    setStep((s) => (s < 3 ? s + 1 : s) as Step)
   }
 
   async function handleSubmit() {
@@ -121,8 +122,7 @@ export default function CreateCommunityForm() {
         description: `${name} is now live.`,
       })
       router.push(`/community/${slug}`)
-    }
-    finally {
+    } finally {
       setIsLoading(false)
     }
   }
@@ -144,16 +144,14 @@ export default function CreateCommunityForm() {
           <div className="space-y-5">
             <div>
               <h2 className="text-lg font-semibold">Basic Information</h2>
-              <p className="mt-0.5 text-sm text-muted-foreground">
-                Give your community a name and identity.
-              </p>
+              <p className="mt-0.5 text-sm text-muted-foreground">Give your community a name and identity.</p>
             </div>
 
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Community Name *</label>
               <Input
                 value={name}
-                onChange={e => handleNameChange(e.target.value)}
+                onChange={(e) => handleNameChange(e.target.value)}
                 placeholder="Ethiopian Traders"
                 maxLength={50}
               />
@@ -165,7 +163,7 @@ export default function CreateCommunityForm() {
                 <span className="text-muted-foreground">prophit.com/community/</span>
                 <input
                   value={slug}
-                  onChange={e => handleSlugChange(e.target.value)}
+                  onChange={(e) => handleSlugChange(e.target.value)}
                   className="flex-1 bg-transparent outline-none placeholder:text-muted-foreground"
                   placeholder="ethiopian-traders"
                   maxLength={50}
@@ -177,7 +175,7 @@ export default function CreateCommunityForm() {
               <label className="text-sm font-medium">Description</label>
               <textarea
                 value={description}
-                onChange={e => setDescription(e.target.value)}
+                onChange={(e) => setDescription(e.target.value)}
                 placeholder="Prediction markets for Ethiopian politics, finance, and sports..."
                 className="w-full resize-none rounded-lg border bg-background px-3 py-2 text-sm outline-none placeholder:text-muted-foreground focus:ring-1 focus:ring-primary"
                 rows={3}
@@ -231,9 +229,7 @@ export default function CreateCommunityForm() {
           <div className="space-y-5">
             <div>
               <h2 className="text-lg font-semibold">Governance Setup</h2>
-              <p className="mt-0.5 text-sm text-muted-foreground">
-                Configure your jury size and community rules.
-              </p>
+              <p className="mt-0.5 text-sm text-muted-foreground">Configure your jury size and community rules.</p>
             </div>
 
             <div className="space-y-3">
@@ -242,7 +238,7 @@ export default function CreateCommunityForm() {
                 Larger juries allow more members and require higher consensus to resolve markets.
               </p>
               <div className="grid grid-cols-5 gap-2">
-                {JURY_OPTIONS.map(size => (
+                {JURY_OPTIONS.map((size) => (
                   <button
                     key={size}
                     type="button"
@@ -255,9 +251,7 @@ export default function CreateCommunityForm() {
                     )}
                   >
                     <span className="text-lg font-bold">{size}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {size === 1 ? 'juror' : 'jurors'}
-                    </span>
+                    <span className="text-xs text-muted-foreground">{size === 1 ? 'juror' : 'jurors'}</span>
                   </button>
                 ))}
               </div>
@@ -265,13 +259,7 @@ export default function CreateCommunityForm() {
               <div className="rounded-xl bg-muted/50 p-4 text-sm">
                 <div className="flex items-center gap-2">
                   <Users className="size-4 text-primary" />
-                  <span className="font-medium">
-                    Up to
-                    {' '}
-                    {maxMembers}
-                    {' '}
-                    members
-                  </span>
+                  <span className="font-medium">Up to {maxMembers} members</span>
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">
                   {jurySize <= 2
@@ -285,7 +273,7 @@ export default function CreateCommunityForm() {
               <label className="text-sm font-medium">Community Rules</label>
               <textarea
                 value={rules}
-                onChange={e => setRules(e.target.value)}
+                onChange={(e) => setRules(e.target.value)}
                 placeholder="e.g. All markets must resolve within 90 days. No political markets that could cause division. Markets must have a clear and verifiable resolution source."
                 className="w-full resize-none rounded-lg border bg-background px-3 py-2 text-sm outline-none placeholder:text-muted-foreground focus:ring-1 focus:ring-primary"
                 rows={4}
@@ -301,9 +289,7 @@ export default function CreateCommunityForm() {
           <div className="space-y-5">
             <div>
               <h2 className="text-lg font-semibold">Review & Create</h2>
-              <p className="mt-0.5 text-sm text-muted-foreground">
-                Confirm your community settings before publishing.
-              </p>
+              <p className="mt-0.5 text-sm text-muted-foreground">Confirm your community settings before publishing.</p>
             </div>
 
             <div className="space-y-3 rounded-xl border bg-muted/20 p-5">
@@ -312,19 +298,17 @@ export default function CreateCommunityForm() {
                   <p className="font-semibold">{name}</p>
                   <p className="text-sm text-muted-foreground">prophit.com/community/{slug}</p>
                 </div>
-                <span className="rounded-full border px-2.5 py-0.5 text-xs capitalize">
-                  {type}
-                </span>
+                <span className="rounded-full border px-2.5 py-0.5 text-xs capitalize">{type}</span>
               </div>
 
-              {description && (
-                <p className="text-sm text-muted-foreground">{description}</p>
-              )}
+              {description && <p className="text-sm text-muted-foreground">{description}</p>}
 
               <div className="flex gap-6 border-t pt-3 text-sm">
                 <div>
                   <p className="text-xs text-muted-foreground">Jury Size</p>
-                  <p className="font-medium">{jurySize} {jurySize === 1 ? 'juror' : 'jurors'}</p>
+                  <p className="font-medium">
+                    {jurySize} {jurySize === 1 ? 'juror' : 'jurors'}
+                  </p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Max Members</p>
@@ -333,7 +317,7 @@ export default function CreateCommunityForm() {
                 <div>
                   <p className="text-xs text-muted-foreground">Consensus</p>
                   <p className="font-medium">
-                    {jurySize <= 2 ? 'Unanimous' : `>${Math.ceil(jurySize * 0.75) * 100 / jurySize}%`}
+                    {jurySize <= 2 ? 'Unanimous' : `>${(Math.ceil(jurySize * 0.75) * 100) / jurySize}%`}
                   </p>
                 </div>
               </div>
@@ -347,43 +331,35 @@ export default function CreateCommunityForm() {
             </div>
 
             <p className="text-xs text-muted-foreground">
-              You will be the community admin and first juror. You can invite other members and
-              appoint additional jurors after creation.
+              You will be the community admin and first juror. You can invite other members and appoint additional
+              jurors after creation.
             </p>
           </div>
         )}
 
-        {error && (
-          <p className="mt-4 text-sm text-destructive">{error}</p>
-        )}
+        {error && <p className="mt-4 text-sm text-destructive">{error}</p>}
 
         {/* Navigation */}
         <div className="mt-6 flex items-center justify-between">
-          {step > 1
-            ? (
-                <Button
-                  variant="outline"
-                  onClick={() => setStep(s => (s > 1 ? s - 1 : s) as Step)}
-                  disabled={isLoading}
-                >
-                  <ChevronLeft className="mr-1.5 size-4" />
-                  Back
-                </Button>
-              )
-            : <div />}
+          {step > 1 ? (
+            <Button variant="outline" onClick={() => setStep((s) => (s > 1 ? s - 1 : s) as Step)} disabled={isLoading}>
+              <ChevronLeft className="mr-1.5 size-4" />
+              Back
+            </Button>
+          ) : (
+            <div />
+          )}
 
-          {step < 3
-            ? (
-                <Button onClick={handleNext}>
-                  Next
-                  <ChevronRight className="ml-1.5 size-4" />
-                </Button>
-              )
-            : (
-                <Button onClick={handleSubmit} disabled={isLoading}>
-                  {isLoading ? 'Creating...' : 'Create Community'}
-                </Button>
-              )}
+          {step < 3 ? (
+            <Button onClick={handleNext}>
+              Next
+              <ChevronRight className="ml-1.5 size-4" />
+            </Button>
+          ) : (
+            <Button onClick={handleSubmit} disabled={isLoading}>
+              {isLoading ? 'Creating...' : 'Create Community'}
+            </Button>
+          )}
         </div>
       </div>
     </div>

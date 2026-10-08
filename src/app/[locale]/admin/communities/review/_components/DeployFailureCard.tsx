@@ -1,12 +1,13 @@
 'use client'
 
+import { RotateCcw, AlertCircle, Loader2, ExternalLink } from 'lucide-react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useTransition } from 'react'
-import Link from 'next/link'
-import { RotateCcw, AlertCircle, Loader2, ExternalLink } from 'lucide-react'
+
 import { retryDeployAction } from '@/app/[locale]/(platform)/community/[slug]/_actions/review-actions'
-import { toast } from '@/components/ui/toast'
 import { Button } from '@/components/ui/button'
+import { toast } from '@/components/ui/toast'
 
 interface Market {
   id: string
@@ -47,14 +48,12 @@ export default function DeployFailureCard({ market }: { market: Market }) {
               {market.community_name}
               <ExternalLink className="ml-1 inline-block size-3" />
             </Link>
-            <span className="rounded-full bg-destructive/20 px-1.5 py-0.5 text-[10px] font-medium uppercase text-destructive">
+            <span className="rounded-full bg-destructive/20 px-1.5 py-0.5 text-[10px] font-medium text-destructive uppercase">
               {market.review_status === 'deploy_blocked' ? 'Blocked' : 'Failed'}
             </span>
           </div>
           <p className="mt-1 font-semibold">{market.title}</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Attempts: {market.deploy_attempts}
-          </p>
+          <p className="mt-1 text-xs text-muted-foreground">Attempts: {market.deploy_attempts}</p>
 
           {market.last_deploy_error && (
             <div className="mt-3 rounded-xl border border-destructive/30 bg-background p-3 font-mono text-xs">
@@ -66,9 +65,7 @@ export default function DeployFailureCard({ market }: { market: Market }) {
 
       <div className="mt-4 flex items-center justify-end gap-2 border-t border-destructive/20 pt-3">
         <Button size="sm" onClick={handleRetry} disabled={isPending}>
-          {isPending
-            ? <Loader2 className="mr-1.5 size-3.5 animate-spin" />
-            : <RotateCcw className="mr-1.5 size-3.5" />}
+          {isPending ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : <RotateCcw className="mr-1.5 size-3.5" />}
           Retry Deployment
         </Button>
       </div>

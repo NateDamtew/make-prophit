@@ -78,10 +78,7 @@ async function fetchPriceHistory({
 
   const createdMs = new Date(createdAtIso).getTime()
   const resolvedMs = resolvedAtIso ? new Date(resolvedAtIso).getTime() : Number.NaN
-  const nowMs = Math.min(
-    Date.now(),
-    Number.isFinite(resolvedMs) ? resolvedMs : Number.POSITIVE_INFINITY,
-  )
+  const nowMs = Math.min(Date.now(), Number.isFinite(resolvedMs) ? resolvedMs : Number.POSITIVE_INFINITY)
   const createdSec = Number.isFinite(createdMs)
     ? Math.floor(createdMs / 1000)
     : Math.floor(Date.now() / 1000) - 24 * 60 * 60
@@ -101,11 +98,11 @@ async function fetchPriceHistory({
     return { points: [], deltaPercent: 0 }
   }
 
-  const payload = await response.json() as { history?: PricePoint[] }
+  const payload = (await response.json()) as { history?: PricePoint[] }
   const raw = (payload.history ?? [])
-    .map(point => ({ t: Number(point.t), p: Number(point.p) }))
-    .filter(point => Number.isFinite(point.t) && Number.isFinite(point.p))
-    .filter(point => point.p >= 0 && point.p <= 1)
+    .map((point) => ({ t: Number(point.t), p: Number(point.p) }))
+    .filter((point) => Number.isFinite(point.t) && Number.isFinite(point.p))
+    .filter((point) => point.p >= 0 && point.p <= 1)
     .sort((a, b) => a.t - b.t)
 
   if (raw.length < 2) {
@@ -125,12 +122,7 @@ async function fetchPriceHistory({
  * the user is swiping. Cached for 5 minutes via React Query so revisiting a
  * recently-seen card is instant.
  */
-export function useCardPriceHistory({
-  tokenId,
-  createdAtIso,
-  resolvedAtIso,
-  enabled,
-}: UseCardPriceHistoryArgs) {
+export function useCardPriceHistory({ tokenId, createdAtIso, resolvedAtIso, enabled }: UseCardPriceHistoryArgs) {
   const query = useQuery({
     queryKey: ['quick-view-history', tokenId],
     enabled: enabled && Boolean(tokenId),

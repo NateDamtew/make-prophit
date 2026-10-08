@@ -1,7 +1,9 @@
-import type { DefaultNetworkKey } from '@/lib/network'
 import { http } from 'viem'
 import { polygon, polygonAmoy } from 'viem/chains'
 import { createConfig } from 'wagmi'
+
+import type { DefaultNetworkKey } from '@/lib/network'
+
 import { DEFAULT_NETWORK_KEY } from '@/lib/network'
 
 const NETWORK_CHAIN_BY_KEY = {

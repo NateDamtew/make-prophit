@@ -1,7 +1,8 @@
 'use client'
 
-import type { FeedItem } from '@/lib/db/queries/community-events'
 import { useQuery } from '@tanstack/react-query'
+
+import type { FeedItem } from '@/lib/db/queries/community-events'
 
 async function fetchActivity(communityId: string, limit: number) {
   const params = new URLSearchParams({ limit: String(limit) })
@@ -9,7 +10,7 @@ async function fetchActivity(communityId: string, limit: number) {
   if (!res.ok) {
     throw new Error(`Failed to load activity (${res.status})`)
   }
-  return res.json() as Promise<{ items: FeedItem[], totalCount: number }>
+  return res.json() as Promise<{ items: FeedItem[]; totalCount: number }>
 }
 
 export function useCommunityActivity(communityId: string, limit = 50) {

@@ -73,7 +73,7 @@ export function validateThemeMode(value: string | null | undefined): ThemeMode {
   return 'both'
 }
 
-type SettingsGroup = Record<string, { value: string, updated_at: string }>
+type SettingsGroup = Record<string, { value: string; updated_at: string }>
 interface SettingsMap {
   [group: string]: SettingsGroup | undefined
 }

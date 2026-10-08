@@ -1,10 +1,11 @@
 import { and, count, desc, eq, gte, sql } from 'drizzle-orm'
+
 import { community_comments, community_events, community_reactions } from '@/lib/db/schema/communities/engagement'
 import { community_markets, community_members } from '@/lib/db/schema/communities/tables'
 import { db } from '@/lib/drizzle'
 
 export interface CommunityInsightsKpis {
-  members: { total: number, weeklyDelta: number | null }
+  members: { total: number; weeklyDelta: number | null }
   markets: {
     active: number
     pending: number
@@ -39,8 +40,7 @@ export interface TopMarketRow {
 async function safeNumber<T>(run: () => Promise<T>, fallback: T): Promise<T> {
   try {
     return await run()
-  }
-  catch (error) {
+  } catch (error) {
     console.error('Community insights query failed', error)
     return fallback
   }
@@ -72,7 +72,10 @@ export async function getCommunityKpis(communityId: string): Promise<CommunityIn
     medianRow,
   ] = await Promise.all([
     safeNumber(async () => {
-      const [r] = await db.select({ v: count() }).from(community_members).where(eq(community_members.community_id, communityId))
+      const [r] = await db
+        .select({ v: count() })
+        .from(community_members)
+        .where(eq(community_members.community_id, communityId))
       return Number(r?.v ?? 0)
     }, 0),
     safeNumber(async () => {
@@ -86,11 +89,13 @@ export async function getCommunityKpis(communityId: string): Promise<CommunityIn
       const [r] = await db
         .select({ v: count() })
         .from(community_members)
-        .where(and(
-          eq(community_members.community_id, communityId),
-          gte(community_members.joined_at, twoWeeksAgo),
-          sql`${community_members.joined_at} < ${weekAgo}`,
-        ))
+        .where(
+          and(
+            eq(community_members.community_id, communityId),
+            gte(community_members.joined_at, twoWeeksAgo),
+            sql`${community_members.joined_at} < ${weekAgo}`,
+          ),
+        )
       return Number(r?.v ?? 0)
     }, 0),
     safeNumber(async () => {
@@ -104,44 +109,42 @@ export async function getCommunityKpis(communityId: string): Promise<CommunityIn
       const [r] = await db
         .select({ v: count() })
         .from(community_markets)
-        .where(and(
-          eq(community_markets.community_id, communityId),
-          sql`${community_markets.review_status} = 'pending'`,
-        ))
+        .where(
+          and(eq(community_markets.community_id, communityId), sql`${community_markets.review_status} = 'pending'`),
+        )
       return Number(r?.v ?? 0)
     }, 0),
     safeNumber(async () => {
       const [r] = await db
         .select({ v: count() })
         .from(community_markets)
-        .where(and(
-          eq(community_markets.community_id, communityId),
-          sql`${community_markets.status} IN ('resolved', 'disputed')`,
-        ))
+        .where(
+          and(
+            eq(community_markets.community_id, communityId),
+            sql`${community_markets.status} IN ('resolved', 'disputed')`,
+          ),
+        )
       return Number(r?.v ?? 0)
     }, 0),
     safeNumber(async () => {
       const [r] = await db
         .select({ v: count() })
         .from(community_comments)
-        .where(and(
-          eq(community_comments.community_id, communityId),
-          gte(community_comments.created_at, thirtyDaysAgo),
-        ))
+        .where(and(eq(community_comments.community_id, communityId), gte(community_comments.created_at, thirtyDaysAgo)))
       return Number(r?.v ?? 0)
     }, 0),
     safeNumber(async () => {
       const [r] = await db
         .select({ v: count() })
         .from(community_reactions)
-        .where(and(
-          eq(community_reactions.community_id, communityId),
-          gte(community_reactions.created_at, thirtyDaysAgo),
-        ))
+        .where(
+          and(eq(community_reactions.community_id, communityId), gte(community_reactions.created_at, thirtyDaysAgo)),
+        )
       return Number(r?.v ?? 0)
     }, 0),
-    safeNumber(async () => {
-      const rows = await db.execute(sql`
+    safeNumber(
+      async () => {
+        const rows = await db.execute(sql`
         SELECT EXTRACT(EPOCH FROM percentile_cont(0.5) WITHIN GROUP (
           ORDER BY (reviewed_at - submitted_at)
         )) / 3600.0 AS median_hours
@@ -150,10 +153,12 @@ export async function getCommunityKpis(communityId: string): Promise<CommunityIn
           AND submitted_at IS NOT NULL
           AND reviewed_at IS NOT NULL
       `)
-      const r = ((rows as unknown as { rows: Array<{ median_hours: number | null }> }).rows
-        ?? (rows as unknown as Array<{ median_hours: number | null }>))[0]
-      return r?.median_hours == null ? null : Math.round(Number(r.median_hours) * 10) / 10
-    }, null as number | null),
+        const r = ((rows as unknown as { rows: Array<{ median_hours: number | null }> }).rows ??
+          (rows as unknown as Array<{ median_hours: number | null }>))[0]
+        return r?.median_hours == null ? null : Math.round(Number(r.median_hours) * 10) / 10
+      },
+      null as number | null,
+    ),
   ])
 
   return {
@@ -180,13 +185,15 @@ export async function getMemberGrowth(communityId: string, days = 30): Promise<M
         v: count(),
       })
       .from(community_members)
-      .where(and(
-        eq(community_members.community_id, communityId),
-        sql`${community_members.joined_at} >= now() - make_interval(days => ${days})`,
-      ))
+      .where(
+        and(
+          eq(community_members.community_id, communityId),
+          sql`${community_members.joined_at} >= now() - make_interval(days => ${days})`,
+        ),
+      )
       .groupBy(sql`date_trunc('day', ${community_members.joined_at})`)
       .orderBy(sql`date_trunc('day', ${community_members.joined_at}) asc`)
-    return rows.map(r => ({ date: r.date, count: Number(r.v) }))
+    return rows.map((r) => ({ date: r.date, count: Number(r.v) }))
   }, [] as MemberGrowthPoint[])
 }
 
@@ -213,31 +220,41 @@ export async function getTopMarkets(communityId: string, limit = 5): Promise<Top
       ORDER BY engagement_score DESC, m.created_at DESC
       LIMIT ${limit}
     `)
-    const list = (rows as unknown as { rows: TopMarketRow[] }).rows
-      ?? (rows as unknown as TopMarketRow[])
+    const list = (rows as unknown as { rows: TopMarketRow[] }).rows ?? (rows as unknown as TopMarketRow[])
     return list
   }, [] as TopMarketRow[])
 }
 
 /** Recent community events powering the Insights activity feed. */
 export async function getRecentCommunityEvents(communityId: string, limit = 12) {
-  return safeNumber(async () => {
-    const rows = await db
-      .select()
-      .from(community_events)
-      .where(eq(community_events.community_id, communityId))
-      .orderBy(desc(community_events.created_at))
-      .limit(limit)
-    return rows.map(row => ({
-      id: row.id,
-      kind: row.kind,
-      actorLabel: row.actor_label,
-      targetType: row.target_type,
-      targetId: row.target_id,
-      payload: row.payload,
-      createdAt: row.created_at.toISOString(),
-    }))
-  }, [] as Array<{ id: string, kind: string, actorLabel: string | null, targetType: string | null, targetId: string | null, payload: Record<string, unknown>, createdAt: string }>)
+  return safeNumber(
+    async () => {
+      const rows = await db
+        .select()
+        .from(community_events)
+        .where(eq(community_events.community_id, communityId))
+        .orderBy(desc(community_events.created_at))
+        .limit(limit)
+      return rows.map((row) => ({
+        id: row.id,
+        kind: row.kind,
+        actorLabel: row.actor_label,
+        targetType: row.target_type,
+        targetId: row.target_id,
+        payload: row.payload,
+        createdAt: row.created_at.toISOString(),
+      }))
+    },
+    [] as Array<{
+      id: string
+      kind: string
+      actorLabel: string | null
+      targetType: string | null
+      targetId: string | null
+      payload: Record<string, unknown>
+      createdAt: string
+    }>,
+  )
 }
 
 /**
@@ -259,8 +276,9 @@ export async function getRejectionReasons(communityId: string, limit = 5): Promi
       ORDER BY cnt DESC, excerpt ASC
       LIMIT ${limit}
     `)
-    const list = ((rows as unknown as { rows: Array<{ excerpt: string, cnt: number }> }).rows
-      ?? (rows as unknown as Array<{ excerpt: string, cnt: number }>))
-    return list.map(r => ({ excerpt: r.excerpt, count: Number(r.cnt) }))
+    const list =
+      (rows as unknown as { rows: Array<{ excerpt: string; cnt: number }> }).rows ??
+      (rows as unknown as Array<{ excerpt: string; cnt: number }>)
+    return list.map((r) => ({ excerpt: r.excerpt, count: Number(r.cnt) }))
   }, [] as RejectionReasonRow[])
 }

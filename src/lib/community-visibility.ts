@@ -10,6 +10,7 @@
  */
 
 import { eq, sql } from 'drizzle-orm'
+
 import { community_members } from '@/lib/db/schema/communities/tables'
 import { events } from '@/lib/db/schema/events/tables'
 import { db } from '@/lib/drizzle'

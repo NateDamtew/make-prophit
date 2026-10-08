@@ -1,6 +1,7 @@
 'use client'
 
 import { MenuIcon, SearchIcon } from 'lucide-react'
+
 import AdminHeaderActions from '@/app/[locale]/admin/_components/AdminHeaderActions'
 import { useAdminCommand } from '@/components/admin-ui/CommandPalette'
 import { resolveActiveNavItem } from '@/components/admin-ui/nav'
@@ -34,12 +35,7 @@ function CommandTrigger() {
     <button
       type="button"
       onClick={open}
-      className="
-        hidden items-center gap-2 rounded-md border border-border/70 bg-muted/40 px-2.5 py-1.5 text-sm
-        text-muted-foreground transition-colors
-        hover:bg-muted
-        sm:flex
-      "
+      className="hidden items-center gap-2 rounded-md border border-border/70 bg-muted/40 px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted sm:flex"
     >
       <SearchIcon className="size-3.5" />
       <span>Search…</span>
@@ -60,11 +56,7 @@ export default function AdminHeader({ feeRecipientWallet }: { feeRecipientWallet
             type="button"
             onClick={() => setMobileOpen(true)}
             aria-label="Open navigation"
-            className="
-              flex size-9 items-center justify-center rounded-md text-muted-foreground
-              hover:bg-accent/60
-              lg:hidden
-            "
+            className="flex size-9 items-center justify-center rounded-md text-muted-foreground hover:bg-accent/60 lg:hidden"
           >
             <MenuIcon className="size-5" />
           </button>

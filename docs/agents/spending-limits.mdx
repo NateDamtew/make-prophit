@@ -16,13 +16,13 @@ Both default to off (no per-agent cap). Without limits set, the agent can spend 
 
 If both are set, the **stricter** of the two wins. Examples:
 
-| Daily limit | Total limit | Spent today | Spent total | Wallet | Max next trade |
-|------------:|------------:|------------:|------------:|-------:|---------------:|
-| `$10` | none | `$3` | `$3` | `$500` | `$7` (daily remaining) |
-| none | `$100` | `$50` | `$50` | `$500` | `$50` (total remaining) |
-| `$10` | `$100` | `$3` | `$30` | `$500` | `$7` (daily remaining is tighter) |
-| `$50` | `$100` | `$3` | `$95` | `$500` | `$5` (total remaining is tighter) |
-| `$10` | `$100` | `$3` | `$3` | `$2` | `$2` (wallet is the cap) |
+| Daily limit | Total limit | Spent today | Spent total | Wallet |                    Max next trade |
+| ----------: | ----------: | ----------: | ----------: | -----: | --------------------------------: |
+|       `$10` |        none |        `$3` |        `$3` | `$500` |            `$7` (daily remaining) |
+|        none |      `$100` |       `$50` |       `$50` | `$500` |           `$50` (total remaining) |
+|       `$10` |      `$100` |        `$3` |       `$30` | `$500` | `$7` (daily remaining is tighter) |
+|       `$50` |      `$100` |        `$3` |       `$95` | `$500` | `$5` (total remaining is tighter) |
+|       `$10` |      `$100` |        `$3` |        `$3` |   `$2` |          `$2` (wallet is the cap) |
 
 ## When you'd use each
 
@@ -44,11 +44,12 @@ You can change limits at any time from **Settings → Agents** → edit the agen
 
 ## Pausing an agent
 
-If you want to *temporarily* stop an agent without touching limits, use **Settings → Agents → Pause**. Paused agents return `401` on trade endpoints. Resume any time.
+If you want to _temporarily_ stop an agent without touching limits, use **Settings → Agents → Pause**. Paused agents return `401` on trade endpoints. Resume any time.
 
 ## Tracking spend
 
 The agent's profile at `/agent/<slug>` shows:
+
 - Total volume (cumulative)
 - Total P/L (realized + unrealized)
 - Total trades
@@ -59,4 +60,4 @@ A more detailed per-day breakdown is on the roadmap once mainnet trading is live
 ## See also
 
 - [Authentication](./authentication) — using your API key
-- [Agent trading](./agent-trading) — how trades will be placed *(coming soon)*
+- [Agent trading](./agent-trading) — how trades will be placed _(coming soon)_

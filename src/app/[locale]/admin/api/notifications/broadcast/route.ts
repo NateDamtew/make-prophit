@@ -1,7 +1,9 @@
 import type { NextRequest } from 'next/server'
+
 import { sql } from 'drizzle-orm'
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
+
 import { recordAuditEvent } from '@/lib/admin-ui/audit'
 import { getAdminActor } from '@/lib/admin-ui/guard'
 import { db } from '@/lib/drizzle'
@@ -22,8 +24,7 @@ export async function POST(request: NextRequest) {
   let body: unknown
   try {
     body = await request.json()
-  }
-  catch {
+  } catch {
     return NextResponse.json({ error: 'Invalid JSON.' }, { status: 400 })
   }
 
@@ -42,7 +43,7 @@ export async function POST(request: NextRequest) {
       SELECT id, 'announcement', ${title}, ${description},
              ${hasLink ? 'external' : 'none'},
              ${hasLink ? linkUrl : null},
-             ${hasLink ? (linkLabel || 'Learn more') : null}
+             ${hasLink ? linkLabel || 'Learn more' : null}
       FROM users
     `)
 
@@ -57,8 +58,7 @@ export async function POST(request: NextRequest) {
     })
 
     return NextResponse.json({ success: true, recipientCount })
-  }
-  catch (error) {
+  } catch (error) {
     console.error('Admin notification broadcast error', error)
     return NextResponse.json({ error: 'Failed to send broadcast.' }, { status: 500 })
   }

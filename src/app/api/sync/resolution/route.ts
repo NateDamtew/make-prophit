@@ -562,17 +562,18 @@ async function processResolution(
     return { eventId: null, changed: false }
   }
 
-  const conditionChanged = !existingCondition
-    || existingCondition.resolved !== isResolved
-    || (existingCondition.resolution_status ?? null) !== status
-    || (existingCondition.resolution_flagged ?? null) !== resolution.flagged
-    || (existingCondition.resolution_paused ?? null) !== resolution.paused
-    || (existingCondition.resolution_last_update?.toISOString() ?? null) !== lastUpdateAt.toISOString()
-    || (existingCondition.resolution_price ?? null) !== nextResolutionPrice
-    || (existingCondition.resolution_was_disputed ?? null) !== resolution.wasDisputed
-    || (existingCondition.resolution_approved ?? null) !== nextResolutionApproved
-    || (existingCondition.resolution_deadline_at?.toISOString() ?? null) !== nextResolutionDeadlineIso
-    || (existingCondition.resolution_liveness_seconds ?? null) !== resolutionLivenessSeconds
+  const conditionChanged =
+    !existingCondition ||
+    existingCondition.resolved !== isResolved ||
+    (existingCondition.resolution_status ?? null) !== status ||
+    (existingCondition.resolution_flagged ?? null) !== resolution.flagged ||
+    (existingCondition.resolution_paused ?? null) !== resolution.paused ||
+    (existingCondition.resolution_last_update?.toISOString() ?? null) !== lastUpdateAt.toISOString() ||
+    (existingCondition.resolution_price ?? null) !== nextResolutionPrice ||
+    (existingCondition.resolution_was_disputed ?? null) !== resolution.wasDisputed ||
+    (existingCondition.resolution_approved ?? null) !== nextResolutionApproved ||
+    (existingCondition.resolution_deadline_at?.toISOString() ?? null) !== nextResolutionDeadlineIso ||
+    (existingCondition.resolution_liveness_seconds ?? null) !== resolutionLivenessSeconds
 
   if (conditionChanged) {
     await db

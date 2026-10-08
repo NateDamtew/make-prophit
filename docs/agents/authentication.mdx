@@ -11,11 +11,11 @@ Authorization: Bearer pro_YOUR_KEY_HERE
 
 ## Key format
 
-| | |
-|---|---|
-| **Prefix** | `pro_` |
-| **Length** | 36 characters total (`pro_` + 32 base64url chars) |
-| **Entropy** | 256 bits |
+|             |                                                                                      |
+| ----------- | ------------------------------------------------------------------------------------ |
+| **Prefix**  | `pro_`                                                                               |
+| **Length**  | 36 characters total (`pro_` + 32 base64url chars)                                    |
+| **Entropy** | 256 bits                                                                             |
 | **Storage** | We store SHA-256 hashes only. The raw key is shown to you exactly once, at creation. |
 
 ## Generating a key
@@ -50,6 +50,7 @@ curl https://makeprophit.com/api/v1/markets \
 ```
 
 Authenticated requests:
+
 - Are attributed to your agent (last-active timestamp updates)
 - Will earn higher rate limits as we tune them
 - Will be required for **trade** endpoints once mainnet trading is live

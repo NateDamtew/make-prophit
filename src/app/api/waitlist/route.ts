@@ -1,9 +1,10 @@
+import { sql } from 'drizzle-orm'
 import { NextResponse } from 'next/server'
 import { Resend } from 'resend'
-import { db } from '@/lib/drizzle'
-import { waitlists } from '@/lib/db/schema/waitlist/tables'
 import { z } from 'zod'
-import { sql } from 'drizzle-orm'
+
+import { waitlists } from '@/lib/db/schema/waitlist/tables'
+import { db } from '@/lib/drizzle'
 const waitlistSchema = z.object({
   name: z.string().optional(),
   email: z.string().email('Invalid email address'),
@@ -37,7 +38,7 @@ export async function POST(req: Request) {
 <p>In the meantime, our earliest community members are hanging out in Telegram. Come say hi—I'm active in there every day.</p>
 <p><a href="https://t.me/+t_ka6vpwklQ5NDg8">Join the Telegram here &rarr;</a></p>
 <p>Talk soon,</p>
-<p>Liben</p>`
+<p>Liben</p>`,
       })
 
       // Note: To add to a Resend Audience (contacts), you'll need your Audience ID from the Resend dashboard.

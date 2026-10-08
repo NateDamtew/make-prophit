@@ -1,8 +1,9 @@
 'use client'
 
-import type { SyncJobStatus } from '@/lib/admin-ui/job-status'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useMemo, useState } from 'react'
+
+import type { SyncJobStatus } from '@/lib/admin-ui/job-status'
 
 export interface SyncJobRow {
   id: string
@@ -43,7 +44,7 @@ async function fetchJobs(state: QueryState) {
   if (!res.ok) {
     throw new Error(`Failed to load jobs (${res.status})`)
   }
-  return res.json() as Promise<{ data: SyncJobRow[], totalCount: number, stats: SyncJobStats }>
+  return res.json() as Promise<{ data: SyncJobRow[]; totalCount: number; stats: SyncJobStats }>
 }
 
 export function useSyncJobsTable() {
@@ -53,7 +54,10 @@ export function useSyncJobsTable() {
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState<SyncJobStatus | 'all'>('all')
 
-  const state = useMemo<QueryState>(() => ({ pageIndex, pageSize, search, status }), [pageIndex, pageSize, search, status])
+  const state = useMemo<QueryState>(
+    () => ({ pageIndex, pageSize, search, status }),
+    [pageIndex, pageSize, search, status],
+  )
   const query = useQuery({ queryKey: ['admin-sync-jobs', state], queryFn: () => fetchJobs(state), staleTime: 10_000 })
 
   const retry = useMutation({

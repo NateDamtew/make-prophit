@@ -1,11 +1,13 @@
 import type { NextRequest } from 'next/server'
+
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
+
+import { analyzeMarketQuestion } from '@/lib/ai/gemini'
 import { consumeRateLimit } from '@/lib/communities/rate-limit'
 import { ingestUrl, urlContentToAiContext } from '@/lib/communities/url-ingest'
 import { CommunityRepository } from '@/lib/db/queries/community'
 import { UserRepository } from '@/lib/db/queries/user'
-import { analyzeMarketQuestion } from '@/lib/ai/gemini'
 
 /**
  * POST /api/communities/markets/ingest-url
@@ -35,8 +37,7 @@ export async function POST(request: NextRequest) {
   let payload: unknown
   try {
     payload = await request.json()
-  }
-  catch {
+  } catch {
     return NextResponse.json({ error: 'Invalid JSON.' }, { status: 400 })
   }
 
@@ -65,9 +66,10 @@ export async function POST(request: NextRequest) {
 
   // We need *something* the AI can build a market on. Title is the minimum.
   if (!scraped.data.title) {
-    return NextResponse.json(
-      { data: { source: scraped.data, suggestion: null }, warning: 'Could not extract a headline. You can still write the market manually.' },
-    )
+    return NextResponse.json({
+      data: { source: scraped.data, suggestion: null },
+      warning: 'Could not extract a headline. You can still write the market manually.',
+    })
   }
 
   try {
@@ -76,14 +78,13 @@ export async function POST(request: NextRequest) {
       context: urlContentToAiContext(scraped.data),
     })
     return NextResponse.json({ data: { source: scraped.data, suggestion } })
-  }
-  catch (error) {
+  } catch (error) {
     console.error('Gemini analysis failed during URL ingest', error)
     // Hard-fail the AI call, but still return the scraped source so the
     // canvas can populate manual fields.
     return NextResponse.json({
       data: { source: scraped.data, suggestion: null },
-      warning: 'Couldn\'t reach the AI assistant. Source extracted; please draft manually.',
+      warning: "Couldn't reach the AI assistant. Source extracted; please draft manually.",
     })
   }
 }

@@ -392,9 +392,7 @@ export default function QuickView({ open, onClose }: { open: boolean; onClose: (
             {/* Inline input shown only in Custom mode */}
             {isCustomMode && (
               <div className="mb-3">
-                <div
-                  className="flex items-center rounded-xl border border-primary bg-primary/5 px-3 focus-within:ring-2 focus-within:ring-primary/40"
-                >
+                <div className="flex items-center rounded-xl border border-primary bg-primary/5 px-3 focus-within:ring-2 focus-within:ring-primary/40">
                   <span className="text-base font-semibold text-muted-foreground">$</span>
                   <input
                     type="number"

@@ -48,41 +48,41 @@ const ROBOTS_TTL_MS = 24 * 60 * 60 * 1000
 const CONTENT_TTL_MS = 60 * 60 * 1000
 const USER_AGENT = 'Prophit-MarketAssistant/1.0 (+https://makeprophit.com/about/bot)'
 
-const contentCache = new Map<string, { content: ExtractedUrlContent, expiresAt: number }>()
-const robotsCache = new Map<string, { allowed: boolean, expiresAt: number }>()
+const contentCache = new Map<string, { content: ExtractedUrlContent; expiresAt: number }>()
+const robotsCache = new Map<string, { allowed: boolean; expiresAt: number }>()
 
 // --- SSRF guards -------------------------------------------------------------
 
 function isPrivateIPv4(ip: string): boolean {
-  const parts = ip.split('.').map(n => Number.parseInt(n, 10))
-  if (parts.length !== 4 || parts.some(n => Number.isNaN(n))) {
+  const parts = ip.split('.').map((n) => Number.parseInt(n, 10))
+  if (parts.length !== 4 || parts.some((n) => Number.isNaN(n))) {
     return true
   }
   const [a, b] = parts
   return (
-    a === 10 // 10.0.0.0/8
-    || a === 127 // loopback
-    || a === 0 // 0.0.0.0/8
-    || (a === 169 && b === 254) // link-local
-    || (a === 172 && b >= 16 && b <= 31) // 172.16.0.0/12
-    || (a === 192 && b === 168) // 192.168.0.0/16
-    || a >= 224 // multicast / reserved
+    a === 10 || // 10.0.0.0/8
+    a === 127 || // loopback
+    a === 0 || // 0.0.0.0/8
+    (a === 169 && b === 254) || // link-local
+    (a === 172 && b >= 16 && b <= 31) || // 172.16.0.0/12
+    (a === 192 && b === 168) || // 192.168.0.0/16
+    a >= 224 // multicast / reserved
   )
 }
 
 function isPrivateIPv6(ip: string): boolean {
   const lower = ip.toLowerCase()
   return (
-    lower === '::1'
-    || lower === '::'
-    || lower.startsWith('fc') // unique local
-    || lower.startsWith('fd')
-    || lower.startsWith('fe80') // link local
-    || lower.startsWith('::ffff:') // IPv4-mapped — fall back to v4 check
+    lower === '::1' ||
+    lower === '::' ||
+    lower.startsWith('fc') || // unique local
+    lower.startsWith('fd') ||
+    lower.startsWith('fe80') || // link local
+    lower.startsWith('::ffff:') // IPv4-mapped — fall back to v4 check
   )
 }
 
-async function resolveAndCheckHost(host: string): Promise<{ ok: true } | { ok: false, error: UrlIngestError }> {
+async function resolveAndCheckHost(host: string): Promise<{ ok: true } | { ok: false; error: UrlIngestError }> {
   // Block obvious literals before DNS.
   const literal = host.replace(/^\[|\]$/g, '')
   if (literal === 'localhost' || /^[\d.]+$/.test(literal) || literal.includes(':')) {
@@ -110,8 +110,7 @@ async function resolveAndCheckHost(host: string): Promise<{ ok: true } | { ok: f
       }
     }
     return { ok: true }
-  }
-  catch {
+  } catch {
     return { ok: false, error: { code: 'fetch_failed', message: 'Could not resolve host.' } }
   }
 }
@@ -146,18 +145,20 @@ async function isAllowedByRobots(target: URL): Promise<boolean> {
     const allowed = parseRobotsAllowed(text, target.pathname)
     robotsCache.set(cacheKey, { allowed, expiresAt: Date.now() + ROBOTS_TTL_MS })
     return allowed
-  }
-  catch {
+  } catch {
     // Network failure -> err on the side of allowed (consistent with most crawlers).
     return true
   }
 }
 
 function parseRobotsAllowed(text: string, path: string): boolean {
-  const lines = text.split(/\r?\n/).map(l => l.replace(/#.*$/, '').trim()).filter(Boolean)
+  const lines = text
+    .split(/\r?\n/)
+    .map((l) => l.replace(/#.*$/, '').trim())
+    .filter(Boolean)
   // Two-pass: collect rules per UA, then decide.
   let currentAgents: string[] = []
-  const rules: Array<{ agents: string[], rule: 'allow' | 'disallow', prefix: string }> = []
+  const rules: Array<{ agents: string[]; rule: 'allow' | 'disallow'; prefix: string }> = []
   for (const line of lines) {
     const [rawKey, ...rest] = line.split(':')
     if (!rawKey || rest.length === 0) {
@@ -166,22 +167,19 @@ function parseRobotsAllowed(text: string, path: string): boolean {
     const key = rawKey.trim().toLowerCase()
     const value = rest.join(':').trim()
     if (key === 'user-agent') {
-      currentAgents = currentAgents.length > 0 && rules.length === 0
-        ? [...currentAgents, value.toLowerCase()]
-        : [value.toLowerCase()]
-    }
-    else if (key === 'disallow' && currentAgents.length > 0) {
+      currentAgents =
+        currentAgents.length > 0 && rules.length === 0 ? [...currentAgents, value.toLowerCase()] : [value.toLowerCase()]
+    } else if (key === 'disallow' && currentAgents.length > 0) {
       rules.push({ agents: [...currentAgents], rule: 'disallow', prefix: value })
-    }
-    else if (key === 'allow' && currentAgents.length > 0) {
+    } else if (key === 'allow' && currentAgents.length > 0) {
       rules.push({ agents: [...currentAgents], rule: 'allow', prefix: value })
     }
   }
   const ourAgent = USER_AGENT.toLowerCase()
   // Match longest-prefix rule for our UA or '*'.
-  let bestMatch: { rule: 'allow' | 'disallow', prefix: string } | null = null
+  let bestMatch: { rule: 'allow' | 'disallow'; prefix: string } | null = null
   for (const { agents, rule, prefix } of rules) {
-    const matches = agents.some(a => ourAgent.includes(a) || a === '*')
+    const matches = agents.some((a) => ourAgent.includes(a) || a === '*')
     if (!matches || prefix === '') {
       continue
     }
@@ -200,8 +198,8 @@ function decodeEntities(input: string): string {
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, '\'')
-    .replace(/&apos;/g, '\'')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'")
     .replace(/&nbsp;/g, ' ')
     .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCodePoint(Number.parseInt(hex, 16)))
     .replace(/&#(\d+);/g, (_, dec) => String.fromCodePoint(Number.parseInt(dec, 10)))
@@ -233,19 +231,22 @@ function stripBodyToText(html: string): string {
   const mainMatch = cleaned.match(/<main[\s\S]*?<\/main>/i)
   const candidate = articleMatch?.[0] ?? mainMatch?.[0] ?? cleaned
 
-  const text = decodeEntities(candidate.replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim()
+  const text = decodeEntities(candidate.replace(/<[^>]+>/g, ' '))
+    .replace(/\s+/g, ' ')
+    .trim()
   return text.slice(0, 1500)
 }
 
 // --- Public API --------------------------------------------------------------
 
-export async function ingestUrl(rawUrl: string): Promise<{ ok: true, data: ExtractedUrlContent } | { ok: false, error: UrlIngestError }> {
+export async function ingestUrl(
+  rawUrl: string,
+): Promise<{ ok: true; data: ExtractedUrlContent } | { ok: false; error: UrlIngestError }> {
   let parsed: URL
   try {
     parsed = new URL(rawUrl.trim())
-  }
-  catch {
-    return { ok: false, error: { code: 'invalid_url', message: 'That doesn\'t look like a valid URL.' } }
+  } catch {
+    return { ok: false, error: { code: 'invalid_url', message: "That doesn't look like a valid URL." } }
   }
 
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
@@ -265,7 +266,10 @@ export async function ingestUrl(rawUrl: string): Promise<{ ok: true, data: Extra
 
   const robotsOk = await isAllowedByRobots(parsed)
   if (!robotsOk) {
-    return { ok: false, error: { code: 'robots_disallowed', message: 'This site disallows automated reading via robots.txt.' } }
+    return {
+      ok: false,
+      error: { code: 'robots_disallowed', message: 'This site disallows automated reading via robots.txt.' },
+    }
   }
 
   // The fetch itself.
@@ -277,14 +281,13 @@ export async function ingestUrl(rawUrl: string): Promise<{ ok: true, data: Extra
       method: 'GET',
       headers: {
         'User-Agent': USER_AGENT,
-        'Accept': 'text/html,application/xhtml+xml',
+        Accept: 'text/html,application/xhtml+xml',
         'Accept-Language': 'en',
       },
       signal: controller.signal,
       redirect: 'follow',
     })
-  }
-  catch {
+  } catch {
     clearTimeout(timeout)
     return { ok: false, error: { code: 'fetch_failed', message: 'Could not fetch that URL.' } }
   }
@@ -330,25 +333,29 @@ export async function ingestUrl(rawUrl: string): Promise<{ ok: true, data: Extra
         chunks.push(value)
       }
     }
-  }
-  catch {
+  } catch {
     return { ok: false, error: { code: 'fetch_failed', message: 'Could not read response body.' } }
   }
 
   const html = new TextDecoder('utf-8', { fatal: false }).decode(Buffer.concat(chunks))
 
-  const title = extractMeta(html, 'property', 'og:title')
-    ?? extractMeta(html, 'name', 'twitter:title')
-    ?? extractTitle(html)
-  const description = extractMeta(html, 'property', 'og:description')
-    ?? extractMeta(html, 'name', 'description')
-    ?? extractMeta(html, 'name', 'twitter:description')
-  const ogImage = extractMeta(html, 'property', 'og:image')
-    ?? extractMeta(html, 'name', 'twitter:image')
+  const title =
+    extractMeta(html, 'property', 'og:title') ?? extractMeta(html, 'name', 'twitter:title') ?? extractTitle(html)
+  const description =
+    extractMeta(html, 'property', 'og:description') ??
+    extractMeta(html, 'name', 'description') ??
+    extractMeta(html, 'name', 'twitter:description')
+  const ogImage = extractMeta(html, 'property', 'og:image') ?? extractMeta(html, 'name', 'twitter:image')
   const body = stripBodyToText(html)
 
   if (!title && !description && !body) {
-    return { ok: false, error: { code: 'empty_content', message: 'Couldn\'t pull any text from that page. Try pasting the headline instead.' } }
+    return {
+      ok: false,
+      error: {
+        code: 'empty_content',
+        message: "Couldn't pull any text from that page. Try pasting the headline instead.",
+      },
+    }
   }
 
   const content: ExtractedUrlContent = {

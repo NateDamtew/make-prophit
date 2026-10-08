@@ -1,10 +1,13 @@
 'use client'
 
-import type { QuickViewCard } from './useQuickViewDeck'
 import { CalendarIcon, ChevronUpIcon, FlameIcon, SparklesIcon, TrendingUpIcon } from 'lucide-react'
 import { useCallback, useRef, useState } from 'react'
+
 import EventIconImage from '@/components/EventIconImage'
 import { cn } from '@/lib/utils'
+
+import type { QuickViewCard } from './useQuickViewDeck'
+
 import CardSparkline from './CardSparkline'
 import { useCardPriceHistory } from './useCardPriceHistory'
 
@@ -92,128 +95,135 @@ export default function SwipeCard({
   const startYRef = useRef(0)
   const axisRef = useRef<Axis>('idle')
   const pointerIdRef = useRef<number | null>(null)
-  const lastTapRef = useRef<{ time: number, x: number, y: number } | null>(null)
+  const lastTapRef = useRef<{ time: number; x: number; y: number } | null>(null)
 
   // Trade commits no longer fly the card out — it snaps back so the user can
   // still see exactly which market they're confirming. The persistent stamp
   // (driven by stagedSide from the parent) makes the choice visually obvious.
-  const commitSide = useCallback((side: SwipeSide) => {
-    setDragX(0)
-    setDragY(0)
-    onCommit(side)
-  }, [onCommit])
+  const commitSide = useCallback(
+    (side: SwipeSide) => {
+      setDragX(0)
+      setDragY(0)
+      onCommit(side)
+    },
+    [onCommit],
+  )
 
   const commitSkip = useCallback(() => {
     setFlyOut('skip')
     window.setTimeout(onSkip, 180)
   }, [onSkip])
 
-  const handlePointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    // Block all interactions while a side is staged — user must Confirm/Cancel
-    // before they can swipe again, so they can't accidentally re-stage.
-    if (!active || flyOut || stagedSide) {
-      return
-    }
-    pointerIdRef.current = event.pointerId
-    event.currentTarget.setPointerCapture(event.pointerId)
-    startXRef.current = event.clientX
-    startYRef.current = event.clientY
-    axisRef.current = 'idle'
-    setIsDragging(true)
-  }, [active, flyOut, stagedSide])
-
-  const handlePointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    if (!isDragging || pointerIdRef.current !== event.pointerId) {
-      return
-    }
-    const deltaX = event.clientX - startXRef.current
-    const deltaY = event.clientY - startYRef.current
-
-    // Lock the axis on the first meaningful move so swipe/details don't fight.
-    if (axisRef.current === 'idle' && (Math.abs(deltaX) > 6 || Math.abs(deltaY) > 6)) {
-      axisRef.current = Math.abs(deltaX) > Math.abs(deltaY) ? 'horizontal' : 'vertical'
-    }
-
-    if (axisRef.current === 'horizontal') {
-      setDragX(deltaX)
-      setDragY(0)
-    }
-    else if (axisRef.current === 'vertical') {
-      // Allow upward drag only — downward feels wrong here.
-      setDragX(0)
-      setDragY(Math.min(0, deltaY))
-    }
-  }, [isDragging])
-
-  const handlePointerEnd = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    if (pointerIdRef.current !== event.pointerId) {
-      return
-    }
-    pointerIdRef.current = null
-    setIsDragging(false)
-
-    const now = Date.now()
-    const releaseX = event.clientX
-    const releaseY = event.clientY
-    const totalDeltaX = releaseX - startXRef.current
-    const totalDeltaY = releaseY - startYRef.current
-    const movedTrivially = Math.abs(totalDeltaX) < 5 && Math.abs(totalDeltaY) < 5
-
-    // Double-tap detection — only counts when the pointer barely moved.
-    if (movedTrivially) {
-      const previous = lastTapRef.current
-      if (
-        previous
-        && now - previous.time < DOUBLE_TAP_MS
-        && Math.abs(releaseX - previous.x) < DOUBLE_TAP_RADIUS
-        && Math.abs(releaseY - previous.y) < DOUBLE_TAP_RADIUS
-      ) {
-        lastTapRef.current = null
-        commitSkip()
+  const handlePointerDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      // Block all interactions while a side is staged — user must Confirm/Cancel
+      // before they can swipe again, so they can't accidentally re-stage.
+      if (!active || flyOut || stagedSide) {
         return
       }
-      lastTapRef.current = { time: now, x: releaseX, y: releaseY }
-      // Reset drag offsets and exit — single tap should not do anything.
-      setDragX(0)
-      setDragY(0)
+      pointerIdRef.current = event.pointerId
+      event.currentTarget.setPointerCapture(event.pointerId)
+      startXRef.current = event.clientX
+      startYRef.current = event.clientY
       axisRef.current = 'idle'
-      return
-    }
+      setIsDragging(true)
+    },
+    [active, flyOut, stagedSide],
+  )
 
-    // Vertical drag — release determines whether to open details or spring back.
-    if (axisRef.current === 'vertical') {
-      if (dragY < -SKIP_DRAG_DISTANCE) {
-        onOpenDetails()
+  const handlePointerMove = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (!isDragging || pointerIdRef.current !== event.pointerId) {
+        return
       }
-      setDragX(0)
-      setDragY(0)
-      axisRef.current = 'idle'
-      return
-    }
+      const deltaX = event.clientX - startXRef.current
+      const deltaY = event.clientY - startYRef.current
 
-    // Horizontal drag — commit a side or spring back.
-    if (dragX > SWIPE_COMMIT_DISTANCE) {
-      commitSide('yes')
-    }
-    else if (dragX < -SWIPE_COMMIT_DISTANCE) {
-      commitSide('no')
-    }
-    else {
-      setDragX(0)
-    }
-    axisRef.current = 'idle'
-  }, [dragX, dragY, commitSide, commitSkip, onOpenDetails])
+      // Lock the axis on the first meaningful move so swipe/details don't fight.
+      if (axisRef.current === 'idle' && (Math.abs(deltaX) > 6 || Math.abs(deltaY) > 6)) {
+        axisRef.current = Math.abs(deltaX) > Math.abs(deltaY) ? 'horizontal' : 'vertical'
+      }
+
+      if (axisRef.current === 'horizontal') {
+        setDragX(deltaX)
+        setDragY(0)
+      } else if (axisRef.current === 'vertical') {
+        // Allow upward drag only — downward feels wrong here.
+        setDragX(0)
+        setDragY(Math.min(0, deltaY))
+      }
+    },
+    [isDragging],
+  )
+
+  const handlePointerEnd = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (pointerIdRef.current !== event.pointerId) {
+        return
+      }
+      pointerIdRef.current = null
+      setIsDragging(false)
+
+      const now = Date.now()
+      const releaseX = event.clientX
+      const releaseY = event.clientY
+      const totalDeltaX = releaseX - startXRef.current
+      const totalDeltaY = releaseY - startYRef.current
+      const movedTrivially = Math.abs(totalDeltaX) < 5 && Math.abs(totalDeltaY) < 5
+
+      // Double-tap detection — only counts when the pointer barely moved.
+      if (movedTrivially) {
+        const previous = lastTapRef.current
+        if (
+          previous &&
+          now - previous.time < DOUBLE_TAP_MS &&
+          Math.abs(releaseX - previous.x) < DOUBLE_TAP_RADIUS &&
+          Math.abs(releaseY - previous.y) < DOUBLE_TAP_RADIUS
+        ) {
+          lastTapRef.current = null
+          commitSkip()
+          return
+        }
+        lastTapRef.current = { time: now, x: releaseX, y: releaseY }
+        // Reset drag offsets and exit — single tap should not do anything.
+        setDragX(0)
+        setDragY(0)
+        axisRef.current = 'idle'
+        return
+      }
+
+      // Vertical drag — release determines whether to open details or spring back.
+      if (axisRef.current === 'vertical') {
+        if (dragY < -SKIP_DRAG_DISTANCE) {
+          onOpenDetails()
+        }
+        setDragX(0)
+        setDragY(0)
+        axisRef.current = 'idle'
+        return
+      }
+
+      // Horizontal drag — commit a side or spring back.
+      if (dragX > SWIPE_COMMIT_DISTANCE) {
+        commitSide('yes')
+      } else if (dragX < -SWIPE_COMMIT_DISTANCE) {
+        commitSide('no')
+      } else {
+        setDragX(0)
+      }
+      axisRef.current = 'idle'
+    },
+    [dragX, dragY, commitSide, commitSkip, onOpenDetails],
+  )
 
   // Compute presentation values for the active card.
   let effectiveX = dragX
   let effectiveY = dragY
   if (flyOut === 'yes') {
     effectiveX = 1000
-  }
-  else if (flyOut === 'no') {
+  } else if (flyOut === 'no') {
     effectiveX = -1000
-  }
-  else if (flyOut === 'skip') {
+  } else if (flyOut === 'skip') {
     effectiveY = -1000
   }
 
@@ -222,9 +232,7 @@ export default function SwipeCard({
   // When staged, the stamp is pinned to that side at full opacity — that's the
   // visual cue "you've picked, confirm or cancel". Otherwise it tracks the drag.
   const displayedIntent: SwipeSide | null = stagedSide ?? dragIntent
-  const horizontalStrength = stagedSide
-    ? 1
-    : Math.min(1, Math.abs(effectiveX) / SWIPE_COMMIT_DISTANCE)
+  const horizontalStrength = stagedSide ? 1 : Math.min(1, Math.abs(effectiveX) / SWIPE_COMMIT_DISTANCE)
   const verticalHint = effectiveY < -20 ? Math.min(1, Math.abs(effectiveY) / SKIP_DRAG_DISTANCE) : 0
 
   // Cards behind the active one are scaled down and nudged up to form a stack.
@@ -264,19 +272,13 @@ export default function SwipeCard({
       <div className="relative flex h-full flex-col overflow-hidden rounded-3xl border bg-card shadow-xl">
         {/* YES / NO intent overlays while dragging horizontally */}
         <div
-          className="
-            pointer-events-none absolute top-6 left-6 z-10 -rotate-12 rounded-xl border-4 border-yes px-4 py-1 text-2xl
-            font-extrabold tracking-wide text-yes
-          "
+          className="pointer-events-none absolute top-6 left-6 z-10 -rotate-12 rounded-xl border-4 border-yes px-4 py-1 text-2xl font-extrabold tracking-wide text-yes"
           style={{ opacity: displayedIntent === 'yes' ? horizontalStrength : 0 }}
         >
           {card.yesLabel.toUpperCase()}
         </div>
         <div
-          className="
-            pointer-events-none absolute top-6 right-6 z-10 rotate-12 rounded-xl border-4 border-no px-4 py-1 text-2xl
-            font-extrabold tracking-wide text-no
-          "
+          className="pointer-events-none absolute top-6 right-6 z-10 rotate-12 rounded-xl border-4 border-no px-4 py-1 text-2xl font-extrabold tracking-wide text-no"
           style={{ opacity: displayedIntent === 'no' ? horizontalStrength : 0 }}
         >
           {card.noLabel.toUpperCase()}
@@ -287,11 +289,7 @@ export default function SwipeCard({
           className="pointer-events-none absolute inset-x-0 top-3 z-10 flex justify-center"
           style={{ opacity: verticalHint }}
         >
-          <span className="
-            flex items-center gap-1.5 rounded-full bg-primary px-3 py-1 text-xs font-bold text-primary-foreground
-            shadow-md
-          "
-          >
+          <span className="flex items-center gap-1.5 rounded-full bg-primary px-3 py-1 text-xs font-bold text-primary-foreground shadow-md">
             <ChevronUpIcon className="size-3.5" />
             Details
           </span>
@@ -301,10 +299,7 @@ export default function SwipeCard({
         <div className="flex items-center justify-between gap-2 px-4 pt-4">
           <div className="flex min-w-0 items-center gap-1.5">
             {card.category && (
-              <span className="
-                rounded-full bg-primary/10 px-2.5 py-0.5 text-2xs font-bold tracking-wide text-primary uppercase
-              "
-              >
+              <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-2xs font-bold tracking-wide text-primary uppercase">
                 {card.category}
               </span>
             )}
@@ -312,29 +307,17 @@ export default function SwipeCard({
                 Hot is the volume-based "this market is alive right now" signal;
                 Trending is the platform-curated cue. Both are derived from data
                 already on the card, so no extra fetches. */}
-            {card.volume >= HOT_VOLUME_THRESHOLD
-              ? (
-                  <span className="
-                    inline-flex items-center gap-1 rounded-full bg-orange-500/10 px-2 py-0.5 text-2xs font-bold
-                    tracking-wide text-orange-500 uppercase
-                  "
-                  >
-                    <FlameIcon className="size-3" />
-                    Hot
-                  </span>
-                )
-              : card.isTrending
-                ? (
-                    <span className="
-                      inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-2xs font-bold
-                      tracking-wide text-amber-500 uppercase
-                    "
-                    >
-                      <SparklesIcon className="size-3" />
-                      Trending
-                    </span>
-                  )
-                : null}
+            {card.volume >= HOT_VOLUME_THRESHOLD ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-orange-500/10 px-2 py-0.5 text-2xs font-bold tracking-wide text-orange-500 uppercase">
+                <FlameIcon className="size-3" />
+                Hot
+              </span>
+            ) : card.isTrending ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-2xs font-bold tracking-wide text-amber-500 uppercase">
+                <SparklesIcon className="size-3" />
+                Trending
+              </span>
+            ) : null}
           </div>
           {endLabel && (
             <span className="flex items-center gap-1 text-[11px] font-semibold text-muted-foreground">
@@ -358,39 +341,23 @@ export default function SwipeCard({
           <h2 className="line-clamp-3 text-lg/tight font-bold text-pretty">{card.title}</h2>
 
           {card.question && card.question !== card.title && (
-            <p className="line-clamp-2 text-xs/snug text-pretty text-muted-foreground">
-              {card.question}
-            </p>
+            <p className="line-clamp-2 text-xs/snug text-pretty text-muted-foreground">{card.question}</p>
           )}
 
           <div className="flex flex-col items-center gap-0.5">
-            <span className="text-5xl font-extrabold tabular-nums">
-              {card.yesChance}
-              %
-            </span>
+            <span className="text-5xl font-extrabold tabular-nums">{card.yesChance}%</span>
             <span className="text-xs font-medium text-muted-foreground">chance</span>
           </div>
 
           {/* Price-history sparkline — only the active card fetches/renders */}
           {active && card.yesTokenId && (
-            <CardSparkline
-              points={history.points}
-              deltaPercent={history.deltaPercent}
-              isLoading={isHistoryLoading}
-            />
+            <CardSparkline points={history.points} deltaPercent={history.deltaPercent} isLoading={isHistoryLoading} />
           )}
 
           {card.volume > 0 && (
-            <span className="
-              inline-flex items-center gap-1 rounded-full bg-muted px-3 py-1 text-[11px] font-semibold
-              text-muted-foreground
-            "
-            >
-              <TrendingUpIcon className="size-3" />
-              $
-              {Intl.NumberFormat('en', { notation: 'compact' }).format(card.volume)}
-              {' '}
-              Vol.
+            <span className="inline-flex items-center gap-1 rounded-full bg-muted px-3 py-1 text-[11px] font-semibold text-muted-foreground">
+              <TrendingUpIcon className="size-3" />$
+              {Intl.NumberFormat('en', { notation: 'compact' }).format(card.volume)} Vol.
             </span>
           )}
         </div>
@@ -400,11 +367,7 @@ export default function SwipeCard({
           type="button"
           disabled={!active}
           onClick={onOpenDetails}
-          className="
-            mx-4 flex items-center justify-center gap-1 rounded-xl py-1.5 text-[11px] font-semibold
-            text-muted-foreground transition-colors
-            hover:bg-muted/60 hover:text-foreground
-          "
+          className="mx-4 flex items-center justify-center gap-1 rounded-xl py-1.5 text-[11px] font-semibold text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
         >
           <ChevronUpIcon className="size-3" />
           Swipe up for details
@@ -416,33 +379,19 @@ export default function SwipeCard({
             type="button"
             disabled={!active || Boolean(stagedSide)}
             onClick={() => commitSide('no')}
-            className="
-              flex h-14 items-center justify-center gap-2 rounded-2xl bg-no/10 text-base font-bold text-no
-              transition-colors
-              hover:bg-no/20
-            "
+            className="flex h-14 items-center justify-center gap-2 rounded-2xl bg-no/10 text-base font-bold text-no transition-colors hover:bg-no/20"
           >
             {card.noLabel}
-            <span className="tabular-nums opacity-80">
-              {card.noPriceCents}
-              ¢
-            </span>
+            <span className="tabular-nums opacity-80">{card.noPriceCents}¢</span>
           </button>
           <button
             type="button"
             disabled={!active || Boolean(stagedSide)}
             onClick={() => commitSide('yes')}
-            className="
-              flex h-14 items-center justify-center gap-2 rounded-2xl bg-yes/10 text-base font-bold text-yes
-              transition-colors
-              hover:bg-yes/20
-            "
+            className="flex h-14 items-center justify-center gap-2 rounded-2xl bg-yes/10 text-base font-bold text-yes transition-colors hover:bg-yes/20"
           >
             {card.yesLabel}
-            <span className="tabular-nums opacity-80">
-              {card.yesPriceCents}
-              ¢
-            </span>
+            <span className="tabular-nums opacity-80">{card.yesPriceCents}¢</span>
           </button>
         </div>
       </div>

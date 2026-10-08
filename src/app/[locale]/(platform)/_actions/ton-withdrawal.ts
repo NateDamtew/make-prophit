@@ -1,6 +1,10 @@
 'use server'
 
-import type { CreateTonWithdrawalResult, TonWithdrawalQuoteResult } from '@/app/[locale]/(platform)/_actions/ton-withdrawal.types'
+import type {
+  CreateTonWithdrawalResult,
+  TonWithdrawalQuoteResult,
+} from '@/app/[locale]/(platform)/_actions/ton-withdrawal.types'
+
 import { UserRepository } from '@/lib/db/queries/user'
 import { commitQuote, getPublicQuote, getRhinoConfig, getUserQuote, RhinoApiError } from '@/lib/rhino/client'
 import { RHINO_CHAIN, RHINO_TOKEN, TON_WITHDRAWAL_ROUTE } from '@/lib/rhino/constants'
@@ -18,8 +22,7 @@ export async function getTonWithdrawalQuoteAction(amount: string): Promise<TonWi
   try {
     const quote = await getPublicQuote({ ...TON_WITHDRAWAL_ROUTE, amount, mode: 'pay' })
     return { error: null, quote }
-  }
-  catch (error) {
+  } catch (error) {
     if (error instanceof RhinoApiError) {
       console.warn('[ton-withdrawal] public quote failed', error.status, error.body)
     }
@@ -78,12 +81,10 @@ export async function createTonWithdrawalAction(
         amountBaseUnits: toBaseUnits(quote.payAmount, POLYGON_USDC_DECIMALS).toString(),
       },
     }
-  }
-  catch (error) {
+  } catch (error) {
     if (error instanceof RhinoApiError) {
       console.warn('[ton-withdrawal] create withdrawal failed', error.status, error.body)
-    }
-    else {
+    } else {
       console.error('[ton-withdrawal] create withdrawal error', error)
     }
     return { error: DEFAULT_QUOTE_ERROR, order: null }

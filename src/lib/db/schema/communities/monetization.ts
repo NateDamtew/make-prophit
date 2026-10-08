@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm'
 import { char, check, index, numeric, pgTable, text, timestamp } from 'drizzle-orm/pg-core'
+
 import { communities } from '@/lib/db/schema/communities/tables'
 
 /**
@@ -10,7 +11,9 @@ import { communities } from '@/lib/db/schema/communities/tables'
 export const community_payouts = pgTable(
   'community_payouts',
   {
-    id: char({ length: 26 }).primaryKey().default(sql`generate_ulid()`),
+    id: char({ length: 26 })
+      .primaryKey()
+      .default(sql`generate_ulid()`),
     community_id: char({ length: 26 })
       .notNull()
       .references(() => communities.id, { onDelete: 'cascade' }),
@@ -25,7 +28,7 @@ export const community_payouts = pgTable(
     created_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
     updated_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
-  table => [
+  (table) => [
     index('idx_community_payouts_community_period').on(table.community_id, table.period_end.desc()),
     index('idx_community_payouts_status').on(table.status, table.created_at.desc()),
     check('chk_community_payouts_status', sql`${table.status} IN ('pending', 'paid', 'voided')`),

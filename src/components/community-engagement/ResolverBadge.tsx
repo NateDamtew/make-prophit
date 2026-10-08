@@ -1,4 +1,5 @@
 import { GavelIcon } from 'lucide-react'
+
 import { cn } from '@/lib/utils'
 
 interface ResolverBadgeProps {
@@ -20,8 +21,8 @@ export function ResolverBadge({ marketsResolved, upheldRate, className, variant 
     return null
   }
   const ratePct = upheldRate == null ? null : Math.round(upheldRate * 100)
-  const tone
-    = ratePct == null
+  const tone =
+    ratePct == null
       ? 'text-muted-foreground'
       : ratePct >= 80
         ? 'text-(--yes)'
@@ -32,14 +33,12 @@ export function ResolverBadge({ marketsResolved, upheldRate, className, variant 
   if (variant === 'block') {
     return (
       <div className={cn('rounded-sm border bg-card px-3 py-2', className)}>
-        <div className="flex items-center gap-1.5 text-xs font-medium tracking-wide uppercase text-muted-foreground">
+        <div className="flex items-center gap-1.5 text-xs font-medium tracking-wide text-muted-foreground uppercase">
           <GavelIcon className="size-3.5" />
           Resolver record
         </div>
         <p className="mt-1 text-sm">
-          <strong className="tabular-nums">{marketsResolved}</strong>
-          {' '}
-          markets
+          <strong className="tabular-nums">{marketsResolved}</strong> markets
           {ratePct != null && (
             <>
               {' · '}
@@ -61,14 +60,7 @@ export function ResolverBadge({ marketsResolved, upheldRate, className, variant 
     >
       <GavelIcon className="size-3 opacity-70" />
       <span className="tabular-nums">{marketsResolved}</span>
-      {ratePct != null && (
-        <span className={tone}>
-          ·
-          {' '}
-          {ratePct}
-          %
-        </span>
-      )}
+      {ratePct != null && <span className={tone}>· {ratePct}%</span>}
     </span>
   )
 }

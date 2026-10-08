@@ -1,13 +1,16 @@
 'use client'
 
-import type { AgentStatus } from '@/app/[locale]/admin/agents/_hooks/useAgents'
 import { RefreshCwIcon } from 'lucide-react'
+
+import type { AgentStatus } from '@/app/[locale]/admin/agents/_hooks/useAgents'
+
 import { DataTable } from '@/app/[locale]/admin/_components/DataTable'
 import { useAgentsTable } from '@/app/[locale]/admin/agents/_hooks/useAgents'
 import { PageHeader } from '@/components/admin-ui/PageHeader'
 import { StatFilterTiles } from '@/components/admin-ui/StatFilterTiles'
 import { Button } from '@/components/ui/button'
 import { AGENT_STATUSES } from '@/lib/admin-ui/agent-status'
+
 import { useAgentsColumns } from './columns'
 
 export function AgentsManager() {
@@ -17,7 +20,7 @@ export function AgentsManager() {
 
   const tiles = [
     { key: 'all', label: 'Total', value: stats?.total },
-    ...AGENT_STATUSES.map(s => ({ key: s, label: s[0].toUpperCase() + s.slice(1), value: stats?.byStatus[s] })),
+    ...AGENT_STATUSES.map((s) => ({ key: s, label: s[0].toUpperCase() + s.slice(1), value: stats?.byStatus[s] })),
   ]
 
   return (
@@ -25,18 +28,18 @@ export function AgentsManager() {
       <PageHeader
         title="Agents"
         description="Every AI trading agent registered on the platform. Pause or revoke any agent."
-        actions={(
+        actions={
           <Button variant="outline" onClick={table.refetch}>
             <RefreshCwIcon className="size-4" />
             Refresh
           </Button>
-        )}
+        }
       />
 
       <StatFilterTiles
         items={tiles}
         activeKey={table.status}
-        onSelect={key => table.setStatus(key as AgentStatus | 'all')}
+        onSelect={(key) => table.setStatus(key as AgentStatus | 'all')}
       />
 
       <DataTable

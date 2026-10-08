@@ -1,8 +1,9 @@
 'use client'
 
-import type { PricePoint } from './useCardPriceHistory'
 import { TrendingDownIcon, TrendingUpIcon } from 'lucide-react'
 import { useMemo } from 'react'
+
+import type { PricePoint } from './useCardPriceHistory'
 
 interface CardSparklineProps {
   points: PricePoint[]
@@ -24,7 +25,7 @@ export default function CardSparkline({ points, deltaPercent, isLoading }: CardS
     if (points.length < 2) {
       return null
     }
-    const values = points.map(point => point.p)
+    const values = points.map((point) => point.p)
     const minValue = Math.min(...values)
     const maxValue = Math.max(...values)
     const padding = Math.max(0.02, (maxValue - minValue) * 0.2)
@@ -58,16 +59,9 @@ export default function CardSparkline({ points, deltaPercent, isLoading }: CardS
 
   const isUp = deltaPercent >= 0
   const Icon = isUp ? TrendingUpIcon : TrendingDownIcon
-  const colorClass = deltaPercent === 0
-    ? 'text-muted-foreground'
-    : isUp
-      ? 'text-yes'
-      : 'text-no'
-  const strokeColor = deltaPercent === 0
-    ? 'currentColor'
-    : isUp
-      ? 'var(--color-yes, #16a34a)'
-      : 'var(--color-no, #dc2626)'
+  const colorClass = deltaPercent === 0 ? 'text-muted-foreground' : isUp ? 'text-yes' : 'text-no'
+  const strokeColor =
+    deltaPercent === 0 ? 'currentColor' : isUp ? 'var(--color-yes, #16a34a)' : 'var(--color-no, #dc2626)'
 
   return (
     <div className="flex w-full flex-col items-center gap-1">
@@ -78,20 +72,11 @@ export default function CardSparkline({ points, deltaPercent, isLoading }: CardS
         aria-hidden="true"
         className="opacity-90"
       >
-        <path
-          d={path}
-          fill="none"
-          stroke={strokeColor}
-          strokeWidth={2}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
+        <path d={path} fill="none" stroke={strokeColor} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
       </svg>
       <span className={`flex items-center gap-1 text-xs font-semibold ${colorClass}`}>
         <Icon className="size-3" />
-        {deltaPercent === 0
-          ? 'No change'
-          : `${isUp ? '+' : ''}${deltaPercent}% since launch`}
+        {deltaPercent === 0 ? 'No change' : `${isUp ? '+' : ''}${deltaPercent}% since launch`}
       </span>
     </div>
   )

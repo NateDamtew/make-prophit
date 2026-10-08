@@ -1,9 +1,10 @@
 'use client'
 
-import type { AgentStatus } from '@/lib/admin-ui/agent-status'
-import type { AdminAgentRow } from '@/lib/db/queries/agents-admin'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useMemo, useState } from 'react'
+
+import type { AgentStatus } from '@/lib/admin-ui/agent-status'
+import type { AdminAgentRow } from '@/lib/db/queries/agents-admin'
 
 export type { AdminAgentRow, AgentStatus }
 
@@ -31,7 +32,7 @@ async function fetchAgents(state: QueryState) {
   if (!res.ok) {
     throw new Error(`Failed to load agents (${res.status})`)
   }
-  return res.json() as Promise<{ data: AdminAgentRow[], totalCount: number, stats: AgentStats }>
+  return res.json() as Promise<{ data: AdminAgentRow[]; totalCount: number; stats: AgentStats }>
 }
 
 export function useAgentsTable() {
@@ -41,11 +42,14 @@ export function useAgentsTable() {
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState<AgentStatus | 'all'>('all')
 
-  const state = useMemo<QueryState>(() => ({ pageIndex, pageSize, search, status }), [pageIndex, pageSize, search, status])
+  const state = useMemo<QueryState>(
+    () => ({ pageIndex, pageSize, search, status }),
+    [pageIndex, pageSize, search, status],
+  )
   const query = useQuery({ queryKey: ['admin-agents', state], queryFn: () => fetchAgents(state), staleTime: 15_000 })
 
   const setStatusMutation = useMutation({
-    mutationFn: async ({ id, status: next }: { id: string, status: AgentStatus }) => {
+    mutationFn: async ({ id, status: next }: { id: string; status: AgentStatus }) => {
       const res = await fetch(`/admin/api/agents/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },

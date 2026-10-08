@@ -2,6 +2,7 @@
 
 import { ArrowRightIcon, CheckCircle2Icon, Loader2Icon } from 'lucide-react'
 import { useEffect, useState } from 'react'
+
 import { useTonWithdrawal } from '@/app/[locale]/(platform)/_components/wallet-modal/useTonWithdrawal'
 import { Button } from '@/components/ui/button'
 import { MAX_AMOUNT_INPUT, sanitizeNumericInput } from '@/lib/amount-input'
@@ -23,17 +24,9 @@ function shortenTon(address: string): string {
  * wallet, receive USDT at the connected TON wallet. Signs the existing
  * deposit-wallet EIP-712 batch — no TON signature.
  */
-function TonWithdrawPanel({ user, onDone }: { user: WithdrawalUser | null, onDone: () => void }) {
-  const {
-    tonWalletAddress,
-    connectTonWallet,
-    status,
-    error,
-    quote,
-    isQuoting,
-    refreshQuote,
-    withdraw,
-  } = useTonWithdrawal(user)
+function TonWithdrawPanel({ user, onDone }: { user: WithdrawalUser | null; onDone: () => void }) {
+  const { tonWalletAddress, connectTonWallet, status, error, quote, isQuoting, refreshQuote, withdraw } =
+    useTonWithdrawal(user)
   const [amount, setAmount] = useState('')
 
   useEffect(() => {
@@ -66,9 +59,7 @@ function TonWithdrawPanel({ user, onDone }: { user: WithdrawalUser | null, onDon
         <CheckCircle2Icon className="mx-auto size-10 text-emerald-500" />
         <div className="space-y-1">
           <p className="text-sm font-semibold text-foreground">Withdrawal submitted</p>
-          <p className="text-xs text-muted-foreground">
-            Your USDT will arrive at your TON wallet shortly.
-          </p>
+          <p className="text-xs text-muted-foreground">Your USDT will arrive at your TON wallet shortly.</p>
         </div>
         <Button type="button" className="h-12 w-full" onClick={onDone}>
           Done
@@ -92,11 +83,11 @@ function TonWithdrawPanel({ user, onDone }: { user: WithdrawalUser | null, onDon
           type="text"
           inputMode="decimal"
           value={amount}
-          onChange={event => handleInputChange(event.target.value)}
+          onChange={(event) => handleInputChange(event.target.value)}
           placeholder="0.00"
-          className={cn(`
-            min-h-[1.2em] bg-transparent pb-1 text-center text-5xl/tight font-semibold text-foreground outline-none
-          `)}
+          className={cn(
+            `min-h-[1.2em] bg-transparent pb-1 text-center text-5xl/tight font-semibold text-foreground outline-none`,
+          )}
           style={{ width: `${Math.max(amount.length, 4)}ch`, maxWidth: '70vw' }}
         />
         <span className="pb-1 text-xl/tight font-semibold text-muted-foreground">USDC</span>
@@ -113,13 +104,11 @@ function TonWithdrawPanel({ user, onDone }: { user: WithdrawalUser | null, onDon
       <div className="rounded-lg border border-border px-4 py-3 text-sm">
         <div className="flex items-center justify-between">
           <span className="text-muted-foreground">You receive</span>
-          {isQuoting
-            ? <Loader2Icon className="size-4 animate-spin text-muted-foreground" />
-            : (
-                <span className="font-semibold text-foreground">
-                  {quote ? `${quote.receiveAmount} USDT` : '—'}
-                </span>
-              )}
+          {isQuoting ? (
+            <Loader2Icon className="size-4 animate-spin text-muted-foreground" />
+          ) : (
+            <span className="font-semibold text-foreground">{quote ? `${quote.receiveAmount} USDT` : '—'}</span>
+          )}
         </div>
         <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground">
           <span>To</span>
@@ -141,14 +130,14 @@ function TonWithdrawPanel({ user, onDone }: { user: WithdrawalUser | null, onDon
         disabled={!isAmountValid || isBusy}
         onClick={() => void withdraw(amount)}
       >
-        {isBusy
-          ? (
-              <span className="flex items-center gap-2">
-                <Loader2Icon className="size-4 animate-spin" />
-                {status === 'signing' ? 'Confirm in your wallet…' : 'Preparing…'}
-              </span>
-            )
-          : 'Withdraw to TON'}
+        {isBusy ? (
+          <span className="flex items-center gap-2">
+            <Loader2Icon className="size-4 animate-spin" />
+            {status === 'signing' ? 'Confirm in your wallet…' : 'Preparing…'}
+          </span>
+        ) : (
+          'Withdraw to TON'
+        )}
       </Button>
     </div>
   )

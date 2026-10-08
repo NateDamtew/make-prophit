@@ -2,8 +2,9 @@
 
 import { ArchiveIcon, ArchiveRestoreIcon, LockIcon, LockOpenIcon, PinIcon, PinOffIcon } from 'lucide-react'
 import { useState, useTransition } from 'react'
-import { toast } from '@/components/ui/toast'
+
 import { Button } from '@/components/ui/button'
+import { toast } from '@/components/ui/toast'
 
 interface ModerationBarProps {
   marketId: string
@@ -26,7 +27,7 @@ export function ModerationBar({ marketId, initial }: ModerationBarProps) {
   function patch(patch: Partial<typeof initial>, optimistic: Partial<typeof initial>, labels: { success: string }) {
     startTransition(async () => {
       const previous = state
-      setState(prev => ({ ...prev, ...optimistic }))
+      setState((prev) => ({ ...prev, ...optimistic }))
       try {
         const res = await fetch(`/api/communities/markets/${marketId}/moderation`, {
           method: 'PATCH',
@@ -37,8 +38,7 @@ export function ModerationBar({ marketId, initial }: ModerationBarProps) {
           throw new Error((await res.json().catch(() => ({})))?.error || 'Update failed')
         }
         toast.success(labels.success)
-      }
-      catch (error) {
+      } catch (error) {
         setState(previous)
         toast.error((error as Error).message)
       }
@@ -51,11 +51,13 @@ export function ModerationBar({ marketId, initial }: ModerationBarProps) {
         size="sm"
         variant={state.is_pinned ? 'default' : 'outline'}
         disabled={pending}
-        onClick={() => patch(
-          { is_pinned: !state.is_pinned },
-          { is_pinned: !state.is_pinned },
-          { success: state.is_pinned ? 'Market unpinned' : 'Market pinned to top' },
-        )}
+        onClick={() =>
+          patch(
+            { is_pinned: !state.is_pinned },
+            { is_pinned: !state.is_pinned },
+            { success: state.is_pinned ? 'Market unpinned' : 'Market pinned to top' },
+          )
+        }
       >
         {state.is_pinned ? <PinOffIcon className="size-3.5" /> : <PinIcon className="size-3.5" />}
         {state.is_pinned ? 'Unpin' : 'Pin'}
@@ -65,11 +67,13 @@ export function ModerationBar({ marketId, initial }: ModerationBarProps) {
         size="sm"
         variant={state.is_locked ? 'default' : 'outline'}
         disabled={pending}
-        onClick={() => patch(
-          { is_locked: !state.is_locked },
-          { is_locked: !state.is_locked },
-          { success: state.is_locked ? 'Comments unlocked' : 'Comments locked' },
-        )}
+        onClick={() =>
+          patch(
+            { is_locked: !state.is_locked },
+            { is_locked: !state.is_locked },
+            { success: state.is_locked ? 'Comments unlocked' : 'Comments locked' },
+          )
+        }
       >
         {state.is_locked ? <LockOpenIcon className="size-3.5" /> : <LockIcon className="size-3.5" />}
         {state.is_locked ? 'Unlock' : 'Lock'}
@@ -79,11 +83,13 @@ export function ModerationBar({ marketId, initial }: ModerationBarProps) {
         size="sm"
         variant={state.is_archived ? 'default' : 'outline'}
         disabled={pending}
-        onClick={() => patch(
-          { is_archived: !state.is_archived },
-          { is_archived: !state.is_archived },
-          { success: state.is_archived ? 'Market restored' : 'Market archived' },
-        )}
+        onClick={() =>
+          patch(
+            { is_archived: !state.is_archived },
+            { is_archived: !state.is_archived },
+            { success: state.is_archived ? 'Market restored' : 'Market archived' },
+          )
+        }
       >
         {state.is_archived ? <ArchiveRestoreIcon className="size-3.5" /> : <ArchiveIcon className="size-3.5" />}
         {state.is_archived ? 'Restore' : 'Archive'}

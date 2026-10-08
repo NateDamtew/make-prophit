@@ -1,4 +1,5 @@
 import { desc, eq, sql } from 'drizzle-orm'
+
 import { community_events } from '@/lib/db/schema/communities/engagement'
 import { db } from '@/lib/drizzle'
 
@@ -14,7 +15,11 @@ export interface FeedItem {
 }
 
 export const CommunityEventsRepository = {
-  async listForCommunity(communityId: string, limit = 50, offset = 0): Promise<{ items: FeedItem[], totalCount: number }> {
+  async listForCommunity(
+    communityId: string,
+    limit = 50,
+    offset = 0,
+  ): Promise<{ items: FeedItem[]; totalCount: number }> {
     const boundedLimit = Math.min(Math.max(limit, 1), 200)
 
     const [rows, [{ count }]] = await Promise.all([
@@ -32,7 +37,7 @@ export const CommunityEventsRepository = {
     ])
 
     return {
-      items: rows.map(row => ({
+      items: rows.map((row) => ({
         id: row.id,
         kind: row.kind,
         actorLabel: row.actor_label,

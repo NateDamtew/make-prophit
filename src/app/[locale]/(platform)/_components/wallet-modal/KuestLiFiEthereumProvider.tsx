@@ -3,11 +3,12 @@
 import { ChainType, type SDKProvider } from '@lifi/sdk'
 import { EthereumProvider as createEthereumProvider, type EthereumProviderOptions } from '@lifi/sdk-provider-ethereum'
 import { EthereumContext, type Account, type WidgetProviderProps } from '@lifi/widget-provider'
-import { useAppKitAccount } from '@/hooks/useAppKitAccount'
 import { type PropsWithChildren, useCallback, useMemo, useState } from 'react'
 import { isAddress, type Address, type Client } from 'viem'
 import { useAccount, useConfig, useConnectors } from 'wagmi'
 import { connect, getBytecode, getConnectorClient, getTransactionCount, switchChain } from 'wagmi/actions'
+
+import { useAppKitAccount } from '@/hooks/useAppKitAccount'
 
 export default function KuestLiFiEthereumProvider({ children }: PropsWithChildren<WidgetProviderProps>) {
   const wagmiConfig = useConfig()

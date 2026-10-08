@@ -1,12 +1,15 @@
-import type { SupportedLocale } from '@/i18n/locales'
-import { notFound, redirect } from 'next/navigation'
 import { setRequestLocale } from 'next-intl/server'
+import { notFound, redirect } from 'next/navigation'
 import { Suspense } from 'react'
+
+import type { SupportedLocale } from '@/i18n/locales'
+
 import { Skeleton } from '@/components/ui/skeleton'
 import { CommunityRepository } from '@/lib/db/queries/community'
 import { CommunityEmbedRepository } from '@/lib/db/queries/community-monetization'
 import { UserRepository } from '@/lib/db/queries/user'
 import { STATIC_PARAMS_PLACEHOLDER } from '@/lib/static-params'
+
 import { EmbedSettingsForm } from './_components/EmbedSettingsForm'
 
 export async function generateStaticParams() {
@@ -54,7 +57,7 @@ function EmbedSettingsSkeleton() {
 export default async function CommunityEmbedSettingsPage({
   params,
 }: {
-  params: Promise<{ locale: string, slug: string }>
+  params: Promise<{ locale: string; slug: string }>
 }) {
   const { locale, slug } = await params
   setRequestLocale(locale as SupportedLocale)

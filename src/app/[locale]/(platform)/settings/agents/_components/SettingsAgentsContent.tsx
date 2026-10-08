@@ -1,6 +1,5 @@
 'use client'
 
-import type { AgentRecord } from '@/lib/db/queries/agents'
 import {
   BotIcon,
   EllipsisVerticalIcon,
@@ -15,12 +14,14 @@ import {
 } from 'lucide-react'
 import Image from 'next/image'
 import { useState, useTransition } from 'react'
+
+import type { AgentRecord } from '@/lib/db/queries/agents'
+
 import {
   deleteAgentAction,
   rotateAgentApiKeyAction,
   updateAgentAction,
 } from '@/app/[locale]/(platform)/settings/agents/_actions/agent-actions'
-import { toast } from '@/components/ui/toast'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -37,7 +38,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { toast } from '@/components/ui/toast'
 import { cn } from '@/lib/utils'
+
 import AgentApiKeyDialog from './AgentApiKeyDialog'
 import AgentFormDialog from './AgentFormDialog'
 
@@ -132,7 +135,7 @@ export default function SettingsAgentsContent({ initialAgents }: SettingsAgentsC
         toast.error(result.error ?? 'Could not update status.')
         return
       }
-      setAgents(prev => prev.map(a => (a.id === agent.id ? result.data! : a)))
+      setAgents((prev) => prev.map((a) => (a.id === agent.id ? result.data! : a)))
       toast.success(next === 'paused' ? `${agent.name} paused` : `${agent.name} resumed`)
     })
   }
@@ -140,7 +143,7 @@ export default function SettingsAgentsContent({ initialAgents }: SettingsAgentsC
   function handleDelete(agent: AgentRecord) {
     setConfirmState({
       title: `Delete ${agent.name}?`,
-      description: 'This cannot be undone. The agent\'s API keys, history, and leaderboard position will be removed.',
+      description: "This cannot be undone. The agent's API keys, history, and leaderboard position will be removed.",
       destructive: true,
       confirmLabel: 'Delete agent',
       onConfirm: () => {
@@ -150,7 +153,7 @@ export default function SettingsAgentsContent({ initialAgents }: SettingsAgentsC
             toast.error(result.error)
             return
           }
-          setAgents(prev => prev.filter(a => a.id !== agent.id))
+          setAgents((prev) => prev.filter((a) => a.id !== agent.id))
           toast.success(`${agent.name} deleted`)
         })
       },
@@ -172,149 +175,118 @@ export default function SettingsAgentsContent({ initialAgents }: SettingsAgentsC
         </Button>
       </div>
 
-      {agents.length === 0
-        ? (
-            <div className="
-              grid place-items-center gap-3 rounded-lg border border-dashed bg-card/40 px-6 py-12 text-center
-            "
+      {agents.length === 0 ? (
+        <div className="grid place-items-center gap-3 rounded-lg border border-dashed bg-card/40 px-6 py-12 text-center">
+          <div className="flex size-12 items-center justify-center rounded-full bg-primary/10">
+            <BotIcon className="size-6 text-primary" />
+          </div>
+          <div className="grid gap-1">
+            <p className="font-medium">No agents yet</p>
+            <p className="max-w-sm text-sm text-muted-foreground">
+              Register your first agent to get API keys for the REST API and MCP server.
+            </p>
+          </div>
+          <Button onClick={openCreate} size="sm">
+            <PlusIcon className="mr-1.5 size-4" />
+            Register an agent
+          </Button>
+        </div>
+      ) : (
+        <ul className="grid gap-3">
+          {agents.map((agent) => (
+            <li
+              key={agent.id}
+              className={cn(
+                'flex items-start gap-3 rounded-lg border bg-card p-4 transition-colors',
+                agent.status !== 'active' && 'opacity-70',
+              )}
             >
-              <div className="flex size-12 items-center justify-center rounded-full bg-primary/10">
-                <BotIcon className="size-6 text-primary" />
-              </div>
-              <div className="grid gap-1">
-                <p className="font-medium">No agents yet</p>
-                <p className="max-w-sm text-sm text-muted-foreground">
-                  Register your first agent to get API keys for the REST API and MCP server.
-                </p>
-              </div>
-              <Button onClick={openCreate} size="sm">
-                <PlusIcon className="mr-1.5 size-4" />
-                Register an agent
-              </Button>
-            </div>
-          )
-        : (
-            <ul className="grid gap-3">
-              {agents.map(agent => (
-                <li
-                  key={agent.id}
-                  className={cn(
-                    'flex items-start gap-3 rounded-lg border bg-card p-4 transition-colors',
-                    agent.status !== 'active' && 'opacity-70',
-                  )}
-                >
-                  {/* Avatar — next/image with unoptimized since user-supplied
+              {/* Avatar — next/image with unoptimized since user-supplied
                       URLs aren't on our remotePatterns allowlist. */}
-                  <div className="relative size-12 shrink-0 overflow-hidden rounded-md bg-primary/10">
-                    {agent.avatar_url
-                      ? (
-                          <Image
-                            src={agent.avatar_url}
-                            alt=""
-                            fill
-                            sizes="48px"
-                            unoptimized
-                            className="object-cover"
-                          />
-                        )
-                      : (
-                          <div className="flex size-full items-center justify-center">
-                            <BotIcon className="size-6 text-primary" />
-                          </div>
-                        )}
+              <div className="relative size-12 shrink-0 overflow-hidden rounded-md bg-primary/10">
+                {agent.avatar_url ? (
+                  <Image src={agent.avatar_url} alt="" fill sizes="48px" unoptimized className="object-cover" />
+                ) : (
+                  <div className="flex size-full items-center justify-center">
+                    <BotIcon className="size-6 text-primary" />
                   </div>
+                )}
+              </div>
 
-                  {/* Identity + meta */}
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-semibold">{agent.name}</span>
-                      <span
-                        className={cn(
-                          `
-                            inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-2xs font-bold tracking-wide
-                            uppercase
-                          `,
-                          agent.is_public
-                            ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                            : 'bg-muted text-muted-foreground',
-                        )}
-                      >
-                        {agent.is_public ? <GlobeIcon className="size-2.5" /> : <LockIcon className="size-2.5" />}
-                        {agent.is_public ? 'Public' : 'Private'}
-                      </span>
-                      {agent.status !== 'active' && (
-                        <span className="
-                          rounded-full bg-amber-500/10 px-2 py-0.5 text-2xs font-bold tracking-wide text-amber-600
-                          uppercase
-                        "
-                        >
-                          {agent.status}
-                        </span>
-                      )}
-                    </div>
-
-                    {agent.description && (
-                      <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{agent.description}</p>
+              {/* Identity + meta */}
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-semibold">{agent.name}</span>
+                  <span
+                    className={cn(
+                      `inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-2xs font-bold tracking-wide uppercase`,
+                      agent.is_public
+                        ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                        : 'bg-muted text-muted-foreground',
                     )}
+                  >
+                    {agent.is_public ? <GlobeIcon className="size-2.5" /> : <LockIcon className="size-2.5" />}
+                    {agent.is_public ? 'Public' : 'Private'}
+                  </span>
+                  {agent.status !== 'active' && (
+                    <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-2xs font-bold tracking-wide text-amber-600 uppercase">
+                      {agent.status}
+                    </span>
+                  )}
+                </div>
 
-                    {/* Key prefix + limits — small meta row */}
-                    <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                      <span className="inline-flex items-center gap-1">
-                        <KeyRoundIcon className="size-3" />
-                        <code className="font-mono tabular-nums">
-                          {agent.api_key_prefix}
-                          ········
-                        </code>
-                      </span>
-                      {agent.daily_limit_usd !== null && (
-                        <span>
-                          Daily cap:
-                          {' '}
-                          {formatLimit(agent.daily_limit_usd)}
-                        </span>
-                      )}
-                      {agent.total_limit_usd !== null && (
-                        <span>
-                          Total cap:
-                          {' '}
-                          {formatLimit(agent.total_limit_usd)}
-                        </span>
-                      )}
-                    </div>
-                  </div>
+                {agent.description && (
+                  <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{agent.description}</p>
+                )}
 
-                  {/* Actions menu */}
-                  <DropdownMenu>
-                    <DropdownMenuTrigger render={<Button variant="ghost" size="icon" disabled={isPending} aria-label="Agent actions" />}>
-                        <EllipsisVerticalIcon className="size-4" />
-                      </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-48">
-                      <DropdownMenuItem onSelect={() => openEdit(agent)}>
-                        <RefreshCwIcon className="size-4" />
-                        Edit
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onSelect={() => handleRotate(agent)}>
-                        <KeyRoundIcon className="size-4" />
-                        Rotate API key
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onSelect={() => handleToggleStatus(agent)}>
-                        {agent.status === 'active' ? <PauseIcon className="size-4" /> : <PlayIcon className="size-4" />}
-                        {agent.status === 'active' ? 'Pause' : 'Resume'}
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        onSelect={() => handleDelete(agent)}
-                        className="text-destructive focus:bg-destructive/10 focus:text-destructive"
-                      >
-                        <Trash2Icon className="size-4" />
-                        Delete
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </li>
-              ))}
-            </ul>
-          )}
+                {/* Key prefix + limits — small meta row */}
+                <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                  <span className="inline-flex items-center gap-1">
+                    <KeyRoundIcon className="size-3" />
+                    <code className="font-mono tabular-nums">
+                      {agent.api_key_prefix}
+                      ········
+                    </code>
+                  </span>
+                  {agent.daily_limit_usd !== null && <span>Daily cap: {formatLimit(agent.daily_limit_usd)}</span>}
+                  {agent.total_limit_usd !== null && <span>Total cap: {formatLimit(agent.total_limit_usd)}</span>}
+                </div>
+              </div>
+
+              {/* Actions menu */}
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={<Button variant="ghost" size="icon" disabled={isPending} aria-label="Agent actions" />}
+                >
+                  <EllipsisVerticalIcon className="size-4" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuItem onSelect={() => openEdit(agent)}>
+                    <RefreshCwIcon className="size-4" />
+                    Edit
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => handleRotate(agent)}>
+                    <KeyRoundIcon className="size-4" />
+                    Rotate API key
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => handleToggleStatus(agent)}>
+                    {agent.status === 'active' ? <PauseIcon className="size-4" /> : <PlayIcon className="size-4" />}
+                    {agent.status === 'active' ? 'Pause' : 'Resume'}
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onSelect={() => handleDelete(agent)}
+                    className="text-destructive focus:bg-destructive/10 focus:text-destructive"
+                  >
+                    <Trash2Icon className="size-4" />
+                    Delete
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </li>
+          ))}
+        </ul>
+      )}
 
       <AgentFormDialog
         open={formOpen}

@@ -1,6 +1,8 @@
 import type { NextRequest } from 'next/server'
+
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
+
 import { recordAuditEvent } from '@/lib/admin-ui/audit'
 import { CommunityRepository } from '@/lib/db/queries/community'
 import { CommunityEmbedRepository } from '@/lib/db/queries/community-monetization'
@@ -13,10 +15,7 @@ const themeSchema = z.object({
 
 const patchSchema = z.object({
   theme: themeSchema.optional(),
-  allowed_domains: z
-    .array(z.string().trim().min(1).max(255))
-    .max(100, 'Maximum 100 domains')
-    .optional(),
+  allowed_domains: z.array(z.string().trim().min(1).max(255)).max(100, 'Maximum 100 domains').optional(),
 })
 
 async function requireCommunityAdmin(communityId: string) {
@@ -61,8 +60,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   let body: unknown
   try {
     body = await request.json()
-  }
-  catch {
+  } catch {
     return NextResponse.json({ error: 'Invalid JSON.' }, { status: 400 })
   }
 

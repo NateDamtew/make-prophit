@@ -1,5 +1,7 @@
 import type { NextRequest } from 'next/server'
+
 import { NextResponse } from 'next/server'
+
 import { recordAuditEvent } from '@/lib/admin-ui/audit'
 import { getAdminActor } from '@/lib/admin-ui/guard'
 import { JobsAdminRepository } from '@/lib/db/queries/jobs-admin'
@@ -26,8 +28,7 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
       summary: `Re-queued ${existing.job_type} job`,
     })
     return NextResponse.json({ success: true, data: updated ? { id: updated.id, status: updated.status } : null })
-  }
-  catch (error) {
+  } catch (error) {
     console.error('Admin sync-job retry error', error)
     return NextResponse.json({ error: 'Failed to retry job.' }, { status: 500 })
   }

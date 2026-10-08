@@ -2,6 +2,7 @@
 
 import { ArrowRightIcon, CheckCircle2Icon, Loader2Icon } from 'lucide-react'
 import { useEffect, useState } from 'react'
+
 import { useTonDeposit } from '@/app/[locale]/(platform)/_components/wallet-modal/useTonDeposit'
 import { Button } from '@/components/ui/button'
 import { MAX_AMOUNT_INPUT, sanitizeNumericInput } from '@/lib/amount-input'
@@ -16,16 +17,7 @@ const QUOTE_DEBOUNCE_MS = 400
  * the bridge completes (~20s) — no extra polling here.
  */
 function TonDepositPanel({ onDone }: { onDone: () => void }) {
-  const {
-    tonWalletAddress,
-    connectTonWallet,
-    status,
-    error,
-    quote,
-    isQuoting,
-    refreshQuote,
-    deposit,
-  } = useTonDeposit()
+  const { tonWalletAddress, connectTonWallet, status, error, quote, isQuoting, refreshQuote, deposit } = useTonDeposit()
   const [amount, setAmount] = useState('')
 
   useEffect(() => {
@@ -84,11 +76,11 @@ function TonDepositPanel({ onDone }: { onDone: () => void }) {
           type="text"
           inputMode="decimal"
           value={amount}
-          onChange={event => handleInputChange(event.target.value)}
+          onChange={(event) => handleInputChange(event.target.value)}
           placeholder="0.00"
-          className={cn(`
-            min-h-[1.2em] bg-transparent pb-1 text-center text-5xl/tight font-semibold text-foreground outline-none
-          `)}
+          className={cn(
+            `min-h-[1.2em] bg-transparent pb-1 text-center text-5xl/tight font-semibold text-foreground outline-none`,
+          )}
           style={{ width: `${Math.max(amount.length, 4)}ch`, maxWidth: '70vw' }}
         />
         <span className="pb-1 text-xl/tight font-semibold text-muted-foreground">USDT</span>
@@ -105,13 +97,11 @@ function TonDepositPanel({ onDone }: { onDone: () => void }) {
       <div className="rounded-lg border border-border px-4 py-3 text-sm">
         <div className="flex items-center justify-between">
           <span className="text-muted-foreground">You receive</span>
-          {isQuoting
-            ? <Loader2Icon className="size-4 animate-spin text-muted-foreground" />
-            : (
-                <span className="font-semibold text-foreground">
-                  {quote ? `${quote.receiveAmount} USDC` : '—'}
-                </span>
-              )}
+          {isQuoting ? (
+            <Loader2Icon className="size-4 animate-spin text-muted-foreground" />
+          ) : (
+            <span className="font-semibold text-foreground">{quote ? `${quote.receiveAmount} USDC` : '—'}</span>
+          )}
         </div>
         {quote && (
           <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground">
@@ -129,14 +119,14 @@ function TonDepositPanel({ onDone }: { onDone: () => void }) {
         disabled={!isAmountValid || isBusy}
         onClick={() => void deposit(amount)}
       >
-        {isBusy
-          ? (
-              <span className="flex items-center gap-2">
-                <Loader2Icon className="size-4 animate-spin" />
-                {status === 'signing' ? 'Confirm in your wallet…' : 'Preparing…'}
-              </span>
-            )
-          : 'Deposit from TON'}
+        {isBusy ? (
+          <span className="flex items-center gap-2">
+            <Loader2Icon className="size-4 animate-spin" />
+            {status === 'signing' ? 'Confirm in your wallet…' : 'Preparing…'}
+          </span>
+        ) : (
+          'Deposit from TON'
+        )}
       </Button>
     </div>
   )

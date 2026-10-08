@@ -1,4 +1,5 @@
 import type { CommunityThemeState } from '@/lib/db/queries/community-theme'
+
 import { isSafeAccent } from '@/lib/db/queries/community-theme'
 
 interface CommunityThemeStyleProps {
@@ -33,10 +34,9 @@ export function CommunityThemeStyle({ scopeId, theme }: CommunityThemeStyleProps
   // surface_mode: 'auto' inherits the platform mode; 'light' / 'dark' force.
   let surfaceAttr = ''
   if (theme.surface_mode === 'light') {
-    surfaceAttr = '[data-theme-mode=\'light\']'
-  }
-  else if (theme.surface_mode === 'dark') {
-    surfaceAttr = '[data-theme-mode=\'dark\']'
+    surfaceAttr = "[data-theme-mode='light']"
+  } else if (theme.surface_mode === 'dark') {
+    surfaceAttr = "[data-theme-mode='dark']"
   }
 
   const css = `#${scopeId} { ${decls.join(' ')} }

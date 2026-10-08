@@ -26,7 +26,7 @@ export function StatFilterTiles({
 }) {
   return (
     <div className={cn('grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5', className)}>
-      {items.map(item => (
+      {items.map((item) => (
         <button
           key={item.key}
           type="button"

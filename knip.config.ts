@@ -54,12 +54,8 @@ const config: KnipConfig = {
     'src/lib/wagmi-storage.ts',
     'src/lib/wagmi-storage.server.ts',
   ],
-  ignoreDependencies: [
-    'lint-staged',
-  ],
-  ignoreBinaries: [
-    'lint-staged',
-  ],
+  ignoreDependencies: ['lint-staged'],
+  ignoreBinaries: ['lint-staged'],
   treatConfigHintsAsErrors: false,
   rules: {
     unlisted: 'off',

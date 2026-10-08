@@ -1,10 +1,12 @@
 'use client'
 
-import { useState } from 'react'
 import { Inbox, AlertCircle } from 'lucide-react'
-import ReviewMarketCard from './ReviewMarketCard'
-import DeployFailureCard from './DeployFailureCard'
+import { useState } from 'react'
+
 import { cn } from '@/lib/utils'
+
+import DeployFailureCard from './DeployFailureCard'
+import ReviewMarketCard from './ReviewMarketCard'
 
 interface PendingMarket {
   id: string
@@ -77,37 +79,25 @@ export default function ReviewQueueClient({ pendingMarkets, failureMarkets }: Pr
 
       {/* Content */}
       <div className="space-y-3 p-4">
-        {tab === 'pending'
-          ? (
-              pendingMarkets.length === 0
-                ? (
-                    <div className="py-12 text-center">
-                      <Inbox className="mx-auto mb-3 size-10 text-muted-foreground/30" />
-                      <p className="font-medium">All caught up</p>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        No markets waiting for review.
-                      </p>
-                    </div>
-                  )
-                : (
-                    pendingMarkets.map(m => <ReviewMarketCard key={m.id} market={m} />)
-                  )
-            )
-          : (
-              failureMarkets.length === 0
-                ? (
-                    <div className="py-12 text-center">
-                      <AlertCircle className="mx-auto mb-3 size-10 text-muted-foreground/30" />
-                      <p className="font-medium">No deployment issues</p>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        All approved markets deployed successfully.
-                      </p>
-                    </div>
-                  )
-                : (
-                    failureMarkets.map(m => <DeployFailureCard key={m.id} market={m} />)
-                  )
-            )}
+        {tab === 'pending' ? (
+          pendingMarkets.length === 0 ? (
+            <div className="py-12 text-center">
+              <Inbox className="mx-auto mb-3 size-10 text-muted-foreground/30" />
+              <p className="font-medium">All caught up</p>
+              <p className="mt-1 text-sm text-muted-foreground">No markets waiting for review.</p>
+            </div>
+          ) : (
+            pendingMarkets.map((m) => <ReviewMarketCard key={m.id} market={m} />)
+          )
+        ) : failureMarkets.length === 0 ? (
+          <div className="py-12 text-center">
+            <AlertCircle className="mx-auto mb-3 size-10 text-muted-foreground/30" />
+            <p className="font-medium">No deployment issues</p>
+            <p className="mt-1 text-sm text-muted-foreground">All approved markets deployed successfully.</p>
+          </div>
+        ) : (
+          failureMarkets.map((m) => <DeployFailureCard key={m.id} market={m} />)
+        )}
       </div>
     </div>
   )

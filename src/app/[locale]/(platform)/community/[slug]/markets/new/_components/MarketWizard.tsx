@@ -472,9 +472,7 @@ export default function MarketWizard({ communityId, communitySlug, communityName
       <div className="grid gap-0 lg:grid-cols-[240px_minmax(0,1fr)]">
         {/* Progress rail */}
         <nav className="border-b p-4 lg:border-r lg:border-b-0">
-          <p
-            className="mb-3 flex items-center justify-between text-2xs font-semibold tracking-wider text-muted-foreground uppercase"
-          >
+          <p className="mb-3 flex items-center justify-between text-2xs font-semibold tracking-wider text-muted-foreground uppercase">
             Progress
             <span>
               {step}
@@ -1094,9 +1092,7 @@ function StepReview(props: {
           </div>
         )}
       </div>
-      <div
-        className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-700 dark:text-amber-400"
-      >
+      <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-700 dark:text-amber-400">
         <strong>Submit for review</strong> saves this draft and sends it to a platform admin, who approves and deploys
         it on-chain (~5–15 min). Use <strong>Save draft</strong> to keep editing later.
       </div>

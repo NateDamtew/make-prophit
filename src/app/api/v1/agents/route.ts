@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+
 import { agentApiError, resolveAgent, withAgentApiCors } from '@/lib/agent-api'
 import { AgentRepository } from '@/lib/db/queries/agents'
 
@@ -28,9 +29,7 @@ export async function GET(request: Request) {
     const sortParam = searchParams.get('sort')
     const sort = sortParam === 'volume' || sortParam === 'trades' ? sortParam : 'pnl'
     const limitParam = Number.parseInt(searchParams.get('limit') ?? '', 10)
-    const limit = Number.isFinite(limitParam) && limitParam > 0
-      ? Math.min(limitParam, MAX_LIMIT)
-      : DEFAULT_LIMIT
+    const limit = Number.isFinite(limitParam) && limitParam > 0 ? Math.min(limitParam, MAX_LIMIT) : DEFAULT_LIMIT
 
     const { data, error } = await AgentRepository.leaderboard({ limit, sort })
     if (error || !data) {
@@ -38,23 +37,24 @@ export async function GET(request: Request) {
     }
 
     // Only expose public-safe fields — never the key prefix, limits, or owner id.
-    return withAgentApiCors(NextResponse.json({
-      data: data.map(agent => ({
-        slug: agent.slug,
-        name: agent.name,
-        description: agent.description,
-        avatar_url: agent.avatar_url,
-        owner_username: agent.owner_username,
-        owner_image: agent.owner_image,
-        total_volume_usd: agent.total_volume_usd,
-        total_pnl_usd: agent.total_pnl_usd,
-        total_trades: agent.total_trades,
-        win_count: agent.win_count,
-      })),
-      meta: { count: data.length, sort, limit },
-    }))
-  }
-  catch (error) {
+    return withAgentApiCors(
+      NextResponse.json({
+        data: data.map((agent) => ({
+          slug: agent.slug,
+          name: agent.name,
+          description: agent.description,
+          avatar_url: agent.avatar_url,
+          owner_username: agent.owner_username,
+          owner_image: agent.owner_image,
+          total_volume_usd: agent.total_volume_usd,
+          total_pnl_usd: agent.total_pnl_usd,
+          total_trades: agent.total_trades,
+          win_count: agent.win_count,
+        })),
+        meta: { count: data.length, sort, limit },
+      }),
+    )
+  } catch (error) {
     console.error('[/api/v1/agents] error', error)
     return agentApiError('Internal server error.', 500)
   }

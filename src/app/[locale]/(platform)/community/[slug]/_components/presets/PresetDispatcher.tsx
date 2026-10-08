@@ -1,5 +1,7 @@
-import type { PresetProps } from './types'
 import type { LayoutPreset } from '@/lib/db/schema/communities/themes'
+
+import type { PresetProps } from './types'
+
 import ClassicPreset from './ClassicPreset'
 
 // Newsroom / Sports / Forum are temporarily disabled while we polish Classic.

@@ -1,12 +1,12 @@
 'use client'
 
-import type { AdminThemeSettingsFormProps } from '@/app/[locale]/admin/theme/_components/admin-theme-utils'
-import type { ThemeOverrides } from '@/lib/theme'
-import type { ThemeMode } from '@/lib/theme-settings'
 import { useExtracted } from 'next-intl'
 import Form from 'next/form'
 import { useActionState, useEffect, useMemo, useRef, useState } from 'react'
 
+import type { AdminThemeSettingsFormProps } from '@/app/[locale]/admin/theme/_components/admin-theme-utils'
+import type { ThemeOverrides } from '@/lib/theme'
+import type { ThemeMode } from '@/lib/theme-settings'
 
 import { updateThemeSettingsAction } from '@/app/[locale]/admin/theme/_actions/update-theme-settings'
 import RadiusControl from '@/app/[locale]/admin/theme/_components/RadiusControl'
@@ -211,7 +211,9 @@ function AdminThemeSettingsFormInner({
                 <SelectItem value="both">
                   <div className="grid gap-0.5 text-left">
                     <span>{t('Both')}</span>
-                    <span className="text-xs text-muted-foreground">{t('Users can toggle between light and dark')}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {t('Users can toggle between light and dark')}
+                    </span>
                   </div>
                 </SelectItem>
                 <SelectItem value="dark">

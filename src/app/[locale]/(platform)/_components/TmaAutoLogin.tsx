@@ -254,9 +254,7 @@ export default function TmaAutoLogin() {
     return (
       <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
         <div className="absolute inset-0 bg-black/60" onClick={handleCloseOnboarding} />
-        <div
-          className="relative w-full rounded-t-2xl bg-background p-6 pb-10 shadow-xl sm:max-w-sm sm:rounded-2xl sm:pb-6"
-        >
+        <div className="relative w-full rounded-t-2xl bg-background p-6 pb-10 shadow-xl sm:max-w-sm sm:rounded-2xl sm:pb-6">
           <button
             onClick={handleCloseOnboarding}
             className="absolute top-4 right-4 text-muted-foreground"

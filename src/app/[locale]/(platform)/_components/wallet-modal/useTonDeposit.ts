@@ -1,8 +1,10 @@
 'use client'
 
+import { useCallback, useRef, useState } from 'react'
+
 import type { TonDepositPayment } from '@/app/[locale]/(platform)/_actions/ton-deposit.types'
 import type { RhinoPublicQuote } from '@/lib/rhino/types'
-import { useCallback, useRef, useState } from 'react'
+
 import { createTonDepositAction, getTonDepositQuoteAction } from '@/app/[locale]/(platform)/_actions/ton-deposit'
 import { useAppKit } from '@/hooks/useAppKit'
 import { buildRhinoJettonTransfer } from '@/lib/ton/rhino-jetton-transfer'
@@ -45,44 +47,46 @@ export function useTonDeposit() {
     setIsQuoting(false)
   }, [])
 
-  const deposit = useCallback(async (amount: string): Promise<TonDepositPayment | null> => {
-    if (!tonWalletAddress) {
-      setError('Connect a TON wallet first.')
-      setStatus('error')
-      return null
-    }
-
-    setError(null)
-    setStatus('preparing')
-    try {
-      const { error: createError, payment: created } = await createTonDepositAction(amount, tonWalletAddress)
-      if (createError || !created) {
-        setError(createError ?? 'Could not prepare the TON deposit.')
+  const deposit = useCallback(
+    async (amount: string): Promise<TonDepositPayment | null> => {
+      if (!tonWalletAddress) {
+        setError('Connect a TON wallet first.')
         setStatus('error')
         return null
       }
 
-      const message = buildRhinoJettonTransfer({
-        jettonWalletAddress: created.senderJettonWallet,
-        bridgeContract: created.bridgeContract,
-        ownerAddress: tonWalletAddress,
-        jettonAmount: BigInt(created.jettonAmountBaseUnits),
-        commitmentId: created.quoteId,
-      })
+      setError(null)
+      setStatus('preparing')
+      try {
+        const { error: createError, payment: created } = await createTonDepositAction(amount, tonWalletAddress)
+        if (createError || !created) {
+          setError(createError ?? 'Could not prepare the TON deposit.')
+          setStatus('error')
+          return null
+        }
 
-      setStatus('signing')
-      await sendTonTransaction([message])
+        const message = buildRhinoJettonTransfer({
+          jettonWalletAddress: created.senderJettonWallet,
+          bridgeContract: created.bridgeContract,
+          ownerAddress: tonWalletAddress,
+          jettonAmount: BigInt(created.jettonAmountBaseUnits),
+          commitmentId: created.quoteId,
+        })
 
-      setPayment(created)
-      setStatus('submitted')
-      return created
-    }
-    catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'TON deposit failed.')
-      setStatus('error')
-      return null
-    }
-  }, [tonWalletAddress, sendTonTransaction])
+        setStatus('signing')
+        await sendTonTransaction([message])
+
+        setPayment(created)
+        setStatus('submitted')
+        return created
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : 'TON deposit failed.')
+        setStatus('error')
+        return null
+      }
+    },
+    [tonWalletAddress, sendTonTransaction],
+  )
 
   const reset = useCallback(() => {
     setStatus('idle')

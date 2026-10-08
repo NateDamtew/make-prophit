@@ -1,6 +1,9 @@
 import type { NextRequest } from 'next/server'
+
 import { NextResponse } from 'next/server'
+
 import { CommunityRepository } from '@/lib/db/queries/community'
+
 import { requireTmaUser } from '../../../_lib'
 
 /**
@@ -37,8 +40,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   let body: { action?: string }
   try {
     body = await request.json()
-  }
-  catch {
+  } catch {
     return NextResponse.json({ error: 'Invalid JSON body.' }, { status: 400 })
   }
   if (body.action !== 'join' && body.action !== 'leave') {
@@ -53,9 +55,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ error: 'This community is invite-only.' }, { status: 403 })
   }
 
-  const result = body.action === 'join'
-    ? await CommunityRepository.join(community.id, guard.user.id)
-    : await CommunityRepository.leave(community.id, guard.user.id)
+  const result =
+    body.action === 'join'
+      ? await CommunityRepository.join(community.id, guard.user.id)
+      : await CommunityRepository.leave(community.id, guard.user.id)
 
   if (result.error) {
     return NextResponse.json({ error: result.error }, { status: 400 })

@@ -2,7 +2,7 @@
 
 import { SendIcon } from 'lucide-react'
 import { useState } from 'react'
-import { toast } from '@/components/ui/toast'
+
 import { PageHeader } from '@/components/admin-ui/PageHeader'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -17,6 +17,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { toast } from '@/components/ui/toast'
 
 export function NotificationComposer() {
   const [title, setTitle] = useState('')
@@ -46,11 +47,9 @@ export function NotificationComposer() {
       setDescription('')
       setLinkUrl('')
       setLinkLabel('')
-    }
-    catch (error) {
+    } catch (error) {
       toast.error((error as Error).message)
-    }
-    finally {
+    } finally {
       setSending(false)
     }
   }
@@ -68,7 +67,7 @@ export function NotificationComposer() {
           <Input
             id="notif-title"
             value={title}
-            onChange={e => setTitle(e.target.value)}
+            onChange={(e) => setTitle(e.target.value)}
             placeholder="e.g. New markets are live"
             maxLength={120}
           />
@@ -79,7 +78,7 @@ export function NotificationComposer() {
           <Textarea
             id="notif-desc"
             value={description}
-            onChange={e => setDescription(e.target.value)}
+            onChange={(e) => setDescription(e.target.value)}
             placeholder="What do you want every user to know?"
             rows={4}
             maxLength={1000}
@@ -92,7 +91,7 @@ export function NotificationComposer() {
             <Input
               id="notif-link"
               value={linkUrl}
-              onChange={e => setLinkUrl(e.target.value)}
+              onChange={(e) => setLinkUrl(e.target.value)}
               placeholder="https://…"
             />
           </div>
@@ -101,7 +100,7 @@ export function NotificationComposer() {
             <Input
               id="notif-link-label"
               value={linkLabel}
-              onChange={e => setLinkLabel(e.target.value)}
+              onChange={(e) => setLinkLabel(e.target.value)}
               placeholder="Learn more"
               maxLength={60}
             />
@@ -125,7 +124,9 @@ export function NotificationComposer() {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirmOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setConfirmOpen(false)}>
+              Cancel
+            </Button>
             <Button onClick={send}>Send broadcast</Button>
           </DialogFooter>
         </DialogContent>

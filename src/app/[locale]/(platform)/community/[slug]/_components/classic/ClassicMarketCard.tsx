@@ -1,6 +1,7 @@
 'use client'
 
 import { CheckIcon, XIcon } from 'lucide-react'
+
 import AppLink from '@/components/AppLink'
 import { cn } from '@/lib/utils'
 
@@ -12,7 +13,7 @@ interface MarketData {
   resolution_date: Date | null
   event_id: string | null
   main_category_slug?: string | null
-  votes?: { yes: number, no: number, disputed: number }
+  votes?: { yes: number; no: number; disputed: number }
 }
 
 interface Props {
@@ -71,8 +72,8 @@ export default function ClassicMarketCard({ market, communitySlug }: Props) {
   const palette = paletteFor(categorySlug)
 
   const href = market.event_id
-    ? `/event/${market.event_id}` as const
-    : `/community/${communitySlug}/market/${market.id}` as const
+    ? (`/event/${market.event_id}` as const)
+    : (`/community/${communitySlug}/market/${market.id}` as const)
 
   const ends = endsInLabel(market.resolution_date)
 
@@ -80,27 +81,21 @@ export default function ClassicMarketCard({ market, communitySlug }: Props) {
     <AppLink
       intentPrefetch
       href={href as any}
-      className="
-        group relative flex flex-col gap-4 overflow-hidden rounded-2xl border bg-card p-5 transition-all
-        hover:-translate-y-0.5 hover:border-primary/60 hover:shadow-lg
-      "
+      className="group relative flex flex-col gap-4 overflow-hidden rounded-2xl border bg-card p-5 transition-all hover:-translate-y-0.5 hover:border-primary/60 hover:shadow-lg"
     >
       {/* Header row: category chip + ends-in */}
       <div className="flex items-center justify-between gap-3">
-        <span className={cn(
-          'inline-flex items-center rounded-md px-2 py-0.5 text-2xs font-semibold tracking-wider uppercase ring-1',
-          palette.bg,
-          palette.text,
-          palette.ring,
-        )}
+        <span
+          className={cn(
+            'inline-flex items-center rounded-md px-2 py-0.5 text-2xs font-semibold tracking-wider uppercase ring-1',
+            palette.bg,
+            palette.text,
+            palette.ring,
+          )}
         >
           {categorySlug.replace(/-/g, ' ')}
         </span>
-        {ends && (
-          <span className="text-2xs font-semibold tracking-wider text-muted-foreground uppercase">
-            {ends}
-          </span>
-        )}
+        {ends && <span className="text-2xs font-semibold tracking-wider text-muted-foreground uppercase">{ends}</span>}
       </div>
 
       {/* Title */}
@@ -109,63 +104,42 @@ export default function ClassicMarketCard({ market, communitySlug }: Props) {
       </h3>
 
       {/* Progress / outcome */}
-      {isResolved
-        ? (
-            <div className="
-              flex h-10 items-center justify-center gap-2 rounded-md border bg-muted/30 text-sm font-semibold
-              text-foreground
-            "
-            >
-              <span className={cn(
-                'flex size-4 items-center justify-center rounded-full',
-                isYesResolved ? 'bg-emerald-500' : 'bg-rose-500',
-              )}
-              >
-                {isYesResolved
-                  ? <CheckIcon className="size-3 text-background" strokeWidth={2.5} />
-                  : <XIcon className="size-3 text-background" strokeWidth={2.5} />}
-              </span>
-              Resolved
-              {' '}
-              {isYesResolved ? 'Yes' : 'No'}
+      {isResolved ? (
+        <div className="flex h-10 items-center justify-center gap-2 rounded-md border bg-muted/30 text-sm font-semibold text-foreground">
+          <span
+            className={cn(
+              'flex size-4 items-center justify-center rounded-full',
+              isYesResolved ? 'bg-emerald-500' : 'bg-rose-500',
+            )}
+          >
+            {isYesResolved ? (
+              <CheckIcon className="size-3 text-background" strokeWidth={2.5} />
+            ) : (
+              <XIcon className="size-3 text-background" strokeWidth={2.5} />
+            )}
+          </span>
+          Resolved {isYesResolved ? 'Yes' : 'No'}
+        </div>
+      ) : (
+        <div>
+          <div className="flex items-center gap-3">
+            <div className="relative h-2 flex-1 overflow-hidden rounded-full bg-muted">
+              <div
+                className="absolute inset-y-0 left-0 rounded-full bg-primary transition-all"
+                style={{ width: `${yesPct}%` }}
+              />
             </div>
-          )
-        : (
-            <div>
-              <div className="flex items-center gap-3">
-                <div className="relative h-2 flex-1 overflow-hidden rounded-full bg-muted">
-                  <div
-                    className="absolute inset-y-0 left-0 rounded-full bg-primary transition-all"
-                    style={{ width: `${yesPct}%` }}
-                  />
-                </div>
-                <span className="shrink-0 text-base font-bold tabular-nums">
-                  {yesPct}
-                  %
-                </span>
-              </div>
-              <div className="
-                mt-2 flex items-center justify-between text-2xs font-medium tracking-wider text-muted-foreground
-                uppercase
-              "
-              >
-                <span>
-                  Yes
-                  {' '}
-                  {yesPct}
-                  %
-                  {' · '}
-                  No
-                  {' '}
-                  {noPct}
-                  %
-                </span>
-                <span>
-                  {total > 0 ? `${total} votes` : 'No votes yet'}
-                </span>
-              </div>
-            </div>
-          )}
+            <span className="shrink-0 text-base font-bold tabular-nums">{yesPct}%</span>
+          </div>
+          <div className="mt-2 flex items-center justify-between text-2xs font-medium tracking-wider text-muted-foreground uppercase">
+            <span>
+              Yes {yesPct}%{' · '}
+              No {noPct}%
+            </span>
+            <span>{total > 0 ? `${total} votes` : 'No votes yet'}</span>
+          </div>
+        </div>
+      )}
     </AppLink>
   )
 }

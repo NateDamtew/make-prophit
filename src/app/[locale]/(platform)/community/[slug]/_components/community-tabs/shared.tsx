@@ -2,14 +2,15 @@
 
 import { AlertCircle, CheckCircle, Star, XCircle } from 'lucide-react'
 import { useState } from 'react'
+
 import { cn } from '@/lib/utils'
 
 /** 5-star input used in the Reviews tab. */
-export function StarPicker({ value, onChange }: { value: number, onChange: (v: number) => void }) {
+export function StarPicker({ value, onChange }: { value: number; onChange: (v: number) => void }) {
   const [hovered, setHovered] = useState(0)
   return (
     <div className="flex items-center gap-1">
-      {[1, 2, 3, 4, 5].map(star => (
+      {[1, 2, 3, 4, 5].map((star) => (
         <button
           key={star}
           type="button"
@@ -21,9 +22,7 @@ export function StarPicker({ value, onChange }: { value: number, onChange: (v: n
           <Star
             className={cn(
               'size-6 transition-colors',
-              star <= (hovered || value)
-                ? 'fill-amber-400 text-amber-400'
-                : 'text-muted-foreground/30',
+              star <= (hovered || value) ? 'fill-amber-400 text-amber-400' : 'text-muted-foreground/30',
             )}
           />
         </button>

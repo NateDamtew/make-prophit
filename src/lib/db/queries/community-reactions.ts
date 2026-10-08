@@ -1,5 +1,7 @@
-import type { CommentReactionKind } from '@/lib/db/schema/communities/engagement'
 import { and, eq, inArray, sql } from 'drizzle-orm'
+
+import type { CommentReactionKind } from '@/lib/db/schema/communities/engagement'
+
 import { community_reactions } from '@/lib/db/schema/communities/engagement'
 import { db } from '@/lib/drizzle'
 
@@ -29,12 +31,14 @@ export const CommunityReactionRepository = {
     const existing = await db
       .select({ id: community_reactions.id })
       .from(community_reactions)
-      .where(and(
-        eq(community_reactions.target_type, input.targetType),
-        eq(community_reactions.target_id, input.targetId),
-        eq(community_reactions.user_id, input.userId),
-        eq(community_reactions.kind, input.kind),
-      ))
+      .where(
+        and(
+          eq(community_reactions.target_type, input.targetType),
+          eq(community_reactions.target_id, input.targetId),
+          eq(community_reactions.user_id, input.userId),
+          eq(community_reactions.kind, input.kind),
+        ),
+      )
       .limit(1)
 
     if (existing.length > 0) {
@@ -74,10 +78,12 @@ export const CommunityReactionRepository = {
           : sql<boolean>`FALSE`,
       })
       .from(community_reactions)
-      .where(and(
-        eq(community_reactions.target_type, input.targetType),
-        inArray(community_reactions.target_id, input.targetIds),
-      ))
+      .where(
+        and(
+          eq(community_reactions.target_type, input.targetType),
+          inArray(community_reactions.target_id, input.targetIds),
+        ),
+      )
       .groupBy(community_reactions.target_id, community_reactions.kind)
 
     const byTarget = new Map<string, ReactionSummary[]>()
@@ -91,6 +97,6 @@ export const CommunityReactionRepository = {
       byTarget.set(row.target_id, list)
     }
 
-    return input.targetIds.map(id => ({ targetId: id, reactions: byTarget.get(id) ?? [] }))
+    return input.targetIds.map((id) => ({ targetId: id, reactions: byTarget.get(id) ?? [] }))
   },
 }

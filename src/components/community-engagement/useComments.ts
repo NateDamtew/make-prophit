@@ -1,7 +1,8 @@
 'use client'
 
-import type { CommentTree } from '@/lib/db/queries/community-comments'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+
+import type { CommentTree } from '@/lib/db/queries/community-comments'
 
 interface ListResponse {
   items: CommentTree[]
@@ -31,7 +32,7 @@ export function useMarketComments(marketId: string) {
   }
 
   const post = useMutation({
-    mutationFn: async (input: { body: string, parent_id?: string | null }) => {
+    mutationFn: async (input: { body: string; parent_id?: string | null }) => {
       const res = await fetch(`/api/communities/markets/${marketId}/comments`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -46,7 +47,7 @@ export function useMarketComments(marketId: string) {
   })
 
   const edit = useMutation({
-    mutationFn: async ({ id, body }: { id: string, body: string }) => {
+    mutationFn: async ({ id, body }: { id: string; body: string }) => {
       const res = await fetch(`/api/communities/comments/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },

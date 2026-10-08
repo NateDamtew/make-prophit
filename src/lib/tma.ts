@@ -30,11 +30,7 @@ export function isInsideTelegram(): boolean {
   if (webApp.initData) {
     return true
   }
-  return (
-    typeof webApp.platform === 'string'
-    && webApp.platform !== ''
-    && webApp.platform !== 'unknown'
-  )
+  return typeof webApp.platform === 'string' && webApp.platform !== '' && webApp.platform !== 'unknown'
 }
 
 /** True when running in any Telegram Mini App context (TMA host or Telegram WebView). */

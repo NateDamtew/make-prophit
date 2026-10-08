@@ -1,13 +1,16 @@
 'use client'
 
-import type { SyncJobStatus } from '@/lib/admin-ui/job-status'
 import { RefreshCwIcon } from 'lucide-react'
+
+import type { SyncJobStatus } from '@/lib/admin-ui/job-status'
+
 import { DataTable } from '@/app/[locale]/admin/_components/DataTable'
 import { useSyncJobsTable } from '@/app/[locale]/admin/sync-jobs/_hooks/useSyncJobs'
 import { PageHeader } from '@/components/admin-ui/PageHeader'
 import { StatFilterTiles } from '@/components/admin-ui/StatFilterTiles'
 import { Button } from '@/components/ui/button'
 import { SYNC_JOB_STATUSES } from '@/lib/admin-ui/job-status'
+
 import { useSyncJobsColumns } from './columns'
 
 export function SyncJobsManager() {
@@ -17,7 +20,7 @@ export function SyncJobsManager() {
 
   const tiles = [
     { key: 'all', label: 'Total', value: stats?.total },
-    ...SYNC_JOB_STATUSES.map(s => ({ key: s, label: s[0].toUpperCase() + s.slice(1), value: stats?.byStatus[s] })),
+    ...SYNC_JOB_STATUSES.map((s) => ({ key: s, label: s[0].toUpperCase() + s.slice(1), value: stats?.byStatus[s] })),
   ]
 
   return (
@@ -25,18 +28,18 @@ export function SyncJobsManager() {
       <PageHeader
         title="Sync Jobs"
         description="Background jobs that keep events, volume, translations, and resolutions in sync. Re-queue anything that failed."
-        actions={(
+        actions={
           <Button variant="outline" onClick={table.refetch}>
             <RefreshCwIcon className="size-4" />
             Refresh
           </Button>
-        )}
+        }
       />
 
       <StatFilterTiles
         items={tiles}
         activeKey={table.status}
-        onSelect={key => table.setStatus(key as SyncJobStatus | 'all')}
+        onSelect={(key) => table.setStatus(key as SyncJobStatus | 'all')}
       />
 
       <DataTable

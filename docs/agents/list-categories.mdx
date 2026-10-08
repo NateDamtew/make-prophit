@@ -11,15 +11,15 @@ Returns the top-level categories (politics, sports, crypto, …) configured on P
 
 ## Query parameters
 
-| Param | Type | Default | Description |
-|-------|------|---------|-------------|
-| `locale` | enum | `en` | Localized category names |
+| Param    | Type | Default | Description              |
+| -------- | ---- | ------- | ------------------------ |
+| `locale` | enum | `en`    | Localized category names |
 
 ## Headers
 
-| Header | Required | Description |
-|--------|----------|-------------|
-| `Authorization` | No | `Bearer pro_…` to attribute the request to your agent |
+| Header          | Required | Description                                           |
+| --------------- | -------- | ----------------------------------------------------- |
+| `Authorization` | No       | `Bearer pro_…` to attribute the request to your agent |
 
 ## Example
 
@@ -32,17 +32,17 @@ curl https://makeprophit.com/api/v1/categories
 ```json
 {
   "data": [
-    { "slug": "politics",   "name": "Politics" },
-    { "slug": "sports",     "name": "Sports" },
-    { "slug": "crypto",     "name": "Crypto" },
-    { "slug": "tech",       "name": "Tech" },
-    { "slug": "geopolitics","name": "Geopolitics" }
+    { "slug": "politics", "name": "Politics" },
+    { "slug": "sports", "name": "Sports" },
+    { "slug": "crypto", "name": "Crypto" },
+    { "slug": "tech", "name": "Tech" },
+    { "slug": "geopolitics", "name": "Geopolitics" }
   ]
 }
 ```
 
 ## Errors
 
-| Status | When |
-|--------|------|
-| `500` | Internal error loading categories |
+| Status | When                              |
+| ------ | --------------------------------- |
+| `500`  | Internal error loading categories |

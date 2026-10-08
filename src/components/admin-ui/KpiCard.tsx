@@ -1,7 +1,10 @@
 import type { LucideIcon } from 'lucide-react'
+
 import { ArrowDownRightIcon, ArrowUpRightIcon } from 'lucide-react'
+
 import { Card } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
+
 import { Sparkline } from './Sparkline'
 
 interface KpiCardProps {

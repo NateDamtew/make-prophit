@@ -1,11 +1,15 @@
-import type { SerializedOrder } from '../_lib'
-import type { CLOB_ORDER_TYPE } from '@/lib/constants'
-import type { OrderType } from '@/types'
 import { NextResponse } from 'next/server'
 import { wrapTypedDataSignature } from 'viem/experimental/erc7739'
+
+import type { CLOB_ORDER_TYPE } from '@/lib/constants'
+import type { OrderType } from '@/types'
+
 import { cancelOrderAction } from '@/app/[locale]/(platform)/event/[slug]/_actions/cancel-order'
 import { EIP712_TYPES, getExchangeEip712Domain, ORDER_TYPE } from '@/lib/constants'
 import { submitOrder } from '@/lib/orders'
+
+import type { SerializedOrder } from '../_lib'
+
 import { badRequest, buildOrderMessage, deserializeOrder, findMarketByTokenId, requireTmaUser } from '../_lib'
 
 interface SubmitBody {
@@ -32,8 +36,7 @@ export async function POST(request: Request) {
   let body: SubmitBody
   try {
     body = await request.json()
-  }
-  catch {
+  } catch {
     return badRequest('Invalid JSON body.')
   }
 
@@ -60,8 +63,7 @@ export async function POST(request: Request) {
       message: buildOrderMessage(order),
       signature: body.signature as `0x${string}`,
     })
-  }
-  catch (error) {
+  } catch (error) {
     console.error('[tma/orders] signature wrap failed', error)
     return badRequest('Invalid signature.')
   }
@@ -97,8 +99,7 @@ export async function DELETE(request: Request) {
   let body: { orderId?: string }
   try {
     body = await request.json()
-  }
-  catch {
+  } catch {
     return badRequest('Invalid JSON body.')
   }
   if (!body.orderId) {

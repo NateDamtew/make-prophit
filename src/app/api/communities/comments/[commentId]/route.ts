@@ -1,6 +1,8 @@
 import type { NextRequest } from 'next/server'
+
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
+
 import { recordCommunityEvent } from '@/lib/communities/events'
 import { CommunityRepository } from '@/lib/db/queries/community'
 import { CommunityCommentRepository } from '@/lib/db/queries/community-comments'
@@ -33,8 +35,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   let body: unknown
   try {
     body = await request.json()
-  }
-  catch {
+  } catch {
     return NextResponse.json({ error: 'Invalid JSON.' }, { status: 400 })
   }
 
@@ -46,8 +47,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   try {
     const updated = await CommunityCommentRepository.edit(commentId, parsed.data.body)
     return NextResponse.json({ data: { id: updated?.id, edited_at: updated?.edited_at?.toISOString() ?? null } })
-  }
-  catch (error) {
+  } catch (error) {
     console.error('Edit community comment error', error)
     return NextResponse.json({ error: 'Failed to edit comment.' }, { status: 500 })
   }
@@ -90,8 +90,7 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
       payload: { deleted: true, by: isAuthor ? 'author' : 'moderator' },
     })
     return NextResponse.json({ success: true })
-  }
-  catch (error) {
+  } catch (error) {
     console.error('Delete community comment error', error)
     return NextResponse.json({ error: 'Failed to delete comment.' }, { status: 500 })
   }

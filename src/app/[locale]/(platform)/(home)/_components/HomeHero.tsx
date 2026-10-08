@@ -216,15 +216,11 @@ export default function HomeHero({ events }: HomeHeroProps) {
                       href={resolveEventPagePath(event)}
                       className="group flex items-start gap-3 py-3 transition-colors first:pt-0 last:pb-0"
                     >
-                      <span
-                        className="mt-0.5 text-xs font-extrabold text-muted-foreground/60 transition-colors group-hover:text-primary"
-                      >
+                      <span className="mt-0.5 text-xs font-extrabold text-muted-foreground/60 transition-colors group-hover:text-primary">
                         {idx + 1}
                       </span>
                       <div className="min-w-0 flex-1 space-y-1">
-                        <p
-                          className="line-clamp-2 text-xs/normal font-semibold text-card-foreground transition-colors group-hover:text-foreground"
-                        >
+                        <p className="line-clamp-2 text-xs/normal font-semibold text-card-foreground transition-colors group-hover:text-foreground">
                           {event.title}
                         </p>
                         <div className="flex items-center gap-2 text-2xs font-bold">
@@ -342,9 +338,7 @@ function FeaturedEventSlide({ event }: FeaturedEventSlideProps) {
         {/* Left Side: Title and outcomes */}
         <div className="flex flex-col justify-start space-y-4 md:col-span-5">
           <AppLink href={eventHref} className="group">
-            <h2
-              className="text-lg/snug font-bold text-foreground decoration-primary/30 underline-offset-4 transition-colors group-hover:text-primary group-hover:underline md:text-xl"
-            >
+            <h2 className="text-lg/snug font-bold text-foreground decoration-primary/30 underline-offset-4 transition-colors group-hover:text-primary group-hover:underline md:text-xl">
               {event.title}
             </h2>
           </AppLink>
@@ -435,9 +429,7 @@ function FeaturedEventSlide({ event }: FeaturedEventSlideProps) {
       </div>
 
       {/* Footer volume and target ends */}
-      <div
-        className="mt-4 flex items-center justify-between border-t border-border/60 pt-4 text-xs font-semibold text-muted-foreground"
-      >
+      <div className="mt-4 flex items-center justify-between border-t border-border/60 pt-4 text-xs font-semibold text-muted-foreground">
         <span className="flex items-center gap-1.5 text-muted-foreground/90">{formatVolume(totalVolume)} Vol</span>
         <div className="flex items-center gap-2.5">
           <span className="flex items-center gap-1">

@@ -88,14 +88,14 @@ describe('updateThemeSettingsAction', () => {
     expect(result).toEqual({ error: null })
     expect(mocks.updateSettings).toHaveBeenCalledTimes(1)
 
-    const savedPayload = mocks.updateSettings.mock.calls[0][0] as Array<{ key: string, value: string }>
+    const savedPayload = mocks.updateSettings.mock.calls[0][0] as Array<{ key: string; value: string }>
     expect(savedPayload).toHaveLength(5)
 
-    const savedPreset = savedPayload.find(entry => entry.key === 'preset')
-    const savedRadius = savedPayload.find(entry => entry.key === 'radius')
-    const savedLight = savedPayload.find(entry => entry.key === 'light_json')
-    const savedDark = savedPayload.find(entry => entry.key === 'dark_json')
-    const savedThemeMode = savedPayload.find(entry => entry.key === 'theme_mode')
+    const savedPreset = savedPayload.find((entry) => entry.key === 'preset')
+    const savedRadius = savedPayload.find((entry) => entry.key === 'radius')
+    const savedLight = savedPayload.find((entry) => entry.key === 'light_json')
+    const savedDark = savedPayload.find((entry) => entry.key === 'dark_json')
+    const savedThemeMode = savedPayload.find((entry) => entry.key === 'theme_mode')
     expect(savedThemeMode).toBeDefined()
 
     expect(savedPreset?.value).toBe('midnight')

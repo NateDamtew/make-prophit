@@ -1,5 +1,7 @@
-import type { MarketResolutionEvidenceRow } from '@/lib/db/schema/communities/integrity'
 import { and, desc, eq, sql } from 'drizzle-orm'
+
+import type { MarketResolutionEvidenceRow } from '@/lib/db/schema/communities/integrity'
+
 import { market_resolution_evidence } from '@/lib/db/schema/communities/integrity'
 import { db } from '@/lib/drizzle'
 
@@ -40,7 +42,7 @@ export const CommunityIntegrityRepository = {
         .where(eq(market_resolution_evidence.market_id, marketId))
         .orderBy(desc(market_resolution_evidence.created_at))
         .limit(Math.min(Math.max(limit, 1), 200))
-      return rows.map(row => ({
+      return rows.map((row) => ({
         id: row.id,
         url: row.url,
         note: row.note,
@@ -48,8 +50,7 @@ export const CommunityIntegrityRepository = {
         submittedLabel: row.submitted_label,
         createdAt: row.created_at.toISOString(),
       }))
-    }
-    catch (error) {
+    } catch (error) {
       console.error('Failed to load evidence', error)
       return []
     }
@@ -94,11 +95,10 @@ export const CommunityIntegrityRepository = {
                archived_at::text AS archived_at, archived_by
         FROM community_markets WHERE id = ${marketId} LIMIT 1
       `)
-      const row = ((result as unknown as { rows: MarketModerationFields[] }).rows
-        ?? (result as unknown as MarketModerationFields[]))[0]
+      const row = ((result as unknown as { rows: MarketModerationFields[] }).rows ??
+        (result as unknown as MarketModerationFields[]))[0]
       return row ?? null
-    }
-    catch (error) {
+    } catch (error) {
       console.error('Failed to read moderation fields', error)
       return null
     }
@@ -117,8 +117,7 @@ export const CommunityIntegrityRepository = {
         SET locked_at = NOW(), locked_by = ${actorUserId}
         WHERE id = ${marketId}
       `)
-    }
-    else {
+    } else {
       await db.execute(sql`
         UPDATE community_markets SET locked_at = NULL, locked_by = NULL WHERE id = ${marketId}
       `)
@@ -132,8 +131,7 @@ export const CommunityIntegrityRepository = {
         SET archived_at = NOW(), archived_by = ${actorUserId}
         WHERE id = ${marketId}
       `)
-    }
-    else {
+    } else {
       await db.execute(sql`
         UPDATE community_markets SET archived_at = NULL, archived_by = NULL WHERE id = ${marketId}
       `)
@@ -147,11 +145,10 @@ export const CommunityIntegrityRepository = {
       const result = await db.execute(sql`
         SELECT white_label FROM communities WHERE id = ${communityId} LIMIT 1
       `)
-      const row = ((result as unknown as { rows: Array<{ white_label: boolean }> }).rows
-        ?? (result as unknown as Array<{ white_label: boolean }>))[0]
+      const row = ((result as unknown as { rows: Array<{ white_label: boolean }> }).rows ??
+        (result as unknown as Array<{ white_label: boolean }>))[0]
       return !!row?.white_label
-    }
-    catch {
+    } catch {
       return false
     }
   },

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+
 import { DEFAULT_LOCALE, SUPPORTED_LOCALES } from '@/i18n/locales'
 import { agentApiError, resolveAgent, withAgentApiCors } from '@/lib/agent-api'
 import { loadPlatformMainTags } from '@/lib/platform-main-tags'
@@ -18,8 +19,8 @@ export async function GET(request: Request) {
     await resolveAgent(request)
     const { searchParams } = new URL(request.url)
     const localeParam = (searchParams.get('locale') ?? DEFAULT_LOCALE).trim()
-    const locale = SUPPORTED_LOCALES.includes(localeParam as typeof SUPPORTED_LOCALES[number])
-      ? localeParam as typeof SUPPORTED_LOCALES[number]
+    const locale = SUPPORTED_LOCALES.includes(localeParam as (typeof SUPPORTED_LOCALES)[number])
+      ? (localeParam as (typeof SUPPORTED_LOCALES)[number])
       : DEFAULT_LOCALE
 
     const { data, error } = await loadPlatformMainTags(locale)
@@ -27,14 +28,15 @@ export async function GET(request: Request) {
       return agentApiError(error ?? 'Could not load categories.', 500)
     }
 
-    return withAgentApiCors(NextResponse.json({
-      data: data.map(tag => ({
-        slug: tag.slug,
-        name: tag.name,
-      })),
-    }))
-  }
-  catch (error) {
+    return withAgentApiCors(
+      NextResponse.json({
+        data: data.map((tag) => ({
+          slug: tag.slug,
+          name: tag.name,
+        })),
+      }),
+    )
+  } catch (error) {
     console.error('[/api/v1/categories] error', error)
     return agentApiError('Internal server error.', 500)
   }

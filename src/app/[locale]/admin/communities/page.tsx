@@ -1,5 +1,6 @@
 import { setRequestLocale } from 'next-intl/server'
 import { Suspense } from 'react'
+
 import { AdminCommunitiesManager } from '@/app/[locale]/admin/communities/_components/AdminCommunitiesManager'
 import { Skeleton } from '@/components/ui/skeleton'
 import { requireAdmin } from '@/lib/admin-ui/guard'

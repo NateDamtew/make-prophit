@@ -54,10 +54,7 @@ Guidelines:
 - If the question is too vague, populate clarifying_questions
 - If the question can't be objectively resolved, add a warning`
 
-export async function analyzeMarketQuestion(input: {
-  question: string
-  context?: string
-}): Promise<MarketSuggestion> {
+export async function analyzeMarketQuestion(input: { question: string; context?: string }): Promise<MarketSuggestion> {
   const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey) {
     throw new Error('Gemini API key is not configured.')
@@ -67,36 +64,33 @@ export async function analyzeMarketQuestion(input: {
 
   const userPrompt = `Market Question: ${input.question}\n${input.context ? `\nAdditional Context: ${input.context}` : ''}`
 
-  const response = await fetch(
-    `${GEMINI_API_URL}/${model}:generateContent?key=${encodeURIComponent(apiKey)}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      signal: AbortSignal.timeout(30_000),
-      body: JSON.stringify({
-        system_instruction: {
-          parts: [{ text: MARKET_ASSISTANT_SYSTEM_PROMPT }],
+  const response = await fetch(`${GEMINI_API_URL}/${model}:generateContent?key=${encodeURIComponent(apiKey)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    signal: AbortSignal.timeout(30_000),
+    body: JSON.stringify({
+      system_instruction: {
+        parts: [{ text: MARKET_ASSISTANT_SYSTEM_PROMPT }],
+      },
+      contents: [
+        {
+          role: 'user',
+          parts: [{ text: userPrompt }],
         },
-        contents: [
-          {
-            role: 'user',
-            parts: [{ text: userPrompt }],
-          },
-        ],
-        generationConfig: {
-          temperature: 0.3,
-          maxOutputTokens: 1024,
-          responseMimeType: 'application/json',
-        },
-        safetySettings: [
-          { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_ONLY_HIGH' },
-          { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_ONLY_HIGH' },
-          { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_ONLY_HIGH' },
-          { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_ONLY_HIGH' },
-        ],
-      }),
-    },
-  )
+      ],
+      generationConfig: {
+        temperature: 0.3,
+        maxOutputTokens: 1024,
+        responseMimeType: 'application/json',
+      },
+      safetySettings: [
+        { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_ONLY_HIGH' },
+        { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_ONLY_HIGH' },
+        { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_ONLY_HIGH' },
+        { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_ONLY_HIGH' },
+      ],
+    }),
+  })
 
   if (!response.ok) {
     const errorText = await response.text().catch(() => '')
@@ -128,8 +122,7 @@ export async function analyzeMarketQuestion(input: {
       clarifying_questions: parsed.clarifying_questions ?? [],
       warnings: parsed.warnings ?? [],
     }
-  }
-  catch {
+  } catch {
     console.error('Failed to parse Gemini response:', text)
     throw new Error('Could not parse AI response. Please try again or refine your question.')
   }

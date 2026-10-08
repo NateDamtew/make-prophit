@@ -1,11 +1,13 @@
 import type { NextRequest } from 'next/server'
+
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
+
 import { recordAuditEvent } from '@/lib/admin-ui/audit'
 import { CommunityRepository } from '@/lib/db/queries/community'
 import { CommunityThemeRepository, isSafeAccent } from '@/lib/db/queries/community-theme'
-import { FONT_HINTS, LAYOUT_PRESETS, SURFACE_MODES } from '@/lib/db/schema/communities/themes'
 import { UserRepository } from '@/lib/db/queries/user'
+import { FONT_HINTS, LAYOUT_PRESETS, SURFACE_MODES } from '@/lib/db/schema/communities/themes'
 
 const patchSchema = z.object({
   layout_preset: z.enum(LAYOUT_PRESETS).optional(),
@@ -51,8 +53,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   let body: unknown
   try {
     body = await request.json()
-  }
-  catch {
+  } catch {
     return NextResponse.json({ error: 'Invalid JSON.' }, { status: 400 })
   }
 
@@ -75,12 +76,12 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   }
 
   // Theme row upsert.
-  const wantsThemeUpsert
-    = next.accent !== undefined
-      || next.surface_mode !== undefined
-      || next.font_hint !== undefined
-      || next.hidden_sections !== undefined
-      || next.featured_market_id !== undefined
+  const wantsThemeUpsert =
+    next.accent !== undefined ||
+    next.surface_mode !== undefined ||
+    next.font_hint !== undefined ||
+    next.hidden_sections !== undefined ||
+    next.featured_market_id !== undefined
 
   if (wantsThemeUpsert) {
     await CommunityThemeRepository.upsert({

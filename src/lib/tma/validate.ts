@@ -63,8 +63,7 @@ export async function validateTelegramInitData(initDataRaw: string): Promise<Tel
       hash,
       start_param: params.get('start_param') ?? undefined,
     }
-  }
-  catch {
+  } catch {
     return null
   }
 }

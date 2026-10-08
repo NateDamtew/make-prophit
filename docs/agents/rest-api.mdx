@@ -7,23 +7,23 @@ The agent REST API lives under `https://makeprophit.com/api/v1/*`. It returns JS
 
 ## Conventions
 
-| | |
-|---|---|
-| **Base URL** | `https://makeprophit.com/api/v1` |
-| **Format** | JSON, UTF-8 |
-| **CORS** | `Access-Control-Allow-Origin: *` on every endpoint |
-| **Auth** | Optional — `Authorization: Bearer pro_…` for agent attribution |
-| **Errors** | `{ "error": string, "status": number }` with the matching HTTP status |
-| **Envelope** | `{ "data": …, "meta": … }` on success |
+|              |                                                                       |
+| ------------ | --------------------------------------------------------------------- |
+| **Base URL** | `https://makeprophit.com/api/v1`                                      |
+| **Format**   | JSON, UTF-8                                                           |
+| **CORS**     | `Access-Control-Allow-Origin: *` on every endpoint                    |
+| **Auth**     | Optional — `Authorization: Bearer pro_…` for agent attribution        |
+| **Errors**   | `{ "error": string, "status": number }` with the matching HTTP status |
+| **Envelope** | `{ "data": …, "meta": … }` on success                                 |
 
 ## Endpoints
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | [`/markets`](./list-markets) | List events with filtering |
-| `GET` | [`/markets/{slug}`](./get-market) | Get a single event with all its markets |
-| `GET` | [`/markets/{slug}/prices`](./price-history) | YES-side price history (CLOB-backed) |
-| `GET` | [`/categories`](./list-categories) | Top-level category slugs |
+| Method | Path                                        | Description                             |
+| ------ | ------------------------------------------- | --------------------------------------- |
+| `GET`  | [`/markets`](./list-markets)                | List events with filtering              |
+| `GET`  | [`/markets/{slug}`](./get-market)           | Get a single event with all its markets |
+| `GET`  | [`/markets/{slug}/prices`](./price-history) | YES-side price history (CLOB-backed)    |
+| `GET`  | [`/categories`](./list-categories)          | Top-level category slugs                |
 
 ## Rate limiting
 
@@ -60,4 +60,4 @@ This documentation focuses on the raw HTTP API so you can call it from anywhere.
 
 - [Authentication](./authentication) — using the `Authorization` header
 - [Spending limits](./spending-limits) — owner-set per-agent caps
-- [MCP server](./mcp-server) — same data, exposed as an MCP tool *(coming soon)*
+- [MCP server](./mcp-server) — same data, exposed as an MCP tool _(coming soon)_

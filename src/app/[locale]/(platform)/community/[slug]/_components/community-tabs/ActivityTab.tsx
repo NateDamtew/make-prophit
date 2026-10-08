@@ -1,6 +1,7 @@
 'use client'
 
 import { ActivityIcon } from 'lucide-react'
+
 import { formatAbsolute, formatRelativeTime } from '@/components/admin-ui/format'
 import { describeFeedItem } from '@/components/community-engagement/activity-format'
 import { useCommunityActivity } from '@/components/community-engagement/useCommunityActivity'
@@ -54,7 +55,7 @@ export function ActivityTab({ communityId }: ActivityTabProps) {
 
   return (
     <ol className="divide-y divide-border/60">
-      {items.map(item => (
+      {items.map((item) => (
         <li key={item.id} className="flex items-start justify-between gap-4 py-3">
           <p className="min-w-0 text-sm">{describeFeedItem(item)}</p>
           <time

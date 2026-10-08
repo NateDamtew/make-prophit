@@ -1,7 +1,9 @@
 import type { NextRequest } from 'next/server'
+
 import { eq } from 'drizzle-orm'
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
+
 import { recordCommunityEvent } from '@/lib/communities/events'
 import { CommunityRepository } from '@/lib/db/queries/community'
 import { CommunityIntegrityRepository } from '@/lib/db/queries/community-integrity'
@@ -43,8 +45,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   let body: unknown
   try {
     body = await request.json()
-  }
-  catch {
+  } catch {
     return NextResponse.json({ error: 'Invalid JSON.' }, { status: 400 })
   }
 
@@ -54,7 +55,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   }
 
   try {
-    const ops: Array<{ kind: string, did: string }> = []
+    const ops: Array<{ kind: string; did: string }> = []
 
     if (parsed.data.is_pinned !== undefined) {
       await CommunityIntegrityRepository.setPinned(marketId, parsed.data.is_pinned)
@@ -83,8 +84,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     const after = await CommunityIntegrityRepository.getModerationFields(marketId)
     return NextResponse.json({ data: after })
-  }
-  catch (error) {
+  } catch (error) {
     console.error('Moderation update error', error)
     return NextResponse.json({ error: 'Failed to update.' }, { status: 500 })
   }

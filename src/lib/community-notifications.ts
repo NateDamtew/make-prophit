@@ -8,9 +8,10 @@
  */
 
 import { inArray, or, sql } from 'drizzle-orm'
+
 import { getAdminIdentifierLists } from '@/lib/admin'
-import { notifications } from '@/lib/db/schema/notifications/tables'
 import { users } from '@/lib/db/schema/auth/tables'
+import { notifications } from '@/lib/db/schema/notifications/tables'
 import { db } from '@/lib/drizzle'
 
 interface CreateNotificationInput {
@@ -40,8 +41,7 @@ async function createNotification(input: CreateNotificationInput) {
       link_label: input.linkLabel ?? null,
       metadata: input.metadata ?? {},
     })
-  }
-  catch (err) {
+  } catch (err) {
     console.error('[community-notifications] Failed to create notification:', err)
   }
 }
@@ -72,9 +72,8 @@ async function getAllPlatformAdmins(): Promise<string[]> {
       .from(users)
       .where(or(...conditions))
 
-    return rows.map(r => r.id)
-  }
-  catch (err) {
+    return rows.map((r) => r.id)
+  } catch (err) {
     console.error('[getAllPlatformAdmins] Failed:', err)
     return []
   }
@@ -205,16 +204,18 @@ export async function notifySuperAdminsOfDeployFailure(input: {
     console.warn('[notifySuperAdminsOfDeployFailure] No admins found to notify')
     return
   }
-  await Promise.all(adminIds.map(adminId =>
-    createNotification({
-      userId: adminId,
-      category: 'community_market_deploy_failure_admin',
-      title: 'Community market deployment failed',
-      description: `"${input.marketTitle}" from "${input.communityName}" failed to deploy. Manual review needed.`,
-      extraInfo: input.error,
-      linkType: 'admin_review',
-      linkUrl: '/admin/communities/review',
-      linkLabel: 'Open review queue',
-    }),
-  ))
+  await Promise.all(
+    adminIds.map((adminId) =>
+      createNotification({
+        userId: adminId,
+        category: 'community_market_deploy_failure_admin',
+        title: 'Community market deployment failed',
+        description: `"${input.marketTitle}" from "${input.communityName}" failed to deploy. Manual review needed.`,
+        extraInfo: input.error,
+        linkType: 'admin_review',
+        linkUrl: '/admin/communities/review',
+        linkLabel: 'Open review queue',
+      }),
+    ),
+  )
 }

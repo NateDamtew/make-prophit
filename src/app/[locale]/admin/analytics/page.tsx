@@ -1,5 +1,6 @@
 import { setRequestLocale } from 'next-intl/server'
 import { Suspense } from 'react'
+
 import { BarChart } from '@/components/admin-ui/BarChart'
 import { formatNumber } from '@/components/admin-ui/format'
 import { KpiCard } from '@/components/admin-ui/KpiCard'
@@ -33,12 +34,12 @@ async function AnalyticsContent() {
         <KpiCard
           label="New users (30d)"
           value={formatNumber(data.totals.newUsers)}
-          sparkline={data.newUsers.map(d => d.count)}
+          sparkline={data.newUsers.map((d) => d.count)}
         />
         <KpiCard
           label="Waitlist signups (30d)"
           value={formatNumber(data.totals.waitlistSignups)}
-          sparkline={data.waitlistSignups.map(d => d.count)}
+          sparkline={data.waitlistSignups.map((d) => d.count)}
         />
       </div>
 

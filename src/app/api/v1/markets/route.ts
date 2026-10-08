@@ -1,17 +1,17 @@
 import type { NextRequest } from 'next/server'
+
 import { NextResponse } from 'next/server'
+
 import { buildEmbedEvent } from '@/app/api/embed/_utils'
 import { DEFAULT_LOCALE, SUPPORTED_LOCALES } from '@/i18n/locales'
 import { agentApiError, resolveAgent, withAgentApiCors } from '@/lib/agent-api'
 import { EventRepository } from '@/lib/db/queries/event'
 
-type SupportedLocale = typeof SUPPORTED_LOCALES[number]
+type SupportedLocale = (typeof SUPPORTED_LOCALES)[number]
 
 function normalizeLocale(raw: string | null): SupportedLocale {
   const value = (raw ?? DEFAULT_LOCALE).trim()
-  return SUPPORTED_LOCALES.includes(value as SupportedLocale)
-    ? value as SupportedLocale
-    : DEFAULT_LOCALE
+  return SUPPORTED_LOCALES.includes(value as SupportedLocale) ? (value as SupportedLocale) : DEFAULT_LOCALE
 }
 
 const MAX_LIMIT = 100
@@ -59,9 +59,7 @@ export async function GET(request: NextRequest) {
     const limit = parseIntParam(searchParams.get('limit'), DEFAULT_LIMIT, MAX_LIMIT, 1)
     const offset = parseIntParam(searchParams.get('offset'), 0, 10_000, 0)
     const rawStatus = (searchParams.get('status') ?? 'active').trim().toLowerCase()
-    const status = rawStatus === 'resolved' || rawStatus === 'all'
-      ? rawStatus
-      : 'active'
+    const status = rawStatus === 'resolved' || rawStatus === 'all' ? rawStatus : 'active'
     const locale = normalizeLocale(searchParams.get('locale'))
 
     const { data: events, error } = await EventRepository.listEvents({
@@ -77,18 +75,19 @@ export async function GET(request: NextRequest) {
       return agentApiError(error ?? 'Could not load markets.', 500)
     }
 
-    return withAgentApiCors(NextResponse.json({
-      data: events.map(buildEmbedEvent),
-      meta: {
-        count: events.length,
-        limit,
-        offset,
-        tag,
-        status,
-      },
-    }))
-  }
-  catch (error) {
+    return withAgentApiCors(
+      NextResponse.json({
+        data: events.map(buildEmbedEvent),
+        meta: {
+          count: events.length,
+          limit,
+          offset,
+          tag,
+          status,
+        },
+      }),
+    )
+  } catch (error) {
     console.error('[/api/v1/markets] error', error)
     return agentApiError('Internal server error.', 500)
   }

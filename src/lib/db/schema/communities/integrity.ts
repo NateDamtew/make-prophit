@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm'
 import { char, check, index, pgTable, text, timestamp } from 'drizzle-orm/pg-core'
+
 import { users } from '@/lib/db/schema/auth/tables'
 import { communities, community_markets } from '@/lib/db/schema/communities/tables'
 
@@ -11,7 +12,9 @@ import { communities, community_markets } from '@/lib/db/schema/communities/tabl
 export const market_resolution_evidence = pgTable(
   'market_resolution_evidence',
   {
-    id: char({ length: 26 }).primaryKey().default(sql`generate_ulid()`),
+    id: char({ length: 26 })
+      .primaryKey()
+      .default(sql`generate_ulid()`),
     market_id: char({ length: 26 })
       .notNull()
       .references(() => community_markets.id, { onDelete: 'cascade' }),
@@ -24,7 +27,7 @@ export const market_resolution_evidence = pgTable(
     submitted_label: text().notNull(),
     created_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
-  table => [
+  (table) => [
     index('idx_market_resolution_evidence_market').on(table.market_id, table.created_at.desc()),
     index('idx_market_resolution_evidence_community').on(table.community_id, table.created_at.desc()),
     check('chk_market_resolution_evidence_url_len', sql`char_length(${table.url}) BETWEEN 8 AND 2048`),
