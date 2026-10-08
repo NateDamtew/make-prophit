@@ -1,7 +1,5 @@
 'use client'
 
-import type { Event } from '@/types'
-import type { DataPoint, SeriesConfig } from '@/types/PredictionChartTypes'
 import {
   Bookmark,
   CheckCircle2,
@@ -15,7 +13,14 @@ import {
 } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
-import { buildMarketTargets, useEventPriceHistory } from '@/app/[locale]/(platform)/event/[slug]/_hooks/useEventPriceHistory'
+
+import type { Event } from '@/types'
+import type { DataPoint, SeriesConfig } from '@/types/PredictionChartTypes'
+
+import {
+  buildMarketTargets,
+  useEventPriceHistory,
+} from '@/app/[locale]/(platform)/event/[slug]/_hooks/useEventPriceHistory'
 import AppLink from '@/components/AppLink'
 import { Card } from '@/components/ui/card'
 import { OUTCOME_INDEX } from '@/lib/constants'
@@ -24,17 +29,14 @@ import { formatVolume } from '@/lib/formatters'
 import { cn } from '@/lib/utils'
 
 // Dynamically load the PredictionChart to bypass SSR issues (visx/d3 require window)
-const PredictionChart = dynamic<any>(
-  () => import('@/components/PredictionChart'),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="flex size-full items-center justify-center rounded-lg bg-accent/20">
-        <div className="size-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-      </div>
-    ),
-  },
-)
+const PredictionChart = dynamic<any>(() => import('@/components/PredictionChart'), {
+  ssr: false,
+  loading: () => (
+    <div className="flex size-full items-center justify-center rounded-lg bg-accent/20">
+      <div className="size-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+    </div>
+  ),
+})
 
 const CHOICE_COLORS = ['#3b82f6', '#f59e0b', '#10b981', '#8b5cf6', '#ec4899', '#06b6d4']
 
@@ -42,26 +44,29 @@ const CHOICE_COLORS = ['#3b82f6', '#f59e0b', '#10b981', '#8b5cf6', '#ec4899', '#
 function useParentWidth<T extends HTMLElement>() {
   const [element, setElement] = useState<T | null>(null)
 
-  const subscribe = useCallback((onStoreChange: () => void) => {
-    if (!element) {
-      return () => {}
-    }
-
-    if (typeof ResizeObserver === 'undefined') {
-      window.addEventListener('resize', onStoreChange)
-      return () => {
-        window.removeEventListener('resize', onStoreChange)
+  const subscribe = useCallback(
+    (onStoreChange: () => void) => {
+      if (!element) {
+        return () => {}
       }
-    }
 
-    const observer = new ResizeObserver(() => {
-      onStoreChange()
-    })
-    observer.observe(element)
-    return () => {
-      observer.disconnect()
-    }
-  }, [element])
+      if (typeof ResizeObserver === 'undefined') {
+        window.addEventListener('resize', onStoreChange)
+        return () => {
+          window.removeEventListener('resize', onStoreChange)
+        }
+      }
+
+      const observer = new ResizeObserver(() => {
+        onStoreChange()
+      })
+      observer.observe(element)
+      return () => {
+        observer.disconnect()
+      }
+    },
+    [element],
+  )
 
   const getSnapshot = useCallback(() => {
     if (!element) {
@@ -103,9 +108,9 @@ export default function HomeHero({ events }: HomeHeroProps) {
 
   // 2. Prepare Sidebar Breaking News (3 events with high activity, different from active featured index)
   const breakingNewsEvents = useMemo(() => {
-    const activeSlideIds = new Set(featuredEvents.map(e => e.id))
+    const activeSlideIds = new Set(featuredEvents.map((e) => e.id))
     return events
-      .filter(e => e.status !== 'resolved' && e.markets?.length > 0 && !activeSlideIds.has(e.id))
+      .filter((e) => e.status !== 'resolved' && e.markets?.length > 0 && !activeSlideIds.has(e.id))
       .slice(0, 3)
   }, [events, featuredEvents])
 
@@ -120,7 +125,7 @@ export default function HomeHero({ events }: HomeHeroProps) {
     }
 
     const interval = setInterval(() => {
-      setActiveIndex(prev => (prev + 1) % featuredEvents.length)
+      setActiveIndex((prev) => (prev + 1) % featuredEvents.length)
     }, 8000)
 
     return () => clearInterval(interval)
@@ -135,22 +140,11 @@ export default function HomeHero({ events }: HomeHeroProps) {
       {/* Featured Market Slider Card (Left Column) */}
       <div className="flex w-full min-w-0 flex-col gap-3 lg:col-span-2">
         <Card
-          className="
-            relative flex w-full min-w-0 flex-col justify-between overflow-hidden border-border bg-card p-5 shadow-md
-            transition-all duration-300
-            hover:shadow-lg
-            md:p-6
-            dark:bg-card/50
-          "
+          className="relative flex w-full min-w-0 flex-col justify-between overflow-hidden border-border bg-card p-5 shadow-md transition-all duration-300 hover:shadow-lg md:p-6 dark:bg-card/50"
           onMouseEnter={() => setIsHovered(true)}
           onMouseLeave={() => setIsHovered(false)}
         >
-          {activeEvent && (
-            <FeaturedEventSlide
-              event={activeEvent}
-              key={activeEvent.id}
-            />
-          )}
+          {activeEvent && <FeaturedEventSlide event={activeEvent} key={activeEvent.id} />}
         </Card>
 
         {/* Navigation Controls (Outside Card) */}
@@ -175,25 +169,17 @@ export default function HomeHero({ events }: HomeHeroProps) {
           {/* Previous/Next Pill Tabs (Right) */}
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setActiveIndex(prev => (prev - 1 + featuredEvents.length) % featuredEvents.length)}
-              className="
-                flex max-w-[140px] items-center gap-1.5 rounded-full bg-accent/40 px-3 py-2 text-xs font-semibold
-                text-muted-foreground transition-colors
-                hover:bg-accent hover:text-foreground
-                sm:max-w-[200px]
-              "
+              onClick={() => setActiveIndex((prev) => (prev - 1 + featuredEvents.length) % featuredEvents.length)}
+              className="flex max-w-[140px] items-center gap-1.5 rounded-full bg-accent/40 px-3 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:bg-accent hover:text-foreground sm:max-w-[200px]"
             >
               <ChevronLeft className="size-3.5 shrink-0" />
-              <span className="truncate">{featuredEvents[(activeIndex - 1 + featuredEvents.length) % featuredEvents.length]?.title}</span>
+              <span className="truncate">
+                {featuredEvents[(activeIndex - 1 + featuredEvents.length) % featuredEvents.length]?.title}
+              </span>
             </button>
             <button
-              onClick={() => setActiveIndex(prev => (prev + 1) % featuredEvents.length)}
-              className="
-                flex max-w-[140px] items-center gap-1.5 rounded-full bg-accent/40 px-3 py-2 text-xs font-semibold
-                text-muted-foreground transition-colors
-                hover:bg-accent hover:text-foreground
-                sm:max-w-[200px]
-              "
+              onClick={() => setActiveIndex((prev) => (prev + 1) % featuredEvents.length)}
+              className="flex max-w-[140px] items-center gap-1.5 rounded-full bg-accent/40 px-3 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:bg-accent hover:text-foreground sm:max-w-[200px]"
             >
               <span className="truncate">{featuredEvents[(activeIndex + 1) % featuredEvents.length]?.title}</span>
               <ChevronRight className="size-3.5 shrink-0" />
@@ -215,59 +201,47 @@ export default function HomeHero({ events }: HomeHeroProps) {
 
             <div className="divide-y divide-border/60">
               {breakingNewsEvents.length === 0 && (
-                <div className="py-6 text-center text-xs text-muted-foreground">
-                  No active news markets found.
-                </div>
+                <div className="py-6 text-center text-xs text-muted-foreground">No active news markets found.</div>
               )}
-              {breakingNewsEvents.length > 0 && breakingNewsEvents.map((event, idx) => {
-                const primaryMarket = event.markets?.[0]
-                const price = primaryMarket ? Math.round((primaryMarket.price ?? 0.5) * 100) : 50
-                const isPositive = price >= 50
-                const changePercent = Math.abs(price - 50) // Mock trend from baseline 50
+              {breakingNewsEvents.length > 0 &&
+                breakingNewsEvents.map((event, idx) => {
+                  const primaryMarket = event.markets?.[0]
+                  const price = primaryMarket ? Math.round((primaryMarket.price ?? 0.5) * 100) : 50
+                  const isPositive = price >= 50
+                  const changePercent = Math.abs(price - 50) // Mock trend from baseline 50
 
-                return (
-                  <AppLink
-                    key={event.id}
-                    href={resolveEventPagePath(event)}
-                    className="group flex items-start gap-3 py-3 transition-colors first:pt-0 last:pb-0"
-                  >
-                    <span className="
-                      mt-0.5 text-xs font-extrabold text-muted-foreground/60 transition-colors
-                      group-hover:text-primary
-                    "
+                  return (
+                    <AppLink
+                      key={event.id}
+                      href={resolveEventPagePath(event)}
+                      className="group flex items-start gap-3 py-3 transition-colors first:pt-0 last:pb-0"
                     >
-                      {idx + 1}
-                    </span>
-                    <div className="min-w-0 flex-1 space-y-1">
-                      <p className="
-                        line-clamp-2 text-xs/normal font-semibold text-card-foreground transition-colors
-                        group-hover:text-foreground
-                      "
+                      <span
+                        className="mt-0.5 text-xs font-extrabold text-muted-foreground/60 transition-colors group-hover:text-primary"
                       >
-                        {event.title}
-                      </p>
-                      <div className="flex items-center gap-2 text-2xs font-bold">
-                        <span className="text-foreground/70">
-                          {price}
-                          % chance
-                        </span>
-                        <span className={isPositive ? 'text-yes' : 'text-no'}>
-                          {isPositive ? '▲' : '▼'}
-                          {' '}
-                          {changePercent}
-                          %
-                        </span>
+                        {idx + 1}
+                      </span>
+                      <div className="min-w-0 flex-1 space-y-1">
+                        <p
+                          className="line-clamp-2 text-xs/normal font-semibold text-card-foreground transition-colors group-hover:text-foreground"
+                        >
+                          {event.title}
+                        </p>
+                        <div className="flex items-center gap-2 text-2xs font-bold">
+                          <span className="text-foreground/70">{price}% chance</span>
+                          <span className={isPositive ? 'text-yes' : 'text-no'}>
+                            {isPositive ? '▲' : '▼'} {changePercent}%
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                  </AppLink>
-                )
-              })}
+                    </AppLink>
+                  )
+                })}
             </div>
           </div>
 
           <ButtonLink href="/predictions" label="Explore all markets" />
         </Card>
-
       </div>
     </div>
   )
@@ -278,7 +252,7 @@ interface FeaturedEventSlideProps {
 }
 
 function FeaturedEventSlide({ event }: FeaturedEventSlideProps) {
-  const category = event.tags?.find(t => t.isMainCategory)?.name || 'Prediction'
+  const category = event.tags?.find((t) => t.isMainCategory)?.name || 'Prediction'
   const isSingleMarket = event.markets?.length === 1
   const primaryMarket = event.markets?.[0]
   const totalVolume = event.volume ?? 0
@@ -316,8 +290,7 @@ function FeaturedEventSlide({ event }: FeaturedEventSlideProps) {
           color: '#22c55e', // Green line for Yes
         },
       ]
-    }
-    else {
+    } else {
       seriesList = event.markets.slice(0, 4).map((m, idx) => ({
         key: m.condition_id,
         name: m.short_title || m.title,
@@ -328,18 +301,16 @@ function FeaturedEventSlide({ event }: FeaturedEventSlideProps) {
     // If history is empty, supply a default starting point
     let dataPoints: DataPoint[] = normalizedHistory
     if (dataPoints.length === 0) {
+      // oxlint-disable-next-line react/purity
       const now = new Date()
       const start = new Date(event.created_at)
       const mockPoints: DataPoint[] = []
 
       // Create two points (start and end) representing the current price
       seriesList.forEach((s) => {
-        const marketObj = event.markets.find(m => m.condition_id === s.key)
+        const marketObj = event.markets.find((m) => m.condition_id === s.key)
         const percentage = marketObj ? (marketObj.price ?? 0.5) * 100 : 50
-        mockPoints.push(
-          { date: start, [s.key]: percentage },
-          { date: now, [s.key]: percentage },
-        )
+        mockPoints.push({ date: start, [s.key]: percentage }, { date: now, [s.key]: percentage })
       })
       dataPoints = mockPoints
     }
@@ -371,11 +342,8 @@ function FeaturedEventSlide({ event }: FeaturedEventSlideProps) {
         {/* Left Side: Title and outcomes */}
         <div className="flex flex-col justify-start space-y-4 md:col-span-5">
           <AppLink href={eventHref} className="group">
-            <h2 className="
-              text-lg/snug font-bold text-foreground decoration-primary/30 underline-offset-4 transition-colors
-              group-hover:text-primary group-hover:underline
-              md:text-xl
-            "
+            <h2
+              className="text-lg/snug font-bold text-foreground decoration-primary/30 underline-offset-4 transition-colors group-hover:text-primary group-hover:underline md:text-xl"
             >
               {event.title}
             </h2>
@@ -410,11 +378,7 @@ function FeaturedEventSlide({ event }: FeaturedEventSlideProps) {
                     <AppLink
                       key={m.condition_id}
                       href={resolveEventPagePath(event)}
-                      className="
-                        flex items-center justify-between rounded-lg border border-border/60 bg-accent/20 px-3 py-2
-                        text-xs font-bold transition-all
-                        hover:bg-accent/40
-                      "
+                      className="flex items-center justify-between rounded-lg border border-border/60 bg-accent/20 px-3 py-2 text-xs font-bold transition-all hover:bg-accent/40"
                     >
                       <div className="flex min-w-0 flex-1 items-center gap-2">
                         <span
@@ -423,26 +387,16 @@ function FeaturedEventSlide({ event }: FeaturedEventSlideProps) {
                         />
                         <span className="truncate text-foreground/90">{m.short_title || m.title}</span>
                       </div>
-                      <span className="text-primary">
-                        {chance}
-                        %
-                      </span>
+                      <span className="text-primary">{chance}%</span>
                     </AppLink>
                   )
                 })}
                 {event.markets.length > 3 && (
                   <AppLink
                     href={eventHref}
-                    className="
-                      block text-center text-2xs font-extrabold tracking-wide text-primary uppercase
-                      hover:underline
-                    "
+                    className="block text-center text-2xs font-extrabold tracking-wide text-primary uppercase hover:underline"
                   >
-                    +
-                    {' '}
-                    {event.markets.length - 3}
-                    {' '}
-                    more options
+                    + {event.markets.length - 3} more options
                   </AppLink>
                 )}
               </div>
@@ -452,10 +406,7 @@ function FeaturedEventSlide({ event }: FeaturedEventSlideProps) {
 
         {/* Right Side: Visual line chart */}
         <div
-          className="
-            relative flex min-h-[200px] w-full min-w-0 flex-col justify-center overflow-hidden
-            md:col-span-7 md:min-h-[240px]
-          "
+          className="relative flex min-h-[200px] w-full min-w-0 flex-col justify-center overflow-hidden md:col-span-7 md:min-h-[240px]"
           ref={chartContainerRef}
         >
           {chartData.length > 0 && chartContainerWidth > 0 && (
@@ -484,16 +435,10 @@ function FeaturedEventSlide({ event }: FeaturedEventSlideProps) {
       </div>
 
       {/* Footer volume and target ends */}
-      <div className="
-        mt-4 flex items-center justify-between border-t border-border/60 pt-4 text-xs font-semibold
-        text-muted-foreground
-      "
+      <div
+        className="mt-4 flex items-center justify-between border-t border-border/60 pt-4 text-xs font-semibold text-muted-foreground"
       >
-        <span className="flex items-center gap-1.5 text-muted-foreground/90">
-          {formatVolume(totalVolume)}
-          {' '}
-          Vol
-        </span>
+        <span className="flex items-center gap-1.5 text-muted-foreground/90">{formatVolume(totalVolume)} Vol</span>
         <div className="flex items-center gap-2.5">
           <span className="flex items-center gap-1">
             <RefreshCw className="size-3" />
@@ -527,44 +472,27 @@ function OutcomeButton({ event, label, chance, variant }: OutcomeButtonProps) {
     <AppLink
       href={href}
       className={cn(
-        `
-          group/btn flex cursor-pointer items-center justify-between rounded-xl border p-3 text-sm font-bold shadow-sm
-          transition-all duration-300
-          hover:scale-[1.02] hover:shadow-md
-        `,
+        `group/btn flex cursor-pointer items-center justify-between rounded-xl border p-3 text-sm font-bold shadow-sm transition-all duration-300 hover:scale-[1.02] hover:shadow-md`,
         variant === 'yes'
           ? 'border-yes/30 bg-yes/5 text-yes hover:bg-yes/15'
           : 'border-no/30 bg-no/5 text-no hover:bg-no/15',
       )}
     >
       <div className="flex items-center gap-2">
-        {variant === 'yes'
-          ? (
-              <CheckCircle2 className="size-4 shrink-0" />
-            )
-          : (
-              <XCircle className="size-4 shrink-0" />
-            )}
+        {variant === 'yes' ? <CheckCircle2 className="size-4 shrink-0" /> : <XCircle className="size-4 shrink-0" />}
         <span>{label}</span>
       </div>
-      <span className="text-base font-extrabold">
-        {chance}
-        %
-      </span>
+      <span className="text-base font-extrabold">{chance}%</span>
     </AppLink>
   )
 }
 
 // ButtonLink sub-component for explore links at bottom of sidebar items
-function ButtonLink({ href, label }: { href: string, label: string }) {
+function ButtonLink({ href, label }: { href: string; label: string }) {
   return (
     <AppLink
       href={href}
-      className="
-        mt-4 flex w-full items-center justify-center gap-1.5 rounded-lg border border-border/80 bg-accent/20 px-3 py-2
-        text-xs font-bold text-foreground/80 transition-all duration-200
-        hover:bg-accent/50 hover:text-foreground
-      "
+      className="mt-4 flex w-full items-center justify-center gap-1.5 rounded-lg border border-border/80 bg-accent/20 px-3 py-2 text-xs font-bold text-foreground/80 transition-all duration-200 hover:bg-accent/50 hover:text-foreground"
     >
       <span>{label}</span>
       <ChevronRight className="size-3" />

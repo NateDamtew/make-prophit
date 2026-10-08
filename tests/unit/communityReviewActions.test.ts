@@ -1,26 +1,28 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, mock } from 'bun:test'
 
-const mocks = vi.hoisted(() => ({
-  getCurrentUser: vi.fn(),
-  getMemberRole: vi.fn(),
-  submitForReview: vi.fn(),
-  setReviewApproved: vi.fn(),
-  setReviewRejected: vi.fn(),
-  retryDeploy: vi.fn(),
-  createDraft: vi.fn(),
-  setExecutionState: vi.fn(),
-  loadSigners: vi.fn(),
-  notifySubmitted: vi.fn(),
-  notifyApproved: vi.fn(),
-  notifyRejected: vi.fn(),
-  dbSelect: vi.fn(),
+import { hoisted } from '../bun-test-helpers'
+
+const mocks = hoisted(() => ({
+  getCurrentUser: mock(),
+  getMemberRole: mock(),
+  submitForReview: mock(),
+  setReviewApproved: mock(),
+  setReviewRejected: mock(),
+  retryDeploy: mock(),
+  createDraft: mock(),
+  setExecutionState: mock(),
+  loadSigners: mock(),
+  notifySubmitted: mock(),
+  notifyApproved: mock(),
+  notifyRejected: mock(),
+  dbSelect: mock(),
 }))
 
-vi.mock('@/lib/db/queries/user', () => ({
+void mock.module('@/lib/db/queries/user', () => ({
   UserRepository: { getCurrentUser: mocks.getCurrentUser },
 }))
 
-vi.mock('@/lib/db/queries/community', () => ({
+void mock.module('@/lib/db/queries/community', () => ({
   CommunityRepository: {
     getMemberRole: mocks.getMemberRole,
     submitForReview: mocks.submitForReview,
@@ -30,28 +32,31 @@ vi.mock('@/lib/db/queries/community', () => ({
   },
 }))
 
-vi.mock('@/lib/db/queries/event-creations', () => ({
+void mock.module('@/lib/db/queries/event-creations', () => ({
   EventCreationRepository: {
     createDraft: mocks.createDraft,
     setExecutionState: mocks.setExecutionState,
   },
 }))
 
-vi.mock('@/lib/event-creation-signers', () => ({
+void mock.module('@/lib/event-creation-signers', () => ({
   loadEventCreationSignersFromEnv: mocks.loadSigners,
 }))
 
-vi.mock('@/lib/community-notifications', () => ({
+void mock.module('@/lib/community-notifications', () => ({
   notifyMarketSubmitted: mocks.notifySubmitted,
   notifyMarketApproved: mocks.notifyApproved,
   notifyMarketRejected: mocks.notifyRejected,
 }))
 
-vi.mock('@/lib/db/schema/communities/tables', () => ({
+const actualCommunityTables = await import('@/lib/db/schema/communities/tables')
+
+void mock.module('@/lib/db/schema/communities/tables', () => ({
+  ...actualCommunityTables,
   community_markets: { id: 'cm.id' },
 }))
 
-vi.mock('@/lib/drizzle', () => ({
+void mock.module('@/lib/drizzle', () => ({
   db: {
     select: () => ({
       from: () => ({
@@ -63,17 +68,26 @@ vi.mock('@/lib/drizzle', () => ({
   },
 }))
 
-vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
+void mock.module('next/cache', () => ({
+  cacheLife: mock(),
+  cacheTag: mock(),
+  io: mock(async () => {}),
+  revalidatePath: mock(),
+  revalidateTag: mock(),
+  unstable_cache: (fn: unknown) => fn,
+  updateTag: mock(),
+}))
 
 describe('submitMarketForReviewAction', () => {
   beforeEach(() => {
-    Object.values(mocks).forEach(m => m.mockReset())
+    Object.values(mocks).forEach((m) => m.mockReset())
   })
 
   it('rejects non-community-admin users', async () => {
     mocks.getCurrentUser.mockResolvedValue({ id: 'u1' })
     mocks.getMemberRole.mockResolvedValue({ data: 'member', error: null })
-    const { submitMarketForReviewAction } = await import('@/app/[locale]/(platform)/community/[slug]/_actions/review-actions')
+    const { submitMarketForReviewAction } =
+      await import('@/app/[locale]/(platform)/community/[slug]/_actions/review-actions')
     const result = await submitMarketForReviewAction('M1', 'C1', 'slug', {
       mainCategorySlug: 'politics',
       categorySlugs: ['a', 'b', 'c', 'd'],
@@ -90,7 +104,8 @@ describe('submitMarketForReviewAction', () => {
       data: null,
       error: 'At least 4 sub-categories required.',
     })
-    const { submitMarketForReviewAction } = await import('@/app/[locale]/(platform)/community/[slug]/_actions/review-actions')
+    const { submitMarketForReviewAction } =
+      await import('@/app/[locale]/(platform)/community/[slug]/_actions/review-actions')
     const result = await submitMarketForReviewAction('M1', 'C1', 'slug', {
       mainCategorySlug: 'politics',
       categorySlugs: ['a', 'b', 'c'],
@@ -105,7 +120,8 @@ describe('submitMarketForReviewAction', () => {
       data: null,
       error: 'Main category is required. Add one before submitting.',
     })
-    const { submitMarketForReviewAction } = await import('@/app/[locale]/(platform)/community/[slug]/_actions/review-actions')
+    const { submitMarketForReviewAction } =
+      await import('@/app/[locale]/(platform)/community/[slug]/_actions/review-actions')
     const result = await submitMarketForReviewAction('M1', 'C1', 'slug', {
       mainCategorySlug: '',
       categorySlugs: ['a', 'b', 'c', 'd'],
@@ -120,7 +136,8 @@ describe('submitMarketForReviewAction', () => {
       data: { id: 'M1', title: 'Test market', created_by: 'u1' },
       error: null,
     })
-    const { submitMarketForReviewAction } = await import('@/app/[locale]/(platform)/community/[slug]/_actions/review-actions')
+    const { submitMarketForReviewAction } =
+      await import('@/app/[locale]/(platform)/community/[slug]/_actions/review-actions')
     const result = await submitMarketForReviewAction('M1', 'C1', 'slug', {
       mainCategorySlug: 'politics',
       categorySlugs: ['a', 'b', 'c', 'd'],
@@ -136,7 +153,7 @@ describe('submitMarketForReviewAction', () => {
 
 describe('rejectMarketAction', () => {
   beforeEach(() => {
-    Object.values(mocks).forEach(m => m.mockReset())
+    Object.values(mocks).forEach((m) => m.mockReset())
   })
 
   it('rejects non-platform-admins', async () => {
@@ -173,7 +190,7 @@ describe('rejectMarketAction', () => {
 
 describe('approveMarketAction', () => {
   beforeEach(() => {
-    Object.values(mocks).forEach(m => m.mockReset())
+    Object.values(mocks).forEach((m) => m.mockReset())
   })
 
   it('rejects non-platform-admins', async () => {
@@ -185,14 +202,16 @@ describe('approveMarketAction', () => {
 
   it('rejects markets not in pending status', async () => {
     mocks.getCurrentUser.mockResolvedValue({ id: 'admin', is_admin: true })
-    mocks.dbSelect.mockResolvedValue([{
-      id: 'M1',
-      review_status: 'draft',
-      title: 'X',
-      main_category_slug: 'politics',
-      category_slugs: ['a', 'b', 'c', 'd'],
-      resolution_date: new Date('2026-12-31'),
-    }])
+    mocks.dbSelect.mockResolvedValue([
+      {
+        id: 'M1',
+        review_status: 'draft',
+        title: 'X',
+        main_category_slug: 'politics',
+        category_slugs: ['a', 'b', 'c', 'd'],
+        resolution_date: new Date('2026-12-31'),
+      },
+    ])
     const { approveMarketAction } = await import('@/app/[locale]/(platform)/community/[slug]/_actions/review-actions')
     const result = await approveMarketAction('M1', 'slug')
     expect(result.error).toMatch(/pending/i)
@@ -200,14 +219,16 @@ describe('approveMarketAction', () => {
 
   it('rejects markets missing required categories', async () => {
     mocks.getCurrentUser.mockResolvedValue({ id: 'admin', is_admin: true })
-    mocks.dbSelect.mockResolvedValue([{
-      id: 'M1',
-      review_status: 'pending',
-      title: 'X',
-      main_category_slug: null,
-      category_slugs: [],
-      resolution_date: new Date('2026-12-31'),
-    }])
+    mocks.dbSelect.mockResolvedValue([
+      {
+        id: 'M1',
+        review_status: 'pending',
+        title: 'X',
+        main_category_slug: null,
+        category_slugs: [],
+        resolution_date: new Date('2026-12-31'),
+      },
+    ])
     const { approveMarketAction } = await import('@/app/[locale]/(platform)/community/[slug]/_actions/review-actions')
     const result = await approveMarketAction('M1', 'slug')
     expect(result.error).toMatch(/categories/i)
@@ -215,15 +236,17 @@ describe('approveMarketAction', () => {
 
   it('rejects when no signers configured', async () => {
     mocks.getCurrentUser.mockResolvedValue({ id: 'admin', is_admin: true })
-    mocks.dbSelect.mockResolvedValue([{
-      id: 'M1',
-      review_status: 'pending',
-      title: 'X',
-      main_category_slug: 'politics',
-      category_slugs: ['a', 'b', 'c', 'd'],
-      resolution_date: new Date('2026-12-31'),
-      resolution_rules: 'rules',
-    }])
+    mocks.dbSelect.mockResolvedValue([
+      {
+        id: 'M1',
+        review_status: 'pending',
+        title: 'X',
+        main_category_slug: 'politics',
+        category_slugs: ['a', 'b', 'c', 'd'],
+        resolution_date: new Date('2026-12-31'),
+        resolution_rules: 'rules',
+      },
+    ])
     mocks.loadSigners.mockReturnValue([])
     const { approveMarketAction } = await import('@/app/[locale]/(platform)/community/[slug]/_actions/review-actions')
     const result = await approveMarketAction('M1', 'slug')
@@ -232,15 +255,17 @@ describe('approveMarketAction', () => {
 
   it('rejects when no resolution date set', async () => {
     mocks.getCurrentUser.mockResolvedValue({ id: 'admin', is_admin: true })
-    mocks.dbSelect.mockResolvedValue([{
-      id: 'M1',
-      review_status: 'pending',
-      title: 'X',
-      main_category_slug: 'politics',
-      category_slugs: ['a', 'b', 'c', 'd'],
-      resolution_date: null,
-      resolution_rules: 'rules',
-    }])
+    mocks.dbSelect.mockResolvedValue([
+      {
+        id: 'M1',
+        review_status: 'pending',
+        title: 'X',
+        main_category_slug: 'politics',
+        category_slugs: ['a', 'b', 'c', 'd'],
+        resolution_date: null,
+        resolution_rules: 'rules',
+      },
+    ])
     mocks.loadSigners.mockReturnValue([{ address: '0xabc', privateKey: '0x123' }])
     const { approveMarketAction } = await import('@/app/[locale]/(platform)/community/[slug]/_actions/review-actions')
     const result = await approveMarketAction('M1', 'slug')
@@ -249,19 +274,21 @@ describe('approveMarketAction', () => {
 
   it('creates event_creations draft and notifies on success', async () => {
     mocks.getCurrentUser.mockResolvedValue({ id: 'admin', is_admin: true })
-    mocks.dbSelect.mockResolvedValue([{
-      id: 'M1',
-      community_id: 'C1',
-      review_status: 'pending',
-      title: 'Will X happen?',
-      description: 'd',
-      main_category_slug: 'politics',
-      category_slugs: ['a', 'b', 'c', 'd'],
-      resolution_date: new Date('2026-12-31T00:00:00Z'),
-      resolution_source: 'source',
-      resolution_rules: 'precise rules here that meet minimum length',
-      created_by: 'communityAdmin1',
-    }])
+    mocks.dbSelect.mockResolvedValue([
+      {
+        id: 'M1',
+        community_id: 'C1',
+        review_status: 'pending',
+        title: 'Will X happen?',
+        description: 'd',
+        main_category_slug: 'politics',
+        category_slugs: ['a', 'b', 'c', 'd'],
+        resolution_date: new Date('2026-12-31T00:00:00Z'),
+        resolution_source: 'source',
+        resolution_rules: 'precise rules here that meet minimum length',
+        created_by: 'communityAdmin1',
+      },
+    ])
     mocks.loadSigners.mockReturnValue([{ address: '0xabc', privateKey: '0x123' }])
     mocks.createDraft.mockResolvedValue({ data: { id: 'DRAFT1' }, error: null })
     mocks.setReviewApproved.mockResolvedValue({ data: { id: 'M1' }, error: null })
@@ -292,7 +319,7 @@ describe('approveMarketAction', () => {
 
 describe('retryDeployAction', () => {
   beforeEach(() => {
-    Object.values(mocks).forEach(m => m.mockReset())
+    Object.values(mocks).forEach((m) => m.mockReset())
   })
 
   it('rejects non-admins', async () => {

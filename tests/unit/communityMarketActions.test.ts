@@ -1,21 +1,23 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, mock } from 'bun:test'
 
-const mocks = vi.hoisted(() => ({
-  getCurrentUser: vi.fn(),
-  getMemberRole: vi.fn(),
-  addMarket: vi.fn(),
-  updateMarket: vi.fn(),
-  publishMarket: vi.fn(),
-  getMarket: vi.fn(),
-  deleteMarket: vi.fn(),
-  analyzeMarket: vi.fn(),
+import { hoisted } from '../bun-test-helpers'
+
+const mocks = hoisted(() => ({
+  getCurrentUser: mock(),
+  getMemberRole: mock(),
+  addMarket: mock(),
+  updateMarket: mock(),
+  publishMarket: mock(),
+  getMarket: mock(),
+  deleteMarket: mock(),
+  analyzeMarket: mock(),
 }))
 
-vi.mock('@/lib/db/queries/user', () => ({
+void mock.module('@/lib/db/queries/user', () => ({
   UserRepository: { getCurrentUser: mocks.getCurrentUser },
 }))
 
-vi.mock('@/lib/db/queries/community', () => ({
+void mock.module('@/lib/db/queries/community', () => ({
   CommunityRepository: {
     getMemberRole: mocks.getMemberRole,
     addMarket: mocks.addMarket,
@@ -26,15 +28,23 @@ vi.mock('@/lib/db/queries/community', () => ({
   },
 }))
 
-vi.mock('@/lib/ai/gemini', () => ({
+void mock.module('@/lib/ai/gemini', () => ({
   analyzeMarketQuestion: mocks.analyzeMarket,
 }))
 
-vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
+void mock.module('next/cache', () => ({
+  cacheLife: mock(),
+  cacheTag: mock(),
+  io: mock(async () => {}),
+  revalidatePath: mock(),
+  revalidateTag: mock(),
+  unstable_cache: (fn: unknown) => fn,
+  updateTag: mock(),
+}))
 
 describe('analyzeMarketAction (Gemini)', () => {
   beforeEach(() => {
-    Object.values(mocks).forEach(m => m.mockReset())
+    Object.values(mocks).forEach((m) => m.mockReset())
   })
 
   it('rejects unauthenticated users', async () => {
@@ -75,13 +85,14 @@ describe('analyzeMarketAction (Gemini)', () => {
 
 describe('createMarketDraftAction', () => {
   beforeEach(() => {
-    Object.values(mocks).forEach(m => m.mockReset())
+    Object.values(mocks).forEach((m) => m.mockReset())
   })
 
   it('rejects non-community-admins', async () => {
     mocks.getCurrentUser.mockResolvedValue({ id: 'u1' })
     mocks.getMemberRole.mockResolvedValue({ data: 'member', error: null })
-    const { createMarketDraftAction } = await import('@/app/[locale]/(platform)/community/[slug]/_actions/market-actions')
+    const { createMarketDraftAction } =
+      await import('@/app/[locale]/(platform)/community/[slug]/_actions/market-actions')
     const result = await createMarketDraftAction('C1', 'slug', {
       title: 'Will it rain tomorrow in Addis?',
       resolution_rules: 'Resolves YES if measured precipitation exceeds X mm.',
@@ -92,7 +103,8 @@ describe('createMarketDraftAction', () => {
   it('rejects titles shorter than 10 chars', async () => {
     mocks.getCurrentUser.mockResolvedValue({ id: 'u1' })
     mocks.getMemberRole.mockResolvedValue({ data: 'admin', error: null })
-    const { createMarketDraftAction } = await import('@/app/[locale]/(platform)/community/[slug]/_actions/market-actions')
+    const { createMarketDraftAction } =
+      await import('@/app/[locale]/(platform)/community/[slug]/_actions/market-actions')
     const result = await createMarketDraftAction('C1', 'slug', {
       title: 'short',
       resolution_rules: 'Resolution rules that meet minimum length easily.',
@@ -103,7 +115,8 @@ describe('createMarketDraftAction', () => {
   it('rejects resolution rules shorter than 20 chars', async () => {
     mocks.getCurrentUser.mockResolvedValue({ id: 'u1' })
     mocks.getMemberRole.mockResolvedValue({ data: 'admin', error: null })
-    const { createMarketDraftAction } = await import('@/app/[locale]/(platform)/community/[slug]/_actions/market-actions')
+    const { createMarketDraftAction } =
+      await import('@/app/[locale]/(platform)/community/[slug]/_actions/market-actions')
     const result = await createMarketDraftAction('C1', 'slug', {
       title: 'Will it rain tomorrow in Addis?',
       resolution_rules: 'too short',
@@ -115,23 +128,26 @@ describe('createMarketDraftAction', () => {
     mocks.getCurrentUser.mockResolvedValue({ id: 'u1' })
     mocks.getMemberRole.mockResolvedValue({ data: 'admin', error: null })
     mocks.addMarket.mockResolvedValue({ data: { id: 'M1' }, error: null })
-    const { createMarketDraftAction } = await import('@/app/[locale]/(platform)/community/[slug]/_actions/market-actions')
+    const { createMarketDraftAction } =
+      await import('@/app/[locale]/(platform)/community/[slug]/_actions/market-actions')
     const result = await createMarketDraftAction('C1', 'slug', {
       title: 'Will it rain tomorrow in Addis?',
       resolution_rules: 'Resolves YES if precipitation is at least 1mm.',
     })
     expect(result.error).toBeNull()
-    expect(mocks.addMarket).toHaveBeenCalledWith(expect.objectContaining({
-      status: 'draft',
-      community_id: 'C1',
-      created_by: 'u1',
-    }))
+    expect(mocks.addMarket).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'draft',
+        community_id: 'C1',
+        created_by: 'u1',
+      }),
+    )
   })
 })
 
 describe('publishMarketAction', () => {
   beforeEach(() => {
-    Object.values(mocks).forEach(m => m.mockReset())
+    Object.values(mocks).forEach((m) => m.mockReset())
   })
 
   it('rejects non-admins', async () => {
@@ -156,7 +172,7 @@ describe('publishMarketAction', () => {
 
 describe('deleteMarketAction', () => {
   beforeEach(() => {
-    Object.values(mocks).forEach(m => m.mockReset())
+    Object.values(mocks).forEach((m) => m.mockReset())
   })
 
   it('rejects non-admins', async () => {

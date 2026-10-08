@@ -2,9 +2,17 @@
 
 import { CheckIcon, CopyIcon, EyeIcon, EyeOffIcon, KeyRoundIcon, ShieldAlertIcon } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { toast } from '@/components/ui/toast'
+
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { toast } from '@/components/ui/toast'
 import { cn } from '@/lib/utils'
 
 interface AgentApiKeyDialogProps {
@@ -26,6 +34,7 @@ export default function AgentApiKeyDialog({ rawKey, agentName, context, onClose 
 
   useEffect(() => {
     if (rawKey) {
+      // oxlint-disable-next-line react/set-state-in-effect
       setRevealed(false)
       setCopied(false)
     }
@@ -42,8 +51,7 @@ export default function AgentApiKeyDialog({ rawKey, agentName, context, onClose 
       setCopied(true)
       window.setTimeout(setCopied, 2000, false)
       toast.success('API key copied')
-    }
-    catch {
+    } catch {
       toast.error('Could not copy. Select the key and copy manually.')
     }
   }
@@ -66,7 +74,7 @@ export default function AgentApiKeyDialog({ rawKey, agentName, context, onClose 
           <DialogDescription>
             {agentName
               ? `Copy ${agentName}'s API key now — this is the only time you'll see it.`
-              : 'Copy your new API key now — this is the only time you\'ll see it.'}
+              : "Copy your new API key now — this is the only time you'll see it."}
           </DialogDescription>
         </DialogHeader>
 
@@ -75,16 +83,17 @@ export default function AgentApiKeyDialog({ rawKey, agentName, context, onClose 
           <div className="grid gap-1.5">
             <label className="text-xs font-medium text-muted-foreground">API key</label>
             <div className="flex items-center gap-2 rounded-md border bg-muted/40 px-3 py-2">
-              <code className={cn(
-                'flex-1 truncate font-mono text-sm tabular-nums',
-                revealed ? 'select-all' : 'tracking-wider select-none',
-              )}
+              <code
+                className={cn(
+                  'flex-1 truncate font-mono text-sm tabular-nums',
+                  revealed ? 'select-all' : 'tracking-wider select-none',
+                )}
               >
-                {revealed ? rawKey ?? '' : '•'.repeat(40)}
+                {revealed ? (rawKey ?? '') : '•'.repeat(40)}
               </code>
               <button
                 type="button"
-                onClick={() => setRevealed(prev => !prev)}
+                onClick={() => setRevealed((prev) => !prev)}
                 aria-label={revealed ? 'Hide key' : 'Show key'}
                 className="text-muted-foreground transition-colors hover:text-foreground"
               >
@@ -107,8 +116,8 @@ export default function AgentApiKeyDialog({ rawKey, agentName, context, onClose 
             <div className="grid gap-1 text-amber-900 dark:text-amber-200">
               <p className="font-medium">Save this key somewhere safe.</p>
               <p className="text-xs/relaxed">
-                We only store a hash, so we can't show it again. If you lose it, rotate the key from
-                your agent's settings and update your app with the new one.
+                We only store a hash, so we can't show it again. If you lose it, rotate the key from your agent's
+                settings and update your app with the new one.
               </p>
             </div>
           </div>

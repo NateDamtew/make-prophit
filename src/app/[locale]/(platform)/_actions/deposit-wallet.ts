@@ -1,10 +1,12 @@
 'use server'
 
-import type { TradingAuthSecrets } from '@/lib/trading-auth/server'
-import type { DepositWalletStatus } from '@/types'
 import { eq } from 'drizzle-orm'
 import { cookies } from 'next/headers'
 import { z } from 'zod'
+
+import type { TradingAuthSecrets } from '@/lib/trading-auth/server'
+import type { DepositWalletStatus } from '@/types'
+
 import { DEFAULT_ERROR_MESSAGE } from '@/lib/constants'
 import { DEPOSIT_WALLET_FACTORY_ADDRESS } from '@/lib/contracts'
 import { UserRepository } from '@/lib/db/queries/user'
@@ -13,10 +15,7 @@ import { getDepositWalletAddress, isDepositWalletDeployed } from '@/lib/deposit-
 import { captureDepositWalletError, captureDepositWalletEvent } from '@/lib/deposit-wallet-observability'
 import { db } from '@/lib/drizzle'
 import { buildClobHmacSignature } from '@/lib/hmac'
-import {
-  getL2AuthContextCookieName,
-  L2_AUTH_CONTEXT_TTL_SECONDS,
-} from '@/lib/l2-auth-context'
+import { getL2AuthContextCookieName, L2_AUTH_CONTEXT_TTL_SECONDS } from '@/lib/l2-auth-context'
 import { resolvePublicRuntimeEnv } from '@/lib/public-runtime-config.shared'
 import { requireSumsubTradingApproval, SUMSUB_APPROVAL_REQUIRED_MESSAGE } from '@/lib/sumsub/enforcement'
 import { TRADING_AUTH_REQUIRED_ERROR } from '@/lib/trading-auth/errors'
@@ -79,20 +78,22 @@ interface DepositWalletActionUserData {
 
 interface EnableDepositWalletTradingActionResult {
   error: string | null
-  data: (DepositWalletActionUserData & {
-    tradingAuth?: {
-      relayer?: { enabled: boolean, updatedAt: string }
-      clob?: { enabled: boolean, updatedAt: string }
-    }
-  }) | null
+  data:
+    | (DepositWalletActionUserData & {
+        tradingAuth?: {
+          relayer?: { enabled: boolean; updatedAt: string }
+          clob?: { enabled: boolean; updatedAt: string }
+        }
+      })
+    | null
 }
 
 interface EnableTradingAuthActionResult {
   error: string | null
   data: {
     tradingAuth: {
-      relayer: { enabled: boolean, updatedAt: string }
-      clob: { enabled: boolean, updatedAt: string }
+      relayer: { enabled: boolean; updatedAt: string }
+      clob: { enabled: boolean; updatedAt: string }
     }
   } | null
 }
@@ -114,7 +115,7 @@ interface UsernameAvailabilityResult {
 }
 
 function sleep(ms: number) {
-  return new Promise(resolve => setTimeout(resolve, ms))
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 function resolveUsernameAvailability(payload: unknown): boolean | null {
@@ -165,22 +166,15 @@ async function fetchUsernameAvailability(username: string): Promise<UsernameAvai
     }
 
     const available = resolveUsernameAvailability(payload)
-    return available === null
-      ? { available: null, code: 'availability_unavailable' }
-      : { available }
-  }
-  catch (error) {
+    return available === null ? { available: null, code: 'availability_unavailable' } : { available }
+  } catch (error) {
     console.error('Failed to check username availability', error)
     return { available: null, code: 'availability_unavailable' }
   }
 }
 
 async function updateOnboardingSettings(userId: string, patch: Record<string, unknown>) {
-  const [row] = await db
-    .select({ settings: users.settings })
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1)
+  const [row] = await db.select({ settings: users.settings }).from(users).where(eq(users.id, userId)).limit(1)
 
   const settings = (row?.settings ?? {}) as Record<string, any>
   const onboarding = {
@@ -229,9 +223,9 @@ async function requestApiKey(baseUrl: string, headers: Record<string, string>) {
   }
 
   if (
-    typeof payload?.apiKey !== 'string'
-    || typeof payload?.secret !== 'string'
-    || typeof payload?.passphrase !== 'string'
+    typeof payload?.apiKey !== 'string' ||
+    typeof payload?.secret !== 'string' ||
+    typeof payload?.passphrase !== 'string'
   ) {
     throw new TypeError('Invalid response from auth service.')
   }
@@ -261,7 +255,7 @@ async function persistL2AuthCookie(userId: string, l2AuthContextId: string) {
 async function submitWalletCreate({
   userAddress,
   depositWallet,
-  auth,
+  auth: _auth,
 }: {
   userAddress: string
   depositWallet: string
@@ -273,7 +267,7 @@ async function submitWalletCreate({
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    'Accept': 'application/json',
+    Accept: 'application/json',
   }
 
   const platformKey = process.env.KUEST_API_KEY
@@ -304,8 +298,7 @@ async function submitWalletCreate({
     headers.KUEST_TIMESTAMP = timestamp.toString()
     headers.KUEST_SIGNATURE = signature
     headers.KUEST_ADDRESS = platformAddress
-  }
-  else {
+  } else {
     path = '/submit/wallet'
     body = JSON.stringify({
       type: 'WALLET-CREATE',
@@ -327,13 +320,14 @@ async function submitWalletCreate({
   })
 
   const { payload, rawError, contentType } = await readTradingFlowErrorResponse(response)
-  const transactionId = typeof payload?.transactionID === 'string'
-    ? payload.transactionID
-    : typeof payload?.transactionId === 'string'
-      ? payload.transactionId
-      : typeof payload?.id === 'string'
-        ? payload.id
-        : null
+  const transactionId =
+    typeof payload?.transactionID === 'string'
+      ? payload.transactionID
+      : typeof payload?.transactionId === 'string'
+        ? payload.transactionId
+        : typeof payload?.id === 'string'
+          ? payload.id
+          : null
 
   if (!response.ok || !payload || !transactionId) {
     const durationMs = Date.now() - startedAt
@@ -351,21 +345,24 @@ async function submitWalletCreate({
       durationMs,
       status: response.status,
     })
-    throw new Error(mapDepositWalletCreateError(rawError, {
-      status: response.status,
-      contentType,
-      forceFallback: response.ok,
-    }))
+    throw new Error(
+      mapDepositWalletCreateError(rawError, {
+        status: response.status,
+        contentType,
+        forceFallback: response.ok,
+      }),
+    )
   }
 
   return {
     transactionId,
     state: typeof payload.state === 'string' ? payload.state : null,
-    txHash: typeof payload.transactionHash === 'string'
-      ? payload.transactionHash
-      : typeof payload.hash === 'string'
-        ? payload.hash
-        : null,
+    txHash:
+      typeof payload.transactionHash === 'string'
+        ? payload.transactionHash
+        : typeof payload.hash === 'string'
+          ? payload.hash
+          : null,
   }
 }
 
@@ -389,21 +386,17 @@ async function fetchRelayerTransactionState(transactionId: string) {
 
   return {
     state: typeof transaction.state === 'string' ? transaction.state : null,
-    txHash: typeof transaction.transactionHash === 'string'
-      ? transaction.transactionHash
-      : typeof transaction.hash === 'string'
-        ? transaction.hash
-        : null,
-    failureReason: typeof transaction.failureReason === 'string'
-      ? transaction.failureReason
-      : null,
+    txHash:
+      typeof transaction.transactionHash === 'string'
+        ? transaction.transactionHash
+        : typeof transaction.hash === 'string'
+          ? transaction.hash
+          : null,
+    failureReason: typeof transaction.failureReason === 'string' ? transaction.failureReason : null,
   }
 }
 
-async function pollWalletCreate(
-  transactionId: string,
-  context: { userAddress: string, depositWallet: string },
-) {
+async function pollWalletCreate(transactionId: string, context: { userAddress: string; depositWallet: string }) {
   const startedAt = Date.now()
   for (let attempt = 0; attempt < WALLET_CREATE_POLL_ATTEMPTS; attempt += 1) {
     const transaction = await fetchRelayerTransactionState(transactionId)
@@ -480,8 +473,7 @@ export async function updateOnboardingUsernameAction(input: {
         settings,
       },
     }
-  }
-  catch (error) {
+  } catch (error) {
     console.error('Failed to update onboarding username', error)
     return { error: DEFAULT_ERROR_MESSAGE, data: null }
   }
@@ -505,10 +497,7 @@ export async function checkUsernameAvailabilityAction(input: { username: string 
   }
 }
 
-export async function updateOnboardingEmailAction(input: {
-  email?: string
-  skip?: boolean
-}) {
+export async function updateOnboardingEmailAction(input: { email?: string; skip?: boolean }) {
   const user = await UserRepository.getCurrentUser({ disableCookieCache: true, minimal: true })
   if (!user) {
     return { error: 'Unauthenticated.', data: null }
@@ -526,8 +515,7 @@ export async function updateOnboardingEmailAction(input: {
           settings,
         },
       }
-    }
-    catch (error) {
+    } catch (error) {
       console.error('Failed to skip onboarding email', error)
       return { error: DEFAULT_ERROR_MESSAGE, data: null }
     }
@@ -556,8 +544,7 @@ export async function updateOnboardingEmailAction(input: {
         settings,
       },
     }
-  }
-  catch (error) {
+  } catch (error) {
     console.error('Failed to update onboarding email', error)
     return { error: DEFAULT_ERROR_MESSAGE, data: null }
   }
@@ -581,8 +568,7 @@ export async function createDepositWalletAction(): Promise<EnableDepositWalletTr
     if (alreadyDeployed) {
       status = 'deployed'
       txHash = null
-    }
-    else {
+    } else {
       const auth = await getUserTradingAuthSecrets(user.id)
       if (!auth?.relayer) {
         return { error: TRADING_AUTH_REQUIRED_ERROR, data: null }
@@ -594,9 +580,8 @@ export async function createDepositWalletAction(): Promise<EnableDepositWalletTr
         auth: auth.relayer,
       })
       txHash = submitResult.txHash
-      status = submitResult.state === 'STATE_CONFIRMED' || submitResult.state === 'STATE_MINED'
-        ? 'deployed'
-        : 'deploying'
+      status =
+        submitResult.state === 'STATE_CONFIRMED' || submitResult.state === 'STATE_MINED' ? 'deployed' : 'deploying'
 
       await db
         .update(users)
@@ -642,8 +627,7 @@ export async function createDepositWalletAction(): Promise<EnableDepositWalletTr
         deposit_wallet_tx_hash: status === 'deployed' ? null : txHash,
       },
     }
-  }
-  catch (error) {
+  } catch (error) {
     console.error('Failed to create Deposit Wallet', error)
     captureDepositWalletError(error, {
       operation: 'wallet_create',
@@ -674,12 +658,12 @@ export async function enableTradingAuthAction(
   const { clobUrl, relayerUrl } = resolvePublicRuntimeEnv(process.env)
 
   const headers = {
-    'Accept': 'application/json',
+    Accept: 'application/json',
     'Content-Type': 'application/json',
-    'KUEST_ADDRESS': user.address,
-    'KUEST_SIGNATURE': parsed.data.signature,
-    'KUEST_TIMESTAMP': parsed.data.timestamp,
-    'KUEST_NONCE': parsed.data.nonce,
+    KUEST_ADDRESS: user.address,
+    KUEST_SIGNATURE: parsed.data.signature,
+    KUEST_TIMESTAMP: parsed.data.timestamp,
+    KUEST_NONCE: parsed.data.nonce,
   }
 
   try {
@@ -707,8 +691,7 @@ export async function enableTradingAuthAction(
         },
       },
     }
-  }
-  catch (error) {
+  } catch (error) {
     console.error('Failed to enable trading auth', error)
     captureDepositWalletError(error, {
       operation: 'enable_trading_auth',
@@ -732,8 +715,7 @@ export async function markAutoRedeemApprovalCompletedAction(): Promise<MarkAutoR
       error: null,
       data: { autoRedeem },
     }
-  }
-  catch (error) {
+  } catch (error) {
     console.error('Failed to mark auto redeem approval', error)
     return {
       error: DEFAULT_ERROR_MESSAGE,

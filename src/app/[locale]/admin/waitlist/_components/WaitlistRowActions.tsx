@@ -1,10 +1,10 @@
 'use client'
 
-import type { useWaitlistTable, WaitlistEntry } from '@/app/[locale]/admin/waitlist/_hooks/useWaitlist'
-
 import { CopyIcon, MailIcon, MoreHorizontalIcon, ShieldXIcon, Trash2Icon, UserCheckIcon } from 'lucide-react'
 import { useState } from 'react'
-import { toast } from '@/components/ui/toast'
+
+import type { useWaitlistTable, WaitlistEntry } from '@/app/[locale]/admin/waitlist/_hooks/useWaitlist'
+
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -21,10 +21,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { toast } from '@/components/ui/toast'
 
 type WaitlistActions = Pick<ReturnType<typeof useWaitlistTable>, 'updateStatus' | 'sendInvite' | 'deleteEntry'>
 
-export function WaitlistRowActions({ entry, actions }: { entry: WaitlistEntry, actions: WaitlistActions }) {
+export function WaitlistRowActions({ entry, actions }: { entry: WaitlistEntry; actions: WaitlistActions }) {
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [confirmInvite, setConfirmInvite] = useState(false)
 
@@ -35,36 +36,38 @@ export function WaitlistRowActions({ entry, actions }: { entry: WaitlistEntry, a
 
   function handleInvite() {
     setConfirmInvite(false)
-    toast.promise(actions.sendInvite.mutateAsync(entry.id), {
+    void toast.promise(actions.sendInvite.mutateAsync(entry.id), {
       loading: `Sending invite to ${entry.email}…`,
       success: 'Invite sent',
-      error: err => (err as Error).message,
+      error: (err) => (err as Error).message,
     })
   }
 
   function handleDelete() {
     setConfirmDelete(false)
-    toast.promise(actions.deleteEntry.mutateAsync(entry.id), {
+    void toast.promise(actions.deleteEntry.mutateAsync(entry.id), {
       loading: 'Deleting…',
       success: 'Entry deleted',
-      error: err => (err as Error).message,
+      error: (err) => (err as Error).message,
     })
   }
 
   function setStatus(status: WaitlistEntry['status']) {
-    toast.promise(actions.updateStatus.mutateAsync({ id: entry.id, status }), {
+    void toast.promise(actions.updateStatus.mutateAsync({ id: entry.id, status }), {
       loading: 'Updating…',
       success: `Marked as ${status}`,
-      error: err => (err as Error).message,
+      error: (err) => (err as Error).message,
     })
   }
 
   return (
     <>
       <DropdownMenu>
-        <DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="size-8" aria-label="Row actions" />}>
-            <MoreHorizontalIcon className="size-4" />
-          </DropdownMenuTrigger>
+        <DropdownMenuTrigger
+          render={<Button variant="ghost" size="icon" className="size-8" aria-label="Row actions" />}
+        >
+          <MoreHorizontalIcon className="size-4" />
+        </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-48">
           <DropdownMenuItem onClick={() => setConfirmInvite(true)}>
             <MailIcon className="size-4" />
@@ -109,7 +112,9 @@ export function WaitlistRowActions({ entry, actions }: { entry: WaitlistEntry, a
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirmInvite(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setConfirmInvite(false)}>
+              Cancel
+            </Button>
             <Button onClick={handleInvite}>Send invite</Button>
           </DialogFooter>
         </DialogContent>
@@ -124,8 +129,12 @@ export function WaitlistRowActions({ entry, actions }: { entry: WaitlistEntry, a
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirmDelete(false)}>Cancel</Button>
-            <Button variant="destructive" onClick={handleDelete}>Delete</Button>
+            <Button variant="outline" onClick={() => setConfirmDelete(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleDelete}>
+              Delete
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

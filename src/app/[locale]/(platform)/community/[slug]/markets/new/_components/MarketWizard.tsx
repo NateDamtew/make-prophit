@@ -1,8 +1,5 @@
 'use client'
 
-import type { MarketSuggestion } from '@/lib/ai/gemini'
-import type { MarketTemplateId } from '@/lib/communities/market-templates'
-import type { ExtractedUrlContent } from '@/lib/communities/url-ingest'
 import {
   AlertCircleIcon,
   AlertTriangleIcon,
@@ -21,12 +18,18 @@ import {
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState, useTransition } from 'react'
-import { toast } from '@/components/ui/toast'
+
+import type { MarketSuggestion } from '@/lib/ai/gemini'
+import type { MarketTemplateId } from '@/lib/communities/market-templates'
+import type { ExtractedUrlContent } from '@/lib/communities/url-ingest'
+
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { toast } from '@/components/ui/toast'
 import { MARKET_TEMPLATES } from '@/lib/communities/market-templates'
 import { cn } from '@/lib/utils'
+
 import { analyzeMarketAction, createMarketDraftAction } from '../../../_actions/market-actions'
 import { submitMarketForReviewAction } from '../../../_actions/review-actions'
 import { MarketPreview } from './MarketPreview'
@@ -55,7 +58,7 @@ interface MarketOption {
 type Step = 1 | 2 | 3 | 4 | 5
 type MarketMode = 'binary' | 'multi_unique' | 'multi_multiple'
 
-const STEPS: { num: Step, label: string, hint: string }[] = [
+const STEPS: { num: Step; label: string; hint: string }[] = [
   { num: 1, label: 'Event', hint: 'Title, slug, image, date' },
   { num: 2, label: 'Market structure', hint: 'Binary / multi-outcome' },
   { num: 3, label: 'Resolution', hint: 'Source & rules' },
@@ -123,16 +126,17 @@ export default function MarketWizard({ communityId, communitySlug, communityName
   const [isSubmitting, startSubmitting] = useTransition()
 
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect
     setCategoriesLoading(true)
     fetch('/api/categories')
-      .then(r => r.ok ? r.json() : { categories: [] })
-      .then(data => setCategories(data.categories ?? []))
+      .then((r) => (r.ok ? r.json() : { categories: [] }))
+      .then((data) => setCategories(data.categories ?? []))
       .catch(() => setCategories([]))
       .finally(() => setCategoriesLoading(false))
   }, [])
 
-  const mainCategoryOptions = useMemo(() => categories.filter(c => c.isMainCategory), [categories])
-  const subCategoryOptions = useMemo(() => categories.filter(c => !c.isMainCategory), [categories])
+  const mainCategoryOptions = useMemo(() => categories.filter((c) => c.isMainCategory), [categories])
+  const subCategoryOptions = useMemo(() => categories.filter((c) => !c.isMainCategory), [categories])
 
   function handleTitleChange(value: string) {
     setTitle(value)
@@ -176,7 +180,7 @@ export default function MarketWizard({ communityId, communitySlug, communityName
   }
 
   function applyTemplate(id: MarketTemplateId) {
-    const tpl = MARKET_TEMPLATES.find(t => t.id === id)
+    const tpl = MARKET_TEMPLATES.find((t) => t.id === id)
     if (!tpl) {
       return
     }
@@ -235,15 +239,13 @@ export default function MarketWizard({ communityId, communitySlug, communityName
         if (suggestion) {
           applySuggestion(suggestion, source?.finalUrl)
           toast.success('AI drafted a market from that URL.')
-        }
-        else if (source?.title) {
+        } else if (source?.title) {
           if (!title) {
             handleTitleChange(source.title)
           }
           toast.success('Pulled the headline; finish the rest by hand or retry the AI.')
         }
-      }
-      else {
+      } else {
         const { error, data } = await analyzeMarketAction({ question: cleaned })
         if (error || !data) {
           throw new Error(error ?? 'AI failed to respond.')
@@ -251,31 +253,30 @@ export default function MarketWizard({ communityId, communitySlug, communityName
         applySuggestion(data)
         toast.success('AI drafted a market from your prompt.')
       }
-    }
-    catch (error) {
+    } catch (error) {
       toast.error((error as Error).message)
-    }
-    finally {
+    } finally {
       setAiBusy(false)
     }
   }
 
   function addOption() {
-    setOptions(prev => [...prev, { id: String(prev.length + 1), question: '', title: '', shortName: '', slug: '' }])
+    setOptions((prev) => [...prev, { id: String(prev.length + 1), question: '', title: '', shortName: '', slug: '' }])
   }
   function removeOption(id: string) {
-    setOptions(prev => prev.filter(o => o.id !== id))
+    setOptions((prev) => prev.filter((o) => o.id !== id))
   }
   function updateOption(id: string, patch: Partial<MarketOption>) {
-    setOptions(prev => prev.map(o => o.id === id ? { ...o, ...patch, slug: patch.title ? slugify(patch.title) : o.slug } : o))
+    setOptions((prev) =>
+      prev.map((o) => (o.id === id ? { ...o, ...patch, slug: patch.title ? slugify(patch.title) : o.slug } : o)),
+    )
   }
   function toggleSub(slugValue: string) {
     setSubCategories((prev) => {
       const next = new Set(prev)
       if (next.has(slugValue)) {
         next.delete(slugValue)
-      }
-      else {
+      } else {
         next.add(slugValue)
       }
       return next
@@ -294,6 +295,7 @@ export default function MarketWizard({ communityId, communitySlug, communityName
         return 'Resolution date is required.'
       }
       const date = new Date(resolutionDate)
+      // oxlint-disable-next-line react/purity
       if (Number.isNaN(date.getTime()) || date.getTime() <= Date.now()) {
         return 'Resolution date must be in the future.'
       }
@@ -303,8 +305,7 @@ export default function MarketWizard({ communityId, communitySlug, communityName
         if (!binaryQuestion.trim() || !binaryOutcomeYes.trim() || !binaryOutcomeNo.trim()) {
           return 'Question and both outcome labels are required.'
         }
-      }
-      else if (options.length < 2 || !options.every(o => o.title.trim() && o.question.trim())) {
+      } else if (options.length < 2 || !options.every((o) => o.title.trim() && o.question.trim())) {
         return 'All options need a title and a question (min 2 options).'
       }
     }
@@ -345,11 +346,11 @@ export default function MarketWizard({ communityId, communitySlug, communityName
       toast.error(err)
       return
     }
-    setStep(s => (s < 5 ? s + 1 : s) as Step)
+    setStep((s) => (s < 5 ? s + 1 : s) as Step)
   }
 
   function handleBack() {
-    setStep(s => (s > 1 ? s - 1 : s) as Step)
+    setStep((s) => (s > 1 ? s - 1 : s) as Step)
   }
 
   function buildDraftInput() {
@@ -394,7 +395,7 @@ export default function MarketWizard({ communityId, communitySlug, communityName
         toast.error(result.error ?? 'Could not save draft.')
         return
       }
-      toast.success('Draft saved. Submit for review when you\'re ready.')
+      toast.success("Draft saved. Submit for review when you're ready.")
       router.replace(`/community/${communitySlug}/markets/new?tab=drafts` as any)
       router.refresh()
     })
@@ -450,15 +451,19 @@ export default function MarketWizard({ communityId, communitySlug, communityName
             Preview
           </Button>
           <Button variant="outline" size="sm" onClick={handleSaveDraft} disabled={busy}>
-            {isSaving ? <Loader2Icon className="mr-1.5 size-3.5 animate-spin" /> : <SaveIcon className="mr-1.5 size-3.5" />}
+            {isSaving ? (
+              <Loader2Icon className="mr-1.5 size-3.5 animate-spin" />
+            ) : (
+              <SaveIcon className="mr-1.5 size-3.5" />
+            )}
             Save draft
           </Button>
           <Button size="sm" onClick={handleSubmitForReview} disabled={busy}>
-            {isSubmitting
-              ? <Loader2Icon className="mr-1.5 size-3.5 animate-spin" />
-              : (
-                  <SendIcon className="mr-1.5 size-3.5" />
-                )}
+            {isSubmitting ? (
+              <Loader2Icon className="mr-1.5 size-3.5 animate-spin" />
+            ) : (
+              <SendIcon className="mr-1.5 size-3.5" />
+            )}
             Submit for review
           </Button>
         </div>
@@ -467,9 +472,8 @@ export default function MarketWizard({ communityId, communitySlug, communityName
       <div className="grid gap-0 lg:grid-cols-[240px_minmax(0,1fr)]">
         {/* Progress rail */}
         <nav className="border-b p-4 lg:border-r lg:border-b-0">
-          <p className="
-            mb-3 flex items-center justify-between text-2xs font-semibold tracking-wider text-muted-foreground uppercase
-          "
+          <p
+            className="mb-3 flex items-center justify-between text-2xs font-semibold tracking-wider text-muted-foreground uppercase"
           >
             Progress
             <span>
@@ -491,19 +495,22 @@ export default function MarketWizard({ communityId, communitySlug, communityName
                       isCurrent ? 'border-primary bg-primary/5' : 'border-transparent hover:bg-muted/40',
                     )}
                   >
-                    <span className={cn(
-                      'flex size-6 shrink-0 items-center justify-center rounded-md text-2xs font-bold',
-                      isCurrent && 'bg-primary text-primary-foreground',
-                      isDone && 'bg-primary/20 text-primary',
-                      !isCurrent && !isDone && 'bg-muted text-muted-foreground',
-                    )}
+                    <span
+                      className={cn(
+                        'flex size-6 shrink-0 items-center justify-center rounded-md text-2xs font-bold',
+                        isCurrent && 'bg-primary text-primary-foreground',
+                        isDone && 'bg-primary/20 text-primary',
+                        !isCurrent && !isDone && 'bg-muted text-muted-foreground',
+                      )}
                     >
                       {isDone ? <CheckIcon className="size-3.5" /> : s.num}
                     </span>
                     <span className="min-w-0">
-                      <span className={cn('block text-sm font-semibold', isCurrent
-                        ? 'text-foreground'
-                        : `text-foreground/80`)}
+                      <span
+                        className={cn(
+                          'block text-sm font-semibold',
+                          isCurrent ? 'text-foreground' : `text-foreground/80`,
+                        )}
                       >
                         {s.label}
                       </span>
@@ -520,13 +527,7 @@ export default function MarketWizard({ communityId, communitySlug, communityName
         <div className="min-w-0">
           <div className="flex items-center justify-between border-b px-5 py-3">
             <h2 className="flex items-center gap-2 text-sm font-semibold">
-              <span className="text-muted-foreground">
-                Step
-                {' '}
-                {step}
-                {' '}
-                ·
-              </span>
+              <span className="text-muted-foreground">Step {step} ·</span>
               {STEPS[step - 1].label}
             </h2>
             <span className="hidden text-2xs tracking-wider text-muted-foreground uppercase sm:block">
@@ -611,31 +612,29 @@ export default function MarketWizard({ communityId, communitySlug, communityName
 
           {/* Step nav */}
           <div className="flex items-center justify-between gap-3 border-t p-4">
-            {step > 1
-              ? (
-                  <Button variant="outline" onClick={handleBack} disabled={busy}>
-                    <ChevronLeftIcon className="mr-1 size-4" />
-                    Back
-                  </Button>
-                )
-              : <div />}
-            {step < 5
-              ? (
-                  <Button onClick={handleNext}>
-                    Next
-                    <ChevronRightIcon className="ml-1 size-4" />
-                  </Button>
-                )
-              : (
-                  <Button onClick={handleSubmitForReview} disabled={busy}>
-                    {isSubmitting
-                      ? <Loader2Icon className="mr-1.5 size-4 animate-spin" />
-                      : (
-                          <SendIcon className="mr-1.5 size-4" />
-                        )}
-                    Submit for review
-                  </Button>
+            {step > 1 ? (
+              <Button variant="outline" onClick={handleBack} disabled={busy}>
+                <ChevronLeftIcon className="mr-1 size-4" />
+                Back
+              </Button>
+            ) : (
+              <div />
+            )}
+            {step < 5 ? (
+              <Button onClick={handleNext}>
+                Next
+                <ChevronRightIcon className="ml-1 size-4" />
+              </Button>
+            ) : (
+              <Button onClick={handleSubmitForReview} disabled={busy}>
+                {isSubmitting ? (
+                  <Loader2Icon className="mr-1.5 size-4 animate-spin" />
+                ) : (
+                  <SendIcon className="mr-1.5 size-4" />
                 )}
+                Submit for review
+              </Button>
+            )}
           </div>
         </div>
       </div>
@@ -698,32 +697,45 @@ function StepEvent(props: {
             <span className="ms-auto text-2xs tracking-wider text-muted-foreground uppercase">Gemini</span>
           </header>
           <div className="mb-2 flex gap-1.5">
-            <ModeChip icon={FileTextIcon} label="From prompt" active={props.promptMode === 'prompt'} onClick={() => props.setPromptMode('prompt')} />
-            <ModeChip icon={LinkIcon} label="From URL" active={props.promptMode === 'url'} onClick={() => props.setPromptMode('url')} />
+            <ModeChip
+              icon={FileTextIcon}
+              label="From prompt"
+              active={props.promptMode === 'prompt'}
+              onClick={() => props.setPromptMode('prompt')}
+            />
+            <ModeChip
+              icon={LinkIcon}
+              label="From URL"
+              active={props.promptMode === 'url'}
+              onClick={() => props.setPromptMode('url')}
+            />
           </div>
           <textarea
             value={props.prompt}
-            onChange={e => props.setPrompt(e.target.value)}
+            onChange={(e) => props.setPrompt(e.target.value)}
             rows={3}
-            placeholder={props.promptMode === 'url'
-              ? 'Paste a news article, Reuters / AP link, GitHub release URL…'
-              : 'e.g. Will Ethiopia\'s central bank cut rates before Q3 2026?'}
-            className="
-              w-full resize-none rounded-md border border-border/70 bg-card px-3 py-2 text-sm outline-none
-              placeholder:text-muted-foreground
-              focus:border-primary focus:ring-1 focus:ring-primary
-            "
+            placeholder={
+              props.promptMode === 'url'
+                ? 'Paste a news article, Reuters / AP link, GitHub release URL…'
+                : "e.g. Will Ethiopia's central bank cut rates before Q3 2026?"
+            }
+            className="w-full resize-none rounded-md border border-border/70 bg-card px-3 py-2 text-sm outline-none placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary"
           />
-          <Button className="mt-3 w-full" onClick={props.runAi} disabled={props.isAiBusy || props.prompt.trim().length < 5}>
-            {props.isAiBusy
-              ? <Loader2Icon className="mr-1.5 size-4 animate-spin" />
-              : (
-                  <WandSparklesIcon className="mr-1.5 size-4" />
-                )}
+          <Button
+            className="mt-3 w-full"
+            onClick={props.runAi}
+            disabled={props.isAiBusy || props.prompt.trim().length < 5}
+          >
+            {props.isAiBusy ? (
+              <Loader2Icon className="mr-1.5 size-4 animate-spin" />
+            ) : (
+              <WandSparklesIcon className="mr-1.5 size-4" />
+            )}
             {props.isAiBusy ? 'Drafting…' : 'Draft with AI'}
           </Button>
           <p className="mt-2 text-2xs text-muted-foreground">
-            The AI fills the form below. You always review before saving — and the super-admin reviews before publishing.
+            The AI fills the form below. You always review before saving — and the super-admin reviews before
+            publishing.
           </p>
         </section>
 
@@ -733,9 +745,7 @@ function StepEvent(props: {
             <SparklesIcon className="size-4 text-muted-foreground" />
             <h3 className="text-sm font-semibold">Start from a template</h3>
             <span className="ms-auto text-2xs tracking-wider text-muted-foreground uppercase">
-              {MARKET_TEMPLATES.length}
-              {' '}
-              presets
+              {MARKET_TEMPLATES.length} presets
             </span>
           </header>
           <div className="grid grid-cols-2 gap-2">
@@ -768,14 +778,19 @@ function StepEvent(props: {
       {/* Fields */}
       <div className="grid gap-4">
         <Field label="Event title" hint="Plain-language headline.">
-          <Input value={props.title} onChange={e => props.onTitleChange(e.target.value)} placeholder="Will Ethiopia's GDP grow more than 8% in 2026?" maxLength={200} />
+          <Input
+            value={props.title}
+            onChange={(e) => props.onTitleChange(e.target.value)}
+            placeholder="Will Ethiopia's GDP grow more than 8% in 2026?"
+            maxLength={200}
+          />
         </Field>
         <Field label="Slug" hint="Auto-generated; edit if needed.">
           <div className="flex items-center gap-2 rounded-md border border-border/70 bg-background px-3 py-2 text-sm">
             <span className="text-muted-foreground">/event/</span>
             <input
               value={props.slug}
-              onChange={e => props.onSlugChange(e.target.value)}
+              onChange={(e) => props.onSlugChange(e.target.value)}
               className="flex-1 bg-transparent outline-none"
               placeholder="will-ethiopia-gdp-grow-2026"
               maxLength={60}
@@ -784,10 +799,10 @@ function StepEvent(props: {
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Resolution date" hint="When this resolves.">
-            <Input type="date" value={props.resolutionDate} onChange={e => props.setResolutionDate(e.target.value)} />
+            <Input type="date" value={props.resolutionDate} onChange={(e) => props.setResolutionDate(e.target.value)} />
           </Field>
           <Field label="Image URL" hint="Optional cover.">
-            <Input value={props.imageUrl} onChange={e => props.setImageUrl(e.target.value)} placeholder="https://…" />
+            <Input value={props.imageUrl} onChange={(e) => props.setImageUrl(e.target.value)} placeholder="https://…" />
           </Field>
         </div>
       </div>
@@ -817,9 +832,10 @@ function StepStructure(props: {
         <button
           type="button"
           onClick={() => props.setMarketMode('binary')}
-          className={cn('rounded-xl border p-4 text-left transition-all', props.marketMode === 'binary'
-            ? `border-primary bg-primary/5`
-            : `hover:border-border/80 hover:bg-muted/30`)}
+          className={cn(
+            'rounded-xl border p-4 text-left transition-all',
+            props.marketMode === 'binary' ? `border-primary bg-primary/5` : `hover:border-border/80 hover:bg-muted/30`,
+          )}
         >
           <p className="font-semibold">Binary (Yes/No)</p>
           <p className="mt-0.5 text-xs text-muted-foreground">One question, two outcomes.</p>
@@ -827,90 +843,85 @@ function StepStructure(props: {
         <button
           type="button"
           onClick={() => props.setMarketMode('multi_unique')}
-          className={cn('rounded-xl border p-4 text-left transition-all', props.marketMode !== 'binary'
-            ? `border-primary bg-primary/5`
-            : `hover:border-border/80 hover:bg-muted/30`)}
+          className={cn(
+            'rounded-xl border p-4 text-left transition-all',
+            props.marketMode !== 'binary' ? `border-primary bg-primary/5` : `hover:border-border/80 hover:bg-muted/30`,
+          )}
         >
           <p className="font-semibold">Multi-option</p>
           <p className="mt-0.5 text-xs text-muted-foreground">Two or more competing outcomes.</p>
         </button>
       </div>
 
-      {props.marketMode === 'binary'
-        ? (
-            <div className="grid gap-4 rounded-xl border bg-muted/30 p-4">
-              <Field label="Question">
-                <Input
-                  value={props.binaryQuestion}
-                  onChange={e => props.setBinaryQuestion(e.target.value)}
-                  className="bg-background"
-                  placeholder="Will Ethiopia's GDP grow >8% in 2026?"
-                />
-              </Field>
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Yes outcome label">
-                  <Input
-                    value={props.binaryOutcomeYes}
-                    onChange={e => props.setBinaryOutcomeYes(e.target.value)}
-                    className="bg-background"
-                  />
-                </Field>
-                <Field label="No outcome label">
-                  <Input
-                    value={props.binaryOutcomeNo}
-                    onChange={e => props.setBinaryOutcomeNo(e.target.value)}
-                    className="bg-background"
-                  />
-                </Field>
+      {props.marketMode === 'binary' ? (
+        <div className="grid gap-4 rounded-xl border bg-muted/30 p-4">
+          <Field label="Question">
+            <Input
+              value={props.binaryQuestion}
+              onChange={(e) => props.setBinaryQuestion(e.target.value)}
+              className="bg-background"
+              placeholder="Will Ethiopia's GDP grow >8% in 2026?"
+            />
+          </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Yes outcome label">
+              <Input
+                value={props.binaryOutcomeYes}
+                onChange={(e) => props.setBinaryOutcomeYes(e.target.value)}
+                className="bg-background"
+              />
+            </Field>
+            <Field label="No outcome label">
+              <Input
+                value={props.binaryOutcomeNo}
+                onChange={(e) => props.setBinaryOutcomeNo(e.target.value)}
+                className="bg-background"
+              />
+            </Field>
+          </div>
+        </div>
+      ) : (
+        <div className="grid gap-3">
+          {props.options.map((opt) => (
+            <div key={opt.id} className="grid gap-2 rounded-xl border bg-muted/30 p-4">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium">Option {opt.id}</p>
+                {props.options.length > 2 && (
+                  <button
+                    type="button"
+                    onClick={() => props.removeOption(opt.id)}
+                    className="text-xs text-destructive hover:underline"
+                  >
+                    Remove
+                  </button>
+                )}
               </div>
+              <Input
+                placeholder="Title (e.g. Arsenal wins)"
+                value={opt.title}
+                onChange={(e) => props.updateOption(opt.id, { title: e.target.value })}
+                className="bg-background"
+              />
+              <Input
+                placeholder="Question (e.g. Will Arsenal win?)"
+                value={opt.question}
+                onChange={(e) => props.updateOption(opt.id, { question: e.target.value })}
+                className="bg-background"
+              />
+              <Input
+                placeholder="Short name"
+                value={opt.shortName}
+                onChange={(e) => props.updateOption(opt.id, { shortName: e.target.value })}
+                className="bg-background"
+              />
             </div>
-          )
-        : (
-            <div className="grid gap-3">
-              {props.options.map(opt => (
-                <div key={opt.id} className="grid gap-2 rounded-xl border bg-muted/30 p-4">
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm font-medium">
-                      Option
-                      {' '}
-                      {opt.id}
-                    </p>
-                    {props.options.length > 2 && (
-                      <button
-                        type="button"
-                        onClick={() => props.removeOption(opt.id)}
-                        className="text-xs text-destructive hover:underline"
-                      >
-                        Remove
-                      </button>
-                    )}
-                  </div>
-                  <Input
-                    placeholder="Title (e.g. Arsenal wins)"
-                    value={opt.title}
-                    onChange={e => props.updateOption(opt.id, { title: e.target.value })}
-                    className="bg-background"
-                  />
-                  <Input
-                    placeholder="Question (e.g. Will Arsenal win?)"
-                    value={opt.question}
-                    onChange={e => props.updateOption(opt.id, { question: e.target.value })}
-                    className="bg-background"
-                  />
-                  <Input
-                    placeholder="Short name"
-                    value={opt.shortName}
-                    onChange={e => props.updateOption(opt.id, { shortName: e.target.value })}
-                    className="bg-background"
-                  />
-                </div>
-              ))}
-              <Button type="button" variant="outline" size="sm" onClick={props.addOption}>
-                <PlusIcon className="mr-1.5 size-3.5" />
-                Add option
-              </Button>
-            </div>
-          )}
+          ))}
+          <Button type="button" variant="outline" size="sm" onClick={props.addOption}>
+            <PlusIcon className="mr-1.5 size-3.5" />
+            Add option
+          </Button>
+        </div>
+      )}
     </div>
   )
 }
@@ -928,19 +939,19 @@ function StepResolution(props: {
   return (
     <div className="grid gap-4">
       <Field label="Resolution source" hint="The specific source you'll cite. Be precise.">
-        <Input value={props.resolutionSource} onChange={e => props.setResolutionSource(e.target.value)} placeholder="World Bank Open Data, CoinMarketCap, Premier League…" />
+        <Input
+          value={props.resolutionSource}
+          onChange={(e) => props.setResolutionSource(e.target.value)}
+          placeholder="World Bank Open Data, CoinMarketCap, Premier League…"
+        />
       </Field>
       <Field label="Resolution rules" hint="Concrete rules. The review queue rejects vague rules.">
         <textarea
           value={props.resolutionRules}
-          onChange={e => props.setResolutionRules(e.target.value)}
+          onChange={(e) => props.setResolutionRules(e.target.value)}
           rows={6}
           maxLength={2000}
-          className="
-            w-full resize-none rounded-md border border-border/70 bg-background px-3 py-2 text-sm outline-none
-            placeholder:text-muted-foreground
-            focus:border-primary focus:ring-1 focus:ring-primary
-          "
+          className="w-full resize-none rounded-md border border-border/70 bg-background px-3 py-2 text-sm outline-none placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary"
           placeholder="Resolves YES if … by [resolution date], according to [source]. Resolves NO if …"
         />
         <p className="mt-1 text-right text-xs text-muted-foreground">
@@ -951,14 +962,10 @@ function StepResolution(props: {
       <Field label="Description" hint="Optional. Shown on the event page.">
         <textarea
           value={props.description}
-          onChange={e => props.setDescription(e.target.value)}
+          onChange={(e) => props.setDescription(e.target.value)}
           rows={3}
           maxLength={1000}
-          className="
-            w-full resize-none rounded-md border border-border/70 bg-background px-3 py-2 text-sm outline-none
-            placeholder:text-muted-foreground
-            focus:border-primary focus:ring-1 focus:ring-primary
-          "
+          className="w-full resize-none rounded-md border border-border/70 bg-background px-3 py-2 text-sm outline-none placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary"
           placeholder="Background, prior data, edge cases…"
         />
       </Field>
@@ -981,24 +988,27 @@ function StepCategories(props: {
     <div className="grid gap-5">
       <div>
         <label className="text-sm font-medium">Main category *</label>
-        {props.loading
-          ? <div className="mt-2 h-10 animate-pulse rounded-lg bg-muted" />
-          : (
-              <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
-                {props.mainCategoryOptions.map(cat => (
-                  <button
-                    key={cat.slug}
-                    type="button"
-                    onClick={() => props.setMainCategory(cat.slug)}
-                    className={cn('rounded-lg border px-3 py-2 text-sm transition-all', props.mainCategory === cat.slug
-                      ? `border-primary bg-primary/5 text-primary`
-                      : `hover:border-border/80 hover:bg-muted/30`)}
-                  >
-                    {cat.name}
-                  </button>
-                ))}
-              </div>
-            )}
+        {props.loading ? (
+          <div className="mt-2 h-10 animate-pulse rounded-lg bg-muted" />
+        ) : (
+          <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {props.mainCategoryOptions.map((cat) => (
+              <button
+                key={cat.slug}
+                type="button"
+                onClick={() => props.setMainCategory(cat.slug)}
+                className={cn(
+                  'rounded-lg border px-3 py-2 text-sm transition-all',
+                  props.mainCategory === cat.slug
+                    ? `border-primary bg-primary/5 text-primary`
+                    : `hover:border-border/80 hover:bg-muted/30`,
+                )}
+              >
+                {cat.name}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
       <div>
         <div className="flex items-center justify-between">
@@ -1008,25 +1018,28 @@ function StepCategories(props: {
             /4 minimum
           </span>
         </div>
-        {props.loading
-          ? <div className="mt-2 h-32 animate-pulse rounded-lg bg-muted" />
-          : (
-              <div className="mt-2 flex max-h-64 flex-wrap gap-1.5 overflow-y-auto rounded-lg border p-3">
-                {props.subCategoryOptions.map(cat => (
-                  <button
-                    key={cat.slug}
-                    type="button"
-                    onClick={() => props.toggleSub(cat.slug)}
-                    className={cn('flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs transition-all', props.subCategories.has(cat.slug)
-                      ? `border-primary bg-primary text-primary-foreground`
-                      : `hover:border-border/80 hover:bg-muted/50`)}
-                  >
-                    {props.subCategories.has(cat.slug) && <CheckIcon className="size-3" />}
-                    {cat.name}
-                  </button>
-                ))}
-              </div>
-            )}
+        {props.loading ? (
+          <div className="mt-2 h-32 animate-pulse rounded-lg bg-muted" />
+        ) : (
+          <div className="mt-2 flex max-h-64 flex-wrap gap-1.5 overflow-y-auto rounded-lg border p-3">
+            {props.subCategoryOptions.map((cat) => (
+              <button
+                key={cat.slug}
+                type="button"
+                onClick={() => props.toggleSub(cat.slug)}
+                className={cn(
+                  'flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs transition-all',
+                  props.subCategories.has(cat.slug)
+                    ? `border-primary bg-primary text-primary-foreground`
+                    : `hover:border-border/80 hover:bg-muted/50`,
+                )}
+              >
+                {props.subCategories.has(cat.slug) && <CheckIcon className="size-3" />}
+                {cat.name}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )
@@ -1060,7 +1073,10 @@ function StepReview(props: {
           </div>
         </div>
         <div className="grid grid-cols-2 gap-3 border-t pt-3 text-sm">
-          <ReviewCell label="Resolves" value={props.resolutionDate ? new Date(props.resolutionDate).toLocaleDateString() : '—'} />
+          <ReviewCell
+            label="Resolves"
+            value={props.resolutionDate ? new Date(props.resolutionDate).toLocaleDateString() : '—'}
+          />
           <ReviewCell label="Structure" value={props.marketMode === 'binary' ? 'Binary' : 'Multi-option'} />
           <ReviewCell label="Main category" value={props.mainCategory || '—'} />
           <ReviewCell label="Sub-categories" value={String(props.subCount)} />
@@ -1078,19 +1094,11 @@ function StepReview(props: {
           </div>
         )}
       </div>
-      <div className="
-        rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-700
-        dark:text-amber-400
-      "
+      <div
+        className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-700 dark:text-amber-400"
       >
-        <strong>Submit for review</strong>
-        {' '}
-        saves this draft and sends it to a platform admin, who approves and deploys it on-chain (~5–15 min).
-        Use
-        {' '}
-        <strong>Save draft</strong>
-        {' '}
-        to keep editing later.
+        <strong>Submit for review</strong> saves this draft and sends it to a platform admin, who approves and deploys
+        it on-chain (~5–15 min). Use <strong>Save draft</strong> to keep editing later.
       </div>
     </div>
   )
@@ -1098,7 +1106,7 @@ function StepReview(props: {
 
 // ─── Shared bits ────────────────────────────────────────────────────────────
 
-function ReviewCell({ label, value }: { label: string, value: string }) {
+function ReviewCell({ label, value }: { label: string; value: string }) {
   return (
     <div>
       <p className="text-2xs text-muted-foreground">{label}</p>
@@ -1107,7 +1115,17 @@ function ReviewCell({ label, value }: { label: string, value: string }) {
   )
 }
 
-function ModeChip({ icon: Icon, label, active, onClick }: { icon: typeof FileTextIcon, label: string, active: boolean, onClick: () => void }) {
+function ModeChip({
+  icon: Icon,
+  label,
+  active,
+  onClick,
+}: {
+  icon: typeof FileTextIcon
+  label: string
+  active: boolean
+  onClick: () => void
+}) {
   return (
     <button
       type="button"
@@ -1125,7 +1143,7 @@ function ModeChip({ icon: Icon, label, active, onClick }: { icon: typeof FileTex
   )
 }
 
-function AiNotes({ warnings, clarifying }: { warnings: string[], clarifying: string[] }) {
+function AiNotes({ warnings, clarifying }: { warnings: string[]; clarifying: string[] }) {
   return (
     <section className="grid gap-3 rounded-xl border border-amber-500/30 bg-amber-500/5 p-4">
       {warnings.length > 0 && (
@@ -1135,7 +1153,9 @@ function AiNotes({ warnings, clarifying }: { warnings: string[], clarifying: str
             AI warnings
           </div>
           <ul className="mt-1 list-disc space-y-0.5 ps-5 text-sm text-foreground/80">
-            {warnings.map(w => <li key={w}>{w}</li>)}
+            {warnings.map((w) => (
+              <li key={w}>{w}</li>
+            ))}
           </ul>
         </div>
       )}
@@ -1146,7 +1166,9 @@ function AiNotes({ warnings, clarifying }: { warnings: string[], clarifying: str
             Worth clarifying
           </div>
           <ul className="mt-1 list-disc space-y-0.5 ps-5 text-sm text-foreground/80">
-            {clarifying.map(q => <li key={q}>{q}</li>)}
+            {clarifying.map((q) => (
+              <li key={q}>{q}</li>
+            ))}
           </ul>
         </div>
       )}
@@ -1154,7 +1176,7 @@ function AiNotes({ warnings, clarifying }: { warnings: string[], clarifying: str
   )
 }
 
-function Field({ label, hint, children }: { label: string, hint?: string, children: React.ReactNode }) {
+function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <div className="grid gap-1.5">
       <div className="flex items-baseline justify-between gap-2">

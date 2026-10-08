@@ -1,13 +1,8 @@
 'use client'
 
-import {
-  ArrowLeftIcon,
-  ArrowRightIcon,
-  ArrowUpIcon,
-  CheckCircle2Icon,
-  HandIcon,
-} from 'lucide-react'
+import { ArrowLeftIcon, ArrowRightIcon, ArrowUpIcon, CheckCircle2Icon, HandIcon } from 'lucide-react'
 import { useEffect, useState } from 'react'
+
 import { Button } from '@/components/ui/button'
 
 // Bump the version when steps change so returning users see the updated guide once.
@@ -62,10 +57,10 @@ export default function QuickViewWalkthrough() {
   useEffect(() => {
     try {
       if (localStorage.getItem(WALKTHROUGH_SEEN_KEY) !== 'true') {
+        // oxlint-disable-next-line react/set-state-in-effect
         setVisible(true)
       }
-    }
-    catch {
+    } catch {
       // localStorage unavailable — just skip the walkthrough.
     }
   }, [])
@@ -73,8 +68,7 @@ export default function QuickViewWalkthrough() {
   function dismiss() {
     try {
       localStorage.setItem(WALKTHROUGH_SEEN_KEY, 'true')
-    }
-    catch {
+    } catch {
       // ignore persistence failures
     }
     setVisible(false)
@@ -119,9 +113,8 @@ export default function QuickViewWalkthrough() {
             onClick={() => {
               if (isLast) {
                 dismiss()
-              }
-              else {
-                setStep(current => current + 1)
+              } else {
+                setStep((current) => current + 1)
               }
             }}
           >

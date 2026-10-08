@@ -1,20 +1,20 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, mock } from 'bun:test'
 
-vi.mock('@/lib/drizzle', () => ({
+void mock.module('@/lib/drizzle', () => ({
   db: {
-    select: vi.fn().mockReturnValue({
-      from: vi.fn().mockReturnValue({
-        where: vi.fn().mockReturnValue([]),
+    select: mock().mockReturnValue({
+      from: mock().mockReturnValue({
+        where: mock().mockReturnValue([]),
       }),
     }),
   },
 }))
 
-vi.mock('@/lib/db/schema/events/tables', () => ({
+void mock.module('@/lib/db/schema/events/tables', () => ({
   events: { community_id: 'events.community_id' },
 }))
 
-vi.mock('@/lib/db/schema/communities/tables', () => ({
+void mock.module('@/lib/db/schema/communities/tables', () => ({
   community_members: { community_id: 'cm.community_id', user_id: 'cm.user_id' },
 }))
 
@@ -27,7 +27,7 @@ describe('community-visibility: filterEventsByCommunityVisibility', () => {
       { id: '3', community_id: 'C1' },
     ]
     const result = filterEventsByCommunityVisibility(events, new Set())
-    expect(result.map(e => e.id)).toEqual(['1', '2'])
+    expect(result.map((e) => e.id)).toEqual(['1', '2'])
   })
 
   it('includes events from communities the user is a member of', async () => {
@@ -39,7 +39,7 @@ describe('community-visibility: filterEventsByCommunityVisibility', () => {
       { id: '4', community_id: 'C3' },
     ]
     const result = filterEventsByCommunityVisibility(events, new Set(['C1', 'C3']))
-    expect(result.map(e => e.id)).toEqual(['1', '2', '4'])
+    expect(result.map((e) => e.id)).toEqual(['1', '2', '4'])
   })
 
   it('returns empty array when given empty list', async () => {

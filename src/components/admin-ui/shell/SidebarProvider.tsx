@@ -31,13 +31,14 @@ export function AdminSidebarProvider({ children }: { children: React.ReactNode }
   const [mobileOpen, setMobileOpen] = useState(false)
 
   const toggleCollapsed = useCallback(() => {
-    setCollapsed(prev => !prev)
+    setCollapsed((prev) => !prev)
   }, [])
 
   // Read persisted preference once on mount.
   useEffect(() => {
     const match = document.cookie.match(new RegExp(`(?:^|; )${COLLAPSE_COOKIE}=([^;]*)`))
     if (match && match[1] === '1') {
+      // oxlint-disable-next-line react/set-state-in-effect
       setCollapsed(true)
     }
     setHydrated(true)

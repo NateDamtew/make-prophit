@@ -1,7 +1,7 @@
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 
-import { auth, TELEGRAM_ACCOUNT_ISSUER } from '@/lib/auth'
+import { auth } from '@/lib/auth'
 import { validateTelegramInitData } from '@/lib/tma/validate'
 
 export async function POST(request: Request) {
@@ -45,7 +45,6 @@ export async function POST(request: Request) {
         userId,
         accountId: telegramId,
         providerId: 'telegram',
-        issuer: TELEGRAM_ACCOUNT_ISSUER,
         accessToken: null,
         refreshToken: null,
         idToken: null,

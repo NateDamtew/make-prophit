@@ -1,11 +1,14 @@
 'use client'
 
 import type { ReactNode } from 'react'
-import type { ThemeMode } from '@/lib/theme-settings'
+
 import { GoogleAnalytics } from '@next/third-parties/google'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ThemeProvider } from 'next-themes'
 import { lazy, Suspense, useMemo } from 'react'
+
+import type { ThemeMode } from '@/lib/theme-settings'
+
 import { Toaster } from '@/components/ui/toast'
 import { useHasHydrated } from '@/hooks/useHasHydrated'
 import { usePublicRuntimeConfig } from '@/hooks/usePublicRuntimeConfig'
@@ -33,8 +36,12 @@ export function AppProviders({ children, themeMode = 'both' }: AppProvidersProps
   const shouldRenderSpeedInsights = process.env.NODE_ENV === 'production' && hasHydrated && isVercel === 'true'
 
   const forcedTheme = useMemo(() => {
-    if (themeMode === 'dark') return 'dark'
-    if (themeMode === 'light') return 'light'
+    if (themeMode === 'dark') {
+      return 'dark'
+    }
+    if (themeMode === 'light') {
+      return 'light'
+    }
     return undefined
   }, [themeMode])
 
@@ -55,12 +62,9 @@ export function AppProviders({ children, themeMode = 'both' }: AppProvidersProps
     <ProgressIndicatorProvider>
       <ThemeModeProvider themeMode={themeMode}>
         <ThemeProvider attribute="class" forcedTheme={forcedTheme}>
-          <QueryClientProvider client={queryClient}>
-            {content}
-          </QueryClientProvider>
+          <QueryClientProvider client={queryClient}>{content}</QueryClientProvider>
         </ThemeProvider>
       </ThemeModeProvider>
     </ProgressIndicatorProvider>
   )
 }
-

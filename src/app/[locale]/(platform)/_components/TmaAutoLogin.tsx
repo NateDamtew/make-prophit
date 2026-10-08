@@ -2,6 +2,7 @@
 
 import { Wallet, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
+
 import { useAppKit } from '@/hooks/useAppKit'
 import { useHasHydrated } from '@/hooks/useHasHydrated'
 import { authClient } from '@/lib/auth-client'
@@ -53,8 +54,7 @@ export default function TmaAutoLogin() {
       setAuthStatus('idle')
       setAuthError(errorData?.message ?? `Authentication failed (${res.status})`)
       return false
-    }
-    catch (err) {
+    } catch (err) {
       console.error('TMA auth error:', err)
       setAuthStatus('idle')
       setAuthError('Connection timed out. Please try again.')
@@ -79,6 +79,7 @@ export default function TmaAutoLogin() {
     if (session?.user) {
       const hasWallet = Boolean((session.user as { address?: string | null }).address)
       if (!hasWallet) {
+        // oxlint-disable-next-line react/set-state-in-effect
         setScreen('wallet-onboarding')
       }
       return
@@ -88,7 +89,7 @@ export default function TmaAutoLogin() {
     if (isInsideTelegram()) {
       const initData = getTelegramInitData()
       if (initData) {
-        attemptTelegramAuth().then((success) => {
+        void attemptTelegramAuth().then((success) => {
           if (!success) {
             // Auth failed even with initData — let them browse normally
           }
@@ -116,7 +117,7 @@ export default function TmaAutoLogin() {
   // Browser (on tma.* but outside Telegram) fallback — open Dynamic's modal.
   function handleConnectWallet() {
     setScreen('none')
-    open()
+    void open()
   }
 
   async function handleSendEmail() {
@@ -128,11 +129,9 @@ export default function TmaAutoLogin() {
     try {
       await sendEmailOtp(email.trim())
       setWizardStep('otp')
-    }
-    catch (err) {
+    } catch (err) {
       setWizardError(err instanceof Error ? err.message : 'Could not send the code. Please try again.')
-    }
-    finally {
+    } finally {
       setWizardBusy(false)
     }
   }
@@ -147,11 +146,9 @@ export default function TmaAutoLogin() {
       await verifyEmailOtp(otpCode.trim())
       // Embedded wallet created + SIWE running — move to the optional TON step.
       setWizardStep('ton')
-    }
-    catch (err) {
+    } catch (err) {
       setWizardError(err instanceof Error ? err.message : 'Invalid code. Please try again.')
-    }
-    finally {
+    } finally {
       setWizardBusy(false)
     }
   }
@@ -179,7 +176,7 @@ export default function TmaAutoLogin() {
                 onClick={() => {
                   setAuthError(null)
                   triggered.current = false
-                  attemptTelegramAuth()
+                  void attemptTelegramAuth()
                 }}
                 className="mt-2 w-full rounded-xl bg-primary py-2.5 text-sm font-semibold text-primary-foreground"
               >
@@ -221,10 +218,7 @@ export default function TmaAutoLogin() {
 
           <button
             onClick={handleOpenTelegram}
-            className="
-              w-full rounded-xl bg-[#229ED9] py-3.5 text-sm font-semibold text-white transition-opacity
-              active:opacity-80
-            "
+            className="w-full rounded-xl bg-[#229ED9] py-3.5 text-sm font-semibold text-white transition-opacity active:opacity-80"
           >
             {isInsideTelegram() ? 'Open via Bot Link' : 'Open in Telegram'}
           </button>
@@ -237,10 +231,7 @@ export default function TmaAutoLogin() {
 
           <button
             onClick={handleConnectWallet}
-            className="
-              w-full rounded-xl border border-border py-3.5 text-sm font-medium transition-colors
-              hover:bg-accent
-            "
+            className="w-full rounded-xl border border-border py-3.5 text-sm font-medium transition-colors hover:bg-accent"
           >
             Continue with Wallet
           </button>
@@ -263,10 +254,8 @@ export default function TmaAutoLogin() {
     return (
       <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
         <div className="absolute inset-0 bg-black/60" onClick={handleCloseOnboarding} />
-        <div className="
-          relative w-full rounded-t-2xl bg-background p-6 pb-10 shadow-xl
-          sm:max-w-sm sm:rounded-2xl sm:pb-6
-        "
+        <div
+          className="relative w-full rounded-t-2xl bg-background p-6 pb-10 shadow-xl sm:max-w-sm sm:rounded-2xl sm:pb-6"
         >
           <button
             onClick={handleCloseOnboarding}
@@ -293,12 +282,17 @@ export default function TmaAutoLogin() {
                 inputMode="email"
                 autoComplete="email"
                 value={email}
-                onChange={event => setEmail(event.target.value)}
+                onChange={(event) => setEmail(event.target.value)}
                 placeholder="you@email.com"
                 className={inputClass}
               />
               {wizardError && <p className="mb-3 text-center text-sm text-destructive">{wizardError}</p>}
-              <button type="button" onClick={handleSendEmail} disabled={wizardBusy || !email.trim()} className={primaryButton}>
+              <button
+                type="button"
+                onClick={handleSendEmail}
+                disabled={wizardBusy || !email.trim()}
+                className={primaryButton}
+              >
                 {wizardBusy ? 'Sending…' : 'Continue'}
               </button>
             </>
@@ -307,23 +301,23 @@ export default function TmaAutoLogin() {
           {wizardStep === 'otp' && (
             <>
               <h2 className="mb-1 text-center text-lg font-semibold">Enter the code</h2>
-              <p className="mb-5 text-center text-sm text-muted-foreground">
-                We sent a 6-digit code to
-                {' '}
-                {email}
-                .
-              </p>
+              <p className="mb-5 text-center text-sm text-muted-foreground">We sent a 6-digit code to {email}.</p>
               <input
                 type="text"
                 inputMode="numeric"
                 autoComplete="one-time-code"
                 value={otpCode}
-                onChange={event => setOtpCode(event.target.value)}
+                onChange={(event) => setOtpCode(event.target.value)}
                 placeholder="123456"
                 className={`${inputClass} text-center text-lg tracking-[0.4em]`}
               />
               {wizardError && <p className="mb-3 text-center text-sm text-destructive">{wizardError}</p>}
-              <button type="button" onClick={handleVerifyOtp} disabled={wizardBusy || !otpCode.trim()} className={primaryButton}>
+              <button
+                type="button"
+                onClick={handleVerifyOtp}
+                disabled={wizardBusy || !otpCode.trim()}
+                className={primaryButton}
+              >
                 {wizardBusy ? 'Verifying…' : 'Verify'}
               </button>
             </>
@@ -333,7 +327,8 @@ export default function TmaAutoLogin() {
             <>
               <h2 className="mb-1 text-center text-lg font-semibold">Fund with TON</h2>
               <p className="mb-5 text-center text-sm text-muted-foreground">
-                Your wallet is ready. Connect your TON wallet to deposit — or skip and do it later when you want to trade.
+                Your wallet is ready. Connect your TON wallet to deposit — or skip and do it later when you want to
+                trade.
               </p>
               <button type="button" onClick={handleConnectTon} className={primaryButton}>
                 Connect TON wallet

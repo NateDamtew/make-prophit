@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it, mock } from 'bun:test'
 
-void mock.module('next/cache', () => ({ cacheTag: mock() }))
+void mock.module('next/cache', () => ({ cacheLife: mock(), cacheTag: mock() }))
 
 void mock.module('@/app/[locale]/(platform)/_components/PlatformViewerState', () => ({ default: () => null }))
 void mock.module('@/app/[locale]/admin/_components/AdminHeader', () => ({ default: () => null }))

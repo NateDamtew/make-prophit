@@ -67,7 +67,7 @@ describe('platform layout navigation', () => {
 
       const result = await loadPlatformLayoutNavigation()
 
-      expect(result.tags.map((tag) => tag.slug)).toEqual(['trending', 'new', 'crypto'])
+      expect(result.tags.map((tag) => tag.slug)).toEqual(['trending', 'communities', 'new', 'crypto'])
       expect(result.childParentMap.bitcoin).toBe('crypto')
       expect(mocks.getExtracted).toHaveBeenCalledOnce()
       expect(mocks.cacheTag).toHaveBeenCalledOnce()
@@ -93,7 +93,7 @@ describe('platform layout navigation', () => {
 
     const result = await navigation
 
-    expect(result.tags.map((tag) => tag.slug)).toEqual(['trending', 'new', 'crypto'])
+    expect(result.tags.map((tag) => tag.slug)).toEqual(['trending', 'communities', 'new', 'crypto'])
     expect(result.childParentMap.bitcoin).toBe('crypto')
     expect(mocks.getMainTags).toHaveBeenCalledWith('en')
   })
@@ -116,14 +116,22 @@ describe('platform layout navigation', () => {
     expect(mocks.getMainTags).toHaveBeenCalledOnce()
   })
 
-  it('keeps configured builds eligible for prerendering the complete menu', async () => {
+  // FORK: public-shell prerendering defaults off (see public-shell-env.ts), so
+  // configured builds defer to runtime unless explicitly opted in.
+  it('defers configured builds to runtime unless the public shell prerender is opted in', async () => {
     stubEnv('POSTGRES_URL', 'postgres://user:pass@localhost:5432/app')
     stubEnv('REOWN_APPKIT_PROJECT_ID', 'project-id')
     stubEnv('SITE_URL', 'https://markets.example.com')
 
+    await loadPlatformLayoutNavigation()
+    expect(mocks.io).toHaveBeenCalledOnce()
+
+    mocks.io.mockClear()
+    stubEnv('BUILD_PRERENDER_PUBLIC_SHELL', 'true')
+
     const result = await loadPlatformLayoutNavigation()
 
     expect(mocks.io).not.toHaveBeenCalled()
-    expect(result.tags.map((tag) => tag.slug)).toEqual(['trending', 'new', 'crypto'])
+    expect(result.tags.map((tag) => tag.slug)).toEqual(['trending', 'communities', 'new', 'crypto'])
   })
 })

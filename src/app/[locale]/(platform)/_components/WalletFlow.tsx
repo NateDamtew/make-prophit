@@ -113,6 +113,8 @@ function usePendingWithdrawals() {
   )
 
   return { pendingWithdrawals: visiblePendingWithdrawals, setPendingWithdrawals }
+}
+
 const MELD_CHECKOUT_POPUP_REFERENCE_TTL_MS = 24 * 60 * 60 * 1_000
 
 const WalletLiFiBridge = dynamic(() => import('@/app/[locale]/(platform)/_components/wallet-modal/WalletLiFiBridge'), {

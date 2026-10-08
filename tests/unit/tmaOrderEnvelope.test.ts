@@ -1,17 +1,11 @@
+import { describe, expect, it } from 'bun:test'
 import { privateKeyToAccount } from 'viem/accounts'
 import { wrapTypedDataSignature } from 'viem/experimental/erc7739'
-import { describe, expect, it } from 'bun:test'
-import {
 
-
-const { EIP712_TYPES, getExchangeEip712Domain, ORDER_SIDE, ORDER_TYPE } = await import('@/lib/constants')
-const { buildOrderPayload } = await import('@/lib/orders')
-const { signOrderPayload } = await import('@/lib/orders/signing')
-  buildOrderMessage,
-  buildSignableEnvelope,
-  deserializeOrder,
-  serializeOrder,
-} from '@/app/api/tma/_lib'
+import { buildOrderMessage, buildSignableEnvelope, deserializeOrder, serializeOrder } from '@/app/api/tma/_lib'
+import { EIP712_TYPES, getExchangeEip712Domain, ORDER_SIDE, ORDER_TYPE } from '@/lib/constants'
+import { buildOrderPayload } from '@/lib/orders'
+import { signOrderPayload } from '@/lib/orders/signing'
 
 const TEST_KEY = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d'
 
@@ -46,10 +40,12 @@ describe('tMA order envelope', () => {
     // TMA path: the prepare route serializes the payload + envelope, the
     // client signs the (JSON round-tripped) envelope, the submit route
     // deserializes and wraps the raw signature server-side.
-    const wire = JSON.parse(JSON.stringify({
-      order: serializeOrder(payload),
-      typedData: buildSignableEnvelope(payload, domain as Record<string, unknown>),
-    }))
+    const wire = JSON.parse(
+      JSON.stringify({
+        order: serializeOrder(payload),
+        typedData: buildSignableEnvelope(payload, domain as Record<string, unknown>),
+      }),
+    )
     const rawSig = await account.signTypedData(wire.typedData)
     const order = deserializeOrder(wire.order)
     const tmaWrapped = wrapTypedDataSignature({

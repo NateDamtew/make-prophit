@@ -1,45 +1,28 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, mock } from 'bun:test'
 
-const mocks = vi.hoisted(() => ({
-  setDeployStatus: vi.fn(),
-  notifyDeployed: vi.fn(),
-  notifyDeployFailed: vi.fn(),
-  notifySuperAdmins: vi.fn(),
-  dbSelectEvent: vi.fn(),
-  dbSelectMarkets: vi.fn(),
-  dbSelectMarketWithCommunity: vi.fn(),
-  dbSelectMarketStatus: vi.fn(),
-  dbUpdateEvents: vi.fn(),
-  dbUpdateConditions: vi.fn(),
+import { hoisted } from '../bun-test-helpers'
+
+const mocks = hoisted(() => ({
+  setDeployStatus: mock(),
+  notifyDeployed: mock(),
+  notifyDeployFailed: mock(),
+  notifySuperAdmins: mock(),
+  dbSelectEvent: mock(),
+  dbSelectMarkets: mock(),
+  dbSelectMarketWithCommunity: mock(),
+  dbSelectMarketStatus: mock(),
+  dbUpdateEvents: mock(),
+  dbUpdateConditions: mock(),
 }))
 
-let selectCallIndex = 0
-function makeChainedSelect(handlers: Array<() => any>) {
-  return () => ({
-    from: () => ({
-      where: () => ({
-        limit: () => {
-          const handler = handlers[selectCallIndex++ % handlers.length]
-          return handler()
-        },
-        // for queries without limit
-        innerJoin: () => ({ where: () => ({ limit: () => {
-          const handler = handlers[selectCallIndex++ % handlers.length]
-          return handler()
-        } }) }),
-      }),
-    }),
-  })
-}
-
-vi.mock('@/lib/drizzle', () => ({
+void mock.module('@/lib/drizzle', () => ({
   db: {
     select: () => ({
       from: (_table: any) => ({
         where: () => ({
           limit: () => {
-            const handler = mocks.dbSelectEvent.getMockImplementation()
-              ?? mocks.dbSelectMarketWithCommunity.getMockImplementation()
+            const handler =
+              mocks.dbSelectEvent.getMockImplementation() ?? mocks.dbSelectMarketWithCommunity.getMockImplementation()
             return handler ? handler() : []
           },
           innerJoin: () => ({
@@ -63,7 +46,7 @@ vi.mock('@/lib/drizzle', () => ({
   },
 }))
 
-vi.mock('@/lib/db/schema/communities/tables', () => ({
+void mock.module('@/lib/db/schema/communities/tables', () => ({
   communities: { id: 'communities.id', slug: 'communities.slug', name: 'communities.name' },
   community_markets: {
     id: 'cm.id',
@@ -74,19 +57,19 @@ vi.mock('@/lib/db/schema/communities/tables', () => ({
   },
 }))
 
-vi.mock('@/lib/db/schema/events/tables', () => ({
+void mock.module('@/lib/db/schema/events/tables', () => ({
   events: { id: 'events.id', slug: 'events.slug' },
   conditions: { id: 'conditions.id' },
   markets: { event_id: 'markets.event_id', condition_id: 'markets.condition_id' },
 }))
 
-vi.mock('@/lib/db/queries/community', () => ({
+void mock.module('@/lib/db/queries/community', () => ({
   CommunityRepository: {
     setDeployStatus: mocks.setDeployStatus,
   },
 }))
 
-vi.mock('@/lib/community-notifications', () => ({
+void mock.module('@/lib/community-notifications', () => ({
   notifyMarketDeployed: mocks.notifyDeployed,
   notifyMarketDeployFailed: mocks.notifyDeployFailed,
   notifySuperAdminsOfDeployFailure: mocks.notifySuperAdmins,
@@ -94,8 +77,7 @@ vi.mock('@/lib/community-notifications', () => ({
 
 describe('onCommunityDraftDeploying', () => {
   beforeEach(() => {
-    Object.values(mocks).forEach(m => m.mockReset())
-    selectCallIndex = 0
+    Object.values(mocks).forEach((m) => m.mockReset())
   })
 
   it('does nothing when draft has no communityMarketId hint', async () => {
@@ -115,8 +97,7 @@ describe('onCommunityDraftDeploying', () => {
 
 describe('onCommunityDraftFailed', () => {
   beforeEach(() => {
-    Object.values(mocks).forEach(m => m.mockReset())
-    selectCallIndex = 0
+    Object.values(mocks).forEach((m) => m.mockReset())
   })
 
   it('does nothing for non-community drafts', async () => {
@@ -152,12 +133,14 @@ describe('onCommunityDraftFailed', () => {
   })
 
   it('marks second failure as deploy_failed and notifies', async () => {
-    mocks.dbSelectMarketWithCommunity.mockResolvedValue([{
-      created_by: 'admin-u1',
-      title: 'Will X?',
-      community_slug: 'ethiopian-traders',
-      community_name: 'Ethiopian Traders',
-    }])
+    mocks.dbSelectMarketWithCommunity.mockResolvedValue([
+      {
+        created_by: 'admin-u1',
+        title: 'Will X?',
+        community_slug: 'ethiopian-traders',
+        community_name: 'Ethiopian Traders',
+      },
+    ])
     const { onCommunityDraftFailed } = await import('@/lib/community-deploy-hooks')
     await onCommunityDraftFailed({
       draftPayload: { communityMarketId: 'M1', communityId: 'C1' },
@@ -185,12 +168,14 @@ describe('onCommunityDraftFailed', () => {
   })
 
   it('escalates immediately if exhausted regardless of attempt count', async () => {
-    mocks.dbSelectMarketWithCommunity.mockResolvedValue([{
-      created_by: 'admin-u1',
-      title: 'Will X?',
-      community_slug: 'slug',
-      community_name: 'Name',
-    }])
+    mocks.dbSelectMarketWithCommunity.mockResolvedValue([
+      {
+        created_by: 'admin-u1',
+        title: 'Will X?',
+        community_slug: 'slug',
+        community_name: 'Name',
+      },
+    ])
     const { onCommunityDraftFailed } = await import('@/lib/community-deploy-hooks')
     await onCommunityDraftFailed({
       draftPayload: { communityMarketId: 'M1', communityId: 'C1' },
@@ -198,9 +183,11 @@ describe('onCommunityDraftFailed', () => {
       attemptsBefore: 0,
       exhausted: true,
     })
-    expect(mocks.setDeployStatus).toHaveBeenCalledWith(expect.objectContaining({
-      status: 'deploy_failed',
-    }))
+    expect(mocks.setDeployStatus).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'deploy_failed',
+      }),
+    )
     expect(mocks.notifyDeployFailed).toHaveBeenCalled()
   })
 })

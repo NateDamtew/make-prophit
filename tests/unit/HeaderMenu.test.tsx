@@ -33,6 +33,7 @@ void mock.module('@/app/[locale]/(platform)/_components/HeaderNotifications', ()
 
 void mock.module('@/app/[locale]/(platform)/_providers/TradingOnboardingContext', () => ({
   useOptionalTradingOnboarding: () => null,
+  useTradingOnboarding: () => ({ openTradeRequirements: mock() }),
 }))
 
 void mock.module('@/components/HeaderDropdownUserMenuAuth', () => ({

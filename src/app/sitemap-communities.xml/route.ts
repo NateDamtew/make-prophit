@@ -14,7 +14,9 @@ export async function GET() {
     CommunityDiscoveryRepository.listMarketsForSitemap(),
   ])
 
-  const escape = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+  function escape(s: string) {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+  }
 
   const entries: string[] = []
   entries.push('<?xml version="1.0" encoding="UTF-8"?>')

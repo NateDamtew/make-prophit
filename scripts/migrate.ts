@@ -694,9 +694,7 @@ function resolveMigrationSslOption(connectionString: string): false | { rejectUn
   } catch {
     // Fall through to no-TLS for unparseable connection strings.
   }
-
-  // Preserve SSL options: Supabase can require TLS for migration connections too.
-  return migrationUrl
+  return false
 }
 
 async function acquireMigrationLock(sql: ReservedSql): Promise<void> {
@@ -717,6 +715,7 @@ async function run(): Promise<void> {
   await loadScriptDependencies()
 
   const sql = new SQL(connectionString, {
+    tls: resolveMigrationSslOption(connectionString),
     max: 1,
     connectionTimeout: 30,
     idleTimeout: 0,

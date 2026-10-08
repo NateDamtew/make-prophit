@@ -30,10 +30,6 @@ function getChainIdFromMessage(message: string): string {
 }
 
 const TWO_FACTOR_COOKIE_NAME = 'two_factor'
-// better-auth 1.7 keys accounts by { issuer, accountId }. Telegram has no issuer
-// of its own, so it uses the synthetic local issuer — identical to
-// createLocalAccountIssuer('telegram') and to the 2026_08_28 backfill.
-export const TELEGRAM_ACCOUNT_ISSUER = 'local:telegram'
 const TWO_FACTOR_PENDING_MAX_AGE = 3 * 60
 const AFFILIATE_COOKIE_NAME = 'platform_affiliate'
 const AFFILIATE_COOKIE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000
@@ -281,7 +277,7 @@ export const auth = betterAuth({
             let user: any = null
             try {
               const account = await ctx.context.internalAdapter.findAccountByKey({
-                issuer: TELEGRAM_ACCOUNT_ISSUER,
+                providerId: 'telegram',
                 accountId: String(tgUser.id),
               })
               if (account) {
@@ -303,7 +299,6 @@ export const auth = betterAuth({
                     await ctx.context.internalAdapter.createAccount({
                       userId: user.id,
                       providerId: 'telegram',
-                      issuer: TELEGRAM_ACCOUNT_ISSUER,
                       accountId: String(tgUser.id),
                       createdAt: new Date(),
                       updatedAt: new Date(),
@@ -371,7 +366,6 @@ export const auth = betterAuth({
                 await ctx.context.internalAdapter.createAccount({
                   userId: user.id,
                   providerId: 'telegram',
-                  issuer: TELEGRAM_ACCOUNT_ISSUER,
                   accountId: String(tgUser.id),
                   createdAt: new Date(),
                   updatedAt: new Date(),

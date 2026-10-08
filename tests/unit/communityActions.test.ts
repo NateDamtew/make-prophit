@@ -1,29 +1,31 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, mock } from 'bun:test'
 
-const mocks = vi.hoisted(() => ({
-  getCurrentUser: vi.fn(),
-  getBySlug: vi.fn(),
-  getById: vi.fn(),
-  getMemberRole: vi.fn(),
-  create: vi.fn(),
-  join: vi.fn(),
-  leave: vi.fn(),
-  addReview: vi.fn(),
-  castVote: vi.fn(),
-  resolveMarket: vi.fn(),
-  setMemberRole: vi.fn(),
-  createInvite: vi.fn(),
-  redeemInvite: vi.fn(),
-  getMarket: vi.fn(),
+import { hoisted } from '../bun-test-helpers'
+
+const mocks = hoisted(() => ({
+  getCurrentUser: mock(),
+  getBySlug: mock(),
+  getById: mock(),
+  getMemberRole: mock(),
+  create: mock(),
+  join: mock(),
+  leave: mock(),
+  addReview: mock(),
+  castVote: mock(),
+  resolveMarket: mock(),
+  setMemberRole: mock(),
+  createInvite: mock(),
+  redeemInvite: mock(),
+  getMarket: mock(),
 }))
 
-vi.mock('@/lib/db/queries/user', () => ({
+void mock.module('@/lib/db/queries/user', () => ({
   UserRepository: {
     getCurrentUser: mocks.getCurrentUser,
   },
 }))
 
-vi.mock('@/lib/db/queries/community', () => ({
+void mock.module('@/lib/db/queries/community', () => ({
   CommunityRepository: {
     getBySlug: mocks.getBySlug,
     getById: mocks.getById,
@@ -41,18 +43,25 @@ vi.mock('@/lib/db/queries/community', () => ({
   },
 }))
 
-vi.mock('next/cache', () => ({
-  revalidatePath: vi.fn(),
+void mock.module('next/cache', () => ({
+  cacheLife: mock(),
+  cacheTag: mock(),
+  io: mock(async () => {}),
+  revalidatePath: mock(),
+  revalidateTag: mock(),
+  unstable_cache: (fn: unknown) => fn,
+  updateTag: mock(),
 }))
 
 describe('createCommunityAction', () => {
   beforeEach(() => {
-    Object.values(mocks).forEach(m => m.mockReset())
+    Object.values(mocks).forEach((m) => m.mockReset())
   })
 
   it('rejects unauthenticated users', async () => {
     mocks.getCurrentUser.mockResolvedValue(null)
-    const { createCommunityAction } = await import('@/app/[locale]/(platform)/community/[slug]/_actions/community-actions')
+    const { createCommunityAction } =
+      await import('@/app/[locale]/(platform)/community/[slug]/_actions/community-actions')
     const result = await createCommunityAction({
       name: 'Test',
       slug: 'test',
@@ -65,7 +74,8 @@ describe('createCommunityAction', () => {
 
   it('rejects names shorter than 3 chars', async () => {
     mocks.getCurrentUser.mockResolvedValue({ id: 'u1' })
-    const { createCommunityAction } = await import('@/app/[locale]/(platform)/community/[slug]/_actions/community-actions')
+    const { createCommunityAction } =
+      await import('@/app/[locale]/(platform)/community/[slug]/_actions/community-actions')
     const result = await createCommunityAction({
       name: 'ab',
       slug: 'ab',
@@ -77,7 +87,8 @@ describe('createCommunityAction', () => {
 
   it('rejects invalid slug format', async () => {
     mocks.getCurrentUser.mockResolvedValue({ id: 'u1' })
-    const { createCommunityAction } = await import('@/app/[locale]/(platform)/community/[slug]/_actions/community-actions')
+    const { createCommunityAction } =
+      await import('@/app/[locale]/(platform)/community/[slug]/_actions/community-actions')
     const result = await createCommunityAction({
       name: 'Valid Name',
       slug: 'Invalid Slug With Spaces',
@@ -89,12 +100,19 @@ describe('createCommunityAction', () => {
 
   it('rejects jury_size outside 1-10', async () => {
     mocks.getCurrentUser.mockResolvedValue({ id: 'u1' })
-    const { createCommunityAction } = await import('@/app/[locale]/(platform)/community/[slug]/_actions/community-actions')
+    const { createCommunityAction } =
+      await import('@/app/[locale]/(platform)/community/[slug]/_actions/community-actions')
     const r1 = await createCommunityAction({
-      name: 'Valid', slug: 'valid', type: 'public', jury_size: 0,
+      name: 'Valid',
+      slug: 'valid',
+      type: 'public',
+      jury_size: 0,
     })
     const r2 = await createCommunityAction({
-      name: 'Valid', slug: 'valid', type: 'public', jury_size: 11,
+      name: 'Valid',
+      slug: 'valid',
+      type: 'public',
+      jury_size: 11,
     })
     expect(r1.error).toBeTruthy()
     expect(r2.error).toBeTruthy()
@@ -103,9 +121,13 @@ describe('createCommunityAction', () => {
   it('rejects duplicate slugs', async () => {
     mocks.getCurrentUser.mockResolvedValue({ id: 'u1' })
     mocks.getBySlug.mockResolvedValue({ data: { id: 'existing' }, error: null })
-    const { createCommunityAction } = await import('@/app/[locale]/(platform)/community/[slug]/_actions/community-actions')
+    const { createCommunityAction } =
+      await import('@/app/[locale]/(platform)/community/[slug]/_actions/community-actions')
     const result = await createCommunityAction({
-      name: 'Valid', slug: 'taken', type: 'public', jury_size: 1,
+      name: 'Valid',
+      slug: 'taken',
+      type: 'public',
+      jury_size: 1,
     })
     expect(result.error).toMatch(/already taken/i)
   })
@@ -114,28 +136,36 @@ describe('createCommunityAction', () => {
     mocks.getCurrentUser.mockResolvedValue({ id: 'u1' })
     mocks.getBySlug.mockResolvedValue({ data: null, error: null })
     mocks.create.mockResolvedValue({ data: { id: 'C1', slug: 'valid' }, error: null })
-    const { createCommunityAction } = await import('@/app/[locale]/(platform)/community/[slug]/_actions/community-actions')
+    const { createCommunityAction } =
+      await import('@/app/[locale]/(platform)/community/[slug]/_actions/community-actions')
     const result = await createCommunityAction({
-      name: 'Valid Name', slug: 'valid', type: 'public', jury_size: 3, rules: 'Be nice',
+      name: 'Valid Name',
+      slug: 'valid',
+      type: 'public',
+      jury_size: 3,
+      rules: 'Be nice',
     })
     expect(result.error).toBeNull()
     expect(result.data?.id).toBe('C1')
-    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({
-      creator_id: 'u1',
-      name: 'Valid Name',
-      slug: 'valid',
-    }))
+    expect(mocks.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        creator_id: 'u1',
+        name: 'Valid Name',
+        slug: 'valid',
+      }),
+    )
   })
 })
 
 describe('joinCommunityAction', () => {
   beforeEach(() => {
-    Object.values(mocks).forEach(m => m.mockReset())
+    Object.values(mocks).forEach((m) => m.mockReset())
   })
 
   it('rejects unauthenticated users', async () => {
     mocks.getCurrentUser.mockResolvedValue(null)
-    const { joinCommunityAction } = await import('@/app/[locale]/(platform)/community/[slug]/_actions/community-actions')
+    const { joinCommunityAction } =
+      await import('@/app/[locale]/(platform)/community/[slug]/_actions/community-actions')
     const result = await joinCommunityAction('C1')
     expect(result.error).toBe('Unauthenticated.')
   })
@@ -143,7 +173,8 @@ describe('joinCommunityAction', () => {
   it('joins without invite code for public communities', async () => {
     mocks.getCurrentUser.mockResolvedValue({ id: 'u1' })
     mocks.join.mockResolvedValue({ data: { user_id: 'u1' }, error: null })
-    const { joinCommunityAction } = await import('@/app/[locale]/(platform)/community/[slug]/_actions/community-actions')
+    const { joinCommunityAction } =
+      await import('@/app/[locale]/(platform)/community/[slug]/_actions/community-actions')
     const result = await joinCommunityAction('C1')
     expect(result.error).toBeNull()
     expect(mocks.join).toHaveBeenCalledWith('C1', 'u1', undefined)
@@ -153,7 +184,8 @@ describe('joinCommunityAction', () => {
     mocks.getCurrentUser.mockResolvedValue({ id: 'u1' })
     mocks.redeemInvite.mockResolvedValue({ data: { created_by: 'admin1' }, error: null })
     mocks.join.mockResolvedValue({ data: { user_id: 'u1' }, error: null })
-    const { joinCommunityAction } = await import('@/app/[locale]/(platform)/community/[slug]/_actions/community-actions')
+    const { joinCommunityAction } =
+      await import('@/app/[locale]/(platform)/community/[slug]/_actions/community-actions')
     const result = await joinCommunityAction('C1', 'CODE123')
     expect(result.error).toBeNull()
     expect(mocks.redeemInvite).toHaveBeenCalledWith('CODE123')
@@ -163,7 +195,8 @@ describe('joinCommunityAction', () => {
   it('rejects expired/invalid invite codes', async () => {
     mocks.getCurrentUser.mockResolvedValue({ id: 'u1' })
     mocks.redeemInvite.mockResolvedValue({ data: null, error: 'Invite expired' })
-    const { joinCommunityAction } = await import('@/app/[locale]/(platform)/community/[slug]/_actions/community-actions')
+    const { joinCommunityAction } =
+      await import('@/app/[locale]/(platform)/community/[slug]/_actions/community-actions')
     const result = await joinCommunityAction('C1', 'EXPIRED')
     expect(result.error).toMatch(/expired/i)
   })
@@ -171,7 +204,7 @@ describe('joinCommunityAction', () => {
 
 describe('submitReviewAction', () => {
   beforeEach(() => {
-    Object.values(mocks).forEach(m => m.mockReset())
+    Object.values(mocks).forEach((m) => m.mockReset())
   })
 
   it('rejects non-members', async () => {
@@ -205,7 +238,7 @@ describe('submitReviewAction', () => {
 
 describe('castJuryVoteAction', () => {
   beforeEach(() => {
-    Object.values(mocks).forEach(m => m.mockReset())
+    Object.values(mocks).forEach((m) => m.mockReset())
   })
 
   it('rejects non-jurors', async () => {
@@ -273,13 +306,14 @@ describe('castJuryVoteAction', () => {
 
 describe('setMemberRoleAction', () => {
   beforeEach(() => {
-    Object.values(mocks).forEach(m => m.mockReset())
+    Object.values(mocks).forEach((m) => m.mockReset())
   })
 
   it('rejects non-admins', async () => {
     mocks.getCurrentUser.mockResolvedValue({ id: 'u1' })
     mocks.getMemberRole.mockResolvedValue({ data: 'member', error: null })
-    const { setMemberRoleAction } = await import('@/app/[locale]/(platform)/community/[slug]/_actions/community-actions')
+    const { setMemberRoleAction } =
+      await import('@/app/[locale]/(platform)/community/[slug]/_actions/community-actions')
     const result = await setMemberRoleAction('C1', 'u2', 'juror', 'slug')
     expect(result.error).toMatch(/community admins/i)
   })
@@ -288,7 +322,8 @@ describe('setMemberRoleAction', () => {
     mocks.getCurrentUser.mockResolvedValue({ id: 'u1' })
     mocks.getMemberRole.mockResolvedValue({ data: 'admin', error: null })
     mocks.setMemberRole.mockResolvedValue({ data: { user_id: 'u2', role: 'juror' }, error: null })
-    const { setMemberRoleAction } = await import('@/app/[locale]/(platform)/community/[slug]/_actions/community-actions')
+    const { setMemberRoleAction } =
+      await import('@/app/[locale]/(platform)/community/[slug]/_actions/community-actions')
     const result = await setMemberRoleAction('C1', 'u2', 'juror', 'slug')
     expect(result.error).toBeNull()
   })
@@ -296,13 +331,14 @@ describe('setMemberRoleAction', () => {
 
 describe('generateInviteAction', () => {
   beforeEach(() => {
-    Object.values(mocks).forEach(m => m.mockReset())
+    Object.values(mocks).forEach((m) => m.mockReset())
   })
 
   it('rejects non-admins', async () => {
     mocks.getCurrentUser.mockResolvedValue({ id: 'u1' })
     mocks.getMemberRole.mockResolvedValue({ data: 'member', error: null })
-    const { generateInviteAction } = await import('@/app/[locale]/(platform)/community/[slug]/_actions/community-actions')
+    const { generateInviteAction } =
+      await import('@/app/[locale]/(platform)/community/[slug]/_actions/community-actions')
     const result = await generateInviteAction('C1')
     expect(result.error).toMatch(/admins/i)
   })
@@ -311,7 +347,8 @@ describe('generateInviteAction', () => {
     mocks.getCurrentUser.mockResolvedValue({ id: 'u1' })
     mocks.getMemberRole.mockResolvedValue({ data: 'admin', error: null })
     mocks.createInvite.mockResolvedValue({ data: { code: 'ABC123' }, error: null })
-    const { generateInviteAction } = await import('@/app/[locale]/(platform)/community/[slug]/_actions/community-actions')
+    const { generateInviteAction } =
+      await import('@/app/[locale]/(platform)/community/[slug]/_actions/community-actions')
     const result = await generateInviteAction('C1')
     expect(result.error).toBeNull()
     expect(result.data?.code).toBe('ABC123')

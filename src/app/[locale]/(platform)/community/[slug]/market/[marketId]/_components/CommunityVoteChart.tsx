@@ -26,28 +26,24 @@ export default function CommunityVoteChart({ votes, resolutionDate }: Props) {
       ]
     }
 
-    const sorted = [...votes].sort(
-      (a, b) => new Date(a.voted_at).getTime() - new Date(b.voted_at).getTime(),
-    )
+    const sorted = [...votes].sort((a, b) => new Date(a.voted_at).getTime() - new Date(b.voted_at).getTime())
 
     // Time range: first vote → max(now, last vote, resolution date if past)
     const start = new Date(sorted[0].voted_at).getTime()
     const lastVote = new Date(sorted[sorted.length - 1].voted_at).getTime()
+    // oxlint-disable-next-line react/purity
     const now = Date.now()
     const end = Math.max(lastVote, now)
     const range = Math.max(end - start, 1)
 
     let yes = 0
     let no = 0
-    const data: { x: number, y: number, label: string }[] = [
-      { x: 0, y: 50, label: 'Start' },
-    ]
+    const data: { x: number; y: number; label: string }[] = [{ x: 0, y: 50, label: 'Start' }]
 
     for (const v of sorted) {
       if (v.vote === 'yes') {
         yes += 1
-      }
-      else if (v.vote === 'no') {
+      } else if (v.vote === 'no') {
         no += 1
       }
       const total = yes + no
@@ -72,18 +68,14 @@ export default function CommunityVoteChart({ votes, resolutionDate }: Props) {
     if (points.length < 2) {
       return ''
     }
-    return points
-      .map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${100 - p.y}`)
-      .join(' ')
+    return points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${100 - p.y}`).join(' ')
   }, [points])
 
   const areaPath = useMemo(() => {
     if (points.length < 2) {
       return ''
     }
-    const path = points
-      .map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${100 - p.y}`)
-      .join(' ')
+    const path = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${100 - p.y}`).join(' ')
     return `${path} L 100 100 L 0 100 Z`
   }, [points])
 
@@ -99,15 +91,38 @@ export default function CommunityVoteChart({ votes, resolutionDate }: Props) {
         <span>0%</span>
       </div>
 
-      <svg
-        viewBox="0 0 100 100"
-        preserveAspectRatio="none"
-        className="h-full w-full"
-      >
+      <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="h-full w-full">
         {/* Gridlines */}
-        <line x1="0" y1="50" x2="100" y2="50" stroke="currentColor" strokeWidth="0.2" className="text-muted-foreground/30" strokeDasharray="1 1" />
-        <line x1="0" y1="25" x2="100" y2="25" stroke="currentColor" strokeWidth="0.15" className="text-muted-foreground/20" strokeDasharray="1 1" />
-        <line x1="0" y1="75" x2="100" y2="75" stroke="currentColor" strokeWidth="0.15" className="text-muted-foreground/20" strokeDasharray="1 1" />
+        <line
+          x1="0"
+          y1="50"
+          x2="100"
+          y2="50"
+          stroke="currentColor"
+          strokeWidth="0.2"
+          className="text-muted-foreground/30"
+          strokeDasharray="1 1"
+        />
+        <line
+          x1="0"
+          y1="25"
+          x2="100"
+          y2="25"
+          stroke="currentColor"
+          strokeWidth="0.15"
+          className="text-muted-foreground/20"
+          strokeDasharray="1 1"
+        />
+        <line
+          x1="0"
+          y1="75"
+          x2="100"
+          y2="75"
+          stroke="currentColor"
+          strokeWidth="0.15"
+          className="text-muted-foreground/20"
+          strokeDasharray="1 1"
+        />
 
         {/* Area gradient */}
         <defs>
@@ -122,10 +137,7 @@ export default function CommunityVoteChart({ votes, resolutionDate }: Props) {
         </defs>
 
         {/* Area fill */}
-        <path
-          d={areaPath}
-          fill={isUp ? 'url(#yesGradient)' : 'url(#noGradient)'}
-        />
+        <path d={areaPath} fill={isUp ? 'url(#yesGradient)' : 'url(#noGradient)'} />
 
         {/* Line */}
         <path

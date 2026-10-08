@@ -1,12 +1,14 @@
 import type { NextRequest } from 'next/server'
+
 import type { WaitlistStatus } from '@/lib/db/schema/waitlist/tables'
+
 import { recordAuditEvent } from '@/lib/admin-ui/audit'
 import { getAdminActor } from '@/lib/admin-ui/guard'
 import { WaitlistAdminRepository } from '@/lib/db/queries/waitlist-admin'
 import { WAITLIST_STATUSES } from '@/lib/db/schema/waitlist/tables'
 
-function csvCell(value: unknown): string {
-  const str = value == null ? '' : String(value)
+function csvCell(value: string | null | undefined): string {
+  const str = value ?? ''
   if (/[",\n]/.test(str)) {
     return `"${str.replace(/"/g, '""')}"`
   }
@@ -21,8 +23,8 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url)
   const statusParam = searchParams.get('status')
-  const status: WaitlistStatus | 'all'
-    = statusParam && (WAITLIST_STATUSES as readonly string[]).includes(statusParam)
+  const status: WaitlistStatus | 'all' =
+    statusParam && (WAITLIST_STATUSES as readonly string[]).includes(statusParam)
       ? (statusParam as WaitlistStatus)
       : 'all'
 
@@ -32,16 +34,18 @@ export async function GET(request: NextRequest) {
     const header = ['email', 'name', 'role', 'country', 'status', 'invited_at', 'invited_by', 'created_at']
     const lines = [header.join(',')]
     for (const row of rows) {
-      lines.push([
-        csvCell(row.email),
-        csvCell(row.name),
-        csvCell(row.role),
-        csvCell(row.country),
-        csvCell(row.status),
-        csvCell(row.invited_at ? row.invited_at.toISOString() : ''),
-        csvCell(row.invited_by),
-        csvCell(row.created_at.toISOString()),
-      ].join(','))
+      lines.push(
+        [
+          csvCell(row.email),
+          csvCell(row.name),
+          csvCell(row.role),
+          csvCell(row.country),
+          csvCell(row.status),
+          csvCell(row.invited_at ? row.invited_at.toISOString() : ''),
+          csvCell(row.invited_by),
+          csvCell(row.created_at.toISOString()),
+        ].join(','),
+      )
     }
 
     await recordAuditEvent({
@@ -58,8 +62,7 @@ export async function GET(request: NextRequest) {
         'Content-Disposition': `attachment; filename="${filename}"`,
       },
     })
-  }
-  catch (error) {
+  } catch (error) {
     console.error('Admin waitlist export error', error)
     return new Response('Failed to export waitlist', { status: 500 })
   }
