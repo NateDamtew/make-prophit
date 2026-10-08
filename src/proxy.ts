@@ -136,6 +136,7 @@ export default async function proxy(request: NextRequest) {
   }
 
   if (pathname.startsWith('/admin')) {
+    // FORK: is_admin comes from customSession (wallet, email and username admins).
     if (!session.user?.is_admin) {
       return NextResponse.redirect(new URL(withLocale('/', locale), request.url))
     }

@@ -1,6 +1,5 @@
 import type { Metadata } from 'next'
 
-import { setRequestLocale } from 'next-intl/server'
 import { cacheTag } from 'next/cache'
 import { notFound } from 'next/navigation'
 
@@ -29,7 +28,6 @@ export async function generateStaticParams() {
 export async function generateMetadata({ params }: PageProps<'/[locale]/event/[slug]'>): Promise<Metadata> {
   const { slug } = await params
   const locale = await getRootLocale()
-  setRequestLocale(locale)
   if (slug === STATIC_PARAMS_PLACEHOLDER) {
     if (shouldBypassPublicShellPlaceholder(slug)) {
       return {}
@@ -68,6 +66,10 @@ async function CachedEventPageContent({ slug }: { slug: string }) {
   if (!eventPageData) {
     notFound()
   }
+  const seriesSlug = eventPageData.event.series_slug?.trim() ?? ''
+  if (seriesSlug) {
+    cacheTag(cacheTags.seriesEvents(seriesSlug))
+  }
 
   const faqItems = await buildTranslatedEventFaqItems({
     event: eventPageData.event,
@@ -97,8 +99,6 @@ async function CachedEventPageContent({ slug }: { slug: string }) {
 
 export default async function EventPage({ params }: PageProps<'/[locale]/event/[slug]'>) {
   const { slug } = await params
-  const locale = await getRootLocale()
-  setRequestLocale(locale)
   if (slug === STATIC_PARAMS_PLACEHOLDER) {
     if (shouldBypassPublicShellPlaceholder(slug)) {
       return null

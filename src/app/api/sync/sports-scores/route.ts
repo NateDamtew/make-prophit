@@ -65,6 +65,7 @@ export async function POST(request: Request) {
     .select({
       event_id: eventSportsTable.event_id,
       slug: eventsTable.slug,
+      series_slug: eventsTable.series_slug,
       livestream_url: eventsTable.livestream_url,
       sports_source_provider: eventSportsTable.sports_source_provider,
       sports_source_event_id: eventSportsTable.sports_source_event_id,
@@ -172,7 +173,10 @@ export async function POST(request: Request) {
             .where(eq(eventsTable.id, row.event_id))
         }
 
-        revalidateTag(cacheTags.event(row.slug), 'max')
+        revalidateTag(cacheTags.event(row.slug), { expire: 0 })
+        if (row.series_slug) {
+          revalidateTag(cacheTags.seriesEvents(row.series_slug), { expire: 0 })
+        }
         updatedCount += 1
       } catch (error) {
         errors.push({
@@ -184,8 +188,8 @@ export async function POST(request: Request) {
   }
 
   if (updatedCount > 0) {
-    revalidateTag(cacheTags.eventsList, 'max')
-    revalidateTag(cacheTags.sportsMenu, 'max')
+    revalidateTag(cacheTags.eventsList, { expire: 0 })
+    revalidateTag(cacheTags.sportsMenu, { expire: 0 })
   }
 
   return NextResponse.json({

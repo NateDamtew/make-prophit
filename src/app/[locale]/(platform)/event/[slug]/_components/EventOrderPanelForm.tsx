@@ -941,6 +941,8 @@ export default function EventOrderPanelForm({
   const [isClaimSubmitting, setIsClaimSubmitting] = useState(false)
   const [isArbitrageSubmitting, setIsArbitrageSubmitting] = useState(false)
   const [arbitrageSubmissionStep, setArbitrageSubmissionStep] = useState<0 | 1 | 2 | 3>(0)
+  const [postOnlyWarmupToast, setPostOnlyWarmupToast] = useState<{ id: string; until: number } | null>(null)
+  const postOnlyWarmupToastIdRef = useRef<string | null>(null)
   const panelMode = useSyncExternalStore(
     subscribeOrderPanelMode,
     getOrderPanelModeSnapshot,
@@ -951,6 +953,46 @@ export default function EventOrderPanelForm({
   const hasMounted = useHasHydrated()
   const limitSharesInputRef = useRef<HTMLInputElement | null>(null)
   const limitSharesNumber = Number.parseFloat(state.limitShares) || 0
+
+  useEffect(function closeWarmupToastOnUnmount() {
+    return function cleanupWarmupToastOnUnmount() {
+      const toastId = postOnlyWarmupToastIdRef.current
+      if (toastId) {
+        toast.close(toastId)
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!postOnlyWarmupToast) {
+      return
+    }
+
+    const { id, until } = postOnlyWarmupToast
+
+    function updateCountdown() {
+      const seconds = Math.max(0, Math.ceil((until - Date.now()) / 1000))
+      if (seconds === 0) {
+        if (postOnlyWarmupToastIdRef.current === id) {
+          postOnlyWarmupToastIdRef.current = null
+        }
+        setPostOnlyWarmupToast(null)
+        return
+      }
+
+      toast.update(id, t('Trading paused'), {
+        description: t('Restart in progress. Trading resumes in {seconds}s. Cancels still available.', {
+          seconds: seconds.toString(),
+        }),
+      })
+    }
+
+    updateCountdown()
+    const intervalId = window.setInterval(updateCountdown, 1_000)
+    return () => {
+      window.clearInterval(intervalId)
+    }
+  }, [postOnlyWarmupToast, t])
 
   const { balance, isLoadingBalance, isBalanceError, refetchBalance } = useBalance()
   const yesOutcome = useMemo(() => resolveMarketOutcome(activeMarket, OUTCOME_INDEX.YES), [activeMarket])
@@ -1556,6 +1598,7 @@ export default function EventOrderPanelForm({
         clobOrderType: state.type === ORDER_TYPE.LIMIT && hasExpirationLimit ? CLOB_ORDER_TYPE.GTD : undefined,
         conditionId: activeMarket.condition_id,
         slug: event.slug,
+        locale,
       })
 
       if (result?.error) {
@@ -1563,8 +1606,48 @@ export default function EventOrderPanelForm({
           openTradeRequirements({ forceTradingAuth: true })
           return
         }
+
+        if (
+          result.code === 'post_only_mode' &&
+          typeof result.retryAfterSeconds === 'number' &&
+          Number.isSafeInteger(result.retryAfterSeconds) &&
+          result.retryAfterSeconds > 0
+        ) {
+          if (postOnlyWarmupToast) {
+            toast.close(postOnlyWarmupToast.id)
+          }
+          const retryAfterSeconds = result.retryAfterSeconds
+          let warmupToastId = ''
+          warmupToastId = toast.error(t('Trading paused'), {
+            description: t('Restart in progress. Trading resumes in {seconds}s. Cancels still available.', {
+              seconds: retryAfterSeconds.toString(),
+            }),
+            duration: retryAfterSeconds * 1_000,
+            onClose: () => {
+              if (postOnlyWarmupToastIdRef.current === warmupToastId) {
+                postOnlyWarmupToastIdRef.current = null
+              }
+              setPostOnlyWarmupToast((current) => (current?.id === warmupToastId ? null : current))
+            },
+          })
+          postOnlyWarmupToastIdRef.current = warmupToastId
+          setPostOnlyWarmupToast({
+            id: warmupToastId,
+            until: Date.now() + retryAfterSeconds * 1_000,
+          })
+          return
+        }
+
         handleOrderErrorFeedback(t('Trade failed'), result.error)
         return
+      }
+
+      if (postOnlyWarmupToast) {
+        toast.close(postOnlyWarmupToast.id)
+        if (postOnlyWarmupToastIdRef.current === postOnlyWarmupToast.id) {
+          postOnlyWarmupToastIdRef.current = null
+        }
+        setPostOnlyWarmupToast(null)
       }
 
       scheduleOrderBookRefresh(queryClient)
@@ -1771,7 +1854,14 @@ export default function EventOrderPanelForm({
       }
 
       toast.success(t('Claim submitted'), {
-        description: t('We sent your claim transaction.'),
+        content: (
+          <EventTradeToast
+            title={activeMarket?.short_title || activeMarket?.title || event.title}
+            marketImage={activeMarket?.icon_url ?? undefined}
+          >
+            {t('We sent your claim transaction.')}
+          </EventTradeToast>
+        ),
       })
       promptAutoRedeem()
       setClaimedConditionIdsByEvent((current) => {
@@ -2018,6 +2108,7 @@ export default function EventOrderPanelForm({
           clobOrderType: CLOB_ORDER_TYPE.FOK,
           conditionId: activeMarket.condition_id,
           slug: event.slug,
+          locale,
         }),
         preparedPolymarketOrder.post(),
       ])
@@ -2039,20 +2130,50 @@ export default function EventOrderPanelForm({
         console.error('Arbitrage submission completed with an unmatched leg.', { kuestError, polymarketError })
         const errorDescription = getArbitrageSubmissionErrorMessage(kuestError || polymarketError)
         if (kuestError && polymarketError) {
-          toast.error(t('Both orders failed. No trade was completed.'), { description: errorDescription })
+          toast.error(t('Both orders failed. No trade was completed.'), {
+            content: (
+              <EventTradeToast
+                title={event.title}
+                marketImage={activeMarket.icon_url ?? undefined}
+                marketTitle={activeMarket.short_title || activeMarket.title}
+              >
+                {errorDescription}
+              </EventTradeToast>
+            ),
+          })
         } else if (kuestError) {
           toast.error(
             t('The {siteName} order failed. Check Polymarket before trying again.', {
               siteName: site.name,
             }),
-            { description: errorDescription },
+            {
+              content: (
+                <EventTradeToast
+                  title={event.title}
+                  marketImage={activeMarket.icon_url ?? undefined}
+                  marketTitle={activeMarket.short_title || activeMarket.title}
+                >
+                  {errorDescription}
+                </EventTradeToast>
+              ),
+            },
           )
         } else {
           toast.error(
             t('The Polymarket order failed. Check {siteName} before trying again.', {
               siteName: site.name,
             }),
-            { description: errorDescription },
+            {
+              content: (
+                <EventTradeToast
+                  title={event.title}
+                  marketImage={activeMarket.icon_url ?? undefined}
+                  marketTitle={activeMarket.short_title || activeMarket.title}
+                >
+                  {errorDescription}
+                </EventTradeToast>
+              ),
+            },
           )
         }
         return
@@ -2063,7 +2184,7 @@ export default function EventOrderPanelForm({
         maximumFractionDigits: 2,
       })
       toast.success(t('Arbitrage matched! {shares} shares per side', { shares: sharesLabel }), {
-        description: (
+        content: (
           <EventTradeToast
             title={event.title}
             marketImage={activeMarket.icon_url}

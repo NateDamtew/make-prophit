@@ -1,7 +1,7 @@
 project_id                           = ""
 app_name                             = "kuest-web"
 region                               = "nyc"
-github_repo                          = "kuestcom/prediction-market"
+github_repo                          = "kuest/prediction-market"
 github_branch                        = "main"
 deploy_on_push                       = true
 source_dir                           = "/"
@@ -25,7 +25,7 @@ secret_env = {
   # Choose one storage profile:
   # Supabase mode
   SUPABASE_URL                        = "replace-me"
-  SUPABASE_SERVICE_ROLE_KEY           = "replace-me"
+  SUPABASE_SECRET_KEY                 = "replace-me"
 
   # S3 mode (use this trio when SUPABASE_* is not set)
   # S3_BUCKET                         = "replace-me"

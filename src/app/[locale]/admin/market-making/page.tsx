@@ -1,4 +1,4 @@
-import { getExtracted, setRequestLocale } from 'next-intl/server'
+import { getExtracted } from 'next-intl/server'
 
 import MarketMakingDiscovery from '@/app/[locale]/admin/market-making/_components/MarketMakingDiscovery'
 import { getRootLocale } from '@/i18n/root-locale'
@@ -18,7 +18,6 @@ export default async function AdminMarketMakingPage({ searchParams }: AdminMarke
   const locale = await getRootLocale()
   const resolvedSearchParams = await searchParams
   const linkedCampaignId = resolveCampaignId(resolvedSearchParams.campaign)
-  setRequestLocale(locale)
   const t = await getExtracted()
 
   return (
@@ -123,6 +122,10 @@ export default async function AdminMarketMakingPage({ searchParams }: AdminMarke
         operatorVerificationPending: t('Check your inbox to verify your email.'),
         accountEmailRequired: t('An account email is required.'),
         accountSettings: t('Profile Settings'),
+        amoyReadOnlyNotice: t(
+          'This site is running on a test network. The market maker is in demonstration mode. Searches and views are available, but campaigns, payments, cancellations, disputes, and withdrawals are available only on Mainnet.',
+        ),
+        mainnetOnly: t('Available only on Mainnet'),
         seriesBadge: t('30-day series'),
         seriesTooltip: t('Sponsor every new market in this recurring series for 30 days.'),
         sponsorSeries: t('Sponsor the 30-day series'),
@@ -211,6 +214,9 @@ export default async function AdminMarketMakingPage({ searchParams }: AdminMarke
         transactionConfirmed: t('Transaction confirmed.'),
         transactionRejected: t('You rejected the transaction.'),
         refundReadyToWithdraw: t('Refund ready to withdraw.'),
+        amoyReadOnlyNotice: t(
+          'This site is running on a test network. The market maker is in demonstration mode. Searches and views are available, but campaigns, payments, cancellations, disputes, and withdrawals are available only on Mainnet.',
+        ),
         close: t('Close'),
         seriesBadge: t('30-day series'),
         seriesTooltip: t('This campaign covers every new market in the recurring series for 30 days.'),

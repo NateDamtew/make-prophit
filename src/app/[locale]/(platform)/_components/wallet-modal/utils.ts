@@ -81,15 +81,16 @@ export interface PendingWithdrawalItem {
 export interface WalletDepositModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  onBridge: () => void
   isMobile: boolean
   walletAddress?: string | null
   walletEoaAddress?: string | null
   siteName?: string
-  meldUrl: string | null
+  canBuyMeld: boolean
   hasDeployedDepositWallet: boolean
   view: WalletDepositView
   onViewChange: (view: WalletDepositView) => void
-  onBuy: (url: string) => void
+  onBuy: () => void
   /** Show the TON funding rail (Telegram Mini App only). */
   showTon?: boolean
   depositWalletBalance?: string | null

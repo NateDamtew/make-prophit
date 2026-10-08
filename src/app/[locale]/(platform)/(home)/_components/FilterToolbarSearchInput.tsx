@@ -1,6 +1,6 @@
 'use client'
 
-import type { ChangeEvent, RefObject } from 'react'
+import type { ChangeEvent, KeyboardEvent, RefObject } from 'react'
 
 import { SearchIcon } from 'lucide-react'
 import { useExtracted } from 'next-intl'
@@ -41,13 +41,17 @@ export default function FilterToolbarSearchInput({
       return undefined
     }
 
-    function handlePointerDown(event: PointerEvent) {
+    function handleClick(event: MouseEvent) {
       const target = event.target
-      if (!(target instanceof Node) || searchShellRef.current?.contains(target)) {
+      const searchShell = searchShellRef.current
+      if (!(target instanceof Node) || !searchShell || searchShell.contains(target)) {
+        return
+      }
+      if (target instanceof Element && target.closest('[data-filter-search-trigger]')) {
         return
       }
 
-      const currentInputValue = searchShellRef.current?.querySelector<HTMLInputElement>(
+      const currentInputValue = searchShell.querySelector<HTMLInputElement>(
         '[data-testid="filter-search-input"]',
       )?.value
       const normalizedInputValue =
@@ -64,27 +68,34 @@ export default function FilterToolbarSearchInput({
       closeSearch()
     }
 
-    window.addEventListener('pointerdown', handlePointerDown)
-    return () => window.removeEventListener('pointerdown', handlePointerDown)
+    window.addEventListener('click', handleClick)
+    return () => window.removeEventListener('click', handleClick)
   }, [closeSearch, collapsible, isOpen, onSearchChange, search])
 
   if (collapsible && !isOpen) {
     const openSearchLabel = t('Open search')
 
     return (
-      <Button
-        ref={searchTriggerRef}
-        type="button"
-        variant="ghost"
-        size="icon"
-        title={openSearchLabel}
-        aria-label={openSearchLabel}
-        aria-expanded={false}
-        data-testid="filter-search-trigger"
-        onClick={() => setIsOpen(true)}
-      >
-        <SearchIcon />
-      </Button>
+      <>
+        <div className="lg:hidden">
+          <FilterToolbarSearchInputField search={search} onSearchChange={onSearchChange} />
+        </div>
+        <Button
+          ref={searchTriggerRef}
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="hidden lg:inline-flex"
+          title={openSearchLabel}
+          aria-label={openSearchLabel}
+          aria-expanded={false}
+          data-filter-search-trigger="true"
+          data-testid="filter-search-trigger"
+          onClick={() => setIsOpen(true)}
+        >
+          <SearchIcon />
+        </Button>
+      </>
     )
   }
 
@@ -94,13 +105,27 @@ export default function FilterToolbarSearchInput({
       shellRef={searchShellRef}
       search={search}
       onSearchChange={onSearchChange}
-      onEscape={(currentInputValue) => {
-        if (!currentInputValue.trim()) {
-          if (currentInputValue !== search) {
+      onEscape={(currentInputValue, clearInput) => {
+        if (!collapsible) {
+          if (!currentInputValue.trim() && currentInputValue !== search) {
             onSearchChange('')
           }
-          closeSearch()
+
+          return !currentInputValue.trim()
         }
+
+        if (currentInputValue.trim()) {
+          clearInput()
+          onSearchChange('')
+          return true
+        }
+
+        if (currentInputValue !== search) {
+          onSearchChange('')
+        }
+
+        closeSearch()
+        return true
       }}
     />
   )
@@ -111,7 +136,7 @@ interface FilterToolbarSearchInputFieldProps {
   search: string
   shellRef?: RefObject<HTMLDivElement | null>
   onSearchChange: (search: string) => void
-  onEscape?: (currentInputValue: string) => void
+  onEscape?: (currentInputValue: string, clearInput: () => void) => boolean
 }
 
 interface SearchDebounceTimeoutRef {
@@ -125,7 +150,11 @@ function clearPendingSearchDebounce(debounceTimeoutRef: SearchDebounceTimeoutRef
   }
 }
 
-function useFilterToolbarSearchInputFieldState({ search, onSearchChange }: FilterToolbarSearchInputFieldProps) {
+function useFilterToolbarSearchInputFieldState({
+  onEscape,
+  search,
+  onSearchChange,
+}: FilterToolbarSearchInputFieldProps) {
   const debounceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastSubmittedSearchRef = useRef(search)
   const t = useExtracted()
@@ -163,7 +192,23 @@ function useFilterToolbarSearchInputFieldState({ search, onSearchChange }: Filte
     [onSearchChange],
   )
 
+  const handleEscape = useCallback(
+    function handleEscape(event: KeyboardEvent<HTMLInputElement>) {
+      const inputElement = event.currentTarget
+      const shouldCancelPendingSearch = onEscape?.(inputElement.value, () => {
+        inputElement.value = ''
+        lastSubmittedSearchRef.current = ''
+      })
+
+      if (shouldCancelPendingSearch) {
+        clearPendingSearchDebounce(debounceTimeoutRef)
+      }
+    },
+    [onEscape],
+  )
+
   return {
+    handleEscape,
     inputRef,
     handleInputChange,
     searchPlaceholder: t('Search'),
@@ -177,10 +222,12 @@ function FilterToolbarSearchInputField({
   search,
   onSearchChange,
 }: FilterToolbarSearchInputFieldProps) {
-  const { inputRef, handleInputChange, searchPlaceholder } = useFilterToolbarSearchInputFieldState({
+  const { handleEscape, inputRef, handleInputChange, searchPlaceholder } = useFilterToolbarSearchInputFieldState({
+    onEscape,
     search,
     onSearchChange,
   })
+  const [initialSearch] = useState(() => search)
 
   return (
     <div ref={shellRef} className="relative w-full md:w-44 lg:w-52 xl:w-56">
@@ -190,12 +237,12 @@ function FilterToolbarSearchInputField({
         type="text"
         data-testid="filter-search-input"
         placeholder={searchPlaceholder}
-        defaultValue={search}
+        defaultValue={initialSearch}
         autoFocus={autoFocus}
         onChange={handleInputChange}
         onKeyDown={(event) => {
           if (event.key === 'Escape') {
-            onEscape?.(event.currentTarget.value)
+            handleEscape(event)
           }
         }}
         className={cn(

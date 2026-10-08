@@ -1,10 +1,12 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 
-const mocks = vi.hoisted(() => ({
-  loadRuntimeThemeSiteName: vi.fn(),
+import { hoisted, stubGlobal, unstubAllGlobals } from '../bun-test-helpers'
+
+const mocks = hoisted(() => ({
+  loadRuntimeThemeSiteName: mock(),
 }))
 
-vi.mock('@/lib/theme-settings', () => ({
+void mock.module('@/lib/theme-settings', () => ({
   loadRuntimeThemeSiteName: (...args: any[]) => mocks.loadRuntimeThemeSiteName(...args),
 }))
 
@@ -12,13 +14,12 @@ describe('openrouter helpers', () => {
   const originalSiteUrl = process.env.SITE_URL
 
   beforeEach(() => {
-    vi.resetModules()
     mocks.loadRuntimeThemeSiteName.mockReset()
     process.env.SITE_URL = 'https://kuest.test'
   })
 
   afterEach(() => {
-    vi.unstubAllGlobals()
+    unstubAllGlobals()
 
     if (originalSiteUrl === undefined) {
       delete process.env.SITE_URL
@@ -28,8 +29,8 @@ describe('openrouter helpers', () => {
   })
 
   it('sends runtime site name in completion headers', async () => {
-    const fetchMock = vi.fn()
-    vi.stubGlobal('fetch', fetchMock)
+    const fetchMock = mock()
+    stubGlobal('fetch', fetchMock)
     mocks.loadRuntimeThemeSiteName.mockResolvedValueOnce('Kuest Runtime')
 
     fetchMock.mockResolvedValueOnce(
@@ -58,8 +59,8 @@ describe('openrouter helpers', () => {
   })
 
   it('rejects completions truncated by the max token limit', async () => {
-    const fetchMock = vi.fn()
-    vi.stubGlobal('fetch', fetchMock)
+    const fetchMock = mock()
+    stubGlobal('fetch', fetchMock)
     mocks.loadRuntimeThemeSiteName.mockResolvedValueOnce('Kuest Runtime')
 
     fetchMock.mockResolvedValueOnce(
@@ -85,9 +86,43 @@ describe('openrouter helpers', () => {
     ).rejects.toThrow('truncated')
   })
 
+  it('sends structured decisions to the OpenRouter Decisions endpoint', async () => {
+    const fetchMock = mock()
+    stubGlobal('fetch', fetchMock)
+    mocks.loadRuntimeThemeSiteName.mockResolvedValueOnce('Kuest Runtime')
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ answers: { match: { type: 'score', score: 3 } } }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+
+    const { requestOpenRouterDecisions } = await import('@/lib/ai/openrouter')
+    await expect(
+      requestOpenRouterDecisions(
+        {
+          model: 'typesafe/jev-1.13',
+          state: { query: 'Arsenal Chelsea' },
+          questions: {
+            match: {
+              type: 'score',
+              instructions: 'Score the candidate.',
+              criteria: ['0 — unrelated', '3 — direct match'],
+            },
+          },
+        },
+        { apiKey: 'openrouter-key' },
+      ),
+    ).resolves.toMatchObject({ answers: { match: { score: 3 } } })
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('https://openrouter.ai/api/alpha/decisions')
+    expect(JSON.parse(String(init.body))).toMatchObject({ model: 'typesafe/jev-1.13' })
+  })
+
   it('loads only web-search-capable models and sends runtime site name in models headers', async () => {
-    const fetchMock = vi.fn()
-    vi.stubGlobal('fetch', fetchMock)
+    const fetchMock = mock()
+    stubGlobal('fetch', fetchMock)
     mocks.loadRuntimeThemeSiteName.mockResolvedValueOnce('Kuest Runtime')
 
     fetchMock.mockResolvedValueOnce(
@@ -142,8 +177,8 @@ describe('openrouter helpers', () => {
   })
 
   it('loads all available models for translation selection', async () => {
-    const fetchMock = vi.fn()
-    vi.stubGlobal('fetch', fetchMock)
+    const fetchMock = mock()
+    stubGlobal('fetch', fetchMock)
     mocks.loadRuntimeThemeSiteName.mockResolvedValueOnce('Kuest Runtime')
 
     fetchMock.mockResolvedValueOnce(
@@ -179,9 +214,35 @@ describe('openrouter helpers', () => {
     ])
   })
 
+  it('lists all decision models for the decision-model selector', async () => {
+    const fetchMock = mock()
+    stubGlobal('fetch', fetchMock)
+    mocks.loadRuntimeThemeSiteName.mockResolvedValueOnce('Kuest Runtime')
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          data: [
+            { id: 'openai/gpt-4o-mini', name: 'GPT-4o mini' },
+            { id: 'typesafe/jev-1.13', name: 'Jev 1.13' },
+            { id: '~typesafe/jev-latest', name: 'Jev Latest' },
+            { id: 'custom/decision-model', name: 'Decision model', category: 'decisions' },
+          ],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    )
+
+    const { fetchOpenRouterDecisionModels } = await import('@/lib/ai/openrouter')
+    await expect(fetchOpenRouterDecisionModels('openrouter-key')).resolves.toEqual([
+      { id: 'custom/decision-model', name: 'Decision model' },
+      { id: 'typesafe/jev-1.13', name: 'Jev 1.13' },
+      { id: '~typesafe/jev-latest', name: 'Jev Latest' },
+    ])
+  })
+
   it('shares the in-flight models response between both projections', async () => {
-    const fetchMock = vi.fn()
-    vi.stubGlobal('fetch', fetchMock)
+    const fetchMock = mock()
+    stubGlobal('fetch', fetchMock)
     mocks.loadRuntimeThemeSiteName.mockResolvedValueOnce('Kuest Runtime')
 
     fetchMock.mockResolvedValueOnce(
@@ -216,8 +277,8 @@ describe('openrouter helpers', () => {
   })
 
   it('omits incompatible characters from the runtime site title header', async () => {
-    const fetchMock = vi.fn()
-    vi.stubGlobal('fetch', fetchMock)
+    const fetchMock = mock()
+    stubGlobal('fetch', fetchMock)
     mocks.loadRuntimeThemeSiteName.mockResolvedValueOnce('测试站点名称')
 
     fetchMock.mockResolvedValueOnce(

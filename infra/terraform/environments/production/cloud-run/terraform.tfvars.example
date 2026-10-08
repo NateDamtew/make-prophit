@@ -1,7 +1,7 @@
 project_id                           = "my-gcp-project"
 region                               = "us-central1"
 service_name                         = "kuest-web"
-app_image                            = "ghcr.io/kuestcom/prediction-market@sha256:replace-with-digest"
+app_image                            = "ghcr.io/kuest/prediction-market@sha256:replace-with-digest"
 site_url                             = "https://markets.example.com"
 secret_version                       = "latest"
 allow_unauthenticated                = true
@@ -26,8 +26,8 @@ secret_env = {
 
   # Choose one storage profile:
   # Supabase mode
-  SUPABASE_URL              = "SUPABASE_URL"
-  SUPABASE_SERVICE_ROLE_KEY = "SUPABASE_SERVICE_ROLE_KEY"
+  SUPABASE_URL        = "SUPABASE_URL"
+  SUPABASE_SECRET_KEY = "SUPABASE_SECRET_KEY"
 
   # S3 mode (use this trio when SUPABASE_* is not set)
   # S3_BUCKET               = "S3_BUCKET"

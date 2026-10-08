@@ -1,17 +1,38 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, mock } from 'bun:test'
 
-import { fetchKuestFeeRate } from '@/lib/clob'
+import { fetchKuestFeeRate, resolveClobUrl } from '@/lib/clob'
+
+import { stubEnv, stubGlobal, unstubAllEnvs, unstubAllGlobals } from '../bun-test-helpers'
 
 describe('fetchKuestFeeRate', () => {
   afterEach(() => {
-    vi.unstubAllGlobals()
+    if (typeof window !== 'undefined') {
+      delete (window as Window & { __PUBLIC_RUNTIME_CONFIG__?: unknown }).__PUBLIC_RUNTIME_CONFIG__
+    }
+    unstubAllEnvs()
+    unstubAllGlobals()
+  })
+
+  it('uses the injected browser runtime URL for the default client endpoint', () => {
+    stubEnv('CHAIN_ID', '80002')
+    stubEnv('CLOB_URL', '')
+    ;(
+      window as Window & {
+        __PUBLIC_RUNTIME_CONFIG__?: { chainId?: number; clobUrl?: string }
+      }
+    ).__PUBLIC_RUNTIME_CONFIG__ = {
+      chainId: 137,
+      clobUrl: 'https://clob.example',
+    }
+
+    expect(resolveClobUrl()).toBe('https://clob.example')
   })
 
   it('loads the dynamic Kuest fee schedule for the selected token', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
+    const fetchMock = mock().mockResolvedValue({
       ok: true,
       status: 200,
-      text: vi.fn().mockResolvedValue(
+      text: mock().mockResolvedValue(
         JSON.stringify({
           base_fee: 441,
           fd: { r: 0.0441, e: 1, to: true },
@@ -19,7 +40,7 @@ describe('fetchKuestFeeRate', () => {
         }),
       ),
     })
-    vi.stubGlobal('fetch', fetchMock)
+    stubGlobal('fetch', fetchMock)
 
     await expect(fetchKuestFeeRate('token-1', 'https://clob.example')).resolves.toEqual({
       rate: 0.0441,
@@ -34,12 +55,12 @@ describe('fetchKuestFeeRate', () => {
   })
 
   it('rejects invalid fee responses instead of displaying a partial total', async () => {
-    vi.stubGlobal(
+    stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue({
+      mock().mockResolvedValue({
         ok: true,
         status: 200,
-        text: vi.fn().mockResolvedValue(JSON.stringify({ fd: { r: null, e: 1, to: true } })),
+        text: mock().mockResolvedValue(JSON.stringify({ fd: { r: null, e: 1, to: true } })),
       }),
     )
 
@@ -47,12 +68,12 @@ describe('fetchKuestFeeRate', () => {
   })
 
   it('rejects fee strings with trailing units', async () => {
-    vi.stubGlobal(
+    stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue({
+      mock().mockResolvedValue({
         ok: true,
         status: 200,
-        text: vi.fn().mockResolvedValue(JSON.stringify({ fd: { r: '0.07%', e: 1, to: true } })),
+        text: mock().mockResolvedValue(JSON.stringify({ fd: { r: '0.07%', e: 1, to: true } })),
       }),
     )
 

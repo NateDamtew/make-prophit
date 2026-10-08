@@ -93,7 +93,6 @@ import {
   CONTENT_CHECK_TIMEOUT_MS,
   CREATE_EVENT_SIGNATURE_STORAGE_KEY,
   CUSTOM_SPORTS_SLUG_SELECT_VALUE,
-  DEFAULT_CREATE_EVENT_CHAIN_ID,
   EOA_BALANCE_ABI,
   FALLBACK_MAX_FEE_PER_GAS_WEI,
   FALLBACK_REQUIRED_USDC,
@@ -144,6 +143,7 @@ import {
   readResponseBody,
   readResponseErrorMessage,
   resolveCustomSportsSlugMode,
+  resolveMarketConfigUsdcToken,
   resolveStoredAssetFile,
   shortenAddress,
   shouldRetryFinalizeRequest,
@@ -205,7 +205,7 @@ export function useAdminCreateEventForm({
   const { data: walletClient } = useWalletClient()
   const publicClient = usePublicClient()
   const { runWithSignaturePrompt } = useSignaturePromptRunner()
-  const { createMarketUrl, polygonRpcUrl } = usePublicRuntimeConfig()
+  const { chainId, createMarketUrl, polygonRpcUrl } = usePublicRuntimeConfig()
   const viemRpcUrls = useMemo(() => resolveViemRpcUrls(polygonRpcUrl), [polygonRpcUrl])
   const t = useExtracted()
   const contentCheckProgress = useMemo(
@@ -307,7 +307,7 @@ export function useAdminCreateEventForm({
   const [resolutionType, setResolutionType] = useState<ResolutionType>('dro_moov2')
   const [resolutionTypeTouched, setResolutionTypeTouched] = useState(false)
   const [requiredRewardUsdc, setRequiredRewardUsdc] = useState(FALLBACK_REQUIRED_USDC)
-  const [targetChainId, setTargetChainId] = useState<number>(DEFAULT_CREATE_EVENT_CHAIN_ID)
+  const [targetChainId, setTargetChainId] = useState<number>(chainId)
   const [eoaUsdcBalance, setEoaUsdcBalance] = useState(0)
   const [fundingCheckState, setFundingCheckState] = useState<FundingCheckState>('idle')
   const [fundingCheckError, setFundingCheckError] = useState('')
@@ -2456,17 +2456,12 @@ export function useAdminCreateEventForm({
       )
       const normalizedRequired = Number.isFinite(required) && required > 0 ? required : FALLBACK_REQUIRED_USDC
       setRequiredRewardUsdc(normalizedRequired)
-      const configuredChainId =
-        typeof payload.defaultChainId === 'number' && payload.defaultChainId > 0
-          ? payload.defaultChainId
-          : DEFAULT_CREATE_EVENT_CHAIN_ID
-      setTargetChainId(configuredChainId)
+      setTargetChainId(chainId)
 
-      const usdcToken =
-        typeof payload.usdcToken === 'string' && isAddress(payload.usdcToken) ? getAddress(payload.usdcToken) : null
+      const usdcToken = resolveMarketConfigUsdcToken(payload, chainId)
 
       if (!usdcToken) {
-        throw new Error('Invalid USDC token in market-config')
+        throw new Error('Missing valid chain-specific USDC token in market-config')
       }
 
       if (!eoaAddress) {
@@ -2500,7 +2495,7 @@ export function useAdminCreateEventForm({
       setFundingCheckError(t('Could not validate USDC balance right now.'))
       return false
     }
-  }, [createMarketUrl, eoaAddress, form.marketMode, marketCount, t, viemRpcUrls])
+  }, [chainId, createMarketUrl, eoaAddress, form.marketMode, marketCount, t, viemRpcUrls])
 
   const runNativeGasCheck = useCallback(async () => {
     setNativeGasCheckState('checking')

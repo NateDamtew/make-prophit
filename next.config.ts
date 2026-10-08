@@ -1,6 +1,6 @@
 import type { NextConfig } from 'next'
 
-import { withSentryConfig } from '@sentry/nextjs'
+import { withSentryConfig } from '@sentry/nextjs/config'
 import { createMDX } from 'fumadocs-mdx/next'
 import createNextIntlPlugin from 'next-intl/plugin'
 
@@ -39,6 +39,7 @@ const config: NextConfig = {
   reactCompiler: true,
   compress: false,
   experimental: {
+    agentUpgrade: 'latest',
     inlineCss: true,
     serverActions: {
       bodySizeLimit: '2mb',

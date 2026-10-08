@@ -1,22 +1,26 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 
 import { hasPublicShellPrerenderEnv, resolvePublicShellPrerenderMode } from '@/lib/public-shell-env'
-import { deferPublicShellPrerenderIfNeeded } from '@/lib/public-shell-rendering'
 
-const mocks = vi.hoisted(() => ({
-  io: vi.fn().mockResolvedValue(undefined),
+import { hoisted, stubEnv, unstubAllEnvs } from '../bun-test-helpers'
+
+const mocks = hoisted(() => ({
+  io: mock().mockResolvedValue(undefined),
 }))
 
-vi.mock('next/cache', () => ({
+void mock.module('next/cache', () => ({
   io: mocks.io,
 }))
 
+const { deferPublicShellPrerenderIfNeeded } = await import('@/lib/public-shell-rendering?bun-test')
+
 beforeEach(() => {
   mocks.io.mockClear()
+  stubEnv('BUILD_PRERENDER_PUBLIC_SHELL', '')
 })
 
 afterEach(() => {
-  vi.unstubAllEnvs()
+  unstubAllEnvs()
 })
 
 describe('public shell env detection', () => {
@@ -97,10 +101,10 @@ describe('public shell env detection', () => {
   // FORK OVERRIDE: complete Vercel env alone does NOT enable prerendering —
   // only the explicit BUILD_PRERENDER_PUBLIC_SHELL opt-in does.
   it('still defers when Vercel build-time env is complete but no explicit opt-in', async () => {
-    vi.stubEnv('NEXT_PHASE', 'phase-production-build')
-    vi.stubEnv('POSTGRES_URL', 'postgres://user:pass@localhost:5432/app')
-    vi.stubEnv('REOWN_APPKIT_PROJECT_ID', 'project-id')
-    vi.stubEnv('VERCEL_PROJECT_PRODUCTION_URL', 'markets.example.com')
+    stubEnv('NEXT_PHASE', 'phase-production-build')
+    stubEnv('POSTGRES_URL', 'postgres://user:pass@localhost:5432/app')
+    stubEnv('REOWN_APPKIT_PROJECT_ID', 'project-id')
+    stubEnv('VERCEL_PROJECT_PRODUCTION_URL', 'markets.example.com')
 
     await deferPublicShellPrerenderIfNeeded()
 
@@ -108,8 +112,8 @@ describe('public shell env detection', () => {
   })
 
   it('prerenders when explicitly opted in', async () => {
-    vi.stubEnv('NEXT_PHASE', 'phase-production-build')
-    vi.stubEnv('BUILD_PRERENDER_PUBLIC_SHELL', 'true')
+    stubEnv('NEXT_PHASE', 'phase-production-build')
+    stubEnv('BUILD_PRERENDER_PUBLIC_SHELL', 'true')
 
     await deferPublicShellPrerenderIfNeeded()
 
@@ -117,11 +121,11 @@ describe('public shell env detection', () => {
   })
 
   it('defers runtime data when Docker build-time env is unavailable', async () => {
-    vi.stubEnv('NEXT_PHASE', 'phase-production-build')
-    vi.stubEnv('POSTGRES_URL', '')
-    vi.stubEnv('REOWN_APPKIT_PROJECT_ID', '')
-    vi.stubEnv('SITE_URL', '')
-    vi.stubEnv('VERCEL_PROJECT_PRODUCTION_URL', '')
+    stubEnv('NEXT_PHASE', 'phase-production-build')
+    stubEnv('POSTGRES_URL', '')
+    stubEnv('REOWN_APPKIT_PROJECT_ID', '')
+    stubEnv('SITE_URL', '')
+    stubEnv('VERCEL_PROJECT_PRODUCTION_URL', '')
 
     await deferPublicShellPrerenderIfNeeded()
 
@@ -129,10 +133,10 @@ describe('public shell env detection', () => {
   })
 
   it('uses runtime data after an env-less Docker build', async () => {
-    vi.stubEnv('NEXT_PHASE', 'phase-production-server')
-    vi.stubEnv('POSTGRES_URL', 'postgres://user:pass@localhost:5432/app')
-    vi.stubEnv('REOWN_APPKIT_PROJECT_ID', 'project-id')
-    vi.stubEnv('SITE_URL', 'https://markets.example.com')
+    stubEnv('NEXT_PHASE', 'phase-production-server')
+    stubEnv('POSTGRES_URL', 'postgres://user:pass@localhost:5432/app')
+    stubEnv('REOWN_APPKIT_PROJECT_ID', 'project-id')
+    stubEnv('SITE_URL', 'https://markets.example.com')
 
     await deferPublicShellPrerenderIfNeeded()
 

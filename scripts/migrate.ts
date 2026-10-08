@@ -1,19 +1,19 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
+
+import { SQL } from 'bun'
 
 const MIGRATION_LOCK_NAMESPACE = 20817
 const MIGRATION_LOCK_KEY = 1
 
 type NodeFs = typeof import('node:fs')
 type NodePath = typeof import('node:path')
-type Postgres = typeof import('postgres')
 type ResolveSiteUrl = (env?: NodeJS.ProcessEnv) => string
-type Sql = ReturnType<Postgres>
+type Sql = SQL
 type ReservedSql = Awaited<ReturnType<Sql['reserve']>>
 const SITE_URL_MODULE_PATH = '../src/lib/site-url.ts'
 
 let fs: NodeFs
 let path: NodePath
-let postgres: Postgres
 let resolveSiteUrl: ResolveSiteUrl
 let scriptDirname: string
 
@@ -24,6 +24,7 @@ interface SyncCronOptions {
   siteUrl: string
   cronSecret: string
   timeoutMilliseconds?: number
+  runCondition?: string
 }
 
 interface MigrationRow {
@@ -41,14 +42,12 @@ interface CronExtensionCapabilities {
 }
 
 async function loadScriptDependencies(): Promise<void> {
-  const [fsModule, pathModule, urlModule, postgresModule, siteUrlModule] = await Promise.all([
+  const [fsModule, pathModule, urlModule, siteUrlModule] = await Promise.all([
     import('node:fs'),
     import('node:path'),
     import('node:url'),
-    import('postgres'),
     import(SITE_URL_MODULE_PATH),
   ])
-  const postgresImport = postgresModule as unknown as { default?: Postgres } & Postgres
   const siteUrlImport = siteUrlModule as unknown as {
     default?: ResolveSiteUrl
     resolveSiteUrl?: ResolveSiteUrl
@@ -56,7 +55,6 @@ async function loadScriptDependencies(): Promise<void> {
 
   fs = fsModule
   path = pathModule
-  postgres = postgresImport.default ?? postgresImport
   scriptDirname = path.dirname(urlModule.fileURLToPath(import.meta.url))
   const importedResolveSiteUrl = siteUrlImport.default ?? siteUrlImport.resolveSiteUrl
 
@@ -89,6 +87,7 @@ function buildSyncCronSql({
   siteUrl,
   cronSecret,
   timeoutMilliseconds = 20000,
+  runCondition,
 }: SyncCronOptions): string {
   const endpointUrl = joinSiteUrlPath(siteUrl, endpointPath)
   const escapedJobName = escapeSqlLiteral(jobName)
@@ -104,6 +103,8 @@ function buildSyncCronSql({
     }),
   )
 
+  const runClause = runCondition ? `WHERE (${runCondition})` : ''
+
   return `
   DO $$
   DECLARE
@@ -113,7 +114,7 @@ function buildSyncCronSql({
         url := '${escapedEndpointUrl}',
         headers := '${escapedHeaders}',
         timeout_milliseconds := ${normalizedTimeout}
-      );
+      ) ${runClause};
     $c$;
   BEGIN
     SELECT jobid INTO job_id FROM cron.job WHERE jobname = '${escapedJobName}';
@@ -128,15 +129,15 @@ function buildSyncCronSql({
 
 function resolveSupabaseMode(env: NodeJS.ProcessEnv = process.env): boolean {
   const supabaseUrl = env.SUPABASE_URL?.trim()
-  const supabaseServiceRoleKey = env.SUPABASE_SERVICE_ROLE_KEY?.trim()
+  const supabaseSecretKey = env.SUPABASE_SECRET_KEY?.trim() || env.SUPABASE_SERVICE_ROLE_KEY?.trim()
 
-  const hasAnySupabaseConfig = Boolean(supabaseUrl || supabaseServiceRoleKey)
+  const hasAnySupabaseConfig = Boolean(supabaseUrl || supabaseSecretKey)
   if (!hasAnySupabaseConfig) {
     return false
   }
 
-  if (!supabaseUrl || !supabaseServiceRoleKey) {
-    throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set together when configuring Supabase mode.')
+  if (!supabaseUrl || !supabaseSecretKey) {
+    throw new Error('SUPABASE_URL and SUPABASE_SECRET_KEY must be set together when configuring Supabase mode.')
   }
 
   return true
@@ -207,6 +208,27 @@ async function applyMigrations(sql: ReservedSql, isSupabase: boolean): Promise<v
 
   const appliedMigrationRows = await sql<MigrationRow[]>`SELECT version FROM migrations`
   const appliedMigrationVersions = new Set(appliedMigrationRows.map((row) => row.version))
+
+  // FORK: upstream rebaselined every migration into 2026_09_15_* files for fresh
+  // mainnet databases (#1496). An existing install already has that schema from
+  // the pre-rebaseline migrations, so running the baseline would re-apply ~130
+  // ALTERs and fail the deploy. Detect a legacy install and record the baseline
+  // as applied instead. Schema tweaks folded into the baseline are NOT applied
+  // here — reconcile them separately against a database copy.
+  const BASELINE_PREFIX = '2026_09_15_'
+  const isLegacyInstall = [...appliedMigrationVersions].some((version) => version < BASELINE_PREFIX)
+  const hasBaseline = [...appliedMigrationVersions].some((version) => version.startsWith(BASELINE_PREFIX))
+  if (isLegacyInstall && !hasBaseline) {
+    const baselineVersions = migrationFiles
+      .filter((file) => file.startsWith(BASELINE_PREFIX))
+      .map((file) => file.replace('.sql', ''))
+    for (const version of baselineVersions) {
+      await sql`INSERT INTO migrations (version) VALUES (${version}) ON CONFLICT (version) DO NOTHING`
+      appliedMigrationVersions.add(version)
+    }
+    console.log(`⚠️ Legacy install detected: marked ${baselineVersions.length} baseline migrations as applied`)
+  }
+
   const pendingMigrationFiles = migrationFiles.filter((file) => {
     const version = file.replace('.sql', '')
     return !appliedMigrationVersions.has(version)
@@ -338,6 +360,20 @@ async function createSyncVolumeCron(sql: ReservedSql, siteUrl: string, cronSecre
     siteUrl,
     cronSecret,
     timeoutMilliseconds: 10000,
+    runCondition: `EXISTS (
+      SELECT 1
+      FROM public.markets AS market
+      LEFT JOIN public.jobs AS job
+        ON job.job_type = 'sync_market_volume'
+        AND job.dedupe_key = market.condition_id
+      WHERE market.is_active IS TRUE
+        AND market.is_resolved IS FALSE
+        AND (
+          job.id IS NULL
+          OR (job.status = 'completed' AND job.updated_at < NOW() - interval '10 minutes')
+          OR (job.status = 'failed' AND job.updated_at < NOW() - interval '1 hour')
+        )
+    )`,
   })
 
   await createSyncCron(sql, {
@@ -347,6 +383,15 @@ async function createSyncVolumeCron(sql: ReservedSql, siteUrl: string, cronSecre
     siteUrl,
     cronSecret,
     timeoutMilliseconds: 30000,
+    runCondition: `EXISTS (
+      SELECT 1
+      FROM public.jobs AS job
+      WHERE job.job_type = 'sync_market_volume'
+        AND (
+          (job.status = 'pending' AND job.available_at <= NOW())
+          OR (job.status = 'processing' AND job.reserved_at <= NOW() - interval '2 minutes')
+        )
+    )`,
   })
 }
 
@@ -358,15 +403,117 @@ async function createSyncTranslationsCron(sql: ReservedSql, siteUrl: string, cro
     siteUrl,
     cronSecret,
     timeoutMilliseconds: 20000,
+    // Missing or malformed locale settings default to all supported locales in parseEnabledLocales.
+    runCondition: `(
+      EXISTS (
+        SELECT 1
+        FROM public.settings AS locale_setting
+        WHERE locale_setting."group" = 'i18n'
+          AND locale_setting.key = 'enabled_locales'
+          AND locale_setting.value ~ '^\\s*\\[\\s*("[^"\\\\]*"(\\s*,\\s*"[^"\\\\]*")*)?\\s*\\]\\s*$'
+          AND locale_setting.value ~ '"(de|es|pt|fr|zh|ja|ar|ru|it|pl|ko)"'
+      )
+      OR NOT EXISTS (
+        SELECT 1
+        FROM public.settings AS locale_setting
+        WHERE locale_setting."group" = 'i18n'
+          AND locale_setting.key = 'enabled_locales'
+          AND locale_setting.value ~ '^\\s*\\[\\s*("[^"\\\\]*"(\\s*,\\s*"[^"\\\\]*")*)?\\s*\\]\\s*$'
+      )
+    )
+    AND (
+      COALESCE((
+        SELECT lower(btrim(setting.value))
+        FROM public.settings AS setting
+        WHERE setting."group" = 'i18n'
+          AND setting.key = 'automatic_translations_enabled'
+        LIMIT 1
+      ), 'true') NOT IN ('false', '0', 'no', 'off', 'disabled')
+      OR COALESCE((
+        SELECT lower(btrim(setting.value))
+        FROM public.settings AS setting
+        WHERE setting."group" = 'i18n'
+          AND setting.key = 'rules_translations_enabled'
+        LIMIT 1
+      ), 'false') IN ('true', '1', 'yes', 'on', 'enabled')
+    )`,
   })
 
   await createSyncCron(sql, {
     jobName: 'sync-translations',
-    schedule: '4,13,22,31,40,49,58 * * * *',
+    schedule: '* * * * *',
     endpointPath: '/api/sync/translations',
     siteUrl,
     cronSecret,
     timeoutMilliseconds: 60000,
+    runCondition: `EXISTS (
+      SELECT 1
+      FROM public.jobs AS job
+      WHERE job.job_type IN (
+        'translate_event_title',
+        'translate_event_rules',
+        'translate_tag_name'
+      )
+        AND EXISTS (
+          SELECT 1
+          FROM public.settings AS ai_setting
+          WHERE ai_setting."group" = 'ai'
+            AND ai_setting.key = 'openrouter_api_key'
+            AND btrim(ai_setting.value) <> ''
+        )
+        AND (
+          (job.status = 'pending' AND job.available_at <= NOW())
+          OR (
+            job.status = 'processing'
+            AND (job.reserved_at IS NULL OR job.reserved_at <= NOW() - interval '10 minutes')
+          )
+        )
+        AND split_part(job.dedupe_key, ':', 2) IN (
+          'de', 'es', 'pt', 'fr', 'zh', 'ja', 'ar', 'ru', 'it', 'pl', 'ko'
+        )
+        AND (
+          EXISTS (
+            SELECT 1
+            FROM public.settings AS locale_setting
+            WHERE locale_setting."group" = 'i18n'
+              AND locale_setting.key = 'enabled_locales'
+              AND locale_setting.value ~ '^\\s*\\[\\s*("[^"\\\\]*"(\\s*,\\s*"[^"\\\\]*")*)?\\s*\\]\\s*$'
+              AND strpos(
+                locale_setting.value,
+                '"' || split_part(job.dedupe_key, ':', 2) || '"'
+              ) > 0
+          )
+          OR NOT EXISTS (
+            SELECT 1
+            FROM public.settings AS locale_setting
+            WHERE locale_setting."group" = 'i18n'
+              AND locale_setting.key = 'enabled_locales'
+              AND locale_setting.value ~ '^\\s*\\[\\s*("[^"\\\\]*"(\\s*,\\s*"[^"\\\\]*")*)?\\s*\\]\\s*$'
+          )
+        )
+        AND (
+          (
+            job.job_type IN ('translate_event_title', 'translate_tag_name')
+            AND COALESCE((
+              SELECT lower(btrim(setting.value))
+              FROM public.settings AS setting
+              WHERE setting."group" = 'i18n'
+                AND setting.key = 'automatic_translations_enabled'
+              LIMIT 1
+            ), 'true') NOT IN ('false', '0', 'no', 'off', 'disabled')
+          )
+          OR (
+            job.job_type = 'translate_event_rules'
+            AND COALESCE((
+              SELECT lower(btrim(setting.value))
+              FROM public.settings AS setting
+              WHERE setting."group" = 'i18n'
+                AND setting.key = 'rules_translations_enabled'
+              LIMIT 1
+            ), 'false') IN ('true', '1', 'yes', 'on', 'enabled')
+          )
+        )
+    )`,
   })
 }
 
@@ -377,6 +524,17 @@ async function createSyncResolutionCron(sql: ReservedSql, siteUrl: string, cronS
     endpointPath: '/api/sync/resolution',
     siteUrl,
     cronSecret,
+    runCondition: `EXISTS (
+        SELECT 1 FROM public.markets AS market
+        WHERE market.is_resolved IS NOT TRUE
+      )
+      OR EXISTS (
+        SELECT 1
+        FROM public.outcomes AS outcome
+        JOIN public.conditions AS resolution_condition ON resolution_condition.id = outcome.condition_id
+        WHERE outcome.payout_value IS NULL
+          AND resolution_condition.resolution_price IS NOT NULL
+      )`,
   })
 }
 
@@ -388,6 +546,20 @@ async function createSyncSportsScoresCron(sql: ReservedSql, siteUrl: string, cro
     siteUrl,
     cronSecret,
     timeoutMilliseconds: 30000,
+    runCondition: `EXISTS (
+      SELECT 1
+      FROM public.event_sports AS sport
+      WHERE sport.sports_source_provider IS NOT NULL
+        AND (sport.sports_source_event_id IS NOT NULL OR sport.sports_source_game_id IS NOT NULL)
+        AND (sport.sports_ended IS FALSE OR sport.sports_ended IS NULL)
+        AND (
+          sport.sports_live IS TRUE
+          OR (
+            sport.sports_start_time >= NOW() - interval '12 hours'
+            AND sport.sports_start_time <= NOW() + interval '15 minutes'
+          )
+        )
+    )`,
   })
 }
 
@@ -399,6 +571,12 @@ async function createSyncEventCreationsCron(sql: ReservedSql, siteUrl: string, c
     siteUrl,
     cronSecret,
     timeoutMilliseconds: 10000,
+    runCondition: `EXISTS (
+      SELECT 1
+      FROM public.event_creations AS draft
+      WHERE draft.status = 'scheduled'
+        AND draft.deploy_at <= NOW()
+    )`,
   })
 
   await createSyncCron(sql, {
@@ -407,6 +585,13 @@ async function createSyncEventCreationsCron(sql: ReservedSql, siteUrl: string, c
     endpointPath: '/api/sync/event-creations',
     siteUrl,
     cronSecret,
+    runCondition: `EXISTS (
+      SELECT 1
+      FROM public.jobs AS job
+      WHERE job.job_type = 'deploy_event_creation'
+        AND job.status = 'pending'
+        AND job.available_at <= NOW()
+    )`,
   })
 }
 
@@ -509,7 +694,9 @@ function resolveMigrationSslOption(connectionString: string): false | { rejectUn
   } catch {
     // Fall through to no-TLS for unparseable connection strings.
   }
-  return false
+
+  // Preserve SSL options: Supabase can require TLS for migration connections too.
+  return migrationUrl
 }
 
 async function acquireMigrationLock(sql: ReservedSql): Promise<void> {
@@ -529,11 +716,10 @@ async function run(): Promise<void> {
 
   await loadScriptDependencies()
 
-  const sql = postgres(connectionString, {
+  const sql = new SQL(connectionString, {
     max: 1,
-    connect_timeout: 30,
-    idle_timeout: 5,
-    ssl: resolveMigrationSslOption(connectionString),
+    connectionTimeout: 30,
+    idleTimeout: 0,
   })
   let reserved: ReservedSql | null = null
   let lockAcquired = false

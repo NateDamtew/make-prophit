@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
-import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
 import { createClient } from '@supabase/supabase-js'
+import { S3Client } from 'bun'
 import 'server-only'
 
 import type { S3StorageConfig } from '@/lib/storage'
@@ -14,6 +14,7 @@ export interface UploadPublicAssetOptions {
   contentType: string
   cacheControl?: string
   upsert?: boolean
+  timeoutMs?: number
 }
 
 const globalForStorageUpload = globalThis as unknown as {
@@ -22,18 +23,34 @@ const globalForStorageUpload = globalThis as unknown as {
   s3ClientKey: string | undefined
 }
 
-function createSupabaseAdmin(): SupabaseClient {
+function createSupabaseAdmin(timeoutMs?: number): SupabaseClient {
   const config = resolveStorageRuntimeConfig()
-  if (config.provider !== 'supabase' || !config.supabaseUrl || !config.supabaseServiceRoleKey) {
+  if (config.provider !== 'supabase' || !config.supabaseUrl || !config.supabaseSecretKey) {
     throw new Error(
-      'Supabase is not configured. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY or use S3-compatible storage variables.',
+      'Supabase is not configured. Set SUPABASE_URL and SUPABASE_SECRET_KEY or use S3-compatible storage variables.',
     )
   }
 
-  return createClient(config.supabaseUrl, config.supabaseServiceRoleKey)
+  if (!timeoutMs) {
+    return createClient(config.supabaseUrl, config.supabaseSecretKey)
+  }
+
+  return createClient(config.supabaseUrl, config.supabaseSecretKey, {
+    global: {
+      fetch: ((input: RequestInfo | URL, init?: RequestInit) => {
+        const timeoutSignal = AbortSignal.timeout(timeoutMs)
+        const signal = init?.signal ? AbortSignal.any([init.signal, timeoutSignal]) : timeoutSignal
+        return fetch(input, { ...init, signal })
+      }) as typeof fetch,
+    },
+  })
 }
 
-function getSupabaseAdmin(): SupabaseClient {
+function getSupabaseAdmin(timeoutMs?: number): SupabaseClient {
+  if (timeoutMs) {
+    return createSupabaseAdmin(timeoutMs)
+  }
+
   if (!globalForStorageUpload.supabaseAdmin) {
     globalForStorageUpload.supabaseAdmin = createSupabaseAdmin()
   }
@@ -46,9 +63,20 @@ function buildS3ClientKey(config: S3StorageConfig) {
     config.region,
     config.bucket,
     config.accessKeyId,
+    config.secretAccessKey,
     config.publicUrl ?? '',
     config.forcePathStyle ? '1' : '0',
   ].join('|')
+}
+
+function buildS3ClientEndpoint(config: S3StorageConfig) {
+  if (!config.endpoint || config.forcePathStyle) {
+    return config.endpoint ?? undefined
+  }
+
+  const endpoint = new URL(config.endpoint)
+  endpoint.hostname = `${config.bucket}.${endpoint.hostname}`
+  return endpoint.toString().replace(/\/$/, '')
 }
 
 function getS3Client(config: S3StorageConfig): S3Client {
@@ -56,12 +84,11 @@ function getS3Client(config: S3StorageConfig): S3Client {
   if (!globalForStorageUpload.s3Client || globalForStorageUpload.s3ClientKey !== nextClientKey) {
     globalForStorageUpload.s3Client = new S3Client({
       region: config.region,
-      endpoint: config.endpoint ?? undefined,
-      forcePathStyle: config.forcePathStyle,
-      credentials: {
-        accessKeyId: config.accessKeyId,
-        secretAccessKey: config.secretAccessKey,
-      },
+      bucket: config.bucket,
+      endpoint: buildS3ClientEndpoint(config),
+      accessKeyId: config.accessKeyId,
+      secretAccessKey: config.secretAccessKey,
+      virtualHostedStyle: Boolean(config.endpoint && !config.forcePathStyle),
     })
     globalForStorageUpload.s3ClientKey = nextClientKey
   }
@@ -69,28 +96,31 @@ function getS3Client(config: S3StorageConfig): S3Client {
   return globalForStorageUpload.s3Client
 }
 
-function normalizeS3Body(body: UploadBody) {
+function normalizeS3Body(body: UploadBody): string | ArrayBuffer {
   if (typeof body === 'string') {
     return body
   }
 
   if (body instanceof ArrayBuffer) {
-    return new Uint8Array(body)
+    return body
   }
 
-  return body
+  return Uint8Array.from(body).buffer
 }
 
 export async function uploadPublicAsset(assetPath: string, body: UploadBody, options: UploadPublicAssetOptions) {
   const normalizedPath = normalizeAssetPath(assetPath)
   const config = resolveStorageRuntimeConfig()
+  const timeoutSignal = options.timeoutMs ? AbortSignal.timeout(options.timeoutMs) : undefined
 
   if (config.provider === 'supabase') {
-    const { error } = await getSupabaseAdmin().storage.from(ASSETS_BUCKET).upload(normalizedPath, body, {
-      contentType: options.contentType,
-      cacheControl: options.cacheControl,
-      upsert: options.upsert,
-    })
+    const { error } = await getSupabaseAdmin(options.timeoutMs)
+      .storage.from(ASSETS_BUCKET)
+      .upload(normalizedPath, body, {
+        contentType: options.contentType,
+        cacheControl: options.cacheControl,
+        upsert: options.upsert,
+      })
 
     return { error: error?.message ?? null }
   }
@@ -99,16 +129,25 @@ export async function uploadPublicAsset(assetPath: string, body: UploadBody, opt
     try {
       const client = getS3Client(config.s3)
       const shouldUpsert = options.upsert === true
-      await client.send(
-        new PutObjectCommand({
-          Bucket: config.s3.bucket,
-          Key: normalizedPath,
-          Body: normalizeS3Body(body),
-          ContentType: options.contentType,
-          CacheControl: options.cacheControl,
-          IfNoneMatch: shouldUpsert ? undefined : '*',
-        }),
-      )
+      const uploadUrl = client.presign(normalizedPath, {
+        method: 'PUT',
+        expiresIn: 3600,
+      })
+      const response = await fetch(uploadUrl, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': options.contentType,
+          ...(options.cacheControl ? { 'Cache-Control': options.cacheControl } : {}),
+          ...(shouldUpsert ? {} : { 'If-None-Match': '*' }),
+        },
+        body: normalizeS3Body(body),
+        signal: timeoutSignal,
+      })
+
+      if (!response.ok) {
+        return { error: `S3 upload failed: HTTP ${response.status} ${response.statusText}`.trim() }
+      }
+
       return { error: null }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
@@ -117,7 +156,6 @@ export async function uploadPublicAsset(assetPath: string, body: UploadBody, opt
   }
 
   return {
-    error:
-      'Storage provider is not configured. Set SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY or S3_BUCKET + S3 credentials.',
+    error: 'Storage provider is not configured. Set SUPABASE_URL + SUPABASE_SECRET_KEY or S3_BUCKET + S3 credentials.',
   }
 }

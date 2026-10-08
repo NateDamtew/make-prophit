@@ -33,13 +33,20 @@ interface ToastOptions {
   icon?: ReactNode
   id?: number | string
   image?: ReactNode
+  onClose?: () => void
   onClick?: () => void
+}
+
+interface ToastUpdateOptions {
+  description?: ReactNode
+  duration?: number
 }
 
 interface ToastFunction {
   (title: ReactNode, options?: ToastOptions): string
   close(id?: number | string): void
   dismiss(id?: number | string): void
+  update(id: number | string, title: ReactNode, options?: ToastUpdateOptions): void
   error(title: ReactNode, options?: ToastOptions): string
   info(title: ReactNode, options?: ToastOptions): string
   loading(title: ReactNode, options?: ToastOptions): string
@@ -55,7 +62,7 @@ interface ToastFunction {
 const toastManager = ToastPrimitive.createToastManager<ToastData>()
 
 function showToast(type: ToastType, title: ReactNode, options: ToastOptions = {}) {
-  const { action, content, description, duration, icon, id, image, onClick } = options
+  const { action, content, description, duration, icon, id, image, onClick, onClose } = options
 
   return toastManager.add({
     actionProps: action
@@ -71,12 +78,20 @@ function showToast(type: ToastType, title: ReactNode, options: ToastOptions = {}
     timeout: duration,
     title,
     type,
+    onClose,
   })
 }
 
 const toast = Object.assign((title: ReactNode, options?: ToastOptions) => showToast('default', title, options), {
   close: (id?: number | string) => toastManager.close(id === undefined ? undefined : String(id)),
   dismiss: (id?: number | string) => toastManager.close(id === undefined ? undefined : String(id)),
+  update: (id: number | string, title: ReactNode, options: ToastUpdateOptions = {}) => {
+    toastManager.update(String(id), {
+      description: options.description,
+      title,
+      timeout: options.duration,
+    })
+  },
   error: (title: ReactNode, options?: ToastOptions) => showToast('error', title, options),
   info: (title: ReactNode, options?: ToastOptions) => showToast('info', title, options),
   loading: (title: ReactNode, options?: ToastOptions) => showToast('loading', title, options),
@@ -257,33 +272,46 @@ function ToastList() {
       >
         <ToastContent
           className={cn(
-            hasAction
-              ? 'grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-x-3 gap-y-1.5'
-              : 'flex items-center gap-2.5',
+            customContent != null
+              ? 'flex flex-col items-stretch gap-3 pr-4'
+              : hasAction
+                ? 'grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-x-3 gap-y-1.5'
+                : 'flex items-center gap-2.5',
           )}
         >
-          {hasMedia && (
-            <span
-              data-slot="toast-media"
-              className={cn(
-                'flex shrink-0 items-center gap-2 [&_svg]:pointer-events-none',
-                hasAction && 'col-start-1 mt-0.5',
-                hasDescription && 'row-span-2',
-              )}
-            >
-              {image}
-              {icon && <span data-slot="toast-icon">{icon}</span>}
-            </span>
-          )}
           {customContent != null ? (
-            <div
-              data-slot="toast-body"
-              className={cn('min-w-0', hasAction && (hasMedia ? 'col-start-2 col-end-3' : 'col-start-1 col-end-3'))}
-            >
-              {customContent}
-            </div>
+            <>
+              <div data-slot="toast-header" className="flex min-w-0 items-center gap-2.5 pr-8">
+                {hasMedia && (
+                  <span
+                    data-slot="toast-media"
+                    className="flex shrink-0 items-center gap-2 [&_svg]:pointer-events-none"
+                  >
+                    {image}
+                    {icon && <span data-slot="toast-icon">{icon}</span>}
+                  </span>
+                )}
+                <ToastTitle className="flex-1" />
+              </div>
+              <div data-slot="toast-body" className="min-w-0">
+                {customContent}
+              </div>
+            </>
           ) : hasAction ? (
             <>
+              {hasMedia && (
+                <span
+                  data-slot="toast-media"
+                  className={cn(
+                    'flex shrink-0 items-center gap-2 [&_svg]:pointer-events-none',
+                    'col-start-1 mt-0.5',
+                    hasDescription && 'row-span-2',
+                  )}
+                >
+                  {image}
+                  {icon && <span data-slot="toast-icon">{icon}</span>}
+                </span>
+              )}
               <div
                 data-slot="toast-body"
                 className={cn(
@@ -304,16 +332,24 @@ function ToastList() {
               )}
             </>
           ) : (
-            <div data-slot="toast-body" className="flex min-w-0 flex-col gap-1">
-              <ToastTitle />
-              {toastItem.description != null && <ToastDescription />}
-            </div>
+            <>
+              {hasMedia && (
+                <span data-slot="toast-media" className="flex shrink-0 items-center gap-2 [&_svg]:pointer-events-none">
+                  {image}
+                  {icon && <span data-slot="toast-icon">{icon}</span>}
+                </span>
+              )}
+              <div data-slot="toast-body" className="flex min-w-0 flex-col gap-1">
+                <ToastTitle />
+                {toastItem.description != null && <ToastDescription />}
+              </div>
+            </>
           )}
           {toastItem.actionProps && (
             <div
               data-slot="toast-actions"
               className={cn(
-                'col-start-3 self-center justify-self-end',
+                customContent != null ? 'self-end' : 'col-start-3 self-center justify-self-end',
                 hasDescription ? 'row-start-2 -mr-8' : 'row-start-1',
               )}
             >

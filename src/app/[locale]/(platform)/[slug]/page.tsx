@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 
-import { setRequestLocale } from 'next-intl/server'
+import { cacheTag } from 'next/cache'
 import { notFound } from 'next/navigation'
 
 import {
@@ -13,7 +13,10 @@ import {
   PublicProfilePageContent,
 } from '@/app/[locale]/(platform)/_lib/public-profile-page'
 import { getRootLocale } from '@/i18n/root-locale'
+import { cacheTags } from '@/lib/cache-tags'
+import { hasDatabaseEnv } from '@/lib/db/env'
 import { isPlatformReservedRootSlug, normalizePublicProfileSlug } from '@/lib/platform-routing'
+import { deferPublicShellPrerenderIfNeeded, shouldPrerenderPublicShell } from '@/lib/public-shell-rendering'
 import { shouldBypassPublicShellPlaceholder, STATIC_PARAMS_PLACEHOLDER } from '@/lib/static-params'
 
 export const instant = false
@@ -44,7 +47,13 @@ async function generatePlatformSlugMetadata({ slug }: { slug: string }): Promise
   return buildDynamicHomeCategoryMetadata(slug)
 }
 
-async function renderPlatformSlugPage({ slug }: { slug: string }) {
+async function renderPlatformSlugPage({
+  deferHomeRuntimePrerender = true,
+  slug,
+}: {
+  deferHomeRuntimePrerender?: boolean
+  slug: string
+}) {
   if (slug === STATIC_PARAMS_PLACEHOLDER) {
     if (shouldBypassPublicShellPlaceholder(slug)) {
       return null
@@ -67,13 +76,36 @@ async function renderPlatformSlugPage({ slug }: { slug: string }) {
     notFound()
   }
 
-  return <DynamicHomeCategoryPageContent slug={slug} />
+  return <DynamicHomeCategoryPageContent deferHomeRuntimePrerender={deferHomeRuntimePrerender} slug={slug} />
+}
+
+async function renderCachedPlatformCategoryPage({ slug }: { slug: string }) {
+  'use cache'
+
+  const locale = await getRootLocale()
+  cacheTag(cacheTags.eventsList, cacheTags.mainTags(locale), cacheTags.settings)
+
+  return renderPlatformSlugPage({
+    deferHomeRuntimePrerender: false,
+    slug,
+  })
+}
+
+async function renderRuntimePlatformCategoryPage({ slug }: { slug: string }) {
+  await deferPublicShellPrerenderIfNeeded()
+
+  if (!hasDatabaseEnv()) {
+    return renderPlatformSlugPage({
+      deferHomeRuntimePrerender: false,
+      slug,
+    })
+  }
+
+  return renderCachedPlatformCategoryPage({ slug })
 }
 
 export async function generateMetadata({ params }: PageProps<'/[locale]/[slug]'>): Promise<Metadata> {
   const { slug } = await params
-  setRequestLocale(await getRootLocale())
-
   return await generatePlatformSlugMetadata({
     slug,
   })
@@ -81,9 +113,13 @@ export async function generateMetadata({ params }: PageProps<'/[locale]/[slug]'>
 
 export default async function PlatformSlugPage({ params }: PageProps<'/[locale]/[slug]'>) {
   const { slug } = await params
-  setRequestLocale(await getRootLocale())
+  const profileSlug = normalizePublicProfileSlug(slug)
 
-  return await renderPlatformSlugPage({
-    slug,
-  })
+  if (profileSlug.type !== 'invalid') {
+    return await renderPlatformSlugPage({ slug })
+  }
+
+  const renderPage = shouldPrerenderPublicShell() ? renderCachedPlatformCategoryPage : renderRuntimePlatformCategoryPage
+
+  return await renderPage({ slug })
 }

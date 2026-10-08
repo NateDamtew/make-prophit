@@ -28,7 +28,7 @@ import { useLiFiWalletTokens } from '@/hooks/useLiFiWalletTokens'
 import { useSiteIdentity } from '@/hooks/useSiteIdentity'
 import { formatDisplayAmount } from '@/lib/amount-input'
 import { COLLATERAL_TOKEN_ADDRESS } from '@/lib/contracts'
-import { DEFAULT_CHAIN_ID, IS_TEST_MODE } from '@/lib/network'
+import { DEFAULT_CHAIN_ID, IS_TEST_MODE, POLYGON_MAINNET_CHAIN_ID } from '@/lib/network'
 import { cn } from '@/lib/utils'
 import { defaultViemNetwork } from '@/lib/viem-network'
 
@@ -45,11 +45,12 @@ export function WalletDepositModal(props: WalletDepositModalProps) {
   const {
     open,
     onOpenChange,
+    onBridge,
     isMobile,
     walletAddress,
     walletEoaAddress,
     siteName,
-    meldUrl,
+    canBuyMeld,
     hasDeployedDepositWallet,
     view,
     onViewChange,
@@ -65,6 +66,8 @@ export function WalletDepositModal(props: WalletDepositModalProps) {
   const site = useSiteIdentity()
   const siteLabel = siteName ?? site.name
   const isDirectTestModeDeposit = IS_TEST_MODE
+  const canUseLiFiBridge =
+    DEFAULT_CHAIN_ID === POLYGON_MAINNET_CHAIN_ID && hasDeployedDepositWallet && Boolean(walletAddress)
   const tokensQueryEnabled = open && (view === 'wallets' || view === 'amount' || view === 'confirm')
   const { balance: directWalletBalance, isLoadingBalance: isLoadingDirectWalletBalance } = useBalance({
     depositWalletAddress: walletEoaAddress,
@@ -102,7 +105,11 @@ export function WalletDepositModal(props: WalletDepositModalProps) {
       },
     ]
   }, [directWalletBalance.raw, directWalletBalance.symbol, isDirectTestModeDeposit, walletEoaAddress])
-  const { items: lifiWalletTokenItems, isLoadingTokens: isLoadingLiFiTokens } = useLiFiWalletTokens(walletEoaAddress, {
+  const {
+    items: lifiWalletTokenItems,
+    isLoadingTokens: isLoadingLiFiTokens,
+    isError: isLiFiTokensError,
+  } = useLiFiWalletTokens(walletEoaAddress, {
     enabled: tokensQueryEnabled && !isDirectTestModeDeposit,
   })
   const walletTokenItems = isDirectTestModeDeposit ? directWalletTokenItems : lifiWalletTokenItems
@@ -156,14 +163,13 @@ export function WalletDepositModal(props: WalletDepositModalProps) {
   const content =
     view === 'fund' ? (
       <WalletFundMenu
-        onBuy={(url) => {
-          onBuy(url)
-        }}
+        onBuy={onBuy}
+        onBridge={onBridge}
         onReceive={() => onViewChange('receive')}
         onWallet={() => onViewChange('wallets')}
-        disabledBuy={!meldUrl}
+        canBridge={canUseLiFiBridge}
         disabledReceive={!hasDeployedDepositWallet}
-        meldUrl={meldUrl}
+        canBuyMeld={canBuyMeld}
         walletEoaAddress={walletEoaAddress}
         walletBalance={effectiveWalletBalance}
         isBalanceLoading={isEffectiveWalletBalanceLoading}
@@ -182,9 +188,11 @@ export function WalletDepositModal(props: WalletDepositModalProps) {
         onContinue={() => onViewChange('amount')}
         items={walletTokenItems}
         isLoadingTokens={isLoadingTokens}
+        hasError={!isDirectTestModeDeposit && isLiFiTokensError}
         selectedId={selectedTokenId}
         onSelect={setPreferredSelectedTokenId}
         emptyMessage={isDirectTestModeDeposit ? t('No Amoy USDC balance found.') : undefined}
+        errorMessage={isDirectTestModeDeposit ? undefined : t('Could not load wallet balances. Please try again.')}
       />
     ) : view === 'amount' ? (
       <WalletAmountStep

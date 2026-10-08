@@ -1,8 +1,8 @@
-import { S3Client } from '@aws-sdk/client-s3'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, spyOn, jest } from 'bun:test'
 
 const STORAGE_ENV_KEYS = [
   'SUPABASE_URL',
+  'SUPABASE_SECRET_KEY',
   'SUPABASE_SERVICE_ROLE_KEY',
   'S3_BUCKET',
   'S3_ENDPOINT',
@@ -28,20 +28,17 @@ function clearStorageEnv() {
 }
 
 async function loadStorageModule() {
-  vi.resetModules()
   return await import('@/lib/storage')
 }
 
 async function loadStorageUploadModule() {
-  vi.resetModules()
   return await import('@/lib/storage-upload')
 }
 
 describe('storage compatibility', () => {
   beforeEach(() => {
     clearStorageEnv()
-    vi.restoreAllMocks()
-    vi.resetModules()
+    jest.restoreAllMocks()
   })
 
   afterEach(() => {
@@ -53,19 +50,36 @@ describe('storage compatibility', () => {
         process.env[key] = snapshotValue
       }
     })
-    vi.restoreAllMocks()
-    vi.resetModules()
+    jest.restoreAllMocks()
   })
 
   it('uses Supabase public URL when Supabase env vars are configured', async () => {
     process.env.SUPABASE_URL = 'https://demo.supabase.co'
-    process.env.SUPABASE_SERVICE_ROLE_KEY = 'service-role-key'
+    process.env.SUPABASE_SECRET_KEY = 'secret-key'
 
-    const { getPublicAssetUrl } = await loadStorageModule()
+    const { getPublicAssetUrl, resolveStorageRuntimeConfig } = await loadStorageModule()
     expect(getPublicAssetUrl('theme/logo.png')).toBe(
       'https://demo.supabase.co/storage/v1/object/public/kuest-assets/theme/logo.png',
     )
     expect(getPublicAssetUrl('https://cdn.example.com/direct.png')).toBe('https://cdn.example.com/direct.png')
+    expect(resolveStorageRuntimeConfig().supabaseSecretKey).toBe('secret-key')
+  })
+
+  it('falls back to the legacy service role key', async () => {
+    process.env.SUPABASE_URL = 'https://demo.supabase.co'
+    process.env.SUPABASE_SERVICE_ROLE_KEY = 'legacy-service-role-key'
+
+    const { resolveStorageRuntimeConfig } = await loadStorageModule()
+    expect(resolveStorageRuntimeConfig().supabaseSecretKey).toBe('legacy-service-role-key')
+  })
+
+  it('prefers the secret key when both Supabase keys are configured', async () => {
+    process.env.SUPABASE_URL = 'https://demo.supabase.co'
+    process.env.SUPABASE_SECRET_KEY = 'secret-key'
+    process.env.SUPABASE_SERVICE_ROLE_KEY = 'legacy-service-role-key'
+
+    const { resolveStorageRuntimeConfig } = await loadStorageModule()
+    expect(resolveStorageRuntimeConfig().supabaseSecretKey).toBe('secret-key')
   })
 
   it('uses S3 public URL when Supabase is not configured', async () => {
@@ -94,7 +108,7 @@ describe('storage compatibility', () => {
 
     const { getPublicAssetUrl } = await loadStorageModule()
     expect(() => getPublicAssetUrl('users/avatar.jpg')).toThrow(
-      'SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set together.',
+      'SUPABASE_URL and SUPABASE_SECRET_KEY must be set together.',
     )
   })
 
@@ -110,16 +124,47 @@ describe('storage compatibility', () => {
     process.env.S3_ACCESS_KEY_ID = 's3-key'
     process.env.S3_SECRET_ACCESS_KEY = 's3-secret'
 
-    const sendMock = vi.spyOn(S3Client.prototype, 'send').mockResolvedValue({} as never)
+    const fetchMock = spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 200 }))
     const { uploadPublicAsset } = await loadStorageUploadModule()
     const { error } = await uploadPublicAsset('users/avatar.jpg', 'binary-body', {
       contentType: 'image/jpeg',
+      cacheControl: '31536000',
       upsert: false,
     })
 
     expect(error).toBeNull()
-    expect(sendMock).toHaveBeenCalledTimes(1)
-    const command = sendMock.mock.calls[0]?.[0] as { input?: { IfNoneMatch?: string } }
-    expect(command.input?.IfNoneMatch).toBe('*')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, request] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toContain('/kuest-assets/users/avatar.jpg')
+    expect(request.method).toBe('PUT')
+    expect(request.headers).toEqual({
+      'Content-Type': 'image/jpeg',
+      'Cache-Control': '31536000',
+      'If-None-Match': '*',
+    })
+    expect(request.body).toBe('binary-body')
+  })
+
+  it('uses a virtual-hosted S3 endpoint when path-style addressing is disabled', async () => {
+    process.env.S3_BUCKET = 'kuest-assets'
+    process.env.S3_ENDPOINT = 'https://s3.example.com'
+    process.env.S3_FORCE_PATH_STYLE = 'false'
+    process.env.S3_ACCESS_KEY_ID = 's3-key'
+    process.env.S3_SECRET_ACCESS_KEY = 's3-secret'
+
+    const fetchMock = spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 200 }))
+    const { uploadPublicAsset } = await loadStorageUploadModule()
+    const { error } = await uploadPublicAsset('users/avatar.jpg', 'binary-body', {
+      contentType: 'image/jpeg',
+      upsert: true,
+      timeoutMs: 1000,
+    })
+
+    expect(error).toBeNull()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, request] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toContain('https://kuest-assets.s3.example.com/users/avatar.jpg')
+    expect(request.headers).toEqual({ 'Content-Type': 'image/jpeg' })
+    expect(request.signal).toBeInstanceOf(AbortSignal)
   })
 })

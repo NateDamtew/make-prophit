@@ -1,15 +1,17 @@
 import { privateKeyToAccount } from 'viem/accounts'
 import { wrapTypedDataSignature } from 'viem/experimental/erc7739'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'bun:test'
 import {
+
+
+const { EIP712_TYPES, getExchangeEip712Domain, ORDER_SIDE, ORDER_TYPE } = await import('@/lib/constants')
+const { buildOrderPayload } = await import('@/lib/orders')
+const { signOrderPayload } = await import('@/lib/orders/signing')
   buildOrderMessage,
   buildSignableEnvelope,
   deserializeOrder,
   serializeOrder,
 } from '@/app/api/tma/_lib'
-import { EIP712_TYPES, getExchangeEip712Domain, ORDER_SIDE, ORDER_TYPE } from '@/lib/constants'
-import { buildOrderPayload } from '@/lib/orders'
-import { signOrderPayload } from '@/lib/orders/signing'
 
 const TEST_KEY = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d'
 

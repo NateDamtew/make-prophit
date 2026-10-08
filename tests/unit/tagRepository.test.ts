@@ -1,26 +1,75 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 
-const mocks = vi.hoisted(() => ({
-  cacheTag: vi.fn(),
-  revalidatePath: vi.fn(),
-  runQuery: vi.fn(),
+import { hoisted, stubEnv, unstubAllEnvs } from '../bun-test-helpers'
+
+const mocks = hoisted(() => ({
+  cacheTag: mock(),
+  revalidatePath: mock(),
+  runQuery: mock(),
 }))
 
-vi.mock('next/cache', () => ({
+void mock.module('next/cache', () => ({
   cacheTag: (...args: any[]) => mocks.cacheTag(...args),
   revalidatePath: (...args: any[]) => mocks.revalidatePath(...args),
 }))
 
-vi.mock('@/lib/db/utils/run-query', () => ({
+void mock.module('@/lib/db/utils/run-query', () => ({
   runQuery: (...args: any[]) => mocks.runQuery(...args),
 }))
 
+afterEach(() => {
+  unstubAllEnvs()
+})
+
 describe('tagRepository.getMainTags', () => {
   beforeEach(() => {
-    vi.resetModules()
+    stubEnv('POSTGRES_URL', 'postgres://user:pass@localhost:5432/app')
     mocks.cacheTag.mockReset()
     mocks.revalidatePath.mockReset()
     mocks.runQuery.mockReset()
+  })
+
+  it('keeps missing database output outside the cache and reads tags once runtime env is configured', async () => {
+    stubEnv('POSTGRES_URL', '')
+    const { TagRepository } = await import('@/lib/db/queries/tag')
+
+    expect(await TagRepository.getMainTags('en')).toEqual({
+      data: null,
+      error: 'Database env vars are not configured.',
+      globalChilds: [],
+    })
+    expect(mocks.cacheTag).not.toHaveBeenCalled()
+    expect(mocks.runQuery).not.toHaveBeenCalled()
+
+    stubEnv('POSTGRES_URL', 'postgres://user:pass@localhost:5432/app')
+    const now = new Date('2026-10-07T12:00:00.000Z')
+    mocks.runQuery
+      .mockResolvedValueOnce({
+        data: [
+          {
+            id: 1,
+            name: 'Crypto',
+            slug: 'crypto',
+            is_main_category: true,
+            is_hidden: false,
+            display_order: 1,
+            active_markets_count: 0,
+            created_at: now,
+            updated_at: now,
+          },
+        ],
+        error: null,
+      })
+      .mockResolvedValueOnce({ data: [], error: null })
+      .mockResolvedValueOnce({ data: [], error: null })
+      .mockResolvedValueOnce({ data: [{ current_timestamp_ms: now.getTime() }], error: null })
+
+    const result = await TagRepository.getMainTags('en')
+
+    expect(result.error).toBeNull()
+    expect(result.data?.map((tag) => tag.slug)).toEqual(['crypto'])
+    expect(mocks.cacheTag).toHaveBeenCalledOnce()
+    expect(mocks.runQuery).toHaveBeenCalledTimes(4)
   })
 
   it('keeps shared subcategories under each matching main category', async () => {
@@ -601,7 +650,6 @@ describe('tagRepository.getMainTags', () => {
 
 describe('tagRepository.listTags', () => {
   beforeEach(() => {
-    vi.resetModules()
     mocks.cacheTag.mockReset()
     mocks.revalidatePath.mockReset()
     mocks.runQuery.mockReset()
@@ -726,7 +774,6 @@ describe('tagRepository.listTags', () => {
 
 describe('tagRepository.updateMainCategoriesDisplayOrder', () => {
   beforeEach(() => {
-    vi.resetModules()
     mocks.cacheTag.mockReset()
     mocks.revalidatePath.mockReset()
     mocks.runQuery.mockReset()

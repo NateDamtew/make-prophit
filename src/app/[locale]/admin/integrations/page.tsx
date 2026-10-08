@@ -1,5 +1,6 @@
-import { getExtracted, setRequestLocale } from 'next-intl/server'
+import { getExtracted } from 'next-intl/server'
 import { io } from 'next/cache'
+import { headers } from 'next/headers'
 import { Suspense } from 'react'
 
 import { AdminAccordionSkeleton } from '@/app/[locale]/admin/_components/AdminPageSkeleton'
@@ -7,9 +8,10 @@ import AdminIntegrationsForm from '@/app/[locale]/admin/integrations/_components
 import { getRootLocale } from '@/i18n/root-locale'
 import { getKuestSupportSettings } from '@/lib/admin-support-settings'
 import { parseOpenRouterProviderSettings } from '@/lib/ai/market-context-config'
-import { fetchAllOpenRouterModels, fetchOpenRouterModels } from '@/lib/ai/openrouter'
+import { fetchAllOpenRouterModels, fetchOpenRouterDecisionModels, fetchOpenRouterModels } from '@/lib/ai/openrouter'
 import { isArbitrageEnabled, isArbitrageMultiWalletEnabled } from '@/lib/arbitrage-settings'
 import { SettingsRepository } from '@/lib/db/queries/settings'
+import { getPaymentsCanonicalDomain, getPaymentsIntegrationFormState } from '@/lib/payments/operator-key'
 import { parseSportsSourceProviderSettings } from '@/lib/sports-source/settings'
 import { parseSumsubSettings, sanitizeSumsubSettings } from '@/lib/sumsub/settings'
 import { getThemeSiteSettingsFormState } from '@/lib/theme-settings'
@@ -22,6 +24,7 @@ function AdminIntegrationsFallback() {
 
 async function AdminIntegrationsContent() {
   await io()
+  const requestHeaders = await headers()
   const locale = await getRootLocale()
   const t = await getExtracted()
   const { data: allSettings } = await SettingsRepository.getSettings()
@@ -29,15 +32,19 @@ async function AdminIntegrationsContent() {
   const openRouterSettings = parseOpenRouterProviderSettings(allSettings ?? undefined)
   const sportsSourceSettings = parseSportsSourceProviderSettings(allSettings ?? undefined)
   const parsedSumsubSettings = parseSumsubSettings(allSettings ?? undefined)
+  const paymentsSettings = getPaymentsIntegrationFormState(allSettings, getPaymentsCanonicalDomain(requestHeaders))
 
   let modelOptions: Array<{ id: string; label: string; contextWindow?: number }> = []
   let translationModelOptions: Array<{ id: string; label: string; contextWindow?: number }> = []
+  let decisionModelOptions: Array<{ id: string; label: string; contextWindow?: number }> = []
   let modelsError: string | undefined
   let translationModelsError: string | undefined
+  let decisionModelsError: string | undefined
   if (openRouterSettings.apiKey) {
-    const [modelsResult, translationModelsResult] = await Promise.allSettled([
+    const [modelsResult, translationModelsResult, decisionModelsResult] = await Promise.allSettled([
       fetchOpenRouterModels(openRouterSettings.apiKey),
       fetchAllOpenRouterModels(openRouterSettings.apiKey),
+      fetchOpenRouterDecisionModels(openRouterSettings.apiKey),
     ])
 
     if (modelsResult.status === 'fulfilled') {
@@ -59,6 +66,16 @@ async function AdminIntegrationsContent() {
     } else {
       translationModelsError = t('Unable to load models from OpenRouter. Please try again later.')
     }
+
+    if (decisionModelsResult.status === 'fulfilled') {
+      decisionModelOptions = decisionModelsResult.value.map((model) => ({
+        id: model.id,
+        label: model.name,
+        contextWindow: model.contextLength,
+      }))
+    } else {
+      decisionModelsError = t('Unable to load models from OpenRouter. Please try again later.')
+    }
   }
 
   return (
@@ -72,11 +89,14 @@ async function AdminIntegrationsContent() {
       openRouterSettings={{
         defaultModel: openRouterSettings.model,
         translationModel: openRouterSettings.translationModel,
+        decisionModel: openRouterSettings.decisionModel,
         isApiKeyConfigured: Boolean(openRouterSettings.apiKey),
         modelOptions,
         translationModelOptions,
+        decisionModelOptions,
         modelsError,
         translationModelsError,
+        decisionModelsError,
       }}
       sportsSourceSettings={{
         isPandaScoreTokenConfigured: Boolean(sportsSourceSettings.pandascoreToken),
@@ -92,12 +112,12 @@ async function AdminIntegrationsContent() {
         secretKeyConfigured: Boolean(parsedSumsubSettings.secretKey),
         webhookSecretConfigured: Boolean(parsedSumsubSettings.webhookSecret),
       }}
+      paymentsSettings={paymentsSettings}
     />
   )
 }
 
 export default async function AdminIntegrationsPage() {
-  setRequestLocale(await getRootLocale())
   const t = await getExtracted()
 
   return (

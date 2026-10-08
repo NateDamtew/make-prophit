@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNotNull, sql } from 'drizzle-orm'
+import { and, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm'
 import { revalidateTag } from 'next/cache'
 
 import type { SportsSourceCandidate } from '@/lib/sports-source'
@@ -24,11 +24,13 @@ import {
 import { db } from '@/lib/drizzle'
 import { loadAutoDeployNewEventsEnabled } from '@/lib/event-sync-settings'
 import { setEventHiddenFromNew } from '@/lib/event-visibility'
+import { resolvePublicRuntimeEnv } from '@/lib/public-runtime-config.shared'
 import { syncMissingOnChainResolvedPayouts } from '@/lib/resolution-payout-sync'
 import { slugifyText } from '@/lib/slug'
 import { findSportsEvents } from '@/lib/sports-source'
 import { normalizeSingleSportsSourceProvider } from '@/lib/sports-source/providers'
 import { loadSportsSourceProviderSettings } from '@/lib/sports-source/settings'
+import { getPublicAssetUrl } from '@/lib/storage'
 import { uploadPublicAsset } from '@/lib/storage-upload'
 import {
   buildCronErrorResponse,
@@ -37,10 +39,10 @@ import {
   tryAcquireSyncLock,
   updateSyncStatus,
 } from '@/lib/sync/cron-route'
+import { triggerTranslationEnqueue } from '@/lib/translations/trigger-enqueue'
 
 export const maxDuration = 300
 
-const PNL_SUBGRAPH_URL = 'https://subgraphs.kuest.com/pnl-subgraph'
 const IRYS_GATEWAY = process.env.IRYS_GATEWAY || 'https://gateway.irys.xyz'
 const SYNC_TIME_LIMIT_MS = 250_000
 const PNL_PAGE_SIZE = 200
@@ -48,6 +50,13 @@ const INITIAL_MARKET_LOOKBACK_DAYS = 14
 const INITIAL_MARKET_LOOKBACK_SECONDS = INITIAL_MARKET_LOOKBACK_DAYS * 24 * 60 * 60
 const INITIAL_MARKET_CURSOR_PREFIX = 'initial-market-sync:'
 const EXPIRED_MARKET_GRACE_MS = 24 * 60 * 60 * 1000
+const SYNC_HARD_DEADLINE_MS = 285_000
+const SYNC_FINALIZATION_RESERVE_MS = 10_000
+const TRANSLATION_TRIGGER_RESERVE_MS = 30_000
+const MISSING_IMAGE_REPAIR_MAX_ITEMS = 6
+const MISSING_IMAGE_REPAIR_MARKET_MAX_ITEMS = 3
+const MISSING_IMAGE_REPAIR_SCAN_LIMIT = 30
+const MISSING_IMAGE_REPAIR_ITEM_TIMEOUT_MS = 2_500
 const MARKET_SYNC_STATE = {
   serviceName: 'market_sync',
   subgraphName: 'pnl',
@@ -73,6 +82,10 @@ const MAIN_CATEGORY_TAGS = [
 const MAIN_CATEGORY_TAG_BY_SLUG = new Map<string, (typeof MAIN_CATEGORY_TAGS)[number]>(
   MAIN_CATEGORY_TAGS.map((tag) => [tag.slug, tag]),
 )
+
+function getPnlSubgraphUrl() {
+  return new URL('/pnl-subgraph', resolvePublicRuntimeEnv(process.env).subgraphsUrl).toString()
+}
 
 interface SyncCursor {
   conditionId: string
@@ -186,7 +199,9 @@ interface NormalizedEventTag {
 interface ProcessMarketResult {
   eventIdForStatusUpdate: string | null
   eventIdsForCacheInvalidation: string[]
+  seriesSlugsForCacheInvalidation: string[]
   changed: boolean
+  translationSourceChanged: boolean
   listAffectingChange: boolean
   urlSetChanged: boolean
   skippedExpired: boolean
@@ -195,6 +210,8 @@ interface ProcessMarketResult {
 interface ProcessEventResult {
   eventId: string
   eventChanged: boolean
+  translationSourceChanged: boolean
+  seriesSlugsForCacheInvalidation: string[]
   listAffectingChange: boolean
   urlSetChanged: boolean
   sportsSourceCandidate: SportsSourceCandidate | null
@@ -386,6 +403,8 @@ async function refreshCreatorSourcesBeforeSync(force: boolean) {
  * - Stores everything in the database and configured object storage
  */
 export async function GET(request: Request) {
+  const requestStartedAt = Date.now()
+
   return handleCronRoute({
     request,
     jobName: 'market-sync',
@@ -434,6 +453,7 @@ export async function GET(request: Request) {
         { autoDeployNewEvents },
         lastCursor,
         initialCreationTimestamp,
+        requestStartedAt,
       )
 
       await updateSyncStatus({
@@ -485,6 +505,7 @@ async function syncMarkets(
   options: SyncOptions,
   initialCursor: SyncCursor | null,
   initialCreationTimestamp: number | null,
+  requestStartedAt: number,
 ): Promise<SyncStats> {
   const trackedCreators = Array.from(allowedCreators)
     .map((creator) => creator.trim().toLowerCase())
@@ -501,7 +522,6 @@ async function syncMarkets(
     }
   }
 
-  const syncStartedAt = Date.now()
   let cursor = initialCursor
 
   if (cursor) {
@@ -515,18 +535,20 @@ async function syncMarkets(
   let processedCount = 0
   let skippedCreatorCount = 0
   let skippedExpiredCount = 0
+  let translationSourceChanged = false
   let initialScanExhausted = false
   const errors: { conditionId: string; error: string }[] = []
   let timeLimitReached = false
   const eventIdsNeedingStatusUpdate = new Set<string>()
   const eventIdsNeedingCacheInvalidation = new Set<string>()
+  const seriesSlugsNeedingCacheInvalidation = new Set<string>()
   let shouldInvalidateListCache = false
   let shouldInvalidateSitemap = false
   const runtimeState: SyncRuntimeState = {
     eventTagSlugsByEventId: new Map(),
   }
 
-  while (Date.now() - syncStartedAt < SYNC_TIME_LIMIT_MS) {
+  while (Date.now() - requestStartedAt < SYNC_TIME_LIMIT_MS) {
     const page = await fetchPnLConditionsPage(trackedCreators, cursor, initialCreationTimestamp)
 
     if (page.conditions.length === 0) {
@@ -572,7 +594,7 @@ async function syncMarkets(
         continue
       }
 
-      if (Date.now() - syncStartedAt >= SYNC_TIME_LIMIT_MS) {
+      if (Date.now() - requestStartedAt >= SYNC_TIME_LIMIT_MS) {
         console.warn('⏹️ Time limit reached during market processing, aborting sync loop')
         timeLimitReached = true
         break
@@ -586,12 +608,16 @@ async function syncMarkets(
           console.log(`⌛ Skipped expired market: ${condition.id}`)
           continue
         }
+        translationSourceChanged ||= processResult.translationSourceChanged
         if (processResult.eventIdForStatusUpdate && processResult.changed) {
           eventIdsNeedingStatusUpdate.add(processResult.eventIdForStatusUpdate)
         }
         if (processResult.changed) {
           for (const eventId of processResult.eventIdsForCacheInvalidation) {
             eventIdsNeedingCacheInvalidation.add(eventId)
+          }
+          for (const seriesSlug of processResult.seriesSlugsForCacheInvalidation) {
+            seriesSlugsNeedingCacheInvalidation.add(seriesSlug)
           }
         }
         if (processResult.listAffectingChange) {
@@ -672,10 +698,24 @@ async function syncMarkets(
     eventIdsNeedingStatusUpdate.clear()
   }
 
-  if (eventIdsNeedingCacheInvalidation.size > 0 || shouldInvalidateListCache || shouldInvalidateSitemap) {
+  const missingImageRepair = await repairMissingImageAssets(requestStartedAt + SYNC_HARD_DEADLINE_MS)
+  for (const eventId of missingImageRepair.eventIds) {
+    eventIdsNeedingCacheInvalidation.add(eventId)
+  }
+  if (missingImageRepair.repairedCount > 0) {
+    shouldInvalidateListCache = true
+  }
+
+  if (
+    eventIdsNeedingCacheInvalidation.size > 0 ||
+    seriesSlugsNeedingCacheInvalidation.size > 0 ||
+    shouldInvalidateListCache ||
+    shouldInvalidateSitemap
+  ) {
     const invalidationSummary = await invalidateEventCaches(Array.from(eventIdsNeedingCacheInvalidation), {
       includeList: shouldInvalidateListCache,
       includeSitemap: shouldInvalidateSitemap,
+      seriesSlugs: Array.from(seriesSlugsNeedingCacheInvalidation),
     })
     console.log('🧹 Event cache invalidation summary:', invalidationSummary)
   }
@@ -683,6 +723,14 @@ async function syncMarkets(
   if (initialCreationTimestamp != null && initialScanExhausted && cursor) {
     await updatePnLCursor(cursor, null)
     console.log('✅ Initial PnL sync completed; future runs will use the incremental cursor')
+  }
+
+  // Keep room for this sync request to finish; the discovery cron covers skipped triggers.
+  if (
+    translationSourceChanged &&
+    Date.now() - requestStartedAt < SYNC_HARD_DEADLINE_MS - TRANSLATION_TRIGGER_RESERVE_MS
+  ) {
+    await triggerTranslationEnqueue()
   }
 
   return {
@@ -817,7 +865,7 @@ async function fetchPnLConditionsPage(
     }
   }
 
-  const response = await fetch(PNL_SUBGRAPH_URL, {
+  const response = await fetch(getPnlSubgraphUrl(), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     keepalive: true,
@@ -858,7 +906,9 @@ async function processMarket(
     return {
       eventIdForStatusUpdate: null,
       eventIdsForCacheInvalidation: [],
+      seriesSlugsForCacheInvalidation: [],
       changed: false,
+      translationSourceChanged: false,
       listAffectingChange: false,
       urlSetChanged: false,
       skippedExpired: true,
@@ -904,7 +954,9 @@ async function processMarket(
   return {
     eventIdForStatusUpdate: changed ? marketResult.eventIdForStatusUpdate : null,
     eventIdsForCacheInvalidation: changed ? Array.from(eventIdsForCacheInvalidation) : [],
+    seriesSlugsForCacheInvalidation: changed ? eventResult.seriesSlugsForCacheInvalidation : [],
     changed,
+    translationSourceChanged: eventResult.translationSourceChanged,
     listAffectingChange: eventResult.listAffectingChange || hiddenChanged,
     urlSetChanged: eventResult.urlSetChanged || marketResult.urlSetChanged,
     skippedExpired: false,
@@ -1116,7 +1168,9 @@ async function processEvent(
   const eventSeriesRecurrence =
     normalizeStringField(eventData.series_recurrence) ?? normalizeStringField(eventData.recurrence)
   const isPolymarketMirror = Boolean(
-    normalizeStringField(metadata?.mirror_condition_id) && Array.isArray(metadata?.mirror_outcome_token_ids),
+    normalizeStringField(metadata?.mirror_condition_id) &&
+    (Array.isArray(metadata?.mirror_outcome_token_ids) ||
+      normalizeStringField(metadata?.mirror_protocol)?.toLowerCase() === 'polyv2'),
   )
   const hasAdditionalContextField = Object.hasOwn(eventData, 'additional_context')
   const hasAdditionalContextTimeField =
@@ -1185,6 +1239,7 @@ async function processEvent(
       start_date: eventsTable.start_date,
       end_date: eventsTable.end_date,
       created_at: eventsTable.created_at,
+      icon_url: eventsTable.icon_url,
       additional_context: eventsTable.additional_context,
       additional_context_updated_at: eventsTable.additional_context_updated_at,
       enable_neg_risk: eventsTable.enable_neg_risk,
@@ -1291,7 +1346,32 @@ async function processEvent(
   if (existingEvent) {
     const updatePayload: Record<string, any> = {}
     let eventChanged = false
+    let translationSourceChanged = false
     let listAffectingChange = false
+
+    const incomingEventIconReference = normalizeAssetReference(eventData.icon)
+    const incomingEventStableIconReference = resolveStableAssetReference(eventData.icon)
+    const incomingEventIconPath = incomingEventIconReference
+      ? buildCanonicalIconStoragePath(
+          incomingEventIconReference,
+          `events/icons/${normalizeStorageSlug(eventSlug, `${normalizedEventTitle}:${creatorAddress}`)}`,
+        )
+      : null
+    if (
+      incomingEventIconReference &&
+      incomingEventStableIconReference &&
+      incomingEventIconPath &&
+      existingEvent.icon_url !== incomingEventIconPath
+    ) {
+      const storedIconPath = await downloadAndSaveImage(incomingEventIconReference, incomingEventIconPath)
+      if (storedIconPath && storedIconPath !== existingEvent.icon_url) {
+        updatePayload.icon_url = storedIconPath
+        eventChanged = true
+        listAffectingChange = true
+      }
+    }
+    const previousSeriesSlug = existingEvent.series_slug
+    const seriesSlugChanged = (existingEvent.series_slug ?? null) !== (eventSeriesSlug ?? null)
 
     if (existingEvent.enable_neg_risk !== enableNegRiskFlag) {
       updatePayload.enable_neg_risk = enableNegRiskFlag
@@ -1309,7 +1389,7 @@ async function processEvent(
       updatePayload.neg_risk_market_id = eventNegRiskMarketId ?? null
       eventChanged = true
     }
-    if ((existingEvent.series_slug ?? null) !== (eventSeriesSlug ?? null)) {
+    if (seriesSlugChanged) {
       updatePayload.series_slug = eventSeriesSlug ?? null
       eventChanged = true
     }
@@ -1345,6 +1425,7 @@ async function processEvent(
     if (existingEvent.title !== normalizedEventTitle) {
       updatePayload.title = normalizedEventTitle
       eventChanged = true
+      translationSourceChanged = true
       listAffectingChange = true
     }
 
@@ -1390,6 +1471,7 @@ async function processEvent(
       const normalizedTagsChanged = await processNormalizedTags(existingEvent.id, normalizedEventTags)
       if (normalizedTagsChanged) {
         eventChanged = true
+        translationSourceChanged = true
         listAffectingChange = true
 
         for (const slug of normalizedEventTags.keys()) {
@@ -1435,6 +1517,10 @@ async function processEvent(
     return {
       eventId: existingEvent.id,
       eventChanged,
+      translationSourceChanged,
+      seriesSlugsForCacheInvalidation: seriesSlugChanged
+        ? getSeriesSlugsForCacheInvalidation(previousSeriesSlug, eventSeriesSlug)
+        : [],
       listAffectingChange,
       urlSetChanged: false,
       sportsSourceCandidate,
@@ -1444,7 +1530,10 @@ async function processEvent(
   let iconUrl: string | null = null
   if (eventData.icon) {
     const eventIconSlug = normalizeStorageSlug(eventSlug, `${eventData.title ?? 'event'}:${creatorAddress}`)
-    iconUrl = await downloadAndSaveImage(eventData.icon, `events/icons/${eventIconSlug}`)
+    iconUrl = await downloadAndSaveImage(
+      eventData.icon,
+      buildCanonicalIconStoragePath(eventData.icon, `events/icons/${eventIconSlug}`),
+    )
   }
 
   console.log(`Creating new event: ${eventSlug} by creator: ${creatorAddress}`)
@@ -1528,6 +1617,8 @@ async function processEvent(
   return {
     eventId: newEvent.id,
     eventChanged: true,
+    translationSourceChanged: true,
+    seriesSlugsForCacheInvalidation: getSeriesSlugsForCacheInvalidation(null, eventSeriesSlug),
     listAffectingChange: true,
     urlSetChanged: true,
     sportsSourceCandidate,
@@ -1546,9 +1637,10 @@ async function processMarketData(
   }
 
   const hasPolymarketConditionIdField = Object.hasOwn(metadata, 'mirror_condition_id')
-  const hasPolymarketTokenIdsField = Object.hasOwn(metadata, 'mirror_outcome_token_ids')
+  const polymarketAssetIds = resolvePolymarketOutcomeAssetIds(metadata)
+  const hasPolymarketTokenIdsField = polymarketAssetIds.hasMapping
   const polymarketConditionId = normalizeHexField(metadata.mirror_condition_id)
-  const polymarketTokenIds = normalizePolymarketOutcomeTokenIds(metadata.mirror_outcome_token_ids)
+  const polymarketTokenIds = polymarketAssetIds.ids
   const shouldSyncPolymarketTokenIds =
     hasPolymarketTokenIdsField || (hasPolymarketConditionIdField && polymarketConditionId == null)
 
@@ -1561,6 +1653,7 @@ async function processMarketData(
       metadata: marketsTable.metadata,
       updated_at: marketsTable.updated_at,
       slug: marketsTable.slug,
+      icon_url: marketsTable.icon_url,
     })
     .from(marketsTable)
     .where(eq(marketsTable.condition_id, market.id))
@@ -1592,6 +1685,24 @@ async function processMarketData(
   const eventIdForStatusUpdate = existingMarket?.event_id ?? eventId
   const incomingUpdatedAtMs = Date.parse(timestamps.updatedAtIso)
   const existingUpdatedAtMs = existingMarket?.updated_at ? new Date(existingMarket.updated_at).getTime() : Number.NaN
+  const marketIconReference = normalizeAssetReference(metadata.icon)
+  const marketIconPath = marketIconReference
+    ? buildCanonicalIconStoragePath(
+        marketIconReference,
+        `markets/icons/${normalizeStorageSlug(metadata.slug, market.id)}`,
+      )
+    : null
+  const shouldUseCanonicalMarketIcon = Boolean(
+    marketIconReference &&
+    marketIconPath &&
+    resolveStableAssetReference(marketIconReference) &&
+    existingMarket?.icon_url !== marketIconPath,
+  )
+  const shouldSyncMarketIcon = Boolean(
+    marketIconReference &&
+    marketIconPath &&
+    (shouldDownloadMarketIcon(existingMarket, marketIconReference) || shouldUseCanonicalMarketIcon),
+  )
   const marketNeedsUpdate =
     !existingMarket ||
     !Number.isFinite(existingUpdatedAtMs) ||
@@ -1602,7 +1713,8 @@ async function processMarketData(
       (existingMarket.polymarket_condition_id ?? null) !== (polymarketConditionId ?? null)) ||
     polymarketTokenIdsChanged ||
     existingAcceptingOrdersFlag !== acceptingOrdersFlag ||
-    existingArchivedFlag !== archivedFlag
+    existingArchivedFlag !== archivedFlag ||
+    shouldSyncMarketIcon
 
   const eventIdsForHiddenSync = new Set<string>()
   if (existingMarket) {
@@ -1638,9 +1750,8 @@ async function processMarketData(
   }
 
   let iconUrl: string | null = null
-  if (metadata.icon) {
-    const marketIconSlug = normalizeStorageSlug(metadata.slug, market.id)
-    iconUrl = await downloadAndSaveImage(metadata.icon, `markets/icons/${marketIconSlug}`)
+  if (shouldSyncMarketIcon && marketIconReference && marketIconPath) {
+    iconUrl = await downloadAndSaveImage(marketIconReference, marketIconPath)
   }
 
   console.log(`${marketAlreadyExists ? 'Updating' : 'Creating'} market ${market.id} with eventId: ${eventId}`)
@@ -1742,7 +1853,7 @@ async function processMarketData(
     title: String(metadata.name),
     slug: String(metadata.slug),
     short_title: normalizeStringField(metadata.short_title),
-    icon_url: iconUrl,
+    icon_url: iconUrl ?? (existingMarket?.icon_url || null),
     metadata: JSON.stringify(storedMetadata),
     question: question ?? null,
     market_rules: marketRules ?? null,
@@ -1955,32 +2066,215 @@ async function updateEventStatusesFromMarketsBatch(eventIds: string[]) {
   return changedEventIds
 }
 
+async function repairMissingImageAssets(deadlineMs: number): Promise<{ repairedCount: number; eventIds: string[] }> {
+  const repairedEventIds = new Set<string>()
+  let repairedCount = 0
+  let attemptedCount = 0
+
+  function hasRepairTime() {
+    return Date.now() + SYNC_FINALIZATION_RESERVE_MS < deadlineMs
+  }
+
+  function getRepairTimeoutMs() {
+    return Math.min(MISSING_IMAGE_REPAIR_ITEM_TIMEOUT_MS, deadlineMs - Date.now() - SYNC_FINALIZATION_RESERVE_MS)
+  }
+
+  if (!hasRepairTime()) {
+    return { repairedCount: 0, eventIds: [] }
+  }
+
+  try {
+    const missingMarketRows = await db
+      .select({
+        condition_id: marketsTable.condition_id,
+        event_id: marketsTable.event_id,
+        slug: marketsTable.slug,
+        metadata: marketsTable.metadata,
+      })
+      .from(marketsTable)
+      .where(or(isNull(marketsTable.icon_url), eq(marketsTable.icon_url, '')))
+      .orderBy(sql`RANDOM()`)
+      .limit(MISSING_IMAGE_REPAIR_SCAN_LIMIT)
+
+    for (const row of missingMarketRows) {
+      if (!hasRepairTime() || attemptedCount >= MISSING_IMAGE_REPAIR_MARKET_MAX_ITEMS) {
+        break
+      }
+
+      const reference = normalizeStringField(parseStoredMarketMetadata(row.metadata)?.icon)
+      if (!reference) {
+        continue
+      }
+
+      const timeoutMs = getRepairTimeoutMs()
+      if (timeoutMs <= 0) {
+        break
+      }
+      attemptedCount += 1
+
+      try {
+        const storagePath = `markets/icons/${normalizeStorageSlug(row.slug, row.condition_id)}`
+        const storedPath = await downloadAndSaveImage(reference, storagePath, { timeoutMs })
+        if (!storedPath) {
+          continue
+        }
+
+        const updatedRows = await db
+          .update(marketsTable)
+          .set({ icon_url: storedPath })
+          .where(
+            and(
+              eq(marketsTable.condition_id, row.condition_id),
+              or(isNull(marketsTable.icon_url), eq(marketsTable.icon_url, '')),
+            ),
+          )
+          .returning({ condition_id: marketsTable.condition_id })
+        if (updatedRows.length > 0) {
+          repairedCount += 1
+          repairedEventIds.add(row.event_id)
+        }
+      } catch (error) {
+        console.error(`Failed to repair market icon ${row.condition_id}:`, error)
+      }
+    }
+
+    if (hasRepairTime() && attemptedCount < MISSING_IMAGE_REPAIR_MAX_ITEMS) {
+      const missingEventRows = await db
+        .select({
+          id: eventsTable.id,
+          slug: eventsTable.slug,
+          title: eventsTable.title,
+          creator: eventsTable.creator,
+        })
+        .from(eventsTable)
+        .where(or(isNull(eventsTable.icon_url), eq(eventsTable.icon_url, '')))
+        .orderBy(sql`RANDOM()`)
+        .limit(MISSING_IMAGE_REPAIR_SCAN_LIMIT)
+
+      const eventIds = missingEventRows.map((row) => row.id)
+      const eventMarketRows =
+        eventIds.length > 0
+          ? await db
+              .select({
+                event_id: marketsTable.event_id,
+                condition_id: marketsTable.condition_id,
+                metadata: marketsTable.metadata,
+                updated_at: marketsTable.updated_at,
+              })
+              .from(marketsTable)
+              .where(and(inArray(marketsTable.event_id, eventIds), isNotNull(marketsTable.metadata)))
+          : []
+      const latestEventIconById = new Map<string, { reference: string; updatedAtMs: number; conditionId: string }>()
+      for (const row of eventMarketRows) {
+        const reference = resolveStoredEventIconReference(row.metadata)
+        if (!reference) {
+          continue
+        }
+
+        const updatedAtMs = row.updated_at?.getTime() ?? Number.NEGATIVE_INFINITY
+        const current = latestEventIconById.get(row.event_id)
+        if (
+          !current ||
+          updatedAtMs > current.updatedAtMs ||
+          (updatedAtMs === current.updatedAtMs && row.condition_id > current.conditionId)
+        ) {
+          latestEventIconById.set(row.event_id, { reference, updatedAtMs, conditionId: row.condition_id })
+        }
+      }
+
+      for (const row of missingEventRows) {
+        if (!hasRepairTime() || attemptedCount >= MISSING_IMAGE_REPAIR_MAX_ITEMS) {
+          break
+        }
+
+        const reference = latestEventIconById.get(row.id)?.reference
+        if (!reference) {
+          continue
+        }
+
+        const timeoutMs = getRepairTimeoutMs()
+        if (timeoutMs <= 0) {
+          break
+        }
+        attemptedCount += 1
+
+        try {
+          const storagePath = `events/icons/${normalizeStorageSlug(row.slug, `${row.title}:${row.creator ?? ''}`)}`
+          const storedPath = await downloadAndSaveImage(reference, storagePath, { timeoutMs })
+          if (!storedPath) {
+            continue
+          }
+
+          const updatedRows = await db
+            .update(eventsTable)
+            .set({ icon_url: storedPath })
+            .where(and(eq(eventsTable.id, row.id), or(isNull(eventsTable.icon_url), eq(eventsTable.icon_url, ''))))
+            .returning({ id: eventsTable.id })
+          if (updatedRows.length > 0) {
+            repairedCount += 1
+            repairedEventIds.add(row.id)
+          }
+        } catch (error) {
+          console.error(`Failed to repair event icon ${row.id}:`, error)
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Failed to load missing image assets for repair:', error)
+  }
+
+  if (attemptedCount > 0 || repairedCount > 0) {
+    console.log(
+      JSON.stringify({
+        message: 'repaired missing event and market icons',
+        attemptedCount,
+        repairedCount,
+        eventCount: repairedEventIds.size,
+      }),
+    )
+  }
+
+  return { repairedCount, eventIds: Array.from(repairedEventIds) }
+}
+
+function resolveStoredEventIconReference(value: unknown) {
+  const metadata = parseStoredMarketMetadata(value)
+  const eventMetadata = normalizeObjectField(metadata?.event)
+  return normalizeStringField(eventMetadata?.icon)
+}
+
 async function invalidateEventCaches(
   eventIds: string[],
-  options: { includeList?: boolean; includeSitemap?: boolean } = {},
+  options: { includeList?: boolean; includeSitemap?: boolean; seriesSlugs?: string[] } = {},
 ) {
   const uniqueEventIds = Array.from(new Set(eventIds.filter(Boolean)))
   const listTagInvalidated = options.includeList === true
   const sitemapTagInvalidated = options.includeSitemap === true
   const homeFeaturedTagInvalidated = listTagInvalidated
+  const seriesSlugsToInvalidate = new Set(normalizeSeriesSlugsForCacheInvalidation(options.seriesSlugs ?? []))
   if (listTagInvalidated) {
-    revalidateTag(cacheTags.eventsList, 'max')
-    revalidateTag(cacheTags.homeFeaturedEvents, 'max')
+    revalidateTag(cacheTags.eventsList, { expire: 0 })
+    revalidateTag(cacheTags.homeFeaturedEvents, { expire: 0 })
     for (const locale of SUPPORTED_LOCALES) {
-      revalidateTag(cacheTags.mainTags(locale), 'max')
+      revalidateTag(cacheTags.mainTags(locale), { expire: 0 })
     }
   }
   if (sitemapTagInvalidated) {
-    revalidateTag(cacheTags.sitemap, 'max')
+    revalidateTag(cacheTags.sitemap, { expire: 0 })
   }
 
   if (uniqueEventIds.length === 0) {
+    for (const seriesSlug of seriesSlugsToInvalidate) {
+      revalidateTag(cacheTags.seriesEvents(seriesSlug), { expire: 0 })
+    }
+
     return {
       listTagInvalidated,
       sitemapTagInvalidated,
       homeFeaturedTagInvalidated,
       mainTagsInvalidations: listTagInvalidated ? SUPPORTED_LOCALES.length : 0,
       eventTagInvalidations: 0,
+      seriesEventsTagInvalidations: seriesSlugsToInvalidate.size,
       uniqueEventIdsCount: 0,
     }
   }
@@ -1988,6 +2282,7 @@ async function invalidateEventCaches(
   const rows = await db
     .select({
       slug: eventsTable.slug,
+      series_slug: eventsTable.series_slug,
     })
     .from(eventsTable)
     .where(inArray(eventsTable.id, uniqueEventIds))
@@ -1995,9 +2290,16 @@ async function invalidateEventCaches(
   let eventTagInvalidations = 0
   for (const row of rows) {
     if (row.slug) {
-      revalidateTag(cacheTags.event(row.slug), 'max')
+      revalidateTag(cacheTags.event(row.slug), { expire: 0 })
       eventTagInvalidations += 1
     }
+    const seriesSlug = normalizeStringField(row.series_slug)
+    if (seriesSlug) {
+      seriesSlugsToInvalidate.add(seriesSlug)
+    }
+  }
+  for (const seriesSlug of seriesSlugsToInvalidate) {
+    revalidateTag(cacheTags.seriesEvents(seriesSlug), { expire: 0 })
   }
 
   return {
@@ -2006,6 +2308,7 @@ async function invalidateEventCaches(
     homeFeaturedTagInvalidated,
     mainTagsInvalidations: listTagInvalidated ? SUPPORTED_LOCALES.length : 0,
     eventTagInvalidations,
+    seriesEventsTagInvalidations: seriesSlugsToInvalidate.size,
     uniqueEventIdsCount: uniqueEventIds.length,
   }
 }
@@ -2409,6 +2712,50 @@ export function normalizePolymarketOutcomeTokenIds(value: unknown) {
   return Array.isArray(value) ? value.map(normalizeStringIdField) : []
 }
 
+export function resolvePolymarketOutcomeAssetIds(metadata: Record<string, any>) {
+  if (normalizeStringField(metadata.mirror_protocol)?.toLowerCase() !== 'polyv2') {
+    return {
+      hasMapping: Object.hasOwn(metadata, 'mirror_outcome_token_ids'),
+      ids: normalizePolymarketOutcomeTokenIds(metadata.mirror_outcome_token_ids),
+    }
+  }
+
+  const arrayIds = normalizePolyV2PositionIds(metadata.mirror_position_ids)
+  const outcomes = Array.isArray(metadata.outcomes) ? metadata.outcomes : []
+  const outcomeIds = normalizePolyV2PositionIds(outcomes.map((outcome: any) => outcome?.mirror_position_id))
+  const idsAreDistinct = arrayIds[0] === null || arrayIds[1] === null || arrayIds[0] !== arrayIds[1]
+  const idsAreConsistent =
+    arrayIds.length === 2 &&
+    outcomeIds.length === 2 &&
+    arrayIds.every((id, index) => id === outcomeIds[index]) &&
+    idsAreDistinct
+
+  return {
+    // The protocol marker is explicit. If position metadata is incomplete, clear any stale
+    // legacy token IDs instead of accidentally treating CTF IDs as PolyV2 position IDs.
+    hasMapping: true,
+    ids: idsAreConsistent ? arrayIds : [null, null],
+  }
+}
+
+function normalizePolyV2PositionIds(value: unknown): Array<string | null> {
+  if (!Array.isArray(value) || value.length !== 2) {
+    return []
+  }
+
+  return value.map((positionId) => {
+    if (typeof positionId !== 'string' || !/^(0|[1-9]\d*)$/.test(positionId)) {
+      return null
+    }
+    try {
+      const parsed = BigInt(positionId)
+      return parsed <= (1n << 256n) - 1n ? parsed.toString() : null
+    } catch {
+      return null
+    }
+  })
+}
+
 export function hasPolymarketOutcomeTokenMappingChanged(
   incomingTokenIds: Array<string | null>,
   existingOutcomes: Array<{ outcomeIndex: number; polymarketTokenId: string | null }>,
@@ -2417,6 +2764,27 @@ export function hasPolymarketOutcomeTokenMappingChanged(
   const indexes = new Set([...incomingTokenIds.keys(), ...existingByIndex.keys()])
 
   return Array.from(indexes).some((index) => (incomingTokenIds[index] ?? null) !== (existingByIndex.get(index) ?? null))
+}
+
+export function shouldDownloadMarketIcon(
+  existingMarket: { icon_url: string | null; metadata: unknown } | undefined,
+  incomingIconReference: unknown,
+): boolean {
+  const normalizedIncomingReference = normalizeAssetReference(incomingIconReference)
+  if (!normalizedIncomingReference) {
+    return false
+  }
+
+  if (!existingMarket) {
+    return true
+  }
+
+  if (!normalizeStringField(existingMarket.icon_url)) {
+    return false
+  }
+
+  const storedIconReference = normalizeAssetReference(parseStoredMarketMetadata(existingMarket.metadata)?.icon)
+  return storedIconReference !== normalizedIncomingReference
 }
 
 function normalizeIncomingTags(tagNames: any[] | null | undefined) {
@@ -2673,18 +3041,46 @@ function resolveImageStoragePath(storagePath: string, extension: string) {
   return `${storagePath}.${extension}`
 }
 
-async function downloadAndSaveImage(assetReference: string, storagePath: string) {
+async function downloadAndSaveImage(assetReference: string, storagePath: string, options: { timeoutMs?: number } = {}) {
   try {
     const normalizedReference = normalizeAssetReference(assetReference)
     if (!normalizedReference) {
       return null
     }
 
+    const imageAttemptDeadlineMs = options.timeoutMs ? Date.now() + options.timeoutMs : null
+    function remainingTimeoutMs() {
+      return imageAttemptDeadlineMs == null ? undefined : Math.max(0, imageAttemptDeadlineMs - Date.now())
+    }
+
+    if (storagePath.endsWith('.png')) {
+      const publicUrl = getPublicAssetUrl(storagePath)
+      if (publicUrl) {
+        const remainingTimeout = remainingTimeoutMs()
+        if (remainingTimeout !== undefined && remainingTimeout <= 0) {
+          return null
+        }
+        const cachedResponse = await fetch(publicUrl, {
+          method: 'HEAD',
+          keepalive: true,
+          signal: remainingTimeout === undefined ? undefined : AbortSignal.timeout(Math.max(1, remainingTimeout)),
+        }).catch(() => null)
+        if (cachedResponse?.ok) {
+          return storagePath
+        }
+      }
+    }
+
     const imageUrl = /^https?:\/\//i.test(normalizedReference)
       ? normalizedReference
       : `${IRYS_GATEWAY}/${normalizedReference}`
+    const remainingTimeout = remainingTimeoutMs()
+    if (remainingTimeout !== undefined && remainingTimeout <= 0) {
+      return null
+    }
     const response = await fetch(imageUrl, {
       keepalive: true,
+      signal: remainingTimeout === undefined ? undefined : AbortSignal.timeout(Math.max(1, remainingTimeout)),
     })
 
     if (!response.ok) {
@@ -2696,11 +3092,16 @@ async function downloadAndSaveImage(assetReference: string, storagePath: string)
     const imageBytes = new Uint8Array(imageBuffer)
     const resolvedMeta = resolveImageMeta(response.headers.get('content-type'), imageBytes)
     const resolvedPath = resolveImageStoragePath(storagePath, resolvedMeta.extension)
+    const uploadTimeoutMs = remainingTimeoutMs()
+    if (uploadTimeoutMs != null && uploadTimeoutMs <= 0) {
+      return null
+    }
 
     const { error } = await uploadPublicAsset(resolvedPath, imageBuffer, {
       contentType: resolvedMeta.contentType,
       cacheControl: '31536000',
       upsert: true,
+      timeoutMs: uploadTimeoutMs,
     })
 
     if (error) {
@@ -2820,7 +3221,6 @@ async function upsertEventSportsMetadata(eventId: string, input: EventSportsMeta
   }
 
   payload.updated_at = new Date()
-
   await db
     .insert(eventSportsTable)
     .values(payload)
@@ -2906,7 +3306,6 @@ async function upsertMarketSportsMetadata(conditionId: string, input: MarketSpor
   }
 
   payload.updated_at = new Date()
-
   await db
     .insert(marketSportsTable)
     .values(payload)
@@ -2922,6 +3321,20 @@ function normalizeStringField(value: unknown): string | null {
   }
   const trimmed = value.trim()
   return trimmed.length > 0 ? trimmed : null
+}
+
+export function getSeriesSlugsForCacheInvalidation(previousSeriesSlug: unknown, currentSeriesSlug: unknown) {
+  return normalizeSeriesSlugsForCacheInvalidation([previousSeriesSlug, currentSeriesSlug])
+}
+
+export function normalizeSeriesSlugsForCacheInvalidation(seriesSlugs: unknown[]) {
+  return Array.from(
+    new Set(
+      seriesSlugs
+        .map((seriesSlug) => normalizeStringField(seriesSlug))
+        .filter((seriesSlug): seriesSlug is string => Boolean(seriesSlug)),
+    ),
+  )
 }
 
 function normalizeStringIdField(value: unknown): string | null {
@@ -3088,10 +3501,46 @@ function normalizeAssetReference(value: unknown): string | null {
 }
 
 function buildSportsLogoStoragePath(reference: string): string {
-  if (/^https?:\/\//i.test(reference)) {
-    return `${SPORTS_LOGO_STORAGE_PREFIX}/logo-${hashStringToHex(reference)}`
+  return buildCanonicalIconStoragePath(reference, `${SPORTS_LOGO_STORAGE_PREFIX}/logo-${hashStringToHex(reference)}`)
+}
+
+function isStableAssetReference(reference: string): boolean {
+  return /^[A-Za-z0-9_-]+$/.test(reference)
+}
+
+function resolveStableAssetReference(assetReference: unknown): string | null {
+  const normalizedReference = normalizeAssetReference(assetReference)
+  if (!normalizedReference) {
+    return null
   }
-  return `${SPORTS_LOGO_STORAGE_PREFIX}/${normalizeStorageSlug(reference, reference)}`
+  if (isStableAssetReference(normalizedReference)) {
+    return normalizedReference
+  }
+  if (!/^https?:\/\//i.test(normalizedReference)) {
+    return null
+  }
+
+  try {
+    const referenceUrl = new URL(normalizedReference)
+    const gatewayUrl = new URL(IRYS_GATEWAY)
+    if (referenceUrl.hostname !== gatewayUrl.hostname) {
+      return null
+    }
+
+    const candidate = referenceUrl.pathname.split('/').filter(Boolean).at(-1) ?? ''
+    return isStableAssetReference(candidate) ? candidate : null
+  } catch {
+    return null
+  }
+}
+
+export function buildCanonicalIconStoragePath(assetReference: unknown, fallbackStoragePath: string): string {
+  const stableReference = resolveStableAssetReference(assetReference)
+  if (!stableReference) {
+    return fallbackStoragePath
+  }
+
+  return `icons/source/${encodeURIComponent(stableReference)}.png`
 }
 
 async function persistSportsLogo(reference: string): Promise<string | null> {

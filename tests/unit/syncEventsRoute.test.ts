@@ -1,36 +1,38 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, mock, jest } from 'bun:test'
 
-const mocks = vi.hoisted(() => ({
-  fetch: vi.fn(),
-  isCronAuthorized: vi.fn(),
-  loadAllowedMarketCreatorWallets: vi.fn(),
-  loadAutoDeployNewEventsEnabled: vi.fn(),
-  refreshAllowedMarketCreatorSiteSources: vi.fn(),
-  select: vi.fn(),
-  update: vi.fn(),
+import { hoisted, spyOn, stubGlobal, unstubAllGlobals, useFakeTimers, useRealTimers } from '../bun-test-helpers'
+
+const mocks = hoisted(() => ({
+  fetch: mock(),
+  isCronAuthorized: mock(),
+  loadAllowedMarketCreatorWallets: mock(),
+  loadAutoDeployNewEventsEnabled: mock(),
+  refreshAllowedMarketCreatorSiteSources: mock(),
+  select: mock(),
+  update: mock(),
 }))
 
-vi.mock('@/lib/auth-cron', () => ({
+void mock.module('@/lib/auth-cron', () => ({
   isCronAuthorized: (...args: any[]) => mocks.isCronAuthorized(...args),
 }))
 
-vi.mock('@/lib/allowed-market-creators-server', () => ({
+void mock.module('@/lib/allowed-market-creators-server', () => ({
   loadAllowedMarketCreatorWallets: (...args: any[]) => mocks.loadAllowedMarketCreatorWallets(...args),
   refreshAllowedMarketCreatorSiteSources: (...args: any[]) => mocks.refreshAllowedMarketCreatorSiteSources(...args),
 }))
 
-vi.mock('@/lib/db/utils/run-query', () => ({
+void mock.module('@/lib/db/utils/run-query', () => ({
   runQuery: async (callback: () => Promise<unknown>) => await callback(),
 }))
 
-vi.mock('@/lib/drizzle', () => ({
+void mock.module('@/lib/drizzle', () => ({
   db: {
     select: (...args: any[]) => mocks.select(...args),
     update: (...args: any[]) => mocks.update(...args),
   },
 }))
 
-vi.mock('@/lib/event-sync-settings', () => ({
+void mock.module('@/lib/event-sync-settings', () => ({
   loadAutoDeployNewEventsEnabled: (...args: any[]) => mocks.loadAutoDeployNewEventsEnabled(...args),
 }))
 
@@ -59,8 +61,7 @@ function makeUpdateChain(result: Array<{ id: string }>, onSet?: (payload: unknow
 
 describe('sync events route', () => {
   beforeEach(() => {
-    vi.resetModules()
-    vi.stubGlobal('fetch', mocks.fetch)
+    stubGlobal('fetch', mocks.fetch)
 
     mocks.fetch.mockReset()
     mocks.isCronAuthorized.mockReset()
@@ -72,9 +73,9 @@ describe('sync events route', () => {
   })
 
   afterEach(() => {
-    vi.useRealTimers()
-    vi.unstubAllGlobals()
-    vi.restoreAllMocks()
+    useRealTimers()
+    unstubAllGlobals()
+    jest.restoreAllMocks()
   })
 
   it('keeps an incoming additional context timestamp when only the timestamp field is present', async () => {
@@ -91,9 +92,24 @@ describe('sync events route', () => {
     ).toBe('2026-08-25T12:00:00.000Z')
   })
 
-  it('normalizes mirror token IDs and detects an explicit mapping removal', async () => {
-    const { hasPolymarketOutcomeTokenMappingChanged, normalizePolymarketOutcomeTokenIds } =
+  it('invalidates both normalized series tags when an event moves between series', async () => {
+    const { getSeriesSlugsForCacheInvalidation, normalizeSeriesSlugsForCacheInvalidation } =
       await import('@/app/api/sync/events/route')
+
+    expect(getSeriesSlugsForCacheInvalidation(' old-series ', 'new-series')).toEqual(['old-series', 'new-series'])
+    expect(getSeriesSlugsForCacheInvalidation(' old-series ', 'old-series')).toEqual(['old-series'])
+    expect(getSeriesSlugsForCacheInvalidation('old-series', null)).toEqual(['old-series'])
+    expect(
+      normalizeSeriesSlugsForCacheInvalidation([' old-series ', 'new-series', 'old-series', 'new-series ']),
+    ).toEqual(['old-series', 'new-series'])
+  })
+
+  it('normalizes mirror token IDs and detects an explicit mapping removal', async () => {
+    const {
+      hasPolymarketOutcomeTokenMappingChanged,
+      normalizePolymarketOutcomeTokenIds,
+      resolvePolymarketOutcomeAssetIds,
+    } = await import('@/app/api/sync/events/route')
     const existing = [
       { outcomeIndex: 0, polymarketTokenId: '100' },
       { outcomeIndex: 1, polymarketTokenId: '200' },
@@ -105,6 +121,64 @@ describe('sync events route', () => {
     )
     expect(hasPolymarketOutcomeTokenMappingChanged(normalizePolymarketOutcomeTokenIds(['100', '200']), existing)).toBe(
       false,
+    )
+
+    expect(
+      resolvePolymarketOutcomeAssetIds({
+        mirror_protocol: 'polyv2',
+        mirror_outcome_token_ids: ['legacy-yes', 'legacy-no'],
+        mirror_position_ids: ['12345678901234567890', '98765432109876543210'],
+        outcomes: [{ mirror_position_id: '12345678901234567890' }, { mirror_position_id: '98765432109876543210' }],
+      }),
+    ).toEqual({ hasMapping: true, ids: ['12345678901234567890', '98765432109876543210'] })
+    expect(
+      resolvePolymarketOutcomeAssetIds({
+        mirror_protocol: 'polyv2',
+        mirror_outcome_token_ids: ['legacy-yes', 'legacy-no'],
+        mirror_position_ids: ['12345678901234567890', '98765432109876543210'],
+        outcomes: [{ mirror_position_id: '12345678901234567890' }, { mirror_position_id: 'stale-id' }],
+      }),
+    ).toEqual({ hasMapping: true, ids: [null, null] })
+    expect(
+      resolvePolymarketOutcomeAssetIds({
+        mirror_protocol: 'polyv2',
+        mirror_position_ids: ['12345678901234567890', '12345678901234567890'],
+        outcomes: [{ mirror_position_id: '12345678901234567890' }, { mirror_position_id: '12345678901234567890' }],
+      }),
+    ).toEqual({ hasMapping: true, ids: [null, null] })
+    expect(resolvePolymarketOutcomeAssetIds({ mirror_outcome_token_ids: ['100', '200'] })).toEqual({
+      hasMapping: true,
+      ids: ['100', '200'],
+    })
+  })
+
+  it('only downloads an existing market icon when its source reference changes', async () => {
+    const { shouldDownloadMarketIcon } = await import('@/app/api/sync/events/route')
+    const existingReference = 'existing-icon-hash'
+    const existingMarket = {
+      icon_url: '/storage/markets/icons/example.png',
+      metadata: JSON.stringify({ icon: existingReference }),
+    }
+
+    expect(shouldDownloadMarketIcon(undefined, existingReference)).toBe(true)
+    expect(shouldDownloadMarketIcon(existingMarket, existingReference)).toBe(false)
+    expect(shouldDownloadMarketIcon(existingMarket, 'new-icon-hash')).toBe(true)
+    expect(shouldDownloadMarketIcon({ ...existingMarket, icon_url: null }, 'new-icon-hash')).toBe(false)
+    expect(shouldDownloadMarketIcon(existingMarket, null)).toBe(false)
+  })
+
+  it('uses one canonical storage path for the same immutable asset reference', async () => {
+    const { buildCanonicalIconStoragePath } = await import('@/app/api/sync/events/route')
+
+    expect(buildCanonicalIconStoragePath('irys://shared-icon', 'events/icons/event')).toBe(
+      'icons/source/shared-icon.png',
+    )
+    expect(buildCanonicalIconStoragePath('shared-icon', 'events/icons/event')).toBe('icons/source/shared-icon.png')
+    expect(buildCanonicalIconStoragePath('https://gateway.irys.xyz/shared-icon', 'events/icons/event')).toBe(
+      'icons/source/shared-icon.png',
+    )
+    expect(buildCanonicalIconStoragePath('https://example.com/icon.png', 'events/icons/event')).toBe(
+      'events/icons/event',
     )
   })
 
@@ -320,8 +394,8 @@ describe('sync events route', () => {
 
   it('hits the PnL subgraph and exits cleanly when no markets are returned', async () => {
     const updatePayloads: unknown[] = []
-    vi.useFakeTimers()
-    vi.setSystemTime(new Date('2026-08-03T12:00:00.000Z'))
+    useFakeTimers()
+    jest.setSystemTime(new Date('2026-08-03T12:00:00.000Z'))
     mocks.isCronAuthorized.mockReturnValue(true)
     mocks.loadAllowedMarketCreatorWallets.mockResolvedValue({
       data: ['0xABCDEF0000000000000000000000000000000001'],
@@ -368,7 +442,7 @@ describe('sync events route', () => {
 
     expect(mocks.fetch).toHaveBeenCalledTimes(1)
     expect(mocks.fetch).toHaveBeenCalledWith(
-      'https://subgraphs.kuest.com/pnl-subgraph',
+      'https://subgraphs-staging.kuest.com/pnl-subgraph',
       expect.objectContaining({
         method: 'POST',
         keepalive: true,
@@ -495,10 +569,10 @@ describe('sync events route', () => {
   })
 
   it('persists the initial cutoff with the cursor when the bootstrap reaches the time limit', async () => {
-    vi.useFakeTimers()
-    vi.setSystemTime(new Date('2026-08-03T12:00:00.000Z'))
+    useFakeTimers()
+    jest.setSystemTime(new Date('2026-08-03T12:00:00.000Z'))
     const now = Date.parse('2026-08-03T12:00:00.000Z')
-    const dateNow = vi.spyOn(Date, 'now')
+    const dateNow = spyOn(Date, 'now')
     dateNow
       .mockReturnValueOnce(now)
       .mockReturnValueOnce(now)
@@ -577,8 +651,8 @@ describe('sync events route', () => {
   })
 
   it('reads metadata and skips expired new markets before persisting them', async () => {
-    vi.useFakeTimers()
-    vi.setSystemTime(new Date('2026-08-03T12:00:00.000Z'))
+    useFakeTimers()
+    jest.setSystemTime(new Date('2026-08-03T12:00:00.000Z'))
     mocks.isCronAuthorized.mockReturnValue(true)
     mocks.loadAllowedMarketCreatorWallets.mockResolvedValue({
       data: ['0xabcdef0000000000000000000000000000000001'],

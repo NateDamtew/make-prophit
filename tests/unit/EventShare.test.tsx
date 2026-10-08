@@ -3,27 +3,30 @@ import type { ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { beforeEach, describe, expect, it, mock } from 'bun:test'
 
 import type { Event } from '@/types'
 
 import EventShare from '@/app/[locale]/(platform)/event/[slug]/_components/EventShare'
 
-const mocks = vi.hoisted(() => ({
-  fetchAffiliateSettingsFromAPI: vi.fn(),
-  maybeShowAffiliateToast: vi.fn(),
-  resolveEventMarketPath: vi.fn(),
-  resolveEventPagePath: vi.fn(),
-  useSiteIdentity: vi.fn(),
-  useUser: vi.fn(),
+import { hoisted } from '../bun-test-helpers'
+
+const mocks = hoisted(() => ({
+  fetchAffiliateSettingsFromAPI: mock(),
+  maybeShowAffiliateToast: mock(),
+  resolveEventMarketPath: mock(),
+  resolveEventPagePath: mock(),
+  useSiteIdentity: mock(),
+  useUser: mock(),
 }))
 
-vi.mock('@/components/ui/button', () => ({
+void mock.module('@/components/ui/button', () => ({
   Button: function MockButton({ children, nativeButton: _nativeButton, render, ...props }: any) {
     return render ?? <button {...props}>{children}</button>
   },
 }))
 
-vi.mock('@/components/ui/dropdown-menu', () => ({
+void mock.module('@/components/ui/dropdown-menu', () => ({
   DropdownMenu: function MockDropdownMenu({ children, open }: any) {
     return (
       <div data-testid="share-menu" data-state={open ? 'open' : 'closed'}>
@@ -31,8 +34,8 @@ vi.mock('@/components/ui/dropdown-menu', () => ({
       </div>
     )
   },
-  DropdownMenuContent: function MockDropdownMenuContent({ children }: any) {
-    return <div>{children}</div>
+  DropdownMenuContent: function MockDropdownMenuContent({ children, ...props }: any) {
+    return <div {...props}>{children}</div>
   },
   DropdownMenuItem: function MockDropdownMenuItem({ children, closeOnClick: _closeOnClick, onClick, ...props }: any) {
     return (
@@ -49,24 +52,24 @@ vi.mock('@/components/ui/dropdown-menu', () => ({
   },
 }))
 
-vi.mock('@/hooks/useSiteIdentity', () => ({
+void mock.module('@/hooks/useSiteIdentity', () => ({
   useSiteIdentity: () => mocks.useSiteIdentity(),
 }))
 
-vi.mock('@/lib/affiliate-data', () => ({
+void mock.module('@/lib/affiliate-data', () => ({
   fetchAffiliateSettingsFromAPI: () => mocks.fetchAffiliateSettingsFromAPI(),
 }))
 
-vi.mock('@/lib/affiliate-toast', () => ({
+void mock.module('@/lib/affiliate-toast', () => ({
   maybeShowAffiliateToast: (...args: any[]) => mocks.maybeShowAffiliateToast(...args),
 }))
 
-vi.mock('@/lib/events-routing', () => ({
+void mock.module('@/lib/events-routing', () => ({
   resolveEventMarketPath: (...args: any[]) => mocks.resolveEventMarketPath(...args),
   resolveEventPagePath: (...args: any[]) => mocks.resolveEventPagePath(...args),
 }))
 
-vi.mock('@/stores/useUser', () => ({
+void mock.module('@/stores/useUser', () => ({
   useUser: () => mocks.useUser(),
 }))
 
@@ -141,7 +144,7 @@ function renderWithQueryClient(component: ReactNode) {
 }
 
 describe('eventShare', () => {
-  const writeText = vi.fn()
+  const writeText = mock()
 
   beforeEach(() => {
     mocks.fetchAffiliateSettingsFromAPI.mockReset()
@@ -152,10 +155,9 @@ describe('eventShare', () => {
     mocks.useUser.mockReset()
 
     writeText.mockReset()
-    Object.assign(navigator, {
-      clipboard: {
-        writeText,
-      },
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
     })
 
     mocks.useSiteIdentity.mockReturnValue({ name: 'Kuest' })
@@ -310,6 +312,62 @@ describe('eventShare', () => {
       expect(writeText).toHaveBeenCalledWith('http://localhost:3000/event/event-1?r=abc123')
     })
     expect(screen.getByTestId('share-menu')).toHaveAttribute('data-state', 'closed')
+  })
+
+  it('groups multi-market links by resolution and sorts each group by end time', () => {
+    const event = createEvent({
+      total_markets_count: 4,
+      markets: [
+        {
+          ...createEvent().markets[0],
+          id: 'market-resolved-later',
+          slug: 'resolved-later',
+          condition_id: 'condition-resolved-later',
+          title: 'Resolved later',
+          end_time: '2026-09-06T12:00:00.000Z',
+          is_resolved: true,
+        },
+        {
+          ...createEvent().markets[0],
+          id: 'market-active-later',
+          slug: 'active-later',
+          condition_id: 'condition-active-later',
+          title: 'Active later',
+          end_time: '2026-09-05T12:00:00.000Z',
+        },
+        {
+          ...createEvent().markets[0],
+          id: 'market-active-sooner',
+          slug: 'active-sooner',
+          condition_id: 'condition-active-sooner',
+          title: 'Active sooner',
+          end_time: '2026-09-04T12:00:00.000Z',
+        },
+        {
+          ...createEvent().markets[0],
+          id: 'market-resolved-sooner',
+          slug: 'resolved-sooner',
+          condition_id: 'condition-resolved-sooner',
+          title: 'Resolved sooner',
+          end_time: '2026-09-03T12:00:00.000Z',
+          is_resolved: true,
+        },
+      ] as any,
+    })
+
+    renderWithQueryClient(<EventShare event={event} />)
+
+    fireEvent.pointerEnter(screen.getByRole('button', { name: 'Copy event link' }), { pointerType: 'mouse' })
+
+    const menuItems = screen
+      .getAllByRole('button')
+      .filter((button) => button.textContent)
+      .map((button) => button.textContent)
+
+    expect(menuItems).toEqual(['Copy link', 'Active sooner', 'Active later', 'Resolved sooner', 'Resolved later'])
+    expect(document.querySelectorAll('hr')).toHaveLength(2)
+    expect(document.querySelector('.max-h-56')).toHaveClass('p-1', 'overscroll-contain')
+    expect(screen.getByRole('button', { name: 'Active sooner' })).toHaveClass('py-2')
   })
 
   it('closes an open multi-market menu when the page scrolls', () => {

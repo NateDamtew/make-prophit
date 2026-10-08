@@ -1,7 +1,7 @@
 # Example for GKE credentials loaded by:
 # gcloud container clusters get-credentials kuest-prod-autopilot --region us-central1 --project my-gcp-project
 kube_context = "gke_my-gcp-project_us-central1_kuest-prod-autopilot"
-app_image    = "ghcr.io/kuestcom/prediction-market:v1.0.0"
+app_image    = "ghcr.io/kuest/prediction-market:v1.0.0"
 site_url     = "https://markets.example.com"
 
 secret_env = {
@@ -18,7 +18,7 @@ secret_env = {
   # Choose one storage profile:
   # Supabase mode
   SUPABASE_URL                        = "replace-me"
-  SUPABASE_SERVICE_ROLE_KEY           = "replace-me"
+  SUPABASE_SECRET_KEY                 = "replace-me"
 
   # S3 mode (use this trio when SUPABASE_* is not set)
   # S3_BUCKET                         = "replace-me"
