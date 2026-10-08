@@ -1,14 +1,19 @@
 import type { ComponentProps, ReactNode } from 'react'
 
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, mock, jest } from 'bun:test'
+import { useMemo } from 'react'
 
 import EventSeriesPills from '@/app/[locale]/(platform)/event/[slug]/_components/EventSeriesPills'
 
-vi.mock('next-intl', () => ({
+import { useFakeTimers, useRealTimers } from '../bun-test-helpers'
+
+void mock.module('next-intl', () => ({
   useExtracted: () => (message: string) => message,
+  useLocale: () => 'en-US',
 }))
 
-vi.mock('@/i18n/navigation', () => ({
+void mock.module('@/i18n/navigation', () => ({
   Link: ({ children, href, ...props }: { children: ReactNode; href: string }) => (
     <a href={href} {...props}>
       {children}
@@ -34,15 +39,49 @@ function createSeriesEvent(
 
 describe('eventSeriesPills', () => {
   beforeEach(() => {
-    vi.useFakeTimers()
-    vi.setSystemTime(new Date('2026-07-28T12:47:00.000Z'))
+    useFakeTimers()
+    jest.setSystemTime(new Date('2026-07-28T12:47:00.000Z'))
   })
 
   afterEach(() => {
-    vi.useRealTimers()
+    useRealTimers()
   })
 
-  it('shows two 5-minute event pills and moves later events into More', () => {
+  it('moves the live badge to the next trading window when its parent caches navigation', () => {
+    const seriesEvents = [
+      createSeriesEvent('event-1', '2026-07-28T12:50:00.000Z'),
+      createSeriesEvent('event-2', '2026-07-28T12:55:00.000Z'),
+    ]
+
+    function CachedSeriesNavigation() {
+      return useMemo(
+        () => (
+          <EventSeriesPills
+            currentEventSlug="event-1"
+            seriesEvents={seriesEvents}
+            tradingWindowMs={5 * 60 * 1000}
+            variant="live"
+          />
+        ),
+        [],
+      )
+    }
+
+    render(<CachedSeriesNavigation />)
+
+    expect(screen.getByText('8:50 AM').closest('a')?.querySelector('.animate-ping')).not.toBeNull()
+    expect(screen.getByText('8:55 AM').closest('a')?.querySelector('.animate-ping')).toBeNull()
+
+    act(() => {
+      jest.setSystemTime(new Date('2026-07-28T12:50:00.000Z'))
+      jest.advanceTimersByTime(1000)
+    })
+
+    expect(screen.getByText('8:50 AM').closest('a')?.querySelector('.animate-ping')).toBeNull()
+    expect(screen.getByText('8:55 AM').closest('a')?.querySelector('.animate-ping')).not.toBeNull()
+  })
+
+  it('keeps LIVE and its next three 5-minute events visible, then moves later events into More', () => {
     render(
       <EventSeriesPills
         currentEventSlug="event-1"
@@ -56,6 +95,8 @@ describe('eventSeriesPills', () => {
           createSeriesEvent('event-2', '2026-07-28T12:55:00.000Z'),
           createSeriesEvent('event-3', '2026-07-28T13:00:00.000Z'),
           createSeriesEvent('event-4', '2026-07-28T13:05:00.000Z'),
+          createSeriesEvent('event-5', '2026-07-28T13:10:00.000Z'),
+          createSeriesEvent('event-6', '2026-07-28T13:15:00.000Z'),
         ]}
         tradingWindowMs={5 * 60 * 1000}
         variant="live"
@@ -65,14 +106,16 @@ describe('eventSeriesPills', () => {
     expect(screen.getByRole('link', { name: '8:35 AM' })).toBeInTheDocument()
     expect(screen.getByText('8:50 AM')).toBeInTheDocument()
     expect(screen.getByText('8:55 AM')).toBeInTheDocument()
-    expect(screen.queryByText('9:00 AM')).not.toBeInTheDocument()
+    expect(screen.getByText('9:00 AM')).toBeInTheDocument()
+    expect(screen.getByText('9:05 AM')).toBeInTheDocument()
+    expect(screen.queryByText('9:10 AM')).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'More' }))
 
     expect(screen.getByRole('menu')).toHaveClass('min-w-fit')
-    expect(screen.getByText('09:00 AM ET')).toHaveClass('tabular-nums')
-    expect(screen.getByText('09:00 AM ET')).not.toHaveClass('w-[5.5rem]')
-    expect(screen.getByText('09:05 AM ET')).toBeInTheDocument()
+    expect(screen.getByText('09:10 AM ET')).toHaveClass('tabular-nums')
+    expect(screen.getByText('09:10 AM ET')).not.toHaveClass('w-[5.5rem]')
+    expect(screen.getByText('09:15 AM ET')).toBeInTheDocument()
   })
 
   it.each([
@@ -84,7 +127,7 @@ describe('eventSeriesPills', () => {
     render(
       <EventSeriesPills
         currentEventSlug="event-1"
-        seriesEvents={[0, 1, 2, 3].map((offset) =>
+        seriesEvents={[0, 1, 2, 3, 4].map((offset) =>
           createSeriesEvent(
             `event-${offset + 1}`,
             new Date(firstEndTimestamp + offset * tradingWindowMs).toISOString(),
@@ -96,6 +139,28 @@ describe('eventSeriesPills', () => {
     )
 
     expect(screen.getByRole('button', { name: 'More' })).toBeInTheDocument()
+  })
+
+  it('keeps a selected future event visible without hiding LIVE', () => {
+    const firstEndTimestamp = Date.parse('2026-07-28T12:50:00.000Z')
+
+    render(
+      <EventSeriesPills
+        currentEventSlug="event-6"
+        seriesEvents={[0, 1, 2, 3, 4, 5].map((offset) =>
+          createSeriesEvent(`event-${offset + 1}`, new Date(firstEndTimestamp + offset * 5 * 60 * 1000).toISOString()),
+        )}
+        tradingWindowMs={5 * 60 * 1000}
+        variant="live"
+      />,
+    )
+
+    expect(screen.getByText('8:50 AM')).toBeInTheDocument()
+    expect(screen.getByText('9:15 AM')).toBeInTheDocument()
+    expect(screen.queryByText('9:10 AM')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'More' }))
+    expect(screen.getByText('09:10 AM ET')).toBeInTheDocument()
   })
 
   it('shows past 4-hour results with ET time labels', () => {

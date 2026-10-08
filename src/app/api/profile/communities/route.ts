@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+
 import { CommunityRepository } from '@/lib/db/queries/community'
 
 export async function GET(request: Request) {

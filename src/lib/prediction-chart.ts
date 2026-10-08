@@ -1,5 +1,3 @@
-import type { Dispatch, RefObject, SetStateAction } from 'react'
-
 import type { DataPoint, SeriesConfig } from '@/types/PredictionChartTypes'
 
 export const DEFAULT_X_AXIS_TICKS = 6
@@ -10,25 +8,20 @@ export const TOOLTIP_LABEL_MAX_WIDTH = 160
 export const TOOLTIP_PANEL_LABEL_HEIGHT = 24
 export const TOOLTIP_PANEL_LABEL_GAP = 4
 export const TOOLTIP_PANEL_LABEL_MAX_WIDTH = 176
-export const INITIAL_REVEAL_DURATION = 1400
-export const INTERACTION_BASE_REVEAL_DURATION = 1100
-
+export const TOOLTIP_DATE_LABEL_HEIGHT = 16
+export const TOOLTIP_DATE_LABEL_GAP = 4
+export const TOOLTIP_HEADER_LABEL_HEIGHT = 20
 const DATA_POINT_EPSILON = 0.0001
 
-export function clamp01(value: number) {
-  if (value < 0) {
-    return 0
-  }
+const TOOLTIP_TOP_LABEL_OFFSET = 36
+const TOOLTIP_TOP_LABEL_WITH_HEADER_OFFSET = 54
 
-  if (value > 1) {
-    return 1
-  }
-
-  return value
-}
-
-function easeOutCubic(t: number) {
-  return 1 - (1 - t) ** 3
+export function resolveTooltipDateLabelTop(marginTop: number, showHeader: boolean) {
+  const topLabelTop = Math.max(
+    0,
+    marginTop - (showHeader ? TOOLTIP_TOP_LABEL_WITH_HEADER_OFFSET : TOOLTIP_TOP_LABEL_OFFSET),
+  )
+  return topLabelTop + (showHeader ? TOOLTIP_HEADER_LABEL_HEIGHT : 0)
 }
 
 export function snapTimestampToInterval(valueMs: number, stepMs?: number, offsetMs = 0) {
@@ -64,62 +57,6 @@ export function arePointsEqual(a: DataPoint, b: DataPoint) {
   }
 
   return true
-}
-
-interface RevealAnimationOptions {
-  from: number
-  to: number
-  duration?: number
-  frameRef: RefObject<number | null>
-  setProgress: Dispatch<SetStateAction<number>>
-}
-
-export function stopRevealAnimation(frameRef: RefObject<number | null>) {
-  if (frameRef.current !== null) {
-    cancelAnimationFrame(frameRef.current)
-    frameRef.current = null
-  }
-}
-
-export function runRevealAnimation({
-  from,
-  to,
-  duration = INTERACTION_BASE_REVEAL_DURATION,
-  frameRef,
-  setProgress,
-}: RevealAnimationOptions) {
-  const clampedFrom = clamp01(from)
-  const clampedTo = clamp01(to)
-
-  stopRevealAnimation(frameRef)
-
-  if (clampedFrom === clampedTo) {
-    setProgress(clampedTo)
-    return
-  }
-
-  let startTimestamp: number | null = null
-
-  function step(timestamp: number) {
-    if (startTimestamp === null) {
-      startTimestamp = timestamp
-    }
-
-    const elapsed = timestamp - startTimestamp
-    const progress = clamp01(duration === 0 ? 1 : elapsed / duration)
-    const nextValue = clampedFrom + (clampedTo - clampedFrom) * easeOutCubic(progress)
-
-    setProgress(nextValue)
-
-    if (progress < 1) {
-      frameRef.current = requestAnimationFrame(step)
-    } else {
-      frameRef.current = null
-    }
-  }
-
-  setProgress(clampedFrom)
-  frameRef.current = requestAnimationFrame(step)
 }
 
 function collectSeriesValues(data: DataPoint[], series: SeriesConfig[]) {

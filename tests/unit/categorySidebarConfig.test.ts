@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'bun:test'
 
 import { resolveCategorySidebarData, resolveCategorySidebarPageTitle } from '@/lib/category-sidebar-config'
 
@@ -143,6 +143,23 @@ describe('category sidebar config', () => {
       name: 'Instituições',
       count: 1,
     })
+  })
+
+  it('uses localized tag names for configured items that are not in the active child list', () => {
+    const result = resolveCategorySidebarData({
+      categorySlug: 'finance',
+      categoryCount: 0,
+      childs: [],
+      localizedNamesBySlug: new Map([
+        ['stocks', 'Ações'],
+        ['weekly', 'Semanal'],
+        ['forex', 'Câmbio'],
+      ]),
+    })
+
+    expect(result.sidebarItems).toContainEqual(expect.objectContaining({ slug: 'stocks', label: 'Ações' }))
+    expect(result.sidebarItems).toContainEqual(expect.objectContaining({ slug: 'weekly', label: 'Semanal' }))
+    expect(result.sidebarItems).toContainEqual(expect.objectContaining({ slug: 'forex', label: 'Câmbio' }))
   })
 
   it('builds a default sidebar for non-configured categories with a counted all item', () => {

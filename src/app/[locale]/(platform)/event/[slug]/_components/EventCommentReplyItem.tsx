@@ -61,11 +61,11 @@ function useCommentReplyItemHandlers({
   onLikeToggle: (commentId: string, replyId: string) => void
   onDelete: (commentId: string, replyId: string) => void
 }) {
-  const { open } = useAppKit()
+  const { open: openAppKit } = useAppKit()
 
   const handleReplyClick = useCallback(() => {
     if (!user) {
-      void open()
+      void openAppKit()
       return
     }
     const shouldOpen = replyingTo !== reply.id
@@ -73,7 +73,7 @@ function useCommentReplyItemHandlers({
     if (shouldOpen) {
       onSetReplyText('')
     }
-  }, [user, reply, replyingTo, onSetReplyingTo, onSetReplyText, open])
+  }, [user, reply, replyingTo, onSetReplyingTo, onSetReplyText, openAppKit])
 
   const handleLikeToggle = useCallback(() => {
     onLikeToggle(commentId, reply.id)
@@ -151,7 +151,8 @@ export default function EventCommentReplyItem({
         profileSlug={profileSlug}
         date={reply.created_at}
         joinedAt={reply.user_created_at}
-        containerClassName="[&_[data-avatar-wrapper]]:mt-1.5 [&_[data-avatar]]:h-10 [&_[data-avatar]]:w-10"
+        avatarSize={40}
+        containerClassName="[&_[data-avatar-wrapper]]:mt-1.5"
         usernameClassName="text-sm font-semibold text-foreground hover:underline underline-offset-2"
         usernameAddon={
           <CommentPositionsIndicator
@@ -199,7 +200,7 @@ export default function EventCommentReplyItem({
                     <button
                       type="button"
                       className="text-muted-foreground transition-colors hover:text-foreground"
-                      aria-label="Reply options"
+                      aria-label={t('Reply options')}
                     />
                   }
                 >

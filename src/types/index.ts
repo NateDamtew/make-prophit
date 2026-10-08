@@ -27,6 +27,8 @@ export interface Event {
   sports_start_time?: string | null
   sports_event_week?: number | null
   sports_score?: string | null
+  sports_segment_scores?: SportsSegmentScore[] | null
+  sports_segment_count?: number | null
   sports_period?: string | null
   sports_elapsed?: string | null
   sports_live?: boolean | null
@@ -60,6 +62,12 @@ export interface Event {
   main_tag: string
   is_bookmarked: boolean
   is_trending: boolean
+}
+
+export interface SportsSegmentScore {
+  segment: number
+  homeScore: number | null
+  awayScore: number | null
 }
 
 export interface EventSeriesEntry {
@@ -188,6 +196,17 @@ export interface HomeFeaturedSportsMarketGroup {
   }>
 }
 
+export interface HomeFeaturedRolloverEvent {
+  event: Event
+  kind: HomeFeaturedCardKind
+  primaryMarkets: Market[]
+  topOutcomes: HomeFeaturedOutcomeSummary[]
+  resolvedEventId: string
+  temporalStatus: 'live' | 'daily' | 'monthly' | 'ends'
+  temporalLabel: string
+  sportsMarketGroups: HomeFeaturedSportsMarketGroup[]
+}
+
 export interface HomeFeaturedEventCard {
   featuredId: string
   targetType: HomeFeaturedTargetType
@@ -207,6 +226,8 @@ export interface HomeFeaturedEventCard {
   temporalLabel: string
   sportsMarketGroups: HomeFeaturedSportsMarketGroup[]
   liveChartConfig: EventLiveChartConfig | null
+  seriesEvents: EventSeriesEntry[]
+  nextSeriesEvent: HomeFeaturedRolloverEvent | null
 }
 
 export interface HomeFeaturedHotTopic {
@@ -505,6 +526,7 @@ export interface AffiliateData {
 
 export interface ActivityOrder {
   id: string
+  event_id?: string
   type?: string
   user: {
     id: string

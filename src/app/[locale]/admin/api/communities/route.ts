@@ -1,6 +1,8 @@
 import type { NextRequest } from 'next/server'
+
 import { desc, ilike, sql } from 'drizzle-orm'
 import { NextResponse } from 'next/server'
+
 import { getAdminActor } from '@/lib/admin-ui/guard'
 import { communities } from '@/lib/db/schema/communities/tables'
 import { db } from '@/lib/drizzle'
@@ -55,16 +57,17 @@ export async function GET(request: NextRequest) {
       ORDER BY ${desc(communities.created_at)}
       LIMIT ${limit} OFFSET ${pageIndex * limit}
     `)
-    const rows = ((rowsResult as unknown as { rows: AdminCommunityRow[] }).rows
-      ?? (rowsResult as unknown as AdminCommunityRow[]))
+    const rows =
+      (rowsResult as unknown as { rows: AdminCommunityRow[] }).rows ?? (rowsResult as unknown as AdminCommunityRow[])
 
     const countResult = await db.execute(sql`SELECT count(*)::int AS c FROM communities ${whereClause}`)
-    const totalCount = Number(((countResult as unknown as { rows: Array<{ c: number }> }).rows
-      ?? (countResult as unknown as Array<{ c: number }>))[0]?.c ?? 0)
+    const totalCount = Number(
+      ((countResult as unknown as { rows: Array<{ c: number }> }).rows ??
+        (countResult as unknown as Array<{ c: number }>))[0]?.c ?? 0,
+    )
 
     return NextResponse.json({ data: rows, totalCount })
-  }
-  catch (error) {
+  } catch (error) {
     console.error('Admin communities list error', error)
     return NextResponse.json({ error: 'Failed to load communities.' }, { status: 500 })
   }

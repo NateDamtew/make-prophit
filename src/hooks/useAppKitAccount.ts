@@ -1,6 +1,7 @@
 'use client'
 
 import { useAccount, useChainId } from 'wagmi'
+
 import { useAppKit } from '@/hooks/useAppKit'
 
 export function useAppKitAccount(_options?: { namespace?: string }) {

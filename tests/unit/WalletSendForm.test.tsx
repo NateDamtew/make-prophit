@@ -1,19 +1,26 @@
 import type { ComponentProps } from 'react'
 
 import { fireEvent, render, screen } from '@testing-library/react'
+import { beforeEach, describe, expect, it, mock } from 'bun:test'
 import { createElement } from 'react'
 
 import WalletSendForm from '@/app/[locale]/(platform)/_components/wallet-modal/WalletSendForm'
 
-const mocks = vi.hoisted(() => ({
-  useAppKitAccount: vi.fn(),
+import { hoisted } from '../bun-test-helpers'
+
+void mock.module('next-intl', () => ({
+  useExtracted: () => (message: string) => message,
 }))
 
-vi.mock('@/hooks/useAppKitAccount', () => ({
+const mocks = hoisted(() => ({
+  useAppKitAccount: mock(),
+}))
+
+void mock.module('@/hooks/useAppKitAccount', () => ({
   useAppKitAccount: () => mocks.useAppKitAccount(),
 }))
 
-vi.mock('next/image', () => ({
+void mock.module('next/image', () => ({
   default: function MockImage(props: any) {
     return createElement('img', props)
   },
@@ -23,13 +30,13 @@ function renderWalletSendForm(overrides: Partial<ComponentProps<typeof WalletSen
   return render(
     <WalletSendForm
       sendTo=""
-      onChangeSendTo={vi.fn()}
+      onChangeSendTo={mock()}
       sendAmount=""
-      onChangeSendAmount={vi.fn()}
+      onChangeSendAmount={mock()}
       isSending={false}
       onSubmitSend={(event) => event.preventDefault()}
       connectedWalletAddress="0x1234567890123456789012345678901234567890"
-      onUseConnectedWallet={vi.fn()}
+      onUseConnectedWallet={mock()}
       availableBalance={100}
       {...overrides}
     />,
@@ -44,7 +51,7 @@ describe('walletSendForm', () => {
   })
 
   it('allows using the connected wallet shortcut for external wallets', () => {
-    const onUseConnectedWallet = vi.fn()
+    const onUseConnectedWallet = mock()
 
     renderWalletSendForm({ onUseConnectedWallet })
 

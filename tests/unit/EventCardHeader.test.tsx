@@ -1,27 +1,15 @@
-import type { AnchorHTMLAttributes, ReactNode } from 'react'
+import type { AnchorHTMLAttributes } from 'react'
 
 import { render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, mock } from 'bun:test'
 
 import EventCardHeader from '@/app/[locale]/(platform)/(home)/_components/EventCardHeader'
 
-vi.mock('react', async (importOriginal) => {
-  const react = await importOriginal<typeof import('react')>()
-
-  return {
-    ...react,
-    ViewTransition: function MockViewTransition({ children }: { children?: ReactNode }) {
-      return <>{children}</>
-    },
-  }
-})
-
-vi.mock('next-intl', () => ({
+void mock.module('next-intl', () => ({
   useExtracted: () => (message: string) => message,
-  useLocale: () => 'en',
 }))
 
-vi.mock('@/i18n/navigation', () => ({
+void mock.module('@/i18n/navigation', () => ({
   Link: function MockLink({ children, href, ...props }: AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }) {
     return (
       <a href={href} {...props}>
@@ -31,7 +19,7 @@ vi.mock('@/i18n/navigation', () => ({
   },
 }))
 
-vi.mock('@/components/EventIconImage', () => ({
+void mock.module('@/components/EventIconImage', () => ({
   default: () => <span data-testid="event-icon" />,
 }))
 

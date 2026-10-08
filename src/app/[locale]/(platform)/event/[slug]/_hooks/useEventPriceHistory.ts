@@ -46,6 +46,21 @@ const RANGE_WINDOW_SECONDS: Record<Exclude<TimeRange, 'ALL'>, number> = {
 export const TIME_RANGES: TimeRange[] = ['1H', '6H', '1D', '1W', '1M', 'ALL']
 const PRICE_REFRESH_INTERVAL_MS = 60_000
 
+export function canReusePriceHistoryPlaceholder(
+  previousQueryKey: readonly unknown[] | undefined,
+  clobUrl: string,
+  eventId: string,
+  tokenSignature: string,
+) {
+  return Boolean(
+    previousQueryKey &&
+    previousQueryKey[0] === 'event-price-history' &&
+    previousQueryKey[1] === clobUrl &&
+    previousQueryKey[2] === eventId &&
+    previousQueryKey[4] === tokenSignature,
+  )
+}
+
 function parseResolvedAtSeconds(resolvedAt?: string | null) {
   if (!resolvedAt) {
     return Number.NaN
@@ -292,15 +307,27 @@ export function useEventPriceHistory({
     refetchInterval: refetchIntervalMs,
     refetchIntervalInBackground: refetchIntervalMs !== false,
     refetchOnReconnect: 'always',
-    placeholderData: keepPreviousData,
+    placeholderData: (previousData, previousQuery) =>
+      canReusePriceHistoryPlaceholder(previousQuery?.queryKey, clobUrl, eventId, tokenSignature)
+        ? keepPreviousData(previousData)
+        : undefined,
     retry: 2,
   })
   const priceHistoryByMarket = priceHistoryQuery.data
+  const isRangeTransitionPlaceholder = priceHistoryQuery.isPlaceholderData && priceHistoryQuery.dataUpdatedAt === 0
 
   const normalizedHistory = useMemo(() => {
+    if (isRangeTransitionPlaceholder) {
+      return {
+        points: [],
+        latestSnapshot: {},
+        latestRawPrices: {},
+      }
+    }
+
     const normalized = buildNormalizedHistory(priceHistoryByMarket ?? {})
     return clipNormalizedHistoryToResolvedAt(normalized, eventResolvedAt)
-  }, [priceHistoryByMarket, eventResolvedAt])
+  }, [eventResolvedAt, isRangeTransitionPlaceholder, priceHistoryByMarket])
 
   return {
     normalizedHistory: normalizedHistory.points,
@@ -308,6 +335,7 @@ export function useEventPriceHistory({
     latestRawPrices: normalizedHistory.latestRawPrices,
     isPending: priceHistoryQuery.isPending,
     isFetching: priceHistoryQuery.isFetching,
+    isRangeTransitioning: isRangeTransitionPlaceholder,
     isError: priceHistoryQuery.isError,
     refetch: priceHistoryQuery.refetch,
   }

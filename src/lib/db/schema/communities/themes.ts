@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm'
 import { char, check, jsonb, pgTable, text, timestamp } from 'drizzle-orm/pg-core'
+
 import { communities, community_markets } from '@/lib/db/schema/communities/tables'
 
 /**
@@ -31,13 +32,16 @@ export const community_themes = pgTable(
     surface_mode: text().$type<SurfaceMode>().notNull().default('auto'),
     font_hint: text().$type<FontHint>().notNull().default('sans'),
     /** Section ids the admin chose to hide for this community's preset. */
-    hidden_sections: jsonb().$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    hidden_sections: jsonb()
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     /** Optional pinned market for the Newsroom hero. */
     featured_market_id: char({ length: 26 }).references(() => community_markets.id, { onDelete: 'set null' }),
     created_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
     updated_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
-  table => [
+  (table) => [
     check('chk_community_themes_surface_mode', sql`${table.surface_mode} IN ('auto', 'light', 'dark')`),
     check('chk_community_themes_font_hint', sql`${table.font_hint} IN ('sans', 'serif', 'mono')`),
   ],

@@ -1,4 +1,4 @@
-import { getExtracted, setRequestLocale } from 'next-intl/server'
+import { getExtracted } from 'next-intl/server'
 import { io } from 'next/cache'
 import { Suspense } from 'react'
 
@@ -6,35 +6,36 @@ import type { AdminThemeSiteSettingsInitialState } from '@/app/[locale]/admin/th
 
 import AdminGeneralSettingsForm from '@/app/[locale]/admin/(general)/_components/AdminGeneralSettingsForm'
 import { AdminAccordionSkeleton } from '@/app/[locale]/admin/_components/AdminPageSkeleton'
+import { getEnabledLocalesInOrderFromSettings } from '@/i18n/locale-settings'
+import { getRootLocale } from '@/i18n/root-locale'
 import { parseMarketContextSettings } from '@/lib/ai/market-context-config'
 import { MARKET_CONTEXT_VARIABLES } from '@/lib/ai/market-context-template'
 import { HomeFeaturedEventsRepository } from '@/lib/db/queries/home-featured-events'
 import { SettingsRepository } from '@/lib/db/queries/settings'
+import { TermsOfServiceRepository } from '@/lib/db/queries/terms-of-service'
 import { getBlockedCountriesFromSettings } from '@/lib/geoblock-settings'
 import { getGlobalAnnouncementSettingsFromSettings } from '@/lib/global-announcement-settings'
 import { getHomeFeaturedSettingsFromSettings } from '@/lib/home-featured-settings'
 import { getPublicAssetUrl } from '@/lib/storage'
-import { getTermsOfServicePdfPath, getTermsOfServicePdfUrl } from '@/lib/terms-of-service'
 import { getThemeSiteSettingsFormState } from '@/lib/theme-settings'
 import { DEFAULT_THEME_SITE_PWA_ICON_192_URL, DEFAULT_THEME_SITE_PWA_ICON_512_URL } from '@/lib/theme-site-identity'
 
 export const instant = false
 
-interface AdminGeneralSettingsPageProps {
-  params: Promise<{ locale: string }>
-}
-
 function AdminGeneralSettingsFallback() {
-  return <AdminAccordionSkeleton itemCount={7} />
+  return <AdminAccordionSkeleton itemCount={8} />
 }
 
-async function AdminGeneralSettingsContent({ locale }: { locale: string }) {
+async function AdminGeneralSettingsContent() {
   await io()
+  const locale = await getRootLocale()
 
-  const [{ data: allSettings }, { data: initialHomeFeaturedEvents }] = await Promise.all([
-    SettingsRepository.getSettings(),
-    HomeFeaturedEventsRepository.listAdminFeaturedEvents(locale),
-  ])
+  const [{ data: allSettings }, { data: initialHomeFeaturedEvents }, { data: initialTermsOfServiceTranslations }] =
+    await Promise.all([
+      SettingsRepository.getSettings(),
+      HomeFeaturedEventsRepository.listAdminFeaturedEvents(locale),
+      TermsOfServiceRepository.getTranslations(),
+    ])
 
   const parsedMarketContextSettings = parseMarketContextSettings(allSettings ?? undefined)
 
@@ -49,8 +50,7 @@ async function AdminGeneralSettingsContent({ locale }: { locale: string }) {
     getPublicAssetUrl(initialThemeSiteSettings.pwaIcon192Path || null) || DEFAULT_THEME_SITE_PWA_ICON_192_URL
   const initialPwaIcon512Url =
     getPublicAssetUrl(initialThemeSiteSettings.pwaIcon512Path || null) || DEFAULT_THEME_SITE_PWA_ICON_512_URL
-  const initialTermsOfServicePdfPath = getTermsOfServicePdfPath(allSettings ?? undefined)
-  const initialTermsOfServicePdfUrl = getTermsOfServicePdfUrl(allSettings ?? undefined) || null
+  const enabledLocales = getEnabledLocalesInOrderFromSettings(allSettings ?? undefined)
   const homeFeaturedSettings = getHomeFeaturedSettingsFromSettings(allSettings ?? undefined)
   const initialHomeFeaturedSettings = {
     ...homeFeaturedSettings,
@@ -76,8 +76,8 @@ async function AdminGeneralSettingsContent({ locale }: { locale: string }) {
       initialThemeSiteSettings={initialThemeSiteSettingsWithImage}
       initialGlobalAnnouncement={initialGlobalAnnouncement}
       initialBlockedCountries={initialBlockedCountries}
-      initialTermsOfServicePdfPath={initialTermsOfServicePdfPath}
-      initialTermsOfServicePdfUrl={initialTermsOfServicePdfUrl}
+      enabledLocales={enabledLocales}
+      initialTermsOfServiceTranslations={initialTermsOfServiceTranslations ?? undefined}
       initialMarketContextSettings={{
         enabled: parsedMarketContextSettings.enabled,
         prompt: parsedMarketContextSettings.prompt,
@@ -90,9 +90,7 @@ async function AdminGeneralSettingsContent({ locale }: { locale: string }) {
   )
 }
 
-export default async function AdminGeneralSettingsPage({ params }: AdminGeneralSettingsPageProps) {
-  const { locale } = await params
-  setRequestLocale(locale)
+export default async function AdminGeneralSettingsPage() {
   const t = await getExtracted()
 
   return (
@@ -105,7 +103,7 @@ export default async function AdminGeneralSettingsPage({ params }: AdminGeneralS
       </div>
 
       <Suspense fallback={<AdminGeneralSettingsFallback />}>
-        <AdminGeneralSettingsContent locale={locale} />
+        <AdminGeneralSettingsContent />
       </Suspense>
     </section>
   )

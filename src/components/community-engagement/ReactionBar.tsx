@@ -1,9 +1,11 @@
 'use client'
 
-import type { CommentReactionKind } from '@/lib/db/schema/communities/engagement'
 import { useState } from 'react'
-import { cn } from '@/lib/utils'
+
+import type { CommentReactionKind } from '@/lib/db/schema/communities/engagement'
+
 import { toast } from '@/components/ui/toast'
+import { cn } from '@/lib/utils'
 
 interface ReactionState {
   count: number
@@ -21,7 +23,7 @@ interface ReactionBarProps {
   className?: string
 }
 
-const REACTIONS: { kind: CommentReactionKind, emoji: string, label: string }[] = [
+const REACTIONS: { kind: CommentReactionKind; emoji: string; label: string }[] = [
   { kind: 'like', emoji: '👍', label: 'Like' },
   { kind: 'fire', emoji: '🔥', label: 'Fire' },
   { kind: 'target', emoji: '🎯', label: 'Spot on' },
@@ -50,8 +52,8 @@ export function ReactionBar({ targetType, targetId, initial, onChange, size = 's
     const next: ReactionState = prev.mine
       ? { count: Math.max(prev.count - 1, 0), mine: false }
       : { count: prev.count + 1, mine: true }
-    setState(s => ({ ...s, [kind]: next }))
-    setPending(p => new Set(p).add(kind))
+    setState((s) => ({ ...s, [kind]: next }))
+    setPending((p) => new Set(p).add(kind))
 
     try {
       const res = await fetch('/api/communities/reactions', {
@@ -64,13 +66,11 @@ export function ReactionBar({ targetType, targetId, initial, onChange, size = 's
         throw new Error(json?.error || 'Failed to react')
       }
       onChange?.()
-    }
-    catch (error) {
+    } catch (error) {
       // Rollback on failure.
-      setState(s => ({ ...s, [kind]: prev }))
+      setState((s) => ({ ...s, [kind]: prev }))
       toast.error((error as Error).message)
-    }
-    finally {
+    } finally {
       setPending((p) => {
         const next = new Set(p)
         next.delete(kind)
@@ -79,9 +79,7 @@ export function ReactionBar({ targetType, targetId, initial, onChange, size = 's
     }
   }
 
-  const btnSize = size === 'sm'
-    ? 'h-7 px-2 text-xs gap-1'
-    : 'h-8 px-2.5 text-sm gap-1.5'
+  const btnSize = size === 'sm' ? 'h-7 px-2 text-xs gap-1' : 'h-8 px-2.5 text-sm gap-1.5'
 
   return (
     <div className={cn('flex flex-wrap items-center gap-1', className)}>

@@ -1,15 +1,24 @@
 'use client'
 
-import type { AgentRecord } from '@/lib/db/queries/agents'
 import { Loader2Icon } from 'lucide-react'
 import { useEffect, useState, useTransition } from 'react'
+
+import type { AgentRecord } from '@/lib/db/queries/agents'
+
 import { createAgentAction, updateAgentAction } from '@/app/[locale]/(platform)/settings/agents/_actions/agent-actions'
-import { toast } from '@/components/ui/toast'
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
+import { toast } from '@/components/ui/toast'
 
 interface AgentFormDialogProps {
   /** When provided, the dialog is in "edit" mode. When null/undefined, "create". */
@@ -59,13 +68,7 @@ function formStateFromAgent(agent: AgentRecord | null | undefined): FormState {
   }
 }
 
-export default function AgentFormDialog({
-  agent,
-  open,
-  onOpenChange,
-  onCreated,
-  onUpdated,
-}: AgentFormDialogProps) {
+export default function AgentFormDialog({ agent, open, onOpenChange, onCreated, onUpdated }: AgentFormDialogProps) {
   const [form, setForm] = useState<FormState>(() => formStateFromAgent(agent))
   const [isPending, startTransition] = useTransition()
   const isEdit = Boolean(agent)
@@ -73,6 +76,7 @@ export default function AgentFormDialog({
   // Hydrate the form whenever the dialog opens with a different (or fresh) agent.
   useEffect(() => {
     if (open) {
+      // oxlint-disable-next-line react/set-state-in-effect
       setForm(formStateFromAgent(agent))
     }
   }, [open, agent])
@@ -140,7 +144,7 @@ export default function AgentFormDialog({
           <DialogTitle>{isEdit ? `Edit ${agent?.name}` : 'Register an agent'}</DialogTitle>
           <DialogDescription>
             {isEdit
-              ? 'Update this agent\'s public profile and spending limits.'
+              ? "Update this agent's public profile and spending limits."
               : 'Give your AI agent an identity and decide how much of your wallet it can spend.'}
           </DialogDescription>
         </DialogHeader>
@@ -153,7 +157,7 @@ export default function AgentFormDialog({
               id="agent-name"
               placeholder="e.g. ElectionEdgeBot"
               value={form.name}
-              onChange={event => setForm(prev => ({ ...prev, name: event.target.value }))}
+              onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
               maxLength={60}
               required
             />
@@ -165,7 +169,7 @@ export default function AgentFormDialog({
               id="agent-description"
               placeholder="What does this agent do?"
               value={form.description}
-              onChange={event => setForm(prev => ({ ...prev, description: event.target.value }))}
+              onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))}
               maxLength={500}
             />
           </div>
@@ -177,7 +181,7 @@ export default function AgentFormDialog({
               type="url"
               placeholder="https://… (optional)"
               value={form.avatar_url}
-              onChange={event => setForm(prev => ({ ...prev, avatar_url: event.target.value }))}
+              onChange={(event) => setForm((prev) => ({ ...prev, avatar_url: event.target.value }))}
               maxLength={500}
             />
           </div>
@@ -185,7 +189,9 @@ export default function AgentFormDialog({
           {/* Public profile toggle */}
           <div className="flex items-start justify-between gap-3 rounded-md border bg-muted/30 p-3">
             <div className="grid gap-0.5">
-              <Label htmlFor="agent-public" className="text-sm font-medium">Public profile</Label>
+              <Label htmlFor="agent-public" className="text-sm font-medium">
+                Public profile
+              </Label>
               <p className="text-xs text-muted-foreground">
                 Show this agent on the public leaderboard and at /agent/&lt;slug&gt; with your name as owner.
               </p>
@@ -193,7 +199,7 @@ export default function AgentFormDialog({
             <Switch
               id="agent-public"
               checked={form.is_public}
-              onCheckedChange={checked => setForm(prev => ({ ...prev, is_public: checked }))}
+              onCheckedChange={(checked) => setForm((prev) => ({ ...prev, is_public: checked }))}
             />
           </div>
 
@@ -202,18 +208,20 @@ export default function AgentFormDialog({
             <div>
               <Label className="text-sm font-medium">Spending limits</Label>
               <p className="mt-0.5 text-xs text-muted-foreground">
-                Cap how much of your wallet this agent can spend. Trading goes live at mainnet —
-                limits will be enforced from day one.
+                Cap how much of your wallet this agent can spend. Trading goes live at mainnet — limits will be enforced
+                from day one.
               </p>
             </div>
 
             <div className="grid gap-2">
               <div className="flex items-center justify-between gap-2">
-                <Label htmlFor="agent-daily-limit" className="text-sm">Daily limit (USD)</Label>
+                <Label htmlFor="agent-daily-limit" className="text-sm">
+                  Daily limit (USD)
+                </Label>
                 <Switch
                   id="agent-daily-limit-toggle"
                   checked={form.daily_limit_enabled}
-                  onCheckedChange={checked => setForm(prev => ({ ...prev, daily_limit_enabled: checked }))}
+                  onCheckedChange={(checked) => setForm((prev) => ({ ...prev, daily_limit_enabled: checked }))}
                 />
               </div>
               {form.daily_limit_enabled && (
@@ -225,18 +233,20 @@ export default function AgentFormDialog({
                   step="0.01"
                   placeholder="e.g. 50"
                   value={form.daily_limit_value}
-                  onChange={event => setForm(prev => ({ ...prev, daily_limit_value: event.target.value }))}
+                  onChange={(event) => setForm((prev) => ({ ...prev, daily_limit_value: event.target.value }))}
                 />
               )}
             </div>
 
             <div className="grid gap-2">
               <div className="flex items-center justify-between gap-2">
-                <Label htmlFor="agent-total-limit" className="text-sm">Total cap (USD)</Label>
+                <Label htmlFor="agent-total-limit" className="text-sm">
+                  Total cap (USD)
+                </Label>
                 <Switch
                   id="agent-total-limit-toggle"
                   checked={form.total_limit_enabled}
-                  onCheckedChange={checked => setForm(prev => ({ ...prev, total_limit_enabled: checked }))}
+                  onCheckedChange={(checked) => setForm((prev) => ({ ...prev, total_limit_enabled: checked }))}
                 />
               </div>
               {form.total_limit_enabled && (
@@ -248,7 +258,7 @@ export default function AgentFormDialog({
                   step="0.01"
                   placeholder="e.g. 500"
                   value={form.total_limit_value}
-                  onChange={event => setForm(prev => ({ ...prev, total_limit_value: event.target.value }))}
+                  onChange={(event) => setForm((prev) => ({ ...prev, total_limit_value: event.target.value }))}
                 />
               )}
             </div>

@@ -4,7 +4,7 @@ import type { InfiniteData } from '@tanstack/react-query'
 
 import { useQueryClient } from '@tanstack/react-query'
 import { BotIcon, TriangleAlertIcon } from 'lucide-react'
-import { useExtracted } from 'next-intl'
+import { useExtracted, useLocale } from 'next-intl'
 import { useMemo, useState } from 'react'
 import { useSignTypedData } from 'wagmi'
 
@@ -13,6 +13,7 @@ import type { SubmitOrderArgs } from '@/lib/orders'
 import type { Market } from '@/types'
 
 import { useTradingOnboarding } from '@/app/[locale]/(platform)/_providers/TradingOnboardingProvider'
+import EventTradeToast from '@/app/[locale]/(platform)/event/[slug]/_components/EventTradeToast'
 import ResponsiveTradingDialog from '@/app/[locale]/(platform)/event/[slug]/_components/ResponsiveTradingDialog'
 import { buildUserOpenOrdersQueryKey } from '@/app/[locale]/(platform)/event/[slug]/_hooks/useUserOpenOrdersQuery'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
@@ -105,11 +106,12 @@ export default function EventProvideLiquidityDialog({
   onSuccess,
 }: EventProvideLiquidityDialogProps) {
   const t = useExtracted()
+  const locale = useLocale()
   const queryClient = useQueryClient()
   const user = useUser()
   const { open: openAppKit } = useAppKit()
   const { ensureTradingReady, openTradeRequirements } = useTradingOnboarding()
-  const { balance, isLoadingBalance } = useBalance({ enabled: open })
+  const { balance, isLoadingBalance, isBalanceError, refetchBalance } = useBalance({ enabled: open })
   const affiliateMetadata = useAffiliateOrderMetadata()
   const normalizeOutcomeLabel = useOutcomeLabel()
   const { signTypedDataAsync } = useSignTypedData()
@@ -152,12 +154,15 @@ export default function EventProvideLiquidityDialog({
   const availableBalance = Number.isFinite(balance.raw) ? Math.max(0, balance.raw) : 0
   const hasDepositWallet = Boolean(user?.deposit_wallet_address)
   const hasInsufficientBalance = Boolean(
-    hasDepositWallet && !isLoadingBalance && requiredBalance > availableBalance + 1e-8,
+    hasDepositWallet && !isLoadingBalance && !isBalanceError && requiredBalance > availableBalance + 1e-8,
   )
 
   const validationError = (() => {
     if (!yesOutcome?.token_id || !noOutcome?.token_id) {
       return t('This market cannot be used for liquidity provisioning.')
+    }
+    if (isBalanceError) {
+      return t('Could not validate USDC balance right now.')
     }
     if (!Number.isFinite(numericSplitAmount) || numericSplitAmount <= 0 || !isWholeCentAmount(numericSplitAmount)) {
       return t('Enter a split amount in whole cents.')
@@ -266,6 +271,7 @@ export default function EventProvideLiquidityDialog({
           postOnly: true,
           conditionId: market.condition_id,
           slug: eventSlug,
+          locale,
         })
         setSignatureProgress(signatureNumber)
       }
@@ -408,12 +414,22 @@ export default function EventProvideLiquidityDialog({
             successful: successfulOrders.toString(),
             total: ladderOrders.length.toString(),
           }),
+          {
+            content: (
+              <EventTradeToast title={market.short_title || market.title} marketImage={market.icon_url ?? undefined} />
+            ),
+          },
         )
       } else {
         toast.success(
           t('Liquidity added with {count} orders.', {
             count: ladderOrders.length.toString(),
           }),
+          {
+            content: (
+              <EventTradeToast title={market.short_title || market.title} marketImage={market.icon_url ?? undefined} />
+            ),
+          },
         )
       }
 
@@ -562,6 +578,11 @@ export default function EventProvideLiquidityDialog({
             >
               <TriangleAlertIcon className="size-4 shrink-0" />
               <span>{validationError}</span>
+              {isBalanceError && (
+                <button type="button" className="underline underline-offset-2" onClick={() => void refetchBalance()}>
+                  {t('Retry')}
+                </button>
+              )}
             </div>
           )}
 

@@ -1,6 +1,8 @@
+import { desc, eq, sql } from 'drizzle-orm'
+
 import type { CommunityEmbedConfigRow, CommunityEmbedTheme } from '@/lib/db/schema/communities/embeds'
 import type { CommunityPayoutRow } from '@/lib/db/schema/communities/monetization'
-import { desc, eq, sql } from 'drizzle-orm'
+
 import { community_embed_configs } from '@/lib/db/schema/communities/embeds'
 import { community_payouts } from '@/lib/db/schema/communities/monetization'
 import { db } from '@/lib/drizzle'
@@ -32,8 +34,9 @@ export const CommunityMonetizationRepository = {
       WHERE id = ${communityId}
       LIMIT 1
     `)
-    const row = (rows as unknown as { rows: CommunityMonetizationFields[] }).rows?.[0]
-      ?? (rows as unknown as CommunityMonetizationFields[])[0]
+    const row =
+      (rows as unknown as { rows: CommunityMonetizationFields[] }).rows?.[0] ??
+      (rows as unknown as CommunityMonetizationFields[])[0]
     return row ?? null
   },
 

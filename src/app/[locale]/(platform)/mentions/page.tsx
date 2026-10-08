@@ -2,7 +2,7 @@
 
 import type { Metadata } from 'next'
 
-import { getExtracted, setRequestLocale } from 'next-intl/server'
+import { getExtracted } from 'next-intl/server'
 import { cacheTag } from 'next/cache'
 
 import type { SupportedLocale } from '@/i18n/locales'
@@ -11,10 +11,7 @@ import MentionsList from '@/app/[locale]/(platform)/mentions/_components/Mention
 import { cacheTags } from '@/lib/cache-tags'
 import { EventRepository } from '@/lib/db/queries/event'
 
-export async function generateMetadata({ params }: PageProps<'/[locale]/mentions'>): Promise<Metadata> {
-  const { locale } = await params
-  setRequestLocale(locale)
-
+export async function generateMetadata(): Promise<Metadata> {
   const t = await getExtracted()
 
   return {
@@ -25,7 +22,7 @@ export async function generateMetadata({ params }: PageProps<'/[locale]/mentions
 
 export default async function MentionsPage({ params }: PageProps<'/[locale]/mentions'>) {
   const { locale } = await params
-  setRequestLocale(locale)
+  const t = await getExtracted()
   cacheTag(cacheTags.eventsList)
   const resolvedLocale = locale as SupportedLocale
 
@@ -37,9 +34,9 @@ export default async function MentionsPage({ params }: PageProps<'/[locale]/ment
   const content = (
     <div className="flex flex-col gap-6 md:gap-8">
       <header className="flex flex-col gap-2">
-        <h1 className="text-2xl font-bold tracking-tight text-foreground md:text-3xl">Mention Events</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-foreground md:text-3xl">{t('Mention Events')}</h1>
         <p className="text-sm text-muted-foreground md:text-base">
-          Live events where you can predict the words and phrases that will be said.
+          {t('Live events where you can predict the words and phrases that will be said.')}
         </p>
       </header>
       {data && <MentionsList events={data} />}
@@ -50,7 +47,9 @@ export default async function MentionsPage({ params }: PageProps<'/[locale]/ment
     return (
       <main className="container-sm py-6 md:py-8">
         {content}
-        <p className="text-sm text-muted-foreground">Could not load Mentions events. Please try again in a moment.</p>
+        <p className="text-sm text-muted-foreground">
+          {t('Could not load Mentions events. Please try again in a moment.')}
+        </p>
       </main>
     )
   }
@@ -59,7 +58,7 @@ export default async function MentionsPage({ params }: PageProps<'/[locale]/ment
     return (
       <main className="container-sm py-6 md:py-8">
         {content}
-        <p className="text-sm text-muted-foreground">No Mentions events available right now. Check back soon.</p>
+        <p className="text-sm text-muted-foreground">{t('No Mentions events available right now. Check back soon.')}</p>
       </main>
     )
   }

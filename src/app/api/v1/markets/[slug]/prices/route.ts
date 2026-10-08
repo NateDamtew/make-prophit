@@ -1,5 +1,7 @@
 import type { NextRequest } from 'next/server'
+
 import { NextResponse } from 'next/server'
+
 import { DEFAULT_LOCALE } from '@/i18n/locales'
 import { agentApiError, resolveAgent, withAgentApiCors } from '@/lib/agent-api'
 import { OUTCOME_INDEX } from '@/lib/constants'
@@ -40,8 +42,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     if (!firstMarket) {
       return agentApiError('Market has no outcomes.', 404)
     }
-    const yesOutcome = firstMarket.outcomes.find(o => o.outcome_index === OUTCOME_INDEX.YES)
-      ?? firstMarket.outcomes[0]
+    const yesOutcome =
+      firstMarket.outcomes.find((o) => o.outcome_index === OUTCOME_INDEX.YES) ?? firstMarket.outcomes[0]
     const tokenId = explicitToken || yesOutcome?.token_id || ''
     if (!tokenId) {
       return agentApiError('Token id not available for this market.', 404)
@@ -75,16 +77,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return agentApiError(`Price history unavailable (${response.status}).`, 502)
     }
 
-    const payload = await response.json() as { history?: Array<{ t: number, p: number }> }
-    return withAgentApiCors(NextResponse.json({
-      data: {
-        market: slug,
-        token_id: tokenId,
-        history: payload.history ?? [],
-      },
-    }))
-  }
-  catch (error) {
+    const payload = (await response.json()) as { history?: Array<{ t: number; p: number }> }
+    return withAgentApiCors(
+      NextResponse.json({
+        data: {
+          market: slug,
+          token_id: tokenId,
+          history: payload.history ?? [],
+        },
+      }),
+    )
+  } catch (error) {
     console.error('[/api/v1/markets/[slug]/prices] error', error)
     return agentApiError('Could not load price history.', 500)
   }

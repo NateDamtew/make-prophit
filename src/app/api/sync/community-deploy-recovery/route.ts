@@ -12,6 +12,7 @@
 
 import { eq, isNotNull, isNull, and } from 'drizzle-orm'
 import { NextResponse } from 'next/server'
+
 import { isCronAuthorized } from '@/lib/auth-cron'
 import { onCommunityDraftDeployed } from '@/lib/community-deploy-hooks'
 import { EventCreationRepository } from '@/lib/db/queries/event-creations'
@@ -31,10 +32,7 @@ async function runSync() {
       review_status: community_markets.review_status,
     })
     .from(community_markets)
-    .where(and(
-      isNotNull(community_markets.event_creation_draft_id),
-      isNull(community_markets.event_id),
-    ))
+    .where(and(isNotNull(community_markets.event_creation_draft_id), isNull(community_markets.event_id)))
 
   let linked = 0
   let stillPending = 0
@@ -75,8 +73,7 @@ async function runSync() {
       if (after?.event_id) {
         linked += 1
       }
-    }
-    catch (err) {
+    } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       errors.push(`Market ${market.id}: ${msg}`)
     }
@@ -99,14 +96,20 @@ async function handle(request: Request) {
   try {
     const result = await runSync()
     return NextResponse.json(result)
-  }
-  catch (err) {
+  } catch (err) {
     console.error('[sync/community-deploy-recovery] Failed:', err)
-    return NextResponse.json({
-      error: err instanceof Error ? err.message : 'Unknown error',
-    }, { status: 500 })
+    return NextResponse.json(
+      {
+        error: err instanceof Error ? err.message : 'Unknown error',
+      },
+      { status: 500 },
+    )
   }
 }
 
-export async function GET(request: Request) { return handle(request) }
-export async function POST(request: Request) { return handle(request) }
+export async function GET(request: Request) {
+  return handle(request)
+}
+export async function POST(request: Request) {
+  return handle(request)
+}

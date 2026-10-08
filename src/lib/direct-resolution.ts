@@ -1,6 +1,6 @@
 import type { Address, Hex } from 'viem'
 
-import { isAddress, stringToHex } from 'viem'
+import { decodeErrorResult, stringToHex } from 'viem'
 
 import type { Event } from '@/types'
 
@@ -9,12 +9,16 @@ import {
   DRO_CTF_ADAPTER_V4_ADDRESS,
   NEGRISK_DRO_CTF_ADAPTER_V4_ADDRESS,
   NEGRISK_OPERATOR_DRO_ADDRESS,
+  RESOLUTION_REWARDS_ADDRESS,
 } from '@/lib/contracts'
 import { isGasFeeTooLowError } from '@/lib/transaction-fees'
-import { normalizeAddress } from '@/lib/wallet'
 
 export type ResolutionType = 'dro_moov2' | 'uma_moov2' | 'legacy'
 export type DirectResolutionOutcome = 'yes' | 'no' | 'unknown'
+
+export function resolveResolutionActorAddress(connectedAddress: Address | null, authenticatedAddress: Address | null) {
+  return connectedAddress ?? authenticatedAddress
+}
 
 export const YES_OR_NO_IDENTIFIER = stringToHex('YES_OR_NO_QUERY', { size: 32 }) as Hex
 
@@ -88,13 +92,73 @@ const DIRECT_RESOLUTION_ADDRESSES = new Set(
     NEGRISK_DRO_CTF_ADAPTER_V4_ADDRESS,
   ].map((address) => address.toLowerCase()),
 )
+
+const RESOLUTION_REWARDS_MARKET_NOT_ACTIVE_SELECTOR = 'b521771a'
+const REVERT_DATA_PATTERN = /\breverted with data:\s*(0x[\da-f]+)/gi
+const DEPOSIT_WALLET_BATCH_CALL_ERROR_ABI = [
+  {
+    type: 'error',
+    name: 'BatchCallFailed',
+    inputs: [
+      { name: 'index', type: 'uint256' },
+      { name: 'target', type: 'address' },
+      { name: 'result', type: 'bytes' },
+    ],
+  },
+] as const
+const RESOLUTION_REWARDS_MARKET_NOT_ACTIVE_ERROR_ABI = [{ type: 'error', name: 'MarketNotActive', inputs: [] }] as const
+
 export type DirectResolutionErrorMessage =
   | 'Connected proposer wallet needs POL for gas before resolving this market.'
   | 'Transaction could not be sent because the gas fee is below the current network minimum.'
   | 'Wallet signature was rejected.'
   | 'You are not allowed to propose a result for this market.'
   | 'This market is already resolved.'
+  | 'Resolution rewards are not available for this market.'
   | 'Could not submit resolution.'
+
+function isMarketNotActiveRevertData(data: Hex) {
+  if (data.toLowerCase() !== `0x${RESOLUTION_REWARDS_MARKET_NOT_ACTIVE_SELECTOR}`) {
+    return false
+  }
+
+  try {
+    return (
+      decodeErrorResult({ abi: RESOLUTION_REWARDS_MARKET_NOT_ACTIVE_ERROR_ABI, data }).errorName === 'MarketNotActive'
+    )
+  } catch {
+    return false
+  }
+}
+
+function hasResolutionRewardsMarketNotActiveRevert(message: string) {
+  for (const match of message.matchAll(REVERT_DATA_PATTERN)) {
+    const revertData = match[1] as Hex | undefined
+    if (!revertData) {
+      continue
+    }
+    if (isMarketNotActiveRevertData(revertData)) {
+      return true
+    }
+
+    try {
+      const decoded = decodeErrorResult({ abi: DEPOSIT_WALLET_BATCH_CALL_ERROR_ABI, data: revertData })
+      if (decoded.errorName !== 'BatchCallFailed') {
+        continue
+      }
+      const [, target, nestedResult] = decoded.args
+      if (
+        target.toLowerCase() === RESOLUTION_REWARDS_ADDRESS.toLowerCase() &&
+        isMarketNotActiveRevertData(nestedResult)
+      ) {
+        return true
+      }
+    } catch {
+      continue
+    }
+  }
+  return false
+}
 
 function parseMarketMetadata(market: Event['markets'][number]): Record<string, unknown> {
   const metadata = market.metadata
@@ -135,24 +199,48 @@ function getMarketResolutionType(market: Event['markets'][number]): ResolutionTy
     : 'legacy'
 }
 
+export function isDirectResolutionConfiguration(input: {
+  resolver?: string | null
+  oracle?: string | null
+  metadata?: string | Record<string, unknown> | null
+}) {
+  let metadata: Record<string, unknown> = {}
+  if (typeof input.metadata === 'string' && input.metadata.trim()) {
+    try {
+      const parsed = JSON.parse(input.metadata) as unknown
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        metadata = parsed as Record<string, unknown>
+      }
+    } catch {
+      metadata = {}
+    }
+  } else if (input.metadata && typeof input.metadata === 'object' && !Array.isArray(input.metadata)) {
+    metadata = input.metadata
+  }
+
+  const resolutionType = readMetadataString(metadata, 'resolution_type')
+  if (resolutionType === 'dro_moov2') {
+    return true
+  }
+  if (resolutionType === 'uma_moov2') {
+    return false
+  }
+
+  const candidates = [
+    input.resolver,
+    input.oracle,
+    readMetadataString(metadata, 'resolver'),
+    readMetadataString(metadata, 'resolution_adapter_address'),
+  ]
+  return candidates.some((candidate) => candidate && DIRECT_RESOLUTION_ADDRESSES.has(candidate.toLowerCase()))
+}
+
 export function isDirectResolutionMarket(market: Event['markets'][number]) {
   return getMarketResolutionType(market) === 'dro_moov2'
 }
 
 export function getDirectResolutionAdapterAddress(market: Event['markets'][number]): Address | null {
-  const metadata = parseMarketMetadata(market)
-  const candidates = [
-    readMetadataString(metadata, 'resolution_adapter_address'),
-    market.condition?.oracle,
-    market.neg_risk ? NEGRISK_DRO_CTF_ADAPTER_V4_ADDRESS : DRO_CTF_ADAPTER_V4_ADDRESS,
-  ]
-  for (const candidate of candidates) {
-    const normalized = normalizeAddress(candidate)
-    if (normalized && isAddress(normalized)) {
-      return normalized as Address
-    }
-  }
-  return null
+  return market.neg_risk ? NEGRISK_DRO_CTF_ADAPTER_V4_ADDRESS : DRO_CTF_ADAPTER_V4_ADDRESS
 }
 
 export function getDirectResolutionQuestionIds(market: Event['markets'][number]): {
@@ -218,6 +306,10 @@ export function readDirectResolutionError(error: unknown): DirectResolutionError
 
   if (lower.includes('already resolved')) {
     return 'This market is already resolved.'
+  }
+
+  if (lower.includes('marketnotactive') || hasResolutionRewardsMarketNotActiveRevert(message)) {
+    return 'Resolution rewards are not available for this market.'
   }
 
   return 'Could not submit resolution.'

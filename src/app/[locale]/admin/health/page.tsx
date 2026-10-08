@@ -1,7 +1,9 @@
-import type { HealthState } from '@/lib/admin-ui/health-checks'
 import { CheckCircle2Icon, CircleAlertIcon, CircleXIcon } from 'lucide-react'
 import { setRequestLocale } from 'next-intl/server'
 import { Suspense } from 'react'
+
+import type { HealthState } from '@/lib/admin-ui/health-checks'
+
 import { formatAbsolute } from '@/components/admin-ui/format'
 import { PageHeader } from '@/components/admin-ui/PageHeader'
 import { Card } from '@/components/ui/card'
@@ -10,7 +12,7 @@ import { requireAdmin } from '@/lib/admin-ui/guard'
 import { runHealthChecks } from '@/lib/admin-ui/health-checks'
 import { cn } from '@/lib/utils'
 
-const STATE_META: Record<HealthState, { icon: typeof CheckCircle2Icon, className: string, label: string }> = {
+const STATE_META: Record<HealthState, { icon: typeof CheckCircle2Icon; className: string; label: string }> = {
   ok: { icon: CheckCircle2Icon, className: 'text-(--yes)', label: 'Operational' },
   warn: { icon: CircleAlertIcon, className: 'text-amber-500', label: 'Optional' },
   down: { icon: CircleXIcon, className: 'text-(--no)', label: 'Down' },
@@ -37,23 +39,15 @@ async function HealthContent() {
   return (
     <>
       <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-sm text-muted-foreground">
-        <span>
-          Checked
-          {' '}
-          {formatAbsolute(report.checkedAt)}
-        </span>
+        <span>Checked {formatAbsolute(report.checkedAt)}</span>
         {report.deploy.env && (
           <span>
-            Env:
-            {' '}
-            <span className="font-medium text-foreground">{report.deploy.env}</span>
+            Env: <span className="font-medium text-foreground">{report.deploy.env}</span>
           </span>
         )}
         {report.deploy.commit && (
           <span>
-            Commit:
-            {' '}
-            <span className="font-mono text-foreground">{report.deploy.commit}</span>
+            Commit: <span className="font-mono text-foreground">{report.deploy.commit}</span>
           </span>
         )}
       </div>

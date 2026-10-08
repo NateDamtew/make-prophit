@@ -1,10 +1,16 @@
 'use client'
 
-import type { WalletDepositModalProps, WalletWithdrawModalProps } from '@/app/[locale]/(platform)/_components/wallet-modal/utils'
-import type { LiFiWalletTokenItem } from '@/hooks/useLiFiWalletTokens'
 import { ChevronLeftIcon } from 'lucide-react'
+import { useExtracted } from 'next-intl'
 import dynamic from 'next/dynamic'
 import { useMemo, useState } from 'react'
+
+import type {
+  WalletDepositModalProps,
+  WalletWithdrawModalProps,
+} from '@/app/[locale]/(platform)/_components/wallet-modal/utils'
+import type { LiFiWalletTokenItem } from '@/hooks/useLiFiWalletTokens'
+
 import CountdownBadge from '@/app/[locale]/(platform)/_components/wallet-modal/CountdownBadge'
 import { getSelectedWalletTokenId } from '@/app/[locale]/(platform)/_components/wallet-modal/utils'
 import WalletAmountStep from '@/app/[locale]/(platform)/_components/wallet-modal/WalletAmountStep'
@@ -22,28 +28,29 @@ import { useLiFiWalletTokens } from '@/hooks/useLiFiWalletTokens'
 import { useSiteIdentity } from '@/hooks/useSiteIdentity'
 import { formatDisplayAmount } from '@/lib/amount-input'
 import { COLLATERAL_TOKEN_ADDRESS } from '@/lib/contracts'
-import { DEFAULT_CHAIN_ID, IS_TEST_MODE } from '@/lib/network'
+import { DEFAULT_CHAIN_ID, IS_TEST_MODE, POLYGON_MAINNET_CHAIN_ID } from '@/lib/network'
 import { cn } from '@/lib/utils'
 import { defaultViemNetwork } from '@/lib/viem-network'
 
 // TON funding (Telegram Mini App only) is loaded client-side on demand so the
 // TON SDK (@ton/core) never ships in the web bundle.
-const TonRailPanel = dynamic(
-  () => import('@/app/[locale]/(platform)/_components/wallet-modal/TonRailPanel'),
-  { ssr: false },
-)
+const TonRailPanel = dynamic(() => import('@/app/[locale]/(platform)/_components/wallet-modal/TonRailPanel'), {
+  ssr: false,
+})
 
 export type { WalletDepositModalProps, WalletWithdrawModalProps }
 
 export function WalletDepositModal(props: WalletDepositModalProps) {
+  const t = useExtracted()
   const {
     open,
     onOpenChange,
+    onBridge,
     isMobile,
     walletAddress,
     walletEoaAddress,
     siteName,
-    meldUrl,
+    canBuyMeld,
     hasDeployedDepositWallet,
     view,
     onViewChange,
@@ -59,6 +66,8 @@ export function WalletDepositModal(props: WalletDepositModalProps) {
   const site = useSiteIdentity()
   const siteLabel = siteName ?? site.name
   const isDirectTestModeDeposit = IS_TEST_MODE
+  const canUseLiFiBridge =
+    DEFAULT_CHAIN_ID === POLYGON_MAINNET_CHAIN_ID && hasDeployedDepositWallet && Boolean(walletAddress)
   const tokensQueryEnabled = open && (view === 'wallets' || view === 'amount' || view === 'confirm')
   const { balance: directWalletBalance, isLoadingBalance: isLoadingDirectWalletBalance } = useBalance({
     depositWalletAddress: walletEoaAddress,
@@ -78,23 +87,29 @@ export function WalletDepositModal(props: WalletDepositModalProps) {
       maximumFractionDigits: 2,
     })
 
-    return [{
-      id: `${DEFAULT_CHAIN_ID}:${COLLATERAL_TOKEN_ADDRESS}`,
-      chainId: DEFAULT_CHAIN_ID,
-      address: COLLATERAL_TOKEN_ADDRESS,
-      decimals: 6,
-      symbol: directWalletBalance.symbol,
-      network: defaultViemNetwork.name,
-      icon: '/images/deposit/transfer/usdc_dark.png',
-      chainIcon: '/images/deposit/transfer/polygon_dark.png',
-      balance: formattedBalance,
-      balanceRaw: directWalletBalance.raw,
-      usd: formattedUsdBalance,
-      usdValue: directWalletBalance.raw,
-      disabled: false,
-    }]
+    return [
+      {
+        id: `${DEFAULT_CHAIN_ID}:${COLLATERAL_TOKEN_ADDRESS}`,
+        chainId: DEFAULT_CHAIN_ID,
+        address: COLLATERAL_TOKEN_ADDRESS,
+        decimals: 6,
+        symbol: directWalletBalance.symbol,
+        network: defaultViemNetwork.name,
+        icon: '/images/deposit/transfer/usdc_dark.png',
+        chainIcon: '/images/deposit/transfer/polygon_dark.png',
+        balance: formattedBalance,
+        balanceRaw: directWalletBalance.raw,
+        usd: formattedUsdBalance,
+        usdValue: directWalletBalance.raw,
+        disabled: false,
+      },
+    ]
   }, [directWalletBalance.raw, directWalletBalance.symbol, isDirectTestModeDeposit, walletEoaAddress])
-  const { items: lifiWalletTokenItems, isLoadingTokens: isLoadingLiFiTokens } = useLiFiWalletTokens(walletEoaAddress, {
+  const {
+    items: lifiWalletTokenItems,
+    isLoadingTokens: isLoadingLiFiTokens,
+    isError: isLiFiTokensError,
+  } = useLiFiWalletTokens(walletEoaAddress, {
     enabled: tokensQueryEnabled && !isDirectTestModeDeposit,
   })
   const walletTokenItems = isDirectTestModeDeposit ? directWalletTokenItems : lifiWalletTokenItems
@@ -102,24 +117,22 @@ export function WalletDepositModal(props: WalletDepositModalProps) {
   const [preferredSelectedTokenId, setPreferredSelectedTokenId] = useState('')
   const [amountValue, setAmountValue] = useState('')
   const [confirmRefreshIndex, setConfirmRefreshIndex] = useState(0)
-  const formattedDepositWalletBalance = depositWalletBalance && depositWalletBalance !== ''
-    ? depositWalletBalance
-    : '0.00'
-  const balanceDisplay = isDepositWalletBalanceLoading
-    ? (
-        <span className="inline-flex align-middle">
-          <span className="h-3 w-12 animate-pulse rounded-md bg-accent" />
-        </span>
-      )
-    : (
-        <>
-          $
-          {formattedDepositWalletBalance}
-        </>
-      )
+  const formattedDepositWalletBalance =
+    depositWalletBalance && depositWalletBalance !== '' ? depositWalletBalance : '0.00'
+  const balanceDisplay = isDepositWalletBalanceLoading ? (
+    <span className="inline-flex align-middle">
+      <span className="h-3 w-12 animate-pulse rounded-md bg-accent" />
+    </span>
+  ) : (
+    <>${formattedDepositWalletBalance}</>
+  )
+  const balanceLabel = t.rich('{siteName} Balance: <balance></balance>', {
+    siteName: siteLabel,
+    balance: () => balanceDisplay,
+  })
 
   const selectedTokenId = getSelectedWalletTokenId(walletTokenItems, preferredSelectedTokenId)
-  const selectedToken = walletTokenItems.find(item => item.id === selectedTokenId) ?? null
+  const selectedToken = walletTokenItems.find((item) => item.id === selectedTokenId) ?? null
   const { quote: lifiQuote } = useLiFiQuote({
     fromToken: selectedToken,
     amountValue,
@@ -134,11 +147,7 @@ export function WalletDepositModal(props: WalletDepositModalProps) {
     }
 
     const amountNumber = Number.parseFloat(amountValue)
-    if (
-      !Number.isFinite(amountNumber)
-      || amountNumber <= 0
-      || amountNumber > selectedToken.balanceRaw
-    ) {
+    if (!Number.isFinite(amountNumber) || amountNumber <= 0 || amountNumber > selectedToken.balanceRaw) {
       return null
     }
 
@@ -151,86 +160,72 @@ export function WalletDepositModal(props: WalletDepositModalProps) {
   const effectiveWalletBalance = isDirectTestModeDeposit ? directWalletBalance.text : walletBalance
   const isEffectiveWalletBalanceLoading = isDirectTestModeDeposit ? isLoadingDirectWalletBalance : isBalanceLoading
 
-  const content = view === 'fund'
-    ? (
-        <WalletFundMenu
-          onBuy={(url) => {
-            onBuy(url)
-          }}
-          onReceive={() => onViewChange('receive')}
-          onWallet={() => onViewChange('wallets')}
-          disabledBuy={!meldUrl}
-          disabledReceive={!hasDeployedDepositWallet}
-          meldUrl={meldUrl}
-          walletEoaAddress={walletEoaAddress}
-          walletBalance={effectiveWalletBalance}
-          isBalanceLoading={isEffectiveWalletBalanceLoading}
-          onTon={() => onViewChange('ton')}
-          showTon={showTon}
-        />
-      )
-    : view === 'ton'
-      ? (
-          <TonRailPanel
-            user={walletEoaAddress ? { address: walletEoaAddress, deposit_wallet_address: walletAddress } : null}
-            onDone={() => onOpenChange(false)}
-          />
-        )
-      : view === 'receive'
-        ? (
-            <WalletReceiveView
-              walletAddress={walletAddress}
-              onCopy={handleCopy}
-              copied={copied}
-            />
-          )
-        : view === 'wallets'
-          ? (
-              <WalletTokenList
-                onContinue={() => onViewChange('amount')}
-                items={walletTokenItems}
-                isLoadingTokens={isLoadingTokens}
-                selectedId={selectedTokenId}
-                onSelect={setPreferredSelectedTokenId}
-                emptyMessage={isDirectTestModeDeposit ? 'No Amoy USDC balance found.' : undefined}
-              />
-            )
-          : view === 'amount'
-            ? (
-                <WalletAmountStep
-                  onContinue={() => onViewChange('confirm')}
-                  selectedTokenSymbol={selectedToken?.symbol ?? null}
-                  availableTokenAmount={selectedToken?.balanceRaw ?? null}
-                  amountValue={amountValue}
-                  onAmountChange={setAmountValue}
-                />
-              )
-            : view === 'confirm'
-              ? (
-                  <WalletConfirmStep
-                    walletEoaAddress={walletEoaAddress}
-                    walletAddress={walletAddress}
-                    siteLabel={siteLabel}
-                    onComplete={() => onViewChange('success')}
-                    amountValue={amountValue}
-                    selectedToken={selectedToken}
-                    quote={quote}
-                    refreshIndex={confirmRefreshIndex}
-                    executionMode={isDirectTestModeDeposit ? 'direct-usdc' : 'lifi'}
-                  />
-                )
-              : (
-                  <WalletSuccessStep
-                    walletEoaAddress={walletEoaAddress}
-                    walletAddress={walletAddress}
-                    siteLabel={siteLabel}
-                    amountValue={amountValue}
-                    selectedToken={selectedToken}
-                    quote={quote}
-                    onClose={() => onOpenChange(false)}
-                    onNewDeposit={() => onViewChange('fund')}
-                  />
-                )
+  const content =
+    view === 'fund' ? (
+      <WalletFundMenu
+        onBuy={onBuy}
+        onBridge={onBridge}
+        onReceive={() => onViewChange('receive')}
+        onWallet={() => onViewChange('wallets')}
+        canBridge={canUseLiFiBridge}
+        disabledReceive={!hasDeployedDepositWallet}
+        canBuyMeld={canBuyMeld}
+        walletEoaAddress={walletEoaAddress}
+        walletBalance={effectiveWalletBalance}
+        isBalanceLoading={isEffectiveWalletBalanceLoading}
+        onTon={() => onViewChange('ton')}
+        showTon={showTon}
+      />
+    ) : view === 'ton' ? (
+      <TonRailPanel
+        user={walletEoaAddress ? { address: walletEoaAddress, deposit_wallet_address: walletAddress } : null}
+        onDone={() => onOpenChange(false)}
+      />
+    ) : view === 'receive' ? (
+      <WalletReceiveView walletAddress={walletAddress} onCopy={handleCopy} copied={copied} />
+    ) : view === 'wallets' ? (
+      <WalletTokenList
+        onContinue={() => onViewChange('amount')}
+        items={walletTokenItems}
+        isLoadingTokens={isLoadingTokens}
+        hasError={!isDirectTestModeDeposit && isLiFiTokensError}
+        selectedId={selectedTokenId}
+        onSelect={setPreferredSelectedTokenId}
+        emptyMessage={isDirectTestModeDeposit ? t('No Amoy USDC balance found.') : undefined}
+        errorMessage={isDirectTestModeDeposit ? undefined : t('Could not load wallet balances. Please try again.')}
+      />
+    ) : view === 'amount' ? (
+      <WalletAmountStep
+        onContinue={() => onViewChange('confirm')}
+        selectedTokenSymbol={selectedToken?.symbol ?? null}
+        availableTokenAmount={selectedToken?.balanceRaw ?? null}
+        amountValue={amountValue}
+        onAmountChange={setAmountValue}
+      />
+    ) : view === 'confirm' ? (
+      <WalletConfirmStep
+        walletEoaAddress={walletEoaAddress}
+        walletAddress={walletAddress}
+        siteLabel={siteLabel}
+        onComplete={() => onViewChange('success')}
+        amountValue={amountValue}
+        selectedToken={selectedToken}
+        quote={quote}
+        refreshIndex={confirmRefreshIndex}
+        executionMode={isDirectTestModeDeposit ? 'direct-usdc' : 'lifi'}
+      />
+    ) : (
+      <WalletSuccessStep
+        walletEoaAddress={walletEoaAddress}
+        walletAddress={walletAddress}
+        siteLabel={siteLabel}
+        amountValue={amountValue}
+        selectedToken={selectedToken}
+        quote={quote}
+        onClose={() => onOpenChange(false)}
+        onNewDeposit={() => onViewChange('fund')}
+      />
+    )
 
   async function handleCopy() {
     if (!walletAddress) {
@@ -240,8 +235,7 @@ export function WalletDepositModal(props: WalletDepositModalProps) {
       await navigator.clipboard.writeText(walletAddress)
       setCopied(true)
       setTimeout(setCopied, 1200, false)
-    }
-    catch {
+    } catch {
       //
     }
   }
@@ -258,42 +252,29 @@ export function WalletDepositModal(props: WalletDepositModalProps) {
         <DrawerContent className="max-h-[90vh] w-full bg-background px-0">
           <DrawerHeader className="gap-1 px-4 pt-3 pb-2">
             <div className="flex items-center">
-              {view !== 'fund' && view !== 'success'
-                ? (
-                    <button
-                      type="button"
-                      className={cn(`
-                        rounded-md p-2 opacity-70 ring-offset-background transition
-                        hover:bg-muted hover:opacity-100
-                        focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:outline-hidden
-                        disabled:pointer-events-none
-                        [&_svg]:pointer-events-none [&_svg]:shrink-0
-                        [&_svg:not([class*='size-'])]:size-4
-                      `)}
-                      onClick={() => onViewChange('fund')}
-                    >
-                      <ChevronLeftIcon />
-                    </button>
-                  )
-                : (
-                    <span className="size-8" aria-hidden="true" />
+              {view !== 'fund' && view !== 'success' ? (
+                <button
+                  type="button"
+                  className={cn(
+                    `rounded-md p-2 opacity-70 ring-offset-background transition hover:bg-muted hover:opacity-100 focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4`,
                   )}
-              <DrawerTitle className="flex-1 text-center text-xl font-semibold text-foreground">Deposit</DrawerTitle>
+                  onClick={() => onViewChange('fund')}
+                >
+                  <ChevronLeftIcon />
+                </button>
+              ) : (
+                <span className="size-8" aria-hidden="true" />
+              )}
+              <DrawerTitle className="flex-1 text-center text-xl font-semibold text-foreground">
+                {t('Deposit')}
+              </DrawerTitle>
               <span className="size-8" aria-hidden="true" />
             </div>
-            <DrawerDescription className="text-center text-xs text-muted-foreground">
-              {siteLabel}
-              {' '}
-              Balance:
-              {' '}
-              {balanceDisplay}
-            </DrawerDescription>
+            <DrawerDescription className="text-center text-xs text-muted-foreground">{balanceLabel}</DrawerDescription>
           </DrawerHeader>
           <div className="border-t" />
           <div className="w-full px-4 pb-4">
-            <div className="space-y-4 pt-4">
-              {content}
-            </div>
+            <div className="space-y-4 pt-4">{content}</div>
           </div>
         </DrawerContent>
       </Drawer>
@@ -311,44 +292,30 @@ export function WalletDepositModal(props: WalletDepositModalProps) {
       <DialogContent
         className="max-w-md border bg-background pt-4 sm:max-w-md"
         showCloseButton={view !== 'confirm'}
+        closeLabel={t('Close')}
       >
-        {view === 'confirm' && (
-          <CountdownBadge
-            onReset={() => setConfirmRefreshIndex(current => current + 1)}
-          />
-        )}
+        {view === 'confirm' && <CountdownBadge onReset={() => setConfirmRefreshIndex((current) => current + 1)} />}
         <DialogHeader className="gap-1">
           <div className="flex items-center">
-            {view !== 'fund' && view !== 'success'
-              ? (
-                  <button
-                    type="button"
-                    className={cn(`
-                      rounded-md p-2 opacity-70 ring-offset-background transition
-                      hover:bg-muted hover:opacity-100
-                      focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:outline-hidden
-                      disabled:pointer-events-none
-                      [&_svg]:pointer-events-none [&_svg]:shrink-0
-                      [&_svg:not([class*='size-'])]:size-4
-                    `)}
-                    onClick={() => onViewChange('fund')}
-                  >
-                    <ChevronLeftIcon />
-                  </button>
-                )
-              : (
-                  <span className="size-8" aria-hidden="true" />
+            {view !== 'fund' && view !== 'success' ? (
+              <button
+                type="button"
+                className={cn(
+                  `rounded-md p-2 opacity-70 ring-offset-background transition hover:bg-muted hover:opacity-100 focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4`,
                 )}
-            <DialogTitle className="flex-1 text-center text-lg font-semibold text-foreground">Deposit</DialogTitle>
+                onClick={() => onViewChange('fund')}
+              >
+                <ChevronLeftIcon />
+              </button>
+            ) : (
+              <span className="size-8" aria-hidden="true" />
+            )}
+            <DialogTitle className="flex-1 text-center text-lg font-semibold text-foreground">
+              {t('Deposit')}
+            </DialogTitle>
             <span className="size-8" aria-hidden="true" />
           </div>
-          <DialogDescription className="text-center text-xs text-muted-foreground">
-            {siteLabel}
-            {' '}
-            Balance:
-            {' '}
-            {balanceDisplay}
-          </DialogDescription>
+          <DialogDescription className="text-center text-xs text-muted-foreground">{balanceLabel}</DialogDescription>
         </DialogHeader>
         <div className="-mx-6 border-t" />
         {content}
@@ -358,6 +325,7 @@ export function WalletDepositModal(props: WalletDepositModalProps) {
 }
 
 export function WalletWithdrawModal(props: WalletWithdrawModalProps) {
+  const t = useExtracted()
   const {
     open,
     onOpenChange,
@@ -400,15 +368,11 @@ export function WalletWithdrawModal(props: WalletWithdrawModalProps) {
         <DrawerContent className="max-h-[90vh] w-full bg-background px-0">
           <DrawerHeader className="px-4 pt-4 pb-2">
             <DrawerTitle className="text-center text-foreground">
-              Withdraw from
-              {' '}
-              {siteLabel}
+              {t('Withdraw from {siteName}', { siteName: siteLabel })}
             </DrawerTitle>
           </DrawerHeader>
           <div className="w-full px-4 pb-4">
-            <div className="space-y-4 pt-4">
-              {content}
-            </div>
+            <div className="space-y-4 pt-4">{content}</div>
           </div>
         </DrawerContent>
       </Drawer>
@@ -417,12 +381,10 @@ export function WalletWithdrawModal(props: WalletWithdrawModalProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-full max-w-xl border bg-background">
+      <DialogContent className="w-full max-w-xl border bg-background" closeLabel={t('Close')}>
         <DialogHeader>
           <DialogTitle className="text-center text-foreground">
-            Withdraw from
-            {' '}
-            {siteLabel}
+            {t('Withdraw from {siteName}', { siteName: siteLabel })}
           </DialogTitle>
         </DialogHeader>
         {content}

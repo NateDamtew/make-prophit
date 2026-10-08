@@ -1,9 +1,7 @@
 import type { Metadata } from 'next'
 
-import { setRequestLocale } from 'next-intl/server'
 import { notFound } from 'next/navigation'
 
-import type { SupportedLocale } from '@/i18n/locales'
 import type { SportsVertical } from '@/lib/sports-vertical'
 
 import EventMarketChannelProvider from '@/app/[locale]/(platform)/event/[slug]/_components/EventMarketChannelProvider'
@@ -15,6 +13,7 @@ import {
 } from '@/app/[locale]/(platform)/sports/_utils/sports-games-data'
 import EventStructuredData from '@/components/seo/EventStructuredData'
 import { redirect } from '@/i18n/navigation'
+import { getRootLocale } from '@/i18n/root-locale'
 import { loadMarketContextSettings } from '@/lib/ai/market-context-config'
 import { EventRepository } from '@/lib/db/queries/event'
 import { SportsMenuRepository } from '@/lib/db/queries/sports-menu'
@@ -28,7 +27,6 @@ import { shouldBypassPublicShellPlaceholder, STATIC_PARAMS_PLACEHOLDER } from '@
 import { loadRuntimeThemeState } from '@/lib/theme-settings'
 
 export interface SportsVerticalEventPageParams {
-  locale: string
   sport: string
   league?: string
   event: string
@@ -90,12 +88,11 @@ function isSameSportsGame(
 }
 
 export async function generateSportsVerticalEventMetadata({
-  locale,
   sport,
   league,
   event,
 }: SportsVerticalEventPageParams): Promise<Metadata> {
-  setRequestLocale(locale)
+  const locale = await getRootLocale()
 
   if (shouldBypassPublicShellPlaceholder(sport, league, event)) {
     return {}
@@ -103,18 +100,17 @@ export async function generateSportsVerticalEventMetadata({
 
   return await buildEventPageMetadata({
     eventSlug: await resolveCanonicalSportsEventSlug({ sport, league, event }),
-    locale: locale as SupportedLocale,
+    locale,
   })
 }
 
 export async function renderSportsVerticalEventPage({
-  locale,
   sport,
   league,
   event,
   vertical,
 }: RenderSportsVerticalEventPageParams) {
-  const resolvedLocale = locale as SupportedLocale
+  const resolvedLocale = await getRootLocale()
   if (shouldBypassPublicShellPlaceholder(sport, league, event)) {
     return null
   }
@@ -168,7 +164,6 @@ export async function renderSportsVerticalEventPage({
     <>
       <EventStructuredData
         event={targetCard.event}
-        locale={resolvedLocale}
         pagePath={resolveEventPagePath(targetCard.event)}
         site={runtimeTheme.site}
         faqItems={faqItems}
@@ -191,13 +186,12 @@ export async function renderSportsVerticalEventPage({
 }
 
 export async function generateSportsVerticalEventMarketMetadata({
-  locale,
   sport,
   league,
   event,
   market,
 }: SportsVerticalEventMarketPageParams): Promise<Metadata> {
-  setRequestLocale(locale)
+  const locale = await getRootLocale()
 
   if (shouldBypassPublicShellPlaceholder(sport, league, event, market)) {
     return {}
@@ -205,20 +199,19 @@ export async function generateSportsVerticalEventMarketMetadata({
 
   return await buildEventPageMetadata({
     eventSlug: await resolveCanonicalSportsEventSlug({ sport, league, event }),
-    locale: locale as SupportedLocale,
+    locale,
     marketSlug: market,
   })
 }
 
 export async function renderSportsVerticalEventMarketPage({
-  locale,
   sport,
   league,
   event,
   market,
   vertical,
 }: RenderSportsVerticalEventMarketPageParams) {
-  const resolvedLocale = locale as SupportedLocale
+  const resolvedLocale = await getRootLocale()
   if (shouldBypassPublicShellPlaceholder(sport, league, event, market)) {
     return null
   }
@@ -293,7 +286,6 @@ export async function renderSportsVerticalEventMarketPage({
     <>
       <EventStructuredData
         event={targetCard.event}
-        locale={resolvedLocale}
         pagePath={resolveEventMarketPath(targetCard.event, market)}
         marketSlug={market}
         site={runtimeTheme.site}

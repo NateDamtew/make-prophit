@@ -1,4 +1,3 @@
-import type { SupportedLocale } from '@/i18n/locales'
 import {
   ActivityIcon,
   CalendarIcon,
@@ -9,10 +8,13 @@ import {
   ShieldCheckIcon,
   UsersIcon,
 } from 'lucide-react'
+import { setRequestLocale } from 'next-intl/server'
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
-import { setRequestLocale } from 'next-intl/server'
 import { Suspense } from 'react'
+
+import type { SupportedLocale } from '@/i18n/locales'
+
 import { formatAbsolute, formatNumber, formatRelativeTime } from '@/components/admin-ui/format'
 import { KpiCard } from '@/components/admin-ui/KpiCard'
 import { Card } from '@/components/ui/card'
@@ -33,8 +35,8 @@ export async function generateStaticParams() {
   return [{ slug: STATIC_PARAMS_PLACEHOLDER }]
 }
 
-function buildDenseSeries(rows: Array<{ date: string, count: number }>, days: number): number[] {
-  const byDate = new Map(rows.map(r => [r.date, r.count]))
+function buildDenseSeries(rows: Array<{ date: string; count: number }>, days: number): number[] {
+  const byDate = new Map(rows.map((r) => [r.date, r.count]))
   const series: number[] = []
   const today = new Date()
   for (let i = days - 1; i >= 0; i--) {
@@ -95,18 +97,13 @@ async function InsightsContent({ slug }: { slug: string }) {
           className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
         >
           <ChevronLeftIcon className="size-4" />
-          Back to
-          {' '}
-          {community.name}
+          Back to {community.name}
         </Link>
         <div className="mt-3 flex items-start justify-between gap-3">
           <div>
             <h1 className="text-2xl font-bold">Insights</h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              Members, markets, engagement, and the review pipeline for
-              {' '}
-              {community.name}
-              .
+              Members, markets, engagement, and the review pipeline for {community.name}.
             </p>
           </div>
           <Link
@@ -138,9 +135,11 @@ async function InsightsContent({ slug }: { slug: string }) {
           label="In review"
           value={formatNumber(kpis.markets.pending)}
           icon={GitPullRequestIcon}
-          hint={kpis.markets.medianTimeToReviewHours != null
-            ? `median ${formatHours(kpis.markets.medianTimeToReviewHours)}`
-            : 'no history yet'}
+          hint={
+            kpis.markets.medianTimeToReviewHours != null
+              ? `median ${formatHours(kpis.markets.medianTimeToReviewHours)}`
+              : 'no history yet'
+          }
         />
         <KpiCard
           label="Engagement (30d)"
@@ -165,39 +164,43 @@ async function InsightsContent({ slug }: { slug: string }) {
             </div>
             <div className="px-5 py-4">
               <p className="text-xs text-muted-foreground">Median t-to-review</p>
-              <p className="mt-1 text-xl font-semibold tabular-nums">{formatHours(kpis.markets.medianTimeToReviewHours)}</p>
+              <p className="mt-1 text-xl font-semibold tabular-nums">
+                {formatHours(kpis.markets.medianTimeToReviewHours)}
+              </p>
             </div>
             <div className="px-5 py-4">
               <p className="text-xs text-muted-foreground">Verified</p>
               <p className="mt-1 inline-flex items-center gap-1.5 text-xl font-semibold">
-                {monetization?.is_verified
-                  ? <ShieldCheckIcon className="size-5 text-primary" />
-                  : <span className="text-muted-foreground">—</span>}
+                {monetization?.is_verified ? (
+                  <ShieldCheckIcon className="size-5 text-primary" />
+                ) : (
+                  <span className="text-muted-foreground">—</span>
+                )}
                 <span>{monetization?.is_verified ? 'Yes' : 'No'}</span>
               </p>
             </div>
           </div>
-          {rejections.length > 0
-            ? (
-                <div className="border-t border-border/60 px-5 py-4">
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Recent rejection reasons</p>
-                  <ul className="mt-2 space-y-2 text-sm">
-                    {rejections.map(r => (
-                      <li key={r.excerpt} className="flex items-start justify-between gap-3">
-                        <span className="line-clamp-2 flex-1 text-foreground/80">{r.excerpt}</span>
-                        <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-2xs font-medium text-muted-foreground">
-                          {r.count}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )
-            : (
-                <div className="border-t border-border/60 px-5 py-4 text-xs text-muted-foreground">
-                  No rejections recorded yet.
-                </div>
-              )}
+          {rejections.length > 0 ? (
+            <div className="border-t border-border/60 px-5 py-4">
+              <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                Recent rejection reasons
+              </p>
+              <ul className="mt-2 space-y-2 text-sm">
+                {rejections.map((r) => (
+                  <li key={r.excerpt} className="flex items-start justify-between gap-3">
+                    <span className="line-clamp-2 flex-1 text-foreground/80">{r.excerpt}</span>
+                    <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-2xs font-medium text-muted-foreground">
+                      {r.count}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : (
+            <div className="border-t border-border/60 px-5 py-4 text-xs text-muted-foreground">
+              No rejections recorded yet.
+            </div>
+          )}
         </Card>
 
         {/* Top markets */}
@@ -206,29 +209,27 @@ async function InsightsContent({ slug }: { slug: string }) {
             <h2 className="text-sm font-semibold">Top markets by engagement</h2>
             <span className="text-xs text-muted-foreground">last 30d activity</span>
           </div>
-          {topMarkets.length === 0
-            ? (
-                <div className="p-6 text-center text-sm text-muted-foreground">
-                  No engagement yet. Comments and reactions surface here.
-                </div>
-              )
-            : (
-                <ul className="divide-y divide-border/50">
-                  {topMarkets.map(m => (
-                    <li key={m.id} className="flex items-center gap-3 px-5 py-3">
-                      <Link
-                        href={`/community/${community.slug}/market/${m.id}` as any}
-                        className="min-w-0 flex-1 text-sm font-medium hover:underline"
-                      >
-                        <span className="line-clamp-1">{m.title}</span>
-                      </Link>
-                      <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-                        {formatNumber(m.comments)} · {formatNumber(m.reactions)} ❤
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
+          {topMarkets.length === 0 ? (
+            <div className="p-6 text-center text-sm text-muted-foreground">
+              No engagement yet. Comments and reactions surface here.
+            </div>
+          ) : (
+            <ul className="divide-y divide-border/50">
+              {topMarkets.map((m) => (
+                <li key={m.id} className="flex items-center gap-3 px-5 py-3">
+                  <Link
+                    href={`/community/${community.slug}/market/${m.id}` as any}
+                    className="min-w-0 flex-1 text-sm font-medium hover:underline"
+                  >
+                    <span className="line-clamp-1">{m.title}</span>
+                  </Link>
+                  <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                    {formatNumber(m.comments)} · {formatNumber(m.reactions)} ❤
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
         </Card>
       </div>
 
@@ -238,35 +239,32 @@ async function InsightsContent({ slug }: { slug: string }) {
           <h2 className="text-sm font-semibold">Recent activity</h2>
           <span className="text-xs text-muted-foreground">all community events</span>
         </div>
-        {recent.length === 0
-          ? (
-              <div className="p-6 text-center text-sm text-muted-foreground">No activity yet.</div>
-            )
-          : (
-              <ul className="divide-y divide-border/50">
-                {recent.map(item => (
-                  <li key={item.id} className="flex items-start justify-between gap-3 px-5 py-3">
-                    <div className="min-w-0">
-                      <p className="text-sm">
-                        <span className="font-mono text-xs text-muted-foreground">{item.kind}</span>
-                        {' '}
-                        {item.actorLabel && <span className="text-muted-foreground">by {item.actorLabel}</span>}
-                      </p>
-                      {typeof item.payload?.title === 'string' && (
-                        <p className="line-clamp-1 text-xs text-muted-foreground">{item.payload.title as string}</p>
-                      )}
-                    </div>
-                    <time
-                      dateTime={item.createdAt}
-                      title={formatAbsolute(item.createdAt)}
-                      className="shrink-0 text-xs text-muted-foreground"
-                    >
-                      {formatRelativeTime(item.createdAt)}
-                    </time>
-                  </li>
-                ))}
-              </ul>
-            )}
+        {recent.length === 0 ? (
+          <div className="p-6 text-center text-sm text-muted-foreground">No activity yet.</div>
+        ) : (
+          <ul className="divide-y divide-border/50">
+            {recent.map((item) => (
+              <li key={item.id} className="flex items-start justify-between gap-3 px-5 py-3">
+                <div className="min-w-0">
+                  <p className="text-sm">
+                    <span className="font-mono text-xs text-muted-foreground">{item.kind}</span>{' '}
+                    {item.actorLabel && <span className="text-muted-foreground">by {item.actorLabel}</span>}
+                  </p>
+                  {typeof item.payload?.title === 'string' && (
+                    <p className="line-clamp-1 text-xs text-muted-foreground">{item.payload.title as string}</p>
+                  )}
+                </div>
+                <time
+                  dateTime={item.createdAt}
+                  title={formatAbsolute(item.createdAt)}
+                  className="shrink-0 text-xs text-muted-foreground"
+                >
+                  {formatRelativeTime(item.createdAt)}
+                </time>
+              </li>
+            ))}
+          </ul>
+        )}
       </Card>
 
       {/* Monetization preview */}
@@ -286,17 +284,16 @@ async function InsightsContent({ slug }: { slug: string }) {
               <span className="text-base font-normal text-muted-foreground">%</span>
             </p>
             <p className="text-xs text-muted-foreground">
-              {feeBps}
-              {' '}
-              bps · set in
-              {' '}
-              <Link href="/admin/communities" className="font-medium text-primary hover:underline">platform admin</Link>
+              {feeBps} bps · set in{' '}
+              <Link href="/admin/communities" className="font-medium text-primary hover:underline">
+                platform admin
+              </Link>
             </p>
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Payout address</p>
             <p className="mt-1 truncate font-mono text-sm">
-              {monetization?.fee_payout_address || <span className="italic text-muted-foreground">Not set</span>}
+              {monetization?.fee_payout_address || <span className="text-muted-foreground italic">Not set</span>}
             </p>
           </div>
           <div>
@@ -317,7 +314,9 @@ function InsightsSkeleton() {
     <div className="grid gap-6">
       <Skeleton className="h-10 w-64 rounded-sm" />
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-28 rounded-sm" />)}
+        {Array.from({ length: 4 }).map((_, i) => (
+          <Skeleton key={i} className="h-28 rounded-sm" />
+        ))}
       </div>
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Skeleton className="h-64 rounded-sm" />
@@ -328,11 +327,7 @@ function InsightsSkeleton() {
   )
 }
 
-export default async function CommunityInsightsPage({
-  params,
-}: {
-  params: Promise<{ locale: string, slug: string }>
-}) {
+export default async function CommunityInsightsPage({ params }: { params: Promise<{ locale: string; slug: string }> }) {
   const { locale, slug } = await params
   setRequestLocale(locale as SupportedLocale)
 

@@ -1,12 +1,11 @@
 'use client'
 
-import type { SwipeSide } from './SwipeCard'
-import type { QuickViewCard } from './useQuickViewDeck'
 import { Loader2Icon, RotateCcwIcon, ShareIcon, WalletIcon, XIcon, ZapIcon } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { toast } from '@/components/ui/toast'
+
 import SiteLogoIcon from '@/components/SiteLogoIcon'
 import { Button } from '@/components/ui/button'
+import { toast } from '@/components/ui/toast'
 import { useAppKit } from '@/hooks/useAppKit'
 import { useBalance } from '@/hooks/useBalance'
 import { useHasHydrated } from '@/hooks/useHasHydrated'
@@ -16,6 +15,10 @@ import { OUTCOME_INDEX } from '@/lib/constants'
 import { shareOrCopy } from '@/lib/native-share'
 import { cn } from '@/lib/utils'
 import { useUser } from '@/stores/useUser'
+
+import type { SwipeSide } from './SwipeCard'
+import type { QuickViewCard } from './useQuickViewDeck'
+
 import CardDetailsSheet from './CardDetailsSheet'
 import QuickViewWalkthrough from './QuickViewWalkthrough'
 import SwipeCard from './SwipeCard'
@@ -55,7 +58,7 @@ interface StagedTrade {
   side: SwipeSide
 }
 
-export default function QuickView({ open, onClose }: { open: boolean, onClose: () => void }) {
+export default function QuickView({ open, onClose }: { open: boolean; onClose: () => void }) {
   const hasHydrated = useHasHydrated()
   const { open: openWallet } = useAppKit()
   const { data: session } = useSession()
@@ -82,6 +85,7 @@ export default function QuickView({ open, onClose }: { open: boolean, onClose: (
   // Reset the deck position whenever the view is (re)opened.
   useEffect(() => {
     if (open) {
+      // oxlint-disable-next-line react/set-state-in-effect
       setIndex(0)
       setStaged(null)
       setStake(DEFAULT_STAKE)
@@ -98,7 +102,7 @@ export default function QuickView({ open, onClose }: { open: boolean, onClose: (
     setStaged(null)
     setIsCustomMode(false)
     setCustomInput('')
-    setIndex(current => current + 1)
+    setIndex((current) => current + 1)
   }, [])
 
   const handleSkip = useCallback(() => {
@@ -106,7 +110,7 @@ export default function QuickView({ open, onClose }: { open: boolean, onClose: (
     setStaged(null)
     setIsCustomMode(false)
     setCustomInput('')
-    setIndex(current => current + 1)
+    setIndex((current) => current + 1)
   }, [])
 
   const handleOpenDetails = useCallback((card: QuickViewCard) => {
@@ -167,9 +171,7 @@ export default function QuickView({ open, onClose }: { open: boolean, onClose: (
 
   // Potential return for the currently-staged trade (if any) — hoisted out of
   // JSX so we don't need an IIFE during render.
-  const stagedPriceCents = staged
-    ? (staged.side === 'yes' ? staged.card.yesPriceCents : staged.card.noPriceCents)
-    : 0
+  const stagedPriceCents = staged ? (staged.side === 'yes' ? staged.card.yesPriceCents : staged.card.noPriceCents) : 0
   const stagedPotentialReturn = staged ? calculatePotentialReturn(stake, stagedPriceCents) : 0
   const stagedProfit = stagedPotentialReturn - stake
 
@@ -217,7 +219,9 @@ export default function QuickView({ open, onClose }: { open: boolean, onClose: (
             size={24}
           />
           <span className="truncate text-base font-bold">{site.name}</span>
-          <span aria-hidden="true" className="text-muted-foreground/60">|</span>
+          <span aria-hidden="true" className="text-muted-foreground/60">
+            |
+          </span>
           <span className="flex items-center gap-1 truncate text-sm font-semibold text-muted-foreground">
             <ZapIcon className="size-3.5 text-primary" />
             Flash Trade
@@ -230,10 +234,7 @@ export default function QuickView({ open, onClose }: { open: boolean, onClose: (
             type="button"
             onClick={handleShare}
             aria-label="Share"
-            className="
-              flex size-9 items-center justify-center rounded-full text-muted-foreground transition-colors
-              hover:bg-muted hover:text-foreground
-            "
+            className="flex size-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
             <ShareIcon className="size-5" />
           </button>
@@ -241,10 +242,7 @@ export default function QuickView({ open, onClose }: { open: boolean, onClose: (
             type="button"
             onClick={onClose}
             aria-label="Close Flash Trade"
-            className="
-              flex size-9 items-center justify-center rounded-full text-muted-foreground transition-colors
-              hover:bg-muted hover:text-foreground
-            "
+            className="flex size-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
             <XIcon className="size-5" />
           </button>
@@ -283,9 +281,7 @@ export default function QuickView({ open, onClose }: { open: boolean, onClose: (
               </div>
               <div>
                 <p className="text-lg font-semibold">You’re all caught up</p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  You’ve swiped through every trending market.
-                </p>
+                <p className="mt-1 text-sm text-muted-foreground">You’ve swiped through every trending market.</p>
               </div>
               <Button
                 onClick={() => {
@@ -304,27 +300,28 @@ export default function QuickView({ open, onClose }: { open: boolean, onClose: (
               When a side is staged, the back cards are suppressed so the user
               isn't disoriented by the next market peeking out while they're
               still confirming the current one. */}
-          {!isDeckFinished && visibleCards.map((card, stackIndex) => {
-            const isTopCard = stackIndex === 0
-            const isStagedCard = staged?.card.conditionId === card.conditionId
-            // Hide all non-top cards while staged so the deck behind doesn't
-            // peek out and confuse the user.
-            if (staged && !isStagedCard) {
-              return null
-            }
-            return (
-              <SwipeCard
-                key={card.conditionId}
-                card={card}
-                active={isTopCard && !staged && !detailsCard}
-                stackIndex={stackIndex}
-                stagedSide={isStagedCard ? staged.side : null}
-                onCommit={side => handleCommit(card, side)}
-                onSkip={handleSkip}
-                onOpenDetails={() => handleOpenDetails(card)}
-              />
-            )
-          })}
+          {!isDeckFinished &&
+            visibleCards.map((card, stackIndex) => {
+              const isTopCard = stackIndex === 0
+              const isStagedCard = staged?.card.conditionId === card.conditionId
+              // Hide all non-top cards while staged so the deck behind doesn't
+              // peek out and confuse the user.
+              if (staged && !isStagedCard) {
+                return null
+              }
+              return (
+                <SwipeCard
+                  key={card.conditionId}
+                  card={card}
+                  active={isTopCard && !staged && !detailsCard}
+                  stackIndex={stackIndex}
+                  stagedSide={isStagedCard ? staged.side : null}
+                  onCommit={(side) => handleCommit(card, side)}
+                  onSkip={handleSkip}
+                  onOpenDetails={() => handleOpenDetails(card)}
+                />
+              )
+            })}
         </div>
 
         {/* Confirm bar — appears after a swipe stages a side. */}
@@ -357,7 +354,7 @@ export default function QuickView({ open, onClose }: { open: boolean, onClose: (
 
             {/* Stake chips: preset amounts + Custom toggle */}
             <div className="mb-3 flex gap-2">
-              {STAKE_CHIPS.map(chip => (
+              {STAKE_CHIPS.map((chip) => (
                 <button
                   key={chip}
                   type="button"
@@ -372,8 +369,7 @@ export default function QuickView({ open, onClose }: { open: boolean, onClose: (
                       : 'border-border text-muted-foreground hover:bg-muted',
                   )}
                 >
-                  $
-                  {chip}
+                  ${chip}
                 </button>
               ))}
               <button
@@ -396,11 +392,7 @@ export default function QuickView({ open, onClose }: { open: boolean, onClose: (
             {/* Inline input shown only in Custom mode */}
             {isCustomMode && (
               <div className="mb-3">
-                <div className="
-                  flex items-center rounded-xl border border-primary bg-primary/5 px-3
-                  focus-within:ring-2 focus-within:ring-primary/40
-                "
-                >
+                <div className="flex items-center rounded-xl border border-primary bg-primary/5 px-3 focus-within:ring-2 focus-within:ring-primary/40">
                   <span className="text-base font-semibold text-muted-foreground">$</span>
                   <input
                     type="number"
@@ -436,47 +428,30 @@ export default function QuickView({ open, onClose }: { open: boolean, onClose: (
                 <span className="font-bold text-foreground tabular-nums">
                   {formatMoney(stagedPotentialReturn)}
                   {stagedProfit > 0 && (
-                    <span className="ml-1.5 font-semibold text-yes">
-                      +
-                      {formatMoney(stagedProfit)}
-                    </span>
+                    <span className="ml-1.5 font-semibold text-yes">+{formatMoney(stagedProfit)}</span>
                   )}
                 </span>
               </div>
             )}
 
-            {isAuthenticated
-              ? (
-                  <Button
-                    className="h-12 w-full text-base"
-                    onClick={handleConfirm}
-                    disabled={isPlacing || stake <= 0}
-                  >
-                    {isPlacing
-                      ? <Loader2Icon className="mr-2 size-4 animate-spin" />
-                      : null}
-                    {hasBalance
-                      ? `Confirm · ${formatMoney(stake)}`
-                      : 'Add funds to trade'}
-                  </Button>
-                )
-              : (
-                  <Button className="h-12 w-full text-base" onClick={() => void openWallet()}>
-                    <WalletIcon className="mr-2 size-4" />
-                    Connect wallet to trade
-                  </Button>
-                )}
+            {isAuthenticated ? (
+              <Button className="h-12 w-full text-base" onClick={handleConfirm} disabled={isPlacing || stake <= 0}>
+                {isPlacing ? <Loader2Icon className="mr-2 size-4 animate-spin" /> : null}
+                {hasBalance ? `Confirm · ${formatMoney(stake)}` : 'Add funds to trade'}
+              </Button>
+            ) : (
+              <Button className="h-12 w-full text-base" onClick={() => void openWallet()}>
+                <WalletIcon className="mr-2 size-4" />
+                Connect wallet to trade
+              </Button>
+            )}
           </div>
         )}
 
         {/* Hint when idle */}
         {!staged && !isDeckFinished && cards.length > 0 && (
           <p className="mt-4 text-center text-xs text-muted-foreground">
-            Swipe right for
-            {' '}
-            <span className="font-semibold text-yes">Yes/Up</span>
-            , left for
-            {' '}
+            Swipe right for <span className="font-semibold text-yes">Yes/Up</span>, left for{' '}
             <span className="font-semibold text-no">No/Down</span>
           </p>
         )}

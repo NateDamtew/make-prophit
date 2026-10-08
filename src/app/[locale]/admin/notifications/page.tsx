@@ -1,5 +1,6 @@
 import { setRequestLocale } from 'next-intl/server'
 import { Suspense } from 'react'
+
 import { NotificationComposer } from '@/app/[locale]/admin/notifications/_components/NotificationComposer'
 import { Skeleton } from '@/components/ui/skeleton'
 import { requireAdmin } from '@/lib/admin-ui/guard'

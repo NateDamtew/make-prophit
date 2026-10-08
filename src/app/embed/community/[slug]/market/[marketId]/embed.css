@@ -45,11 +45,19 @@
   --embed-surface: rgba(15, 23, 42, 0.02);
 }
 
-html, body {
+html,
+body {
   margin: 0;
   padding: 0;
   background: transparent;
-  font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font:
+    14px/1.5 system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    'Helvetica Neue',
+    Arial,
+    sans-serif;
   color: var(--embed-fg);
   -webkit-font-smoothing: antialiased;
 }
@@ -128,8 +136,14 @@ html, body {
 }
 
 @keyframes embed-pulse {
-  0% { transform: scale(1); opacity: 0.7; }
-  100% { transform: scale(2.2); opacity: 0; }
+  0% {
+    transform: scale(1);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scale(2.2);
+    opacity: 0;
+  }
 }
 
 .embed-card__title {
@@ -169,14 +183,18 @@ html, body {
   background: color-mix(in oklab, var(--embed-yes) 8%, transparent);
 }
 
-.embed-card__outcome--yes span { color: var(--embed-yes); }
+.embed-card__outcome--yes span {
+  color: var(--embed-yes);
+}
 
 .embed-card__outcome--no {
   border-color: color-mix(in oklab, var(--embed-no) 30%, transparent);
   background: color-mix(in oklab, var(--embed-no) 8%, transparent);
 }
 
-.embed-card__outcome--no span { color: var(--embed-no); }
+.embed-card__outcome--no span {
+  color: var(--embed-no);
+}
 
 .embed-card__resolves {
   margin: 0;

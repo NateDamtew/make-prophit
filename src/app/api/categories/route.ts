@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+
 import { TagRepository } from '@/lib/db/queries/tag'
 
 /**
@@ -10,15 +11,14 @@ export async function GET() {
   try {
     const { data } = await TagRepository.listTags({ limit: 100 })
     const categories = (data ?? [])
-      .filter(tag => !tag.is_hidden)
-      .map(tag => ({
+      .filter((tag) => !tag.is_hidden)
+      .map((tag) => ({
         slug: tag.slug,
         name: tag.name,
         isMainCategory: tag.is_main_category,
       }))
     return NextResponse.json({ categories })
-  }
-  catch (err) {
+  } catch (err) {
     console.error('[/api/categories] Failed:', err)
     return NextResponse.json({ categories: [] }, { status: 200 })
   }

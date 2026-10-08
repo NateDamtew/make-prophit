@@ -1,9 +1,11 @@
-import { Suspense } from 'react'
-import { redirect } from 'next/navigation'
-import { setRequestLocale } from 'next-intl/server'
 import { Clock, AlertCircle } from 'lucide-react'
+import { setRequestLocale } from 'next-intl/server'
+import { redirect } from 'next/navigation'
+import { Suspense } from 'react'
+
 import { CommunityRepository } from '@/lib/db/queries/community'
 import { UserRepository } from '@/lib/db/queries/user'
+
 import ReviewQueueClient from './_components/ReviewQueueClient'
 
 function StatCardSkeleton() {
@@ -64,14 +66,14 @@ async function ReviewQueueContent() {
       </div>
 
       <ReviewQueueClient
-        pendingMarkets={pendingList.map(row => ({
+        pendingMarkets={pendingList.map((row) => ({
           ...row.market,
           community_slug: row.community_slug,
           community_name: row.community_name,
           community_icon: row.community_icon,
           creator_username: row.creator_username,
         }))}
-        failureMarkets={failureList.map(row => ({
+        failureMarkets={failureList.map((row) => ({
           ...row.market,
           community_slug: row.community_slug,
           community_name: row.community_name,
@@ -81,11 +83,7 @@ async function ReviewQueueContent() {
   )
 }
 
-export default async function AdminCommunityReviewPage({
-  params,
-}: {
-  params: Promise<{ locale: string }>
-}) {
+export default async function AdminCommunityReviewPage({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = await params
   setRequestLocale(locale)
 
@@ -94,8 +92,8 @@ export default async function AdminCommunityReviewPage({
       <div>
         <h1 className="text-2xl font-bold">Community Market Reviews</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Review markets submitted by community admins. Approving deploys the
-          market on-chain via the platform&apos;s signer pool.
+          Review markets submitted by community admins. Approving deploys the market on-chain via the platform&apos;s
+          signer pool.
         </p>
       </div>
 

@@ -6,12 +6,28 @@
  * transactions.
  */
 
-import { useChainId, useConnectorClient } from 'wagmi'
+import { useCallback } from 'react'
+import { useChainId, useConnectorClient, useSwitchChain } from 'wagmi'
+
 import { useAppKit } from '@/hooks/useAppKit'
 
 export function useAppKitNetworkCore() {
   const chainId = useChainId()
   return { chainId }
+}
+
+/** Reown useAppKitNetwork shim: current chain plus a wagmi-backed switchNetwork. */
+export function useAppKitNetwork() {
+  const chainId = useChainId()
+  const { switchChainAsync } = useSwitchChain()
+  const switchNetwork = useCallback(
+    async (network: { id: number | string }) => {
+      await switchChainAsync({ chainId: Number(network.id) })
+    },
+    [switchChainAsync],
+  )
+
+  return { chainId, switchNetwork }
 }
 
 interface AppKitConnectingWalletConnector {
@@ -63,7 +79,7 @@ export function useAppKitProvider<T = unknown>(_namespace: string) {
   // Expose the connector's request function as an EIP-1193 provider shim.
   const walletProvider = connectorClient?.transport
     ? ({
-        request: async (args: { method: string, params?: unknown[] | object }) => {
+        request: async (args: { method: string; params?: unknown[] | object }) => {
           return (connectorClient.transport as any).request(args)
         },
       } as T)

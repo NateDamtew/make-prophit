@@ -1,20 +1,22 @@
 import { act, render, screen, waitFor } from '@testing-library/react'
+import { describe, expect, it, mock } from 'bun:test'
 import * as React from 'react'
-import { describe, expect, it, vi } from 'vitest'
 
-function ReadyConsumer({ ctx, onValue }: { ctx: React.Context<any>, onValue?: (value: any) => void }) {
+import { hoisted } from '../bun-test-helpers'
+
+function ReadyConsumer({ ctx, onValue }: { ctx: React.Context<any>; onValue?: (value: any) => void }) {
   const value = React.use(ctx)
   onValue?.(value)
   return React.createElement('div', { 'data-testid': 'ready' }, value.isReady ? 'yes' : 'no')
 }
 
-const mocks = vi.hoisted(() => ({
-  setShowAuthFlow: vi.fn(),
-  handleLogOut: vi.fn(),
-  setShowLinkNewWalletModal: vi.fn(),
+const mocks = hoisted(() => ({
+  setShowAuthFlow: mock(),
+  handleLogOut: mock(),
+  setShowLinkNewWalletModal: mock(),
 }))
 
-vi.mock('@dynamic-labs/sdk-react-core', () => ({
+void mock.module('@dynamic-labs/sdk-react-core', () => ({
   DynamicContextProvider: ({ children }: any) => children,
   useDynamicContext: () => ({
     setShowAuthFlow: mocks.setShowAuthFlow,
@@ -26,23 +28,23 @@ vi.mock('@dynamic-labs/sdk-react-core', () => ({
     setShowLinkNewWalletModal: mocks.setShowLinkNewWalletModal,
   }),
   useConnectWithOtp: () => ({
-    connectWithEmail: vi.fn(),
-    verifyOneTimePassword: vi.fn(),
+    connectWithEmail: mock(),
+    verifyOneTimePassword: mock(),
   }),
   useUserWallets: () => [],
 }))
 
-vi.mock('@dynamic-labs/ethereum', () => ({
+void mock.module('@dynamic-labs/ethereum', () => ({
   EthereumWalletConnectors: [],
 }))
 
-vi.mock('@dynamic-labs/wagmi-connector', () => ({
+void mock.module('@dynamic-labs/wagmi-connector', () => ({
   DynamicWagmiConnector: ({ children }: any) => children,
 }))
 
-vi.mock('@/lib/appkit', () => ({
+void mock.module('@/lib/appkit', () => ({
   __esModule: true,
-  createDynamicWagmiConfig: vi.fn(() => ({ state: {}, subscribe: vi.fn() })),
+  createDynamicWagmiConfig: mock(() => ({ state: {}, subscribe: mock() })),
   defaultNetwork: {
     id: 137,
     name: 'Polygon',
@@ -53,51 +55,51 @@ vi.mock('@/lib/appkit', () => ({
   networks: [{ id: 137 }],
 }))
 
-vi.mock('@/hooks/usePublicRuntimeConfig', () => ({
+void mock.module('@/hooks/usePublicRuntimeConfig', () => ({
   usePublicRuntimeConfig: () => ({
     dynamicEnvId: '0740478b-4de5-4a96-bb79-94687547e9a4',
     siteUrl: 'https://markets.test',
   }),
 }))
 
-vi.mock('wagmi', () => ({
+void mock.module('wagmi', () => ({
   WagmiProvider: ({ children }: any) => children,
 }))
 
-vi.mock('next-themes', () => ({
+void mock.module('next-themes', () => ({
   useTheme: () => ({ resolvedTheme: 'dark' }),
 }))
 
-vi.mock('next-intl', () => ({
+void mock.module('next-intl', () => ({
   useExtracted: () => (value: string) => value,
 }))
 
 // Dynamic mounts client-only after hydration — force the hydrated branch.
-vi.mock('@/hooks/useHasHydrated', () => ({
+void mock.module('@/hooks/useHasHydrated', () => ({
   useHasHydrated: () => true,
 }))
 
-vi.mock('@/components/SignaturePromptHost', () => ({
+void mock.module('@/components/SignaturePromptHost', () => ({
   SignaturePromptHost: () => null,
 }))
 
-vi.mock('@/lib/logout', () => ({
-  signOutAndRedirect: vi.fn(),
+void mock.module('@/lib/logout', () => ({
+  signOutAndRedirect: mock(),
 }))
 
-vi.mock('@/lib/auth-client', () => ({
+void mock.module('@/lib/auth-client', () => ({
   authClient: {
-    getSession: vi.fn().mockResolvedValue({ data: { user: null } }),
-    signOut: vi.fn(),
+    getSession: mock().mockResolvedValue({ data: { user: null } }),
+    signOut: mock(),
     siwe: {
-      nonce: vi.fn(),
-      verify: vi.fn().mockResolvedValue({ data: { success: true } }),
+      nonce: mock(),
+      verify: mock().mockResolvedValue({ data: { success: true } }),
     },
   },
 }))
 
-vi.mock('wagmi/actions', () => ({
-  signMessage: vi.fn(),
+void mock.module('wagmi/actions', () => ({
+  signMessage: mock(),
 }))
 
 describe('appKitProvider (Dynamic)', () => {
@@ -111,7 +113,12 @@ describe('appKitProvider (Dynamic)', () => {
       React.createElement(
         AppKitProvider,
         null,
-        React.createElement(ReadyConsumer, { ctx: AppKitContext, onValue: (v) => { latestValue = v } }),
+        React.createElement(ReadyConsumer, {
+          ctx: AppKitContext,
+          onValue: (v) => {
+            latestValue = v
+          },
+        }),
       ),
     )
 
@@ -131,7 +138,12 @@ describe('appKitProvider (Dynamic)', () => {
       React.createElement(
         AppKitProvider,
         null,
-        React.createElement(ReadyConsumer, { ctx: AppKitContext, onValue: (v) => { latestValue = v } }),
+        React.createElement(ReadyConsumer, {
+          ctx: AppKitContext,
+          onValue: (v) => {
+            latestValue = v
+          },
+        }),
       ),
     )
 
@@ -156,7 +168,12 @@ describe('appKitProvider (Dynamic)', () => {
       React.createElement(
         AppKitProvider,
         null,
-        React.createElement(ReadyConsumer, { ctx: AppKitContext, onValue: (v) => { latestValue = v } }),
+        React.createElement(ReadyConsumer, {
+          ctx: AppKitContext,
+          onValue: (v) => {
+            latestValue = v
+          },
+        }),
       ),
     )
 

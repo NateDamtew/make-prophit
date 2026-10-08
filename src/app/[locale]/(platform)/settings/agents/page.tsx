@@ -1,8 +1,10 @@
 import type { Metadata } from 'next'
+
 import { ArrowRightIcon, BookOpenIcon, BotIcon, RocketIcon, TerminalIcon } from 'lucide-react'
 import { getExtracted, setRequestLocale } from 'next-intl/server'
 import { notFound } from 'next/navigation'
 import { isAddress, zeroAddress } from 'viem'
+
 import SettingsSdkDownloadsContent from '@/app/[locale]/(platform)/settings/_components/SettingsSdkDownloadsContent'
 import SettingsAgentsContent from '@/app/[locale]/(platform)/settings/agents/_components/SettingsAgentsContent'
 import { Button } from '@/components/ui/button'
@@ -45,8 +47,8 @@ export default async function AgentsSettingsPage({ params }: AgentsRouteParams) 
   const { data: allSettings } = await SettingsRepository.getSettings()
   const siteUrl = resolveSiteUrl(process.env)
   const feeReceiverSetting = allSettings?.general?.fee_recipient_wallet?.value
-  const feeReceiver
-    = feeReceiverSetting && isAddress(feeReceiverSetting) && feeReceiverSetting.toLowerCase() !== zeroAddress
+  const feeReceiver =
+    feeReceiverSetting && isAddress(feeReceiverSetting) && feeReceiverSetting.toLowerCase() !== zeroAddress
       ? feeReceiverSetting
       : DEFAULT_FEE_RECEIVER_WALLET_ADDRESS
   const builderCode = addressToBuilderCode(feeReceiver)
@@ -76,8 +78,8 @@ export default async function AgentsSettingsPage({ params }: AgentsRouteParams) 
           <h1 className="text-2xl font-semibold tracking-tight">{t('Agents')}</h1>
         </div>
         <p className="text-muted-foreground">
-          Register AI agents, get API credentials, and let them build, trade, and compete on the leaderboard.
-          Read access is live; agent trading goes live with mainnet.
+          Register AI agents, get API credentials, and let them build, trade, and compete on the leaderboard. Read
+          access is live; agent trading goes live with mainnet.
         </p>
       </div>
 
@@ -97,9 +99,7 @@ export default async function AgentsSettingsPage({ params }: AgentsRouteParams) 
             </div>
             <div className="grid gap-0.5">
               <p className="text-sm font-semibold">REST API</p>
-              <p className="text-xs text-muted-foreground">
-                Read markets, prices, history. Public + rate-limited.
-              </p>
+              <p className="text-xs text-muted-foreground">Read markets, prices, history. Public + rate-limited.</p>
             </div>
             <span className="mt-1 inline-flex items-center text-xs font-medium text-primary">
               Open docs
@@ -113,15 +113,9 @@ export default async function AgentsSettingsPage({ params }: AgentsRouteParams) 
             </div>
             <div className="grid gap-0.5">
               <p className="text-sm font-semibold">MCP server</p>
-              <p className="text-xs text-muted-foreground">
-                Connect Claude Desktop, Cursor, or any MCP client.
-              </p>
+              <p className="text-xs text-muted-foreground">Connect Claude Desktop, Cursor, or any MCP client.</p>
             </div>
-            <span className="
-              mt-1 inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-2xs font-bold
-              tracking-wide text-amber-600 uppercase
-            "
-            >
+            <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-2xs font-bold tracking-wide text-amber-600 uppercase">
               Coming soon
             </span>
           </div>
@@ -136,11 +130,7 @@ export default async function AgentsSettingsPage({ params }: AgentsRouteParams) 
                 Place orders through agent credentials, with spending limits enforced.
               </p>
             </div>
-            <span className="
-              mt-1 inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-2xs font-bold
-              tracking-wide text-amber-600 uppercase
-            "
-            >
+            <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-2xs font-bold tracking-wide text-amber-600 uppercase">
               Live at mainnet
             </span>
           </div>
@@ -152,7 +142,9 @@ export default async function AgentsSettingsPage({ params }: AgentsRouteParams) 
         <div className="grid gap-1">
           <h2 className="text-lg font-semibold tracking-tight">{t('SDK Downloads')}</h2>
           <p className="text-sm text-muted-foreground">
-            {t('Build trading bots and integrations with personalized SDK bundles. The CLOB client handles orderbook trading, while the Relayer client helps route and execute signed actions.')}
+            {t(
+              'Build trading bots and integrations with personalized SDK bundles. The CLOB client handles orderbook trading, while the Relayer client helps route and execute signed actions.',
+            )}
           </p>
         </div>
 
@@ -166,7 +158,12 @@ export default async function AgentsSettingsPage({ params }: AgentsRouteParams) 
               logoSrc: '/images/sdks/python.svg',
               actions: [
                 { id: 'python-clob', label: t('CLOB'), href: buildDownloadUrl('python', 'clob'), variant: 'default' },
-                { id: 'python-relayer', label: t('Relayer'), href: buildDownloadUrl('python', 'relayer'), variant: 'outline' },
+                {
+                  id: 'python-relayer',
+                  label: t('Relayer'),
+                  href: buildDownloadUrl('python', 'relayer'),
+                  variant: 'outline',
+                },
               ],
             },
             {
@@ -176,7 +173,12 @@ export default async function AgentsSettingsPage({ params }: AgentsRouteParams) 
               logoSrc: '/images/sdks/rust.svg',
               actions: [
                 { id: 'rust-clob', label: t('CLOB'), href: buildDownloadUrl('rust', 'clob'), variant: 'default' },
-                { id: 'rust-relayer', label: t('Relayer'), href: buildDownloadUrl('rust', 'relayer'), variant: 'outline' },
+                {
+                  id: 'rust-relayer',
+                  label: t('Relayer'),
+                  href: buildDownloadUrl('rust', 'relayer'),
+                  variant: 'outline',
+                },
               ],
             },
             {
@@ -185,18 +187,24 @@ export default async function AgentsSettingsPage({ params }: AgentsRouteParams) 
               description: t('CLOB and relayer bundles for web apps, bots, and Node.js services.'),
               logoSrc: '/images/sdks/typescript.svg',
               actions: [
-                { id: 'typescript-clob', label: t('CLOB'), href: buildDownloadUrl('typescript', 'clob'), variant: 'default' },
-                { id: 'typescript-relayer', label: t('Relayer'), href: buildDownloadUrl('typescript', 'relayer'), variant: 'outline' },
+                {
+                  id: 'typescript-clob',
+                  label: t('CLOB'),
+                  href: buildDownloadUrl('typescript', 'clob'),
+                  variant: 'default',
+                },
+                {
+                  id: 'typescript-relayer',
+                  label: t('Relayer'),
+                  href: buildDownloadUrl('typescript', 'relayer'),
+                  variant: 'outline',
+                },
               ],
             },
           ]}
         />
 
-        <div className="
-          flex flex-col gap-4 rounded-lg border bg-card p-4
-          sm:flex-row sm:items-center sm:justify-between sm:p-6
-        "
-        >
+        <div className="flex flex-col gap-4 rounded-lg border bg-card p-4 sm:flex-row sm:items-center sm:justify-between sm:p-6">
           <div className="flex items-start gap-3">
             <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
               <BookOpenIcon className="size-5" />
@@ -208,10 +216,16 @@ export default async function AgentsSettingsPage({ params }: AgentsRouteParams) 
               </p>
             </div>
           </div>
-          <Button variant="outline" size="sm" className="w-full sm:w-auto" nativeButton={false} render={<Link href="/docs/api-reference/clients-sdks" />}>
-              {t('Open documentation')}
-              <ArrowRightIcon className="size-4" />
-            </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full sm:w-auto"
+            nativeButton={false}
+            render={<Link href="/docs/api-reference/clients-sdks" />}
+          >
+            {t('Open documentation')}
+            <ArrowRightIcon className="size-4" />
+          </Button>
         </div>
       </div>
     </section>

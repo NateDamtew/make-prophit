@@ -2,15 +2,10 @@
 
 import { CheckIcon, Code2Icon, CopyIcon, ExternalLinkIcon, MonitorIcon, SmartphoneIcon, TabletIcon } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { toast } from '@/components/ui/toast'
+
 import { Button } from '@/components/ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { toast } from '@/components/ui/toast'
 import { cn } from '@/lib/utils'
 
 interface EmbedCodeButtonProps {
@@ -24,7 +19,7 @@ interface EmbedCodeButtonProps {
 
 type PreviewWidth = 'mobile' | 'tablet' | 'desktop'
 
-const PREVIEW_SIZES: Record<PreviewWidth, { label: string, width: number, icon: typeof SmartphoneIcon }> = {
+const PREVIEW_SIZES: Record<PreviewWidth, { label: string; width: number; icon: typeof SmartphoneIcon }> = {
   mobile: { label: 'Mobile', width: 320, icon: SmartphoneIcon },
   tablet: { label: 'Tablet', width: 640, icon: TabletIcon },
   desktop: { label: 'Desktop', width: 800, icon: MonitorIcon },
@@ -38,7 +33,8 @@ export function EmbedCodeButton({ communitySlug, marketId, siteOrigin, defaultHe
 
   const embedUrl = `${siteOrigin.replace(/\/$/, '')}/embed/community/${communitySlug}/market/${marketId}`
   const snippet = useMemo(
-    () => `<iframe src="${embedUrl}" width="100%" height="${height}" frameborder="0" loading="lazy" allow="" referrerpolicy="no-referrer-when-downgrade" title="Prophit market"></iframe>`,
+    () =>
+      `<iframe src="${embedUrl}" width="100%" height="${height}" frameborder="0" loading="lazy" allow="" referrerpolicy="no-referrer-when-downgrade" title="Prophit market"></iframe>`,
     [embedUrl, height],
   )
 
@@ -48,8 +44,7 @@ export function EmbedCodeButton({ communitySlug, marketId, siteOrigin, defaultHe
       setCopied(true)
       toast.success('Embed code copied')
       setTimeout(setCopied, 2000, false)
-    }
-    catch {
+    } catch {
       toast.error('Could not copy — select the snippet manually.')
     }
   }
@@ -88,10 +83,7 @@ export function EmbedCodeButton({ communitySlug, marketId, siteOrigin, defaultHe
                       'flex items-center gap-1.5 rounded-sm border px-2.5 py-1.5 text-xs font-medium transition-colors',
                       isActive
                         ? 'border-primary bg-primary/10 text-primary'
-                        : `
-                          border-border bg-background text-muted-foreground
-                          hover:border-primary/40 hover:text-foreground
-                        `,
+                        : `border-border bg-background text-muted-foreground hover:border-primary/40 hover:text-foreground`,
                     )}
                   >
                     <Icon className="size-3.5" />
@@ -107,7 +99,10 @@ export function EmbedCodeButton({ communitySlug, marketId, siteOrigin, defaultHe
 
             {/* Live preview */}
             <div className="overflow-hidden rounded-sm border bg-muted/30 p-3">
-              <div className="mx-auto overflow-hidden rounded-sm bg-background" style={{ width: previewPx, maxWidth: '100%' }}>
+              <div
+                className="mx-auto overflow-hidden rounded-sm bg-background"
+                style={{ width: previewPx, maxWidth: '100%' }}
+              >
                 <iframe
                   src={embedUrl}
                   title="Embed preview"
@@ -128,17 +123,19 @@ export function EmbedCodeButton({ communitySlug, marketId, siteOrigin, defaultHe
                   min={240}
                   max={1200}
                   value={height}
-                  onChange={e => setHeight(Math.max(240, Math.min(1200, Number(e.target.value) || defaultHeight)))}
-                  className="
-                    rounded-md border border-border/70 bg-background px-3 py-2 text-sm outline-none
-                    focus:border-primary focus:ring-1 focus:ring-primary
-                  "
+                  onChange={(e) => setHeight(Math.max(240, Math.min(1200, Number(e.target.value) || defaultHeight)))}
+                  className="rounded-md border border-border/70 bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                 />
               </label>
-              <Button variant="ghost" size="sm" nativeButton={false} render={<a href={embedUrl} target="_blank" rel="noopener noreferrer" />}>
-                  <ExternalLinkIcon className="size-3.5" />
-                  Open raw embed
-                </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                nativeButton={false}
+                render={<a href={embedUrl} target="_blank" rel="noopener noreferrer" />}
+              >
+                <ExternalLinkIcon className="size-3.5" />
+                Open raw embed
+              </Button>
             </div>
 
             {/* Snippet */}
@@ -154,11 +151,8 @@ export function EmbedCodeButton({ communitySlug, marketId, siteOrigin, defaultHe
                 readOnly
                 value={snippet}
                 rows={4}
-                className="
-                  w-full resize-none rounded-md border border-border/70 bg-muted/30 px-3 py-2 font-mono text-2xs
-                  leading-snug outline-none
-                "
-                onFocus={e => e.currentTarget.select()}
+                className="w-full resize-none rounded-md border border-border/70 bg-muted/30 px-3 py-2 font-mono text-2xs leading-snug outline-none"
+                onFocus={(e) => e.currentTarget.select()}
               />
             </div>
           </div>

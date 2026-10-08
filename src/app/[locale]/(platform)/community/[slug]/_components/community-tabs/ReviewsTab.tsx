@@ -1,11 +1,14 @@
 'use client'
 
-import type { CommunityReviewSummary, CommunitySummary } from './types'
 import { Star } from 'lucide-react'
 import { useMemo, useState, useTransition } from 'react'
-import { toast } from '@/components/ui/toast'
+
 import { Button } from '@/components/ui/button'
+import { toast } from '@/components/ui/toast'
 import { cn } from '@/lib/utils'
+
+import type { CommunityReviewSummary, CommunitySummary } from './types'
+
 import { submitReviewAction } from '../../_actions/community-actions'
 import { StarPicker } from './shared'
 
@@ -37,8 +40,7 @@ export function ReviewsTab({ community, reviews, memberRole }: ReviewsTabProps) 
       })
       if (result.error) {
         toast.error(result.error)
-      }
-      else {
+      } else {
         toast.success('Review submitted!')
         setRating(0)
         setReviewText('')
@@ -53,7 +55,7 @@ export function ReviewsTab({ community, reviews, memberRole }: ReviewsTabProps) 
           <div className="text-center">
             <p className="text-4xl font-bold">{averageRating.toFixed(1)}</p>
             <div className="mt-1 flex justify-center">
-              {[1, 2, 3, 4, 5].map(s => (
+              {[1, 2, 3, 4, 5].map((s) => (
                 <Star
                   key={s}
                   className={cn(
@@ -63,15 +65,11 @@ export function ReviewsTab({ community, reviews, memberRole }: ReviewsTabProps) 
                 />
               ))}
             </div>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {reviews.length}
-              {' '}
-              reviews
-            </p>
+            <p className="mt-1 text-xs text-muted-foreground">{reviews.length} reviews</p>
           </div>
           <div className="flex-1 space-y-1.5">
             {[5, 4, 3, 2, 1].map((star) => {
-              const count = reviews.filter(r => r.rating === star).length
+              const count = reviews.filter((r) => r.rating === star).length
               const pct = reviews.length > 0 ? (count / reviews.length) * 100 : 0
               return (
                 <div key={star} className="flex items-center gap-2 text-xs">
@@ -94,13 +92,9 @@ export function ReviewsTab({ community, reviews, memberRole }: ReviewsTabProps) 
           <StarPicker value={rating} onChange={setRating} />
           <textarea
             value={reviewText}
-            onChange={e => setReviewText(e.target.value)}
+            onChange={(e) => setReviewText(e.target.value)}
             placeholder="Share your experience with this community..."
-            className="
-              w-full resize-none rounded-lg border bg-background px-3 py-2 text-sm outline-none
-              placeholder:text-muted-foreground
-              focus:ring-1 focus:ring-primary
-            "
+            className="w-full resize-none rounded-lg border bg-background px-3 py-2 text-sm outline-none placeholder:text-muted-foreground focus:ring-1 focus:ring-primary"
             rows={3}
             maxLength={1000}
           />
@@ -111,52 +105,45 @@ export function ReviewsTab({ community, reviews, memberRole }: ReviewsTabProps) 
       )}
 
       <div className="space-y-4">
-        {reviews.length === 0
-          ? (
-              <div className="py-12 text-center">
-                <Star className="mx-auto mb-3 size-10 text-muted-foreground/30" />
-                <p className="font-medium">No reviews yet</p>
-                {memberRole && (
-                  <p className="mt-1 text-sm text-muted-foreground">Be the first to review this community.</p>
+        {reviews.length === 0 ? (
+          <div className="py-12 text-center">
+            <Star className="mx-auto mb-3 size-10 text-muted-foreground/30" />
+            <p className="font-medium">No reviews yet</p>
+            {memberRole && <p className="mt-1 text-sm text-muted-foreground">Be the first to review this community.</p>}
+          </div>
+        ) : (
+          reviews.map((review) => (
+            <div key={review.id} className="flex gap-3">
+              <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium">
+                {review.user_image ? (
+                  <img src={review.user_image} alt="" className="size-9 rounded-full object-cover" />
+                ) : (
+                  (review.username?.[0] ?? '?').toUpperCase()
                 )}
               </div>
-            )
-          : reviews.map(review => (
-              <div key={review.id} className="flex gap-3">
-                <div className="
-                  flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium
-                "
-                >
-                  {review.user_image
-                    ? <img src={review.user_image} alt="" className="size-9 rounded-full object-cover" />
-                    : (review.username?.[0] ?? '?').toUpperCase()}
-                </div>
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium">
-                      {review.username ? `@${review.username}` : 'Anonymous'}
-                    </span>
-                    <div className="flex">
-                      {[1, 2, 3, 4, 5].map(s => (
-                        <Star
-                          key={s}
-                          className={cn(
-                            'size-3',
-                            s <= review.rating ? 'fill-amber-400 text-amber-400' : 'text-muted-foreground/30',
-                          )}
-                        />
-                      ))}
-                    </div>
-                    <span className="text-xs text-muted-foreground">
-                      {new Date(review.created_at).toLocaleDateString()}
-                    </span>
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium">{review.username ? `@${review.username}` : 'Anonymous'}</span>
+                  <div className="flex">
+                    {[1, 2, 3, 4, 5].map((s) => (
+                      <Star
+                        key={s}
+                        className={cn(
+                          'size-3',
+                          s <= review.rating ? 'fill-amber-400 text-amber-400' : 'text-muted-foreground/30',
+                        )}
+                      />
+                    ))}
                   </div>
-                  {review.review_text && (
-                    <p className="mt-1 text-sm text-muted-foreground">{review.review_text}</p>
-                  )}
+                  <span className="text-xs text-muted-foreground">
+                    {new Date(review.created_at).toLocaleDateString()}
+                  </span>
                 </div>
+                {review.review_text && <p className="mt-1 text-sm text-muted-foreground">{review.review_text}</p>}
               </div>
-            ))}
+            </div>
+          ))
+        )}
       </div>
     </div>
   )

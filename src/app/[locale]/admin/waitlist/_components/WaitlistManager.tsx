@@ -1,7 +1,9 @@
 'use client'
 
-import type { WaitlistStatus } from '@/lib/db/schema/waitlist/tables'
 import { ClipboardListIcon, DownloadIcon } from 'lucide-react'
+
+import type { WaitlistStatus } from '@/lib/db/schema/waitlist/tables'
+
 import { DataTable } from '@/app/[locale]/admin/_components/DataTable'
 import { useWaitlistTable } from '@/app/[locale]/admin/waitlist/_hooks/useWaitlist'
 import { EmptyState } from '@/components/admin-ui/EmptyState'
@@ -10,9 +12,10 @@ import { PageHeader } from '@/components/admin-ui/PageHeader'
 import { Button } from '@/components/ui/button'
 import { WAITLIST_STATUSES } from '@/lib/db/schema/waitlist/tables'
 import { cn } from '@/lib/utils'
+
 import { useWaitlistColumns } from './columns'
 
-const FILTERS: Array<{ value: WaitlistStatus | 'all', label: string }> = [
+const FILTERS: Array<{ value: WaitlistStatus | 'all'; label: string }> = [
   { value: 'all', label: 'All' },
   { value: 'pending', label: 'Pending' },
   { value: 'invited', label: 'Invited' },
@@ -36,18 +39,23 @@ export function WaitlistManager() {
       <PageHeader
         title="Waitlist"
         description="Review signups, send early-access invites, and track who has joined."
-        actions={(
+        actions={
           <Button variant="outline" nativeButton={false} render={<a href={exportHref} download />}>
-              <DownloadIcon className="size-4" />
-              Export CSV
-            </Button>
-        )}
+            <DownloadIcon className="size-4" />
+            Export CSV
+          </Button>
+        }
       />
 
       {/* KPI strip */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        <StatTile label="Total" value={stats?.total} active={table.status === 'all'} onClick={() => table.setStatus('all')} />
-        {WAITLIST_STATUSES.map(status => (
+        <StatTile
+          label="Total"
+          value={stats?.total}
+          active={table.status === 'all'}
+          onClick={() => table.setStatus('all')}
+        />
+        {WAITLIST_STATUSES.map((status) => (
           <StatTile
             key={status}
             label={status[0].toUpperCase() + status.slice(1)}
@@ -60,7 +68,7 @@ export function WaitlistManager() {
 
       {/* Status filter chips (mobile-friendly duplicate of the tiles' filter intent) */}
       <div className="flex flex-wrap gap-1.5">
-        {FILTERS.map(filter => (
+        {FILTERS.map((filter) => (
           <Button
             key={filter.value}
             size="sm"
@@ -128,9 +136,7 @@ function StatTile({
       )}
     >
       <p className="text-xs font-medium text-muted-foreground">{label}</p>
-      <p className="mt-1 text-xl font-semibold tabular-nums">
-        {value === undefined ? '—' : formatNumber(value)}
-      </p>
+      <p className="mt-1 text-xl font-semibold tabular-nums">{value === undefined ? '—' : formatNumber(value)}</p>
     </button>
   )
 }

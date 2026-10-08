@@ -3,6 +3,7 @@
 import type { ReactNode } from 'react'
 
 import dynamic from 'next/dynamic'
+import { useCallback } from 'react'
 
 import type { TradeFlowLabelItem } from '@/app/[locale]/(platform)/event/[slug]/_utils/eventChartInternalHelpers'
 import type {
@@ -19,14 +20,16 @@ import EventChartTradeFlow from './EventChartTradeFlow'
 
 const PredictionChart = dynamic<PredictionChartProps>(() => import('@/components/PredictionChart'), {
   ssr: false,
-  loading: () => <div className="h-83 w-full" />,
+  loading: () => <div className="h-[272px] w-full" />,
 })
 
 interface EventChartCanvasProps {
   chartData: DataPoint[]
+  locale?: string
   legendSeries: SeriesConfig[]
   chartWidth: number
   chartHeight?: number
+  isLoading: boolean
   chartScopeKey: string
   onCursorDataChange: (snapshot: PredictionChartCursorSnapshot | null) => void
   isMobile: boolean
@@ -47,11 +50,14 @@ interface EventChartCanvasProps {
   tradeFlowItems: TradeFlowLabelItem[]
 }
 
+const CHART_MARGIN = { top: 10, right: 40, bottom: 30, left: 0 }
 export default function EventChartCanvas({
   chartData,
+  locale = 'en',
   legendSeries,
   chartWidth,
-  chartHeight = 332,
+  chartHeight = 272,
+  isLoading,
   chartScopeKey,
   onCursorDataChange,
   isMobile,
@@ -64,34 +70,58 @@ export default function EventChartCanvas({
   watermark,
   tradeFlowItems,
 }: EventChartCanvasProps) {
+  const handleCursorDataChange = useCallback(
+    (snapshot: PredictionChartCursorSnapshot | null) => {
+      onCursorDataChange(snapshot)
+    },
+    [onCursorDataChange],
+  )
+
   return (
     <div className="relative">
-      <PredictionChart
-        data={chartData}
-        series={legendSeries}
-        width={chartWidth}
-        height={chartHeight}
-        margin={{ top: 30, right: 40, bottom: 52, left: 0 }}
-        dataSignature={chartScopeKey}
-        onCursorDataChange={onCursorDataChange}
-        xAxisTickCount={isMobile ? 2 : 4}
-        autoscale={chartSettings.autoscale}
-        showXAxis={chartSettings.xAxis}
-        showYAxis={chartSettings.yAxis}
-        showHorizontalGrid={chartSettings.horizontalGrid}
-        showVerticalGrid={chartSettings.verticalGrid}
-        showAnnotations={chartSettings.annotations && chartAnnotationMarkers.length > 0}
-        annotationMarkers={chartAnnotationMarkers}
-        leadingGapStart={leadingGapStart}
-        disableResetAnimation={disableResetAnimation}
-        legendContent={legendContent}
-        showLegend={!isSingleMarket}
-        watermark={isSingleMarket ? undefined : watermark}
-        lineCurve="monotoneX"
-        plotClipPadding={{ right: EVENT_PLOT_CLIP_RIGHT_PADDING }}
-        tooltipLabelVariant="panel"
-      />
-      <EventChartTradeFlow items={tradeFlowItems} />
+      {isLoading ? (
+        <div aria-hidden="true" style={{ height: chartHeight }} />
+      ) : (
+        <>
+          <PredictionChart
+            data={chartData}
+            series={legendSeries}
+            locale={locale}
+            width={chartWidth}
+            height={chartHeight}
+            margin={CHART_MARGIN}
+            dataSignature={chartScopeKey}
+            dataSyncMode="replace"
+            onCursorDataChange={handleCursorDataChange}
+            xAxisTickCount={isMobile ? 2 : 4}
+            autoscale={chartSettings.autoscale}
+            showXAxis={chartSettings.xAxis}
+            showYAxis={chartSettings.yAxis}
+            showHorizontalGrid={chartSettings.horizontalGrid}
+            showVerticalGrid={chartSettings.verticalGrid}
+            showAnnotations={chartSettings.annotations && chartAnnotationMarkers.length > 0}
+            annotationMarkers={chartAnnotationMarkers}
+            leadingGapStart={leadingGapStart}
+            disableResetAnimation={disableResetAnimation}
+            legendContent={legendContent}
+            showLegend={!isSingleMarket}
+            watermark={isSingleMarket ? undefined : watermark}
+            lineCurve="monotoneX"
+            plotClipPadding={{ right: EVENT_PLOT_CLIP_RIGHT_PADDING }}
+            tooltipLabelVariant="panel"
+            tooltipDateFormatter={(date) =>
+              date.toLocaleString(locale, {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit',
+              })
+            }
+          />
+          <EventChartTradeFlow items={tradeFlowItems} />
+        </>
+      )}
     </div>
   )
 }

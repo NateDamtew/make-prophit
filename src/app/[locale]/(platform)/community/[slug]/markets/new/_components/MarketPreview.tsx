@@ -1,6 +1,7 @@
 'use client'
 
 import type { LucideIcon } from 'lucide-react'
+
 import { BookOpenIcon, CalendarIcon, GlobeIcon, ImageIcon } from 'lucide-react'
 
 interface MarketPreviewProps {
@@ -17,7 +18,7 @@ interface MarketPreviewProps {
   communityIcon: string | null
 }
 
-function Row({ icon: Icon, label, children }: { icon: LucideIcon, label: string, children: React.ReactNode }) {
+function Row({ icon: Icon, label, children }: { icon: LucideIcon; label: string; children: React.ReactNode }) {
   return (
     <div className="grid gap-1">
       <div className="flex items-center gap-1.5 text-xs font-medium tracking-wide text-muted-foreground uppercase">
@@ -50,9 +51,12 @@ export function MarketPreview({
   const formattedDate = resolutionDate
     ? (() => {
         try {
-          return new Date(resolutionDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
-        }
-        catch {
+          return new Date(resolutionDate).toLocaleDateString(undefined, {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+          })
+        } catch {
           return resolutionDate
         }
       })()
@@ -65,17 +69,11 @@ export function MarketPreview({
       {/* Card header — mirrors CommunityMarketCard */}
       <div className="flex items-start gap-3 border-b border-border/60 p-4">
         <div className="flex size-10 shrink-0 items-center justify-center rounded-sm bg-primary/10 text-base">
-          {communityIcon
-            ? <img src={communityIcon} alt="" className="size-full rounded-sm object-cover" />
-            : '🏛️'}
+          {communityIcon ? <img src={communityIcon} alt="" className="size-full rounded-sm object-cover" /> : '🏛️'}
         </div>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-xs font-medium tracking-wide text-muted-foreground uppercase">
-            {communityName}
-          </p>
-          <h3 className="line-clamp-3 text-base/tight font-semibold">
-            {title || placeholderTitle}
-          </h3>
+          <p className="truncate text-xs font-medium tracking-wide text-muted-foreground uppercase">{communityName}</p>
+          <h3 className="line-clamp-3 text-base/tight font-semibold">{title || placeholderTitle}</h3>
         </div>
       </div>
 
@@ -107,7 +105,9 @@ export function MarketPreview({
           </span>
         </Row>
         <Row icon={BookOpenIcon} label="Resolution rules">
-          <p className={`whitespace-pre-wrap ${resolutionRules ? 'text-foreground/80' : 'text-muted-foreground italic'}`}>
+          <p
+            className={`whitespace-pre-wrap ${resolutionRules ? 'text-foreground/80' : 'text-muted-foreground italic'}`}
+          >
             {resolutionRules || 'No rules set yet. Concrete, source-cited rules unlock the review queue.'}
           </p>
         </Row>

@@ -1,9 +1,12 @@
 /* eslint-disable @next/next/no-img-element */
 import type { Metadata } from 'next'
+
 import { notFound } from 'next/navigation'
+
 import { recordCommunityEvent } from '@/lib/communities/events'
 import { CommunityRepository } from '@/lib/db/queries/community'
 import { CommunityEmbedRepository } from '@/lib/db/queries/community-monetization'
+
 import './embed.css'
 
 /**
@@ -26,7 +29,11 @@ export function generateStaticParams() {
   return [{ slug: '__placeholder__', marketId: '__placeholder__' }]
 }
 
-export async function generateMetadata({ params }: { params: Promise<{ slug: string, marketId: string }> }): Promise<Metadata> {
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string; marketId: string }>
+}): Promise<Metadata> {
   const { marketId } = await params
   const { data } = await CommunityRepository.getMarketWithCommunity(marketId)
   if (!data) {
@@ -40,7 +47,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 }
 
 interface EmbedParams {
-  params: Promise<{ slug: string, marketId: string }>
+  params: Promise<{ slug: string; marketId: string }>
   searchParams: Promise<{ referrer?: string }>
 }
 
@@ -81,7 +88,7 @@ export default async function CommunityMarketEmbed({ params, searchParams }: Emb
   return (
     <main
       data-embed-mode={mode}
-      style={accent ? ({ ['--embed-accent' as string]: accent }) : undefined}
+      style={accent ? { ['--embed-accent' as string]: accent } : undefined}
       className="embed-card"
     >
       <header className="embed-card__header">
@@ -91,9 +98,7 @@ export default async function CommunityMarketEmbed({ params, searchParams }: Emb
           rel="noopener noreferrer"
           className="embed-card__community"
         >
-          {community.icon_url
-            ? <img src={community.icon_url} alt="" />
-            : <span aria-hidden>🏛️</span>}
+          {community.icon_url ? <img src={community.icon_url} alt="" /> : <span aria-hidden>🏛️</span>}
           <span>{community.name}</span>
         </a>
         <span className="embed-card__live-pill">
@@ -115,9 +120,7 @@ export default async function CommunityMarketEmbed({ params, searchParams }: Emb
         </div>
       </div>
 
-      {resolutionLabel && (
-        <p className="embed-card__resolves">Resolves {resolutionLabel}</p>
-      )}
+      {resolutionLabel && <p className="embed-card__resolves">Resolves {resolutionLabel}</p>}
 
       <footer className="embed-card__footer">
         <a

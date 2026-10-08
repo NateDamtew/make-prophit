@@ -18,17 +18,13 @@ export function AboutTab({ community }: AboutTabProps) {
       {community.rules && (
         <div>
           <p className="mb-2 font-semibold">Community Rules</p>
-          <div className="rounded-xl bg-muted/30 p-4 whitespace-pre-wrap text-muted-foreground">
-            {community.rules}
-          </div>
+          <div className="rounded-xl bg-muted/30 p-4 whitespace-pre-wrap text-muted-foreground">{community.rules}</div>
         </div>
       )}
       {community.terms && (
         <div>
           <p className="mb-2 font-semibold">Terms & Conditions</p>
-          <div className="rounded-xl bg-muted/30 p-4 whitespace-pre-wrap text-muted-foreground">
-            {community.terms}
-          </div>
+          <div className="rounded-xl bg-muted/30 p-4 whitespace-pre-wrap text-muted-foreground">{community.terms}</div>
         </div>
       )}
       <div>
@@ -43,9 +39,7 @@ export function AboutTab({ community }: AboutTabProps) {
             <p className="mt-0.5 text-xs text-muted-foreground">Max Members</p>
           </div>
           <div className="rounded-xl border p-3 text-center">
-            <p className="text-lg font-bold">
-              {community.jury_size <= 2 ? '100%' : '>75%'}
-            </p>
+            <p className="text-lg font-bold">{community.jury_size <= 2 ? '100%' : '>75%'}</p>
             <p className="mt-0.5 text-xs text-muted-foreground">Consensus</p>
           </div>
           <div className="rounded-xl border p-3 text-center">
@@ -55,9 +49,7 @@ export function AboutTab({ community }: AboutTabProps) {
         </div>
       </div>
       <p className="text-xs text-muted-foreground">
-        Community created
-        {' '}
-        {new Date(community.created_at).toLocaleDateString()}
+        Community created {new Date(community.created_at).toLocaleDateString()}
       </p>
     </div>
   )

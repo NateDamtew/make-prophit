@@ -2,6 +2,7 @@ import { CalendarIcon, ClipboardListIcon, UsersIcon, UsersRoundIcon } from 'luci
 import { setRequestLocale } from 'next-intl/server'
 import Link from 'next/link'
 import { Suspense } from 'react'
+
 import { ActivityFeed } from '@/app/[locale]/admin/overview/_components/ActivityFeed'
 import { formatCompact, formatNumber } from '@/components/admin-ui/format'
 import { KpiCard } from '@/components/admin-ui/KpiCard'
@@ -36,10 +37,7 @@ export default async function AdminOverviewPage({ params }: PageProps<'/[locale]
 async function OverviewContent() {
   await requireAdmin()
 
-  const [stats, activity] = await Promise.all([
-    getOverviewStats(),
-    getRecentAuditEvents(12),
-  ])
+  const [stats, activity] = await Promise.all([getOverviewStats(), getRecentAuditEvents(12)])
 
   return (
     <>
@@ -65,11 +63,7 @@ async function OverviewContent() {
           icon={CalendarIcon}
           hint="Status: active"
         />
-        <KpiCard
-          label="Communities"
-          value={formatNumber(stats.communities)}
-          icon={UsersRoundIcon}
-        />
+        <KpiCard label="Communities" value={formatNumber(stats.communities)} icon={UsersRoundIcon} />
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]">
@@ -83,7 +77,7 @@ async function OverviewContent() {
             </Link>
           </div>
           <ul className="divide-y divide-border/50">
-            {WAITLIST_STATUSES.map(status => (
+            {WAITLIST_STATUSES.map((status) => (
               <li key={status} className="flex items-center justify-between px-5 py-3">
                 <WaitlistStatusBadge status={status} />
                 <span className="text-sm font-medium tabular-nums">

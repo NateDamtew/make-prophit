@@ -1,16 +1,20 @@
+import { beforeEach, describe, expect, it, mock } from 'bun:test'
+import * as actualNextCache from 'next/cache'
 import { Buffer } from 'node:buffer'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const mocks = vi.hoisted(() => ({
-  revalidatePath: vi.fn(),
-  getCurrentUser: vi.fn(),
-  getSettings: vi.fn(),
-  replaceFeaturedEventsWithSettings: vi.fn(),
-  updateSettings: vi.fn(),
-  decryptSecret: vi.fn(),
-  encryptSecret: vi.fn(),
-  upload: vi.fn(),
-  fetch: vi.fn(),
+import { hoisted, spyOn, stubGlobal } from '../bun-test-helpers'
+
+const mocks = hoisted(() => ({
+  revalidatePath: mock(),
+  getCurrentUser: mock(),
+  getSettings: mock(),
+  replaceFeaturedEventsWithSettings: mock(),
+  updateSettings: mock(),
+  updateSettingsWithTermsOfService: mock(),
+  decryptSecret: mock(),
+  encryptSecret: mock(),
+  upload: mock(),
+  fetch: mock(),
 }))
 
 const VALID_JPEG_BASE64 =
@@ -57,46 +61,47 @@ function buildHomeFeaturedFormData() {
   return formData
 }
 
-vi.mock('next/cache', () => ({
+void mock.module('next/cache', () => ({
+  ...actualNextCache,
   revalidatePath: mocks.revalidatePath,
 }))
 
-vi.mock('@/lib/db/queries/user', () => ({
+void mock.module('@/lib/db/queries/user', () => ({
   UserRepository: { getCurrentUser: (...args: any[]) => mocks.getCurrentUser(...args) },
 }))
 
-vi.mock('@/lib/db/queries/settings', () => ({
+void mock.module('@/lib/db/queries/settings', () => ({
   SettingsRepository: {
     getSettings: (...args: any[]) => mocks.getSettings(...args),
     updateSettings: (...args: any[]) => mocks.updateSettings(...args),
+    updateSettingsWithTermsOfService: (...args: any[]) => mocks.updateSettingsWithTermsOfService(...args),
   },
 }))
 
-vi.mock('@/lib/db/queries/home-featured-events', () => ({
+void mock.module('@/lib/db/queries/home-featured-events', () => ({
   HomeFeaturedEventsRepository: {
     replaceFeaturedEventsWithSettings: (...args: any[]) => mocks.replaceFeaturedEventsWithSettings(...args),
   },
 }))
 
-vi.mock('@/lib/encryption', () => ({
+void mock.module('@/lib/encryption', () => ({
   decryptSecret: (...args: any[]) => mocks.decryptSecret(...args),
   encryptSecret: (...args: any[]) => mocks.encryptSecret(...args),
 }))
 
-vi.mock('@/lib/storage', () => ({
+void mock.module('@/lib/storage-upload', () => ({
   uploadPublicAsset: (...args: any[]) => mocks.upload(...args),
 }))
 
 describe('updateGeneralSettingsAction', () => {
   beforeEach(() => {
-    vi.resetModules()
-    vi.doUnmock('sharp')
-    vi.stubGlobal('fetch', mocks.fetch)
+    stubGlobal('fetch', mocks.fetch)
     mocks.revalidatePath.mockReset()
     mocks.getCurrentUser.mockReset()
     mocks.getSettings.mockReset()
     mocks.replaceFeaturedEventsWithSettings.mockReset()
     mocks.updateSettings.mockReset()
+    mocks.updateSettingsWithTermsOfService.mockReset()
     mocks.decryptSecret.mockReset()
     mocks.encryptSecret.mockReset()
     mocks.upload.mockReset()
@@ -104,11 +109,12 @@ describe('updateGeneralSettingsAction', () => {
     mocks.upload.mockResolvedValue({ error: null })
     mocks.getSettings.mockResolvedValue({ data: {}, error: null })
     mocks.replaceFeaturedEventsWithSettings.mockResolvedValue({ data: [], error: null })
+    mocks.updateSettingsWithTermsOfService.mockResolvedValue({ data: [], error: null })
     mocks.encryptSecret.mockImplementation((value: string) => `enc.v1.${value}`)
     mocks.decryptSecret.mockReturnValue('')
     mocks.fetch.mockResolvedValue({
       ok: true,
-      json: vi.fn().mockResolvedValue({}),
+      json: mock().mockResolvedValue({}),
     })
   })
 
@@ -283,7 +289,7 @@ describe('updateGeneralSettingsAction', () => {
     expect(mocks.encryptSecret).toHaveBeenCalledWith('openrouter-123')
 
     const savedPayload = mocks.updateSettings.mock.calls[0][0] as Array<{ group: string; key: string; value: string }>
-    expect(savedPayload).toHaveLength(30)
+    expect(savedPayload).toHaveLength(29)
     expect(savedPayload.find((entry) => entry.key === 'site_name')?.value).toBe('Kuest')
     expect(savedPayload.find((entry) => entry.key === 'site_description')?.value).toBe('Prediction market')
     expect(savedPayload.find((entry) => entry.key === 'site_logo_mode')?.value).toBe('svg')
@@ -306,7 +312,6 @@ describe('updateGeneralSettingsAction', () => {
     expect(savedPayload.find((entry) => entry.key === 'global_announcement_disable_faucet_banner')?.value).toBe('false')
     expect(savedPayload.find((entry) => entry.key === 'site_custom_javascript_codes')).toBeUndefined()
     expect(savedPayload.some((entry) => entry.key === 'fee_recipient_wallet')).toBe(false)
-    expect(savedPayload.find((entry) => entry.key === 'tos_pdf_path')?.value).toBe('')
     expect(savedPayload.find((entry) => entry.key === 'lifi_integrator')?.value).toBe('kuest-fork')
     expect(savedPayload.find((entry) => entry.key === 'arbitrage_enabled')).toEqual({
       group: 'integrations',
@@ -348,7 +353,7 @@ describe('updateGeneralSettingsAction', () => {
   it('saves SVG settings without loading sharp', async () => {
     mocks.getCurrentUser.mockResolvedValueOnce({ id: 'admin-1', is_admin: true })
     mocks.updateSettings.mockResolvedValueOnce({ data: [], error: null })
-    vi.doMock('sharp', () => {
+    void mock.module('sharp', () => {
       throw new Error('sharp should not load for SVG-only settings saves')
     })
 
@@ -369,14 +374,13 @@ describe('updateGeneralSettingsAction', () => {
       expect(result).toEqual({ error: null })
       expect(mocks.updateSettings).toHaveBeenCalledTimes(1)
     } finally {
-      vi.doUnmock('sharp')
     }
   })
 
   it('returns a form error when raster logo processing is unavailable', async () => {
     mocks.getCurrentUser.mockResolvedValueOnce({ id: 'admin-1', is_admin: true })
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    vi.doMock('sharp', () => {
+    const consoleErrorSpy = spyOn(console, 'error').mockImplementation(() => {})
+    void mock.module('sharp', () => {
       throw new Error('sharp missing')
     })
 
@@ -399,7 +403,6 @@ describe('updateGeneralSettingsAction', () => {
       expect(mocks.updateSettings).not.toHaveBeenCalled()
     } finally {
       consoleErrorSpy.mockRestore()
-      vi.doUnmock('sharp')
     }
   })
 
@@ -420,7 +423,7 @@ describe('updateGeneralSettingsAction', () => {
   ])('validates and uploads a $label side card image without loading sharp', async (sample) => {
     mocks.getCurrentUser.mockResolvedValueOnce({ id: 'admin-1', is_admin: true })
     mocks.updateSettings.mockResolvedValueOnce({ data: [], error: null })
-    vi.doMock('sharp', () => {
+    void mock.module('sharp', () => {
       throw new Error('sharp should not load for side card uploads')
     })
 
@@ -464,7 +467,6 @@ describe('updateGeneralSettingsAction', () => {
         new RegExp(`^home-featured/side-card-\\d+-[a-z0-9]+\\.${sample.extension}$`),
       )
     } finally {
-      vi.doUnmock('sharp')
     }
   })
 
@@ -574,7 +576,7 @@ describe('updateGeneralSettingsAction', () => {
     mocks.revalidatePath.mockImplementationOnce(() => {
       throw new Error('revalidation failed')
     })
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const consoleErrorSpy = spyOn(console, 'error').mockImplementation(() => {})
 
     try {
       const { updateGeneralSettingsAction } =
@@ -839,9 +841,9 @@ describe('updateGeneralSettingsAction', () => {
     expect(mocks.updateSettings).not.toHaveBeenCalled()
   })
 
-  it('uploads and saves a Terms of Use PDF when provided', async () => {
+  it('saves all Terms of Use translations when provided', async () => {
     mocks.getCurrentUser.mockResolvedValueOnce({ id: 'admin-1', is_admin: true })
-    mocks.updateSettings.mockResolvedValueOnce({ data: [], error: null })
+    mocks.updateSettingsWithTermsOfService.mockResolvedValueOnce({ data: [], error: null })
 
     const { updateGeneralSettingsAction } =
       await import('@/app/[locale]/admin/(general)/_actions/update-general-settings')
@@ -855,60 +857,118 @@ describe('updateGeneralSettingsAction', () => {
     )
     formData.set('logo_image_path', '')
     formData.set('fee_recipient_wallet', '0x1111111111111111111111111111111111111111')
-    formData.set('tos_pdf', new File(['%PDF-1.7'], 'terms.pdf', { type: 'application/pdf' }))
+    const translations = {
+      en: '# Kuest Terms of Use\n\nEnglish content.',
+      de: '# Kuest Nutzungsbedingungen\n\nDeutscher Inhalt.',
+      es: '# Términos de uso de Kuest\n\nContenido en español.',
+      pt: '# Termos de Uso da Kuest\n\nConteúdo em português.',
+      fr: '# Conditions d’utilisation de Kuest\n\nContenu français.',
+      zh: '# Kuest 使用条款\n\n中文内容。',
+      ja: '# Kuest 利用規約\n\n日本語の内容。',
+      ar: '# شروط استخدام Kuest\n\nمحتوى عربي.',
+      ru: '# Условия использования Kuest\n\nСодержимое на русском языке.',
+      it: '# Termini di utilizzo di Kuest\n\nContenuto in italiano.',
+      pl: '# Warunki korzystania z Kuest\n\nTreść po polsku.',
+      ko: '# Kuest 이용약관\n\n한국어 콘텐츠.',
+    }
+    formData.set('terms_of_service_translations_json', JSON.stringify(translations))
 
     const result = await updateGeneralSettingsAction({ error: null }, formData)
     expect(result).toEqual({ error: null })
-    expect(mocks.upload).toHaveBeenCalledTimes(1)
-
-    const uploadedPath = mocks.upload.mock.calls[0][0] as string
-    expect(uploadedPath).toMatch(/^legal\/terms-of-service-\d+-[a-z0-9]+\.pdf$/)
-    const uploadedBody = mocks.upload.mock.calls[0][1] as unknown
-    const isBinaryBody =
-      ArrayBuffer.isView(uploadedBody) ||
-      (uploadedBody !== null && typeof uploadedBody === 'object' && 'type' in uploadedBody && 'data' in uploadedBody)
-    expect(isBinaryBody).toBe(true)
-    expect(mocks.upload.mock.calls[0][2]).toEqual({
-      contentType: 'application/pdf',
-      cacheControl: '31536000',
-    })
-
-    const savedPayload = mocks.updateSettings.mock.calls[0][0] as Array<{ group: string; key: string; value: string }>
-    expect(savedPayload.find((entry) => entry.key === 'tos_pdf_path')?.value).toBe(uploadedPath)
-  })
-
-  it('rejects unsupported Terms of Use PDF uploads', async () => {
-    mocks.getCurrentUser.mockResolvedValueOnce({ id: 'admin-1', is_admin: true })
-
-    const { updateGeneralSettingsAction } =
-      await import('@/app/[locale]/admin/(general)/_actions/update-general-settings')
-    const formData = new FormData()
-    formData.set('site_name', 'Kuest')
-    formData.set('site_description', 'Prediction market')
-    formData.set('logo_mode', 'svg')
-    formData.set(
-      'logo_svg',
-      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4"/></svg>',
-    )
-    formData.set('logo_image_path', '')
-    formData.set('fee_recipient_wallet', '0x1111111111111111111111111111111111111111')
-    formData.set('tos_pdf', new File(['not-a-pdf'], 'terms.txt', { type: 'text/plain' }))
-
-    const result = await updateGeneralSettingsAction({ error: null }, formData)
-    expect(result).toEqual({ error: 'Terms of Use PDF must be a PDF file.' })
+    expect(mocks.upload).not.toHaveBeenCalled()
+    expect(mocks.updateSettingsWithTermsOfService).toHaveBeenCalledWith(expect.any(Array), translations)
     expect(mocks.updateSettings).not.toHaveBeenCalled()
   })
 
-  it('removes the uploaded Terms of Use PDF', async () => {
+  it('validates and saves only the enabled Terms of Use locales', async () => {
     mocks.getCurrentUser.mockResolvedValueOnce({ id: 'admin-1', is_admin: true })
-    mocks.updateSettings.mockResolvedValueOnce({ data: [], error: null })
+    mocks.getSettings.mockResolvedValueOnce({
+      data: {
+        i18n: {
+          enabled_locales: { value: '["en","pt"]', updated_at: '' },
+        },
+      },
+      error: null,
+    })
 
-    const { removeTermsOfServicePdfAction } =
+    const { updateGeneralSettingsAction } =
       await import('@/app/[locale]/admin/(general)/_actions/update-general-settings')
+    const formData = new FormData()
+    formData.set('site_name', 'Kuest')
+    formData.set('site_description', 'Prediction market')
+    formData.set('logo_mode', 'svg')
+    formData.set('logo_svg', '<svg xmlns="http://www.w3.org/2000/svg"></svg>')
+    formData.set('logo_image_path', '')
+    formData.set(
+      'terms_of_service_translations_json',
+      JSON.stringify({
+        en: '# Terms of Use',
+        pt: '# Termos de Uso',
+      }),
+    )
 
-    const result = await removeTermsOfServicePdfAction()
+    const result = await updateGeneralSettingsAction({ error: null }, formData)
     expect(result).toEqual({ error: null })
-    expect(mocks.updateSettings).toHaveBeenCalledWith([{ group: 'general', key: 'tos_pdf_path', value: '' }])
-    expect(mocks.revalidatePath).toHaveBeenCalledWith('/[locale]/tos', 'page')
+    expect(mocks.updateSettingsWithTermsOfService).toHaveBeenCalledWith(expect.any(Array), {
+      en: '# Terms of Use',
+      pt: '# Termos de Uso',
+    })
+  })
+
+  it('uses the atomic settings and Terms of Use save when it fails', async () => {
+    mocks.getCurrentUser.mockResolvedValueOnce({ id: 'admin-1', is_admin: true })
+    mocks.updateSettingsWithTermsOfService.mockResolvedValueOnce({ data: null, error: 'save failed' })
+
+    const { updateGeneralSettingsAction } =
+      await import('@/app/[locale]/admin/(general)/_actions/update-general-settings')
+    const formData = new FormData()
+    formData.set('site_name', 'Kuest')
+    formData.set('site_description', 'Prediction market')
+    formData.set('logo_mode', 'svg')
+    formData.set('logo_svg', '<svg xmlns="http://www.w3.org/2000/svg"></svg>')
+    formData.set('logo_image_path', '')
+    formData.set(
+      'terms_of_service_translations_json',
+      JSON.stringify({
+        en: '# Terms of Use',
+        de: '# Nutzungsbedingungen',
+        es: '# Términos de uso',
+        pt: '# Termos de Uso',
+        fr: '# Conditions d’utilisation',
+        zh: '# 使用条款',
+        ja: '# 利用規約',
+        ar: '# شروط الاستخدام',
+        ru: '# Условия использования',
+        it: '# Termini di utilizzo',
+        pl: '# Warunki korzystania',
+        ko: '# 이용약관',
+      }),
+    )
+
+    const result = await updateGeneralSettingsAction({ error: null }, formData)
+    expect(result).toEqual({ error: 'Internal server error. Try again in a few moments.' })
+    expect(mocks.updateSettings).not.toHaveBeenCalled()
+  })
+
+  it('rejects incomplete Terms of Use translations', async () => {
+    mocks.getCurrentUser.mockResolvedValueOnce({ id: 'admin-1', is_admin: true })
+
+    const { updateGeneralSettingsAction } =
+      await import('@/app/[locale]/admin/(general)/_actions/update-general-settings')
+    const formData = new FormData()
+    formData.set('site_name', 'Kuest')
+    formData.set('site_description', 'Prediction market')
+    formData.set('logo_mode', 'svg')
+    formData.set(
+      'logo_svg',
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4"/></svg>',
+    )
+    formData.set('logo_image_path', '')
+    formData.set('fee_recipient_wallet', '0x1111111111111111111111111111111111111111')
+    formData.set('terms_of_service_translations_json', JSON.stringify({ en: '# Terms of Use' }))
+
+    const result = await updateGeneralSettingsAction({ error: null }, formData)
+    expect(result).toEqual({ error: 'Terms of Use content is missing for de.' })
+    expect(mocks.updateSettings).not.toHaveBeenCalled()
   })
 })

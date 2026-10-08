@@ -5,7 +5,7 @@ import { useExtracted } from 'next-intl'
 import { useEffect, useRef, useState } from 'react'
 
 import LocaleSwitcherMenuItem from '@/components/LocaleSwitcherMenuItem'
-import PwaInstallIosInstructions from '@/components/PwaInstallIosInstructions'
+import PwaInstallDialog from '@/components/PwaInstallDialog'
 import ThemeSelector from '@/components/ThemeSelector'
 import { Button } from '@/components/ui/button'
 import {
@@ -107,6 +107,7 @@ export default function HeaderDropdownUserMenuGuest() {
   const themeMode = useThemeMode()
   const { canShowInstallUi, isIos, isPrompting, requestInstall } = usePwaInstall()
   const enableHoverOpen = !isMobile
+  const [isInstallDialogOpen, setIsInstallDialogOpen] = useState(false)
   const { menuOpen, wrapperRef, handleWrapperPointerEnter, handleWrapperPointerLeave, handleOpenChange, closeMenu } =
     useHoverDropdownMenu(enableHoverOpen)
 
@@ -114,10 +115,7 @@ export default function HeaderDropdownUserMenuGuest() {
     closeMenu()
 
     if (isIos) {
-      toast.info(t('Install app'), {
-        duration: 10_000,
-        description: <PwaInstallIosInstructions className="max-w-sm pt-1" />,
-      })
+      setIsInstallDialogOpen(true)
       return
     }
 
@@ -141,15 +139,21 @@ export default function HeaderDropdownUserMenuGuest() {
             <Button
               type="button"
               variant="ghost"
-              size="headerIconCompact"
+              size="icon"
               data-testid="header-menu-button"
-              aria-label="User menu"
+              aria-label={t('User menu')}
             />
           }
         >
           <MenuIcon />
         </DropdownMenuTrigger>
-        <DropdownMenuContent className="w-60" align="end" collisionPadding={16} portalled={false}>
+        <DropdownMenuContent
+          className="w-60"
+          align="end"
+          collisionPadding={16}
+          portalled={false}
+          positionMethod="fixed"
+        >
           <DropdownMenuLinkItem
             render={<Link href="/leaderboard" className="flex w-full items-center gap-1.5" />}
             className="py-2 text-sm font-semibold text-foreground"
@@ -214,6 +218,7 @@ export default function HeaderDropdownUserMenuGuest() {
           <LocaleSwitcherMenuItem />
         </DropdownMenuContent>
       </DropdownMenu>
+      <PwaInstallDialog open={isInstallDialogOpen} onOpenChange={setIsInstallDialogOpen} />
     </div>
   )
 }

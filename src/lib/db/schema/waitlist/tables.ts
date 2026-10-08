@@ -1,11 +1,5 @@
 import { sql } from 'drizzle-orm'
-import {
-  char,
-  index,
-  pgTable,
-  text,
-  timestamp,
-} from 'drizzle-orm/pg-core'
+import { char, index, pgTable, text, timestamp } from 'drizzle-orm/pg-core'
 
 /** Lifecycle of a waitlist signup, managed from the admin dashboard. */
 export const WAITLIST_STATUSES = ['pending', 'invited', 'joined', 'spam'] as const
@@ -18,9 +12,7 @@ export const waitlists = pgTable(
       .primaryKey()
       .default(sql`generate_ulid()`),
     name: text('name'),
-    email: text('email')
-      .notNull()
-      .unique(),
+    email: text('email').notNull().unique(),
     role: text('role'),
     country: text('country'),
     // Admin workflow fields (see migration 2026_06_11_002).
@@ -28,11 +20,9 @@ export const waitlists = pgTable(
     invited_at: timestamp('invited_at', { withTimezone: true }),
     invited_by: text('invited_by'),
     notes: text('notes'),
-    created_at: timestamp({ withTimezone: true })
-      .notNull()
-      .defaultNow(),
+    created_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
-  table => [
+  (table) => [
     index('waitlists_status_idx').on(table.status),
     index('waitlists_created_at_idx').on(table.created_at.desc()),
   ],

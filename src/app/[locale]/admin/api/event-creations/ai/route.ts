@@ -3,6 +3,7 @@ import { z } from 'zod'
 
 import type { OpenRouterMessage } from '@/lib/ai/openrouter'
 
+import { reviewEventCreationWithDecisionModel } from '@/lib/ai/event-creation-decision'
 import { loadOpenRouterProviderSettings } from '@/lib/ai/market-context-config'
 import { requestOpenRouterCompletion } from '@/lib/ai/openrouter'
 import { DEFAULT_ERROR_MESSAGE } from '@/lib/constants'
@@ -14,6 +15,7 @@ const GAMMA_MARKETS_ENDPOINT =
 const RULES_SAMPLE_LIMIT = 8
 const RULES_SAMPLE_MAX_CHARS = 420
 const REQUEST_TIMEOUT_MS = 12000
+const OPTIONAL_DECISION_REVIEW_TIMEOUT_MS = 1500
 const RULES_MIN_LENGTH = 60
 const INTERNAL_RULES_TERMS = [
   'marketmode',
@@ -168,6 +170,24 @@ function normalizeRecurringOccurrences(input: z.infer<typeof dataSchema>) {
 
 function normalizeText(input: unknown) {
   return typeof input === 'string' ? input.trim() : ''
+}
+
+function settleOptionalPromise<T>(promise: Promise<T>, fallback: T, timeoutMs: number, label: string) {
+  return new Promise<T>((resolve) => {
+    const timeoutId = setTimeout(() => resolve(fallback), timeoutMs)
+
+    void promise.then(
+      (value) => {
+        clearTimeout(timeoutId)
+        resolve(value)
+      },
+      (error) => {
+        clearTimeout(timeoutId)
+        console.error(label, error)
+        resolve(fallback)
+      },
+    )
+  })
 }
 
 function normalizeCategoryValues(input: z.infer<typeof dataSchema>) {
@@ -952,6 +972,7 @@ export async function POST(request: Request) {
     const { mode, data } = parsed.data
     const apiKey = openRouterSettings.apiKey
     const model = openRouterSettings.model
+    const decisionModel = openRouterSettings.decisionModel
     const sportsContext = normalizeSportsContext(data)
 
     if (mode === 'generate_rules') {
@@ -995,7 +1016,7 @@ export async function POST(request: Request) {
             content: [
               'You are a prediction market rules writer following Polymarket style.',
               'Return only JSON with key "rules".',
-              'Rules must be in English, objective, deterministic, and concise.',
+              'Rules MUST always be written in English, regardless of the admin interface language or input language; keep them objective, deterministic, and concise.',
               'Write 2-4 short paragraphs separated by blank lines.',
               'Paragraph 1: exact Yes/No resolution condition and UTC cutoff based on End date.',
               'Paragraph 2: resolution source and source precedence.',
@@ -1113,6 +1134,7 @@ export async function POST(request: Request) {
           'You are a strict validator for prediction market content.',
           'Return only JSON.',
           'Ignore proper nouns (people, places, country names, organizations) when checking English.',
+          'Resolution rules must be written in English. If the user-entered Resolution rules, Resolution rules template, or recurring Resolution rules previews are in another language, return an "english" error with step 3 and clearly say that Resolution rules must be in English.',
           'Resolution source URL is optional. Only flag URL errors if it is provided and invalid.',
           'Validate event endDate consistency with the event context by calendar day first (YYYY-MM-DD).',
           'Ignore timezone-only differences (for example UTC vs ET) and small intra-day offsets.',
@@ -1134,12 +1156,29 @@ export async function POST(request: Request) {
       },
     ]
 
-    const rawResult = await requestOpenRouterCompletion(checkMessages, {
-      apiKey,
-      model,
-      temperature: 0,
-      maxTokens: 500,
-    })
+    const decisionReview = decisionModel
+      ? settleOptionalPromise(
+          reviewEventCreationWithDecisionModel({
+            apiKey,
+            model: decisionModel,
+            input: aiInput,
+            timeoutMs: OPTIONAL_DECISION_REVIEW_TIMEOUT_MS,
+          }),
+          [],
+          OPTIONAL_DECISION_REVIEW_TIMEOUT_MS,
+          'Event creation decision model review failed:',
+        )
+      : Promise.resolve([])
+
+    const [rawResult, decisionWarnings] = await Promise.all([
+      requestOpenRouterCompletion(checkMessages, {
+        apiKey,
+        model,
+        temperature: 0,
+        maxTokens: 500,
+      }),
+      decisionReview,
+    ])
 
     const aiResult = parseJsonObject(rawResult, aiContentCheckSchema)
     const endDateHasTimezone = hasExplicitTimezone(data.endDateIso)
@@ -1176,7 +1215,7 @@ export async function POST(request: Request) {
     )
 
     const errors = sanitizeAiErrors([...localErrors, ...aiErrors])
-    const warnings = sanitizeAiErrors([...localWarnings, ...aiWarnings])
+    const warnings = sanitizeAiErrors([...localWarnings, ...aiWarnings, ...decisionWarnings])
 
     return NextResponse.json({
       ok: errors.length === 0,

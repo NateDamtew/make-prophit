@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'bun:test'
 
 import type { ActivityOrder } from '@/types'
 
@@ -88,5 +88,10 @@ describe('public activity utils', () => {
         }),
       ),
     ).toBe('1 share')
+  })
+
+  it('recognizes resolution bond and reward activity types', () => {
+    expect(resolveVariant(createActivity({ type: 'RESOLUTION_BOND' }))).toBe('resolution_bond')
+    expect(resolveVariant(createActivity({ type: 'RESOLUTION_REWARD' }))).toBe('resolution_reward')
   })
 })

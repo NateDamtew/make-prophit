@@ -1,12 +1,13 @@
 'use cache'
 
-import { cacheTag } from 'next/cache'
+import { cacheLife, cacheTag } from 'next/cache'
 
 import type { SupportedLocale } from '@/i18n/locales'
 import type { SportsVertical } from '@/lib/sports-vertical'
 import type { Event } from '@/types'
 
 import SportsClient from '@/app/[locale]/(platform)/sports/_components/SportsClient'
+import { getRootLocale } from '@/i18n/root-locale'
 import { cacheTags } from '@/lib/cache-tags'
 import { EventRepository } from '@/lib/db/queries/event'
 
@@ -14,7 +15,6 @@ type SportsPageMode = 'all' | 'live' | 'futures'
 type SportsSection = 'games' | 'props'
 
 interface SportsContentProps {
-  locale: string
   initialTag?: string
   mainTag?: string
   initialMode?: SportsPageMode
@@ -22,8 +22,56 @@ interface SportsContentProps {
   sportsSection?: SportsSection | null
 }
 
-export default async function SportsContent({
+export interface SportsContentData {
+  initialEvents: Event[]
+  hasQueryError: boolean
+}
+
+export async function loadSportsContentData({
+  initialTag,
   locale,
+  sportsSection,
+  sportsSportSlug,
+}: {
+  initialTag: string
+  locale: SupportedLocale
+  sportsSection: SportsSection | null
+  sportsSportSlug: string | null
+}): Promise<SportsContentData> {
+  cacheTag(cacheTags.eventsList)
+
+  const normalizedSportsSportSlug = sportsSportSlug?.trim().toLowerCase() || ''
+  const normalizedSportsSection = sportsSection?.trim().toLowerCase() || ''
+  const sportsVertical: SportsVertical | '' = initialTag === 'sports' || initialTag === 'esports' ? initialTag : ''
+  const resolvedSportsSection: SportsSection | '' =
+    normalizedSportsSection === 'games' || normalizedSportsSection === 'props' ? normalizedSportsSection : ''
+
+  let initialEvents: Event[] = []
+  let hasQueryError = false
+  try {
+    const { data: events, error } = await EventRepository.listEvents({
+      tag: initialTag,
+      search: '',
+      userId: '',
+      bookmarked: false,
+      locale,
+      sportsVertical,
+      sportsSportSlug: normalizedSportsSportSlug,
+      sportsSection: resolvedSportsSection,
+    })
+
+    hasQueryError = Boolean(error)
+    if (!hasQueryError) {
+      initialEvents = events ?? []
+    }
+  } catch {
+    hasQueryError = true
+  }
+
+  return { initialEvents, hasQueryError }
+}
+
+export default async function SportsContent({
   initialTag = 'sports',
   mainTag = initialTag,
   initialMode = 'all',
@@ -31,32 +79,25 @@ export default async function SportsContent({
   sportsSection = null,
 }: SportsContentProps) {
   cacheTag(cacheTags.eventsList)
-  const resolvedLocale = locale as SupportedLocale
+  const locale = await getRootLocale()
 
-  let initialEvents: Event[] = []
   const normalizedSportsSportSlug = sportsSportSlug?.trim().toLowerCase() || ''
   const normalizedSportsSection = sportsSection?.trim().toLowerCase() || ''
   const sportsVertical: SportsVertical | '' = initialTag === 'sports' || initialTag === 'esports' ? initialTag : ''
   const resolvedSportsSection: SportsSection | '' =
     normalizedSportsSection === 'games' || normalizedSportsSection === 'props' ? normalizedSportsSection : ''
 
-  try {
-    const { data: events, error } = await EventRepository.listEvents({
-      tag: initialTag,
-      search: '',
-      userId: '',
-      bookmarked: false,
-      locale: resolvedLocale,
-      sportsVertical,
-      sportsSportSlug: normalizedSportsSportSlug,
-      sportsSection: resolvedSportsSection,
-    })
+  const { initialEvents, hasQueryError } = await loadSportsContentData({
+    initialTag,
+    locale,
+    sportsSection,
+    sportsSportSlug,
+  })
 
-    if (!error) {
-      initialEvents = events ?? []
-    }
-  } catch {
-    initialEvents = []
+  if (hasQueryError || initialEvents.length > 0) {
+    cacheLife('hours')
+  } else {
+    cacheLife('days')
   }
 
   return (

@@ -1,4 +1,5 @@
 import { BadgeCheckIcon } from 'lucide-react'
+
 import { cn } from '@/lib/utils'
 
 interface VerifiedBadgeProps {

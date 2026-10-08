@@ -15,6 +15,7 @@ import { useAdminCategoryColumns } from '@/app/[locale]/admin/categories/_compon
 import MainCategorySortDialog from '@/app/[locale]/admin/categories/_components/MainCategorySortDialog'
 import SportsSidebarCategoriesManager from '@/app/[locale]/admin/categories/_components/SportsSidebarCategoriesManager'
 import { useAdminCategoriesTable } from '@/app/[locale]/admin/categories/_hooks/useAdminCategories'
+import LocaleFlag from '@/components/LocaleFlag'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -41,7 +42,7 @@ import { toast } from '@/components/ui/toast'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { LOCALE_LABELS, NON_DEFAULT_LOCALES } from '@/i18n/locales'
 
-function useAdminCategoriesTableState() {
+function useAdminCategoriesTableState(enabledTranslationLocales: NonDefaultLocale[]) {
   const t = useExtracted()
   const isMobile = useIsMobile()
   const queryClient = useQueryClient()
@@ -159,16 +160,19 @@ function useAdminCategoriesTableState() {
     [queryClient, t],
   )
 
-  const handleOpenTranslations = useCallback((category: AdminCategoryRow) => {
-    setTranslationCategory(category)
-    setTranslationError(null)
-    setTranslationValues(
-      NON_DEFAULT_LOCALES.reduce<Partial<Record<NonDefaultLocale, string>>>((acc, locale) => {
-        acc[locale] = category.translations?.[locale] ?? ''
-        return acc
-      }, {}),
-    )
-  }, [])
+  const handleOpenTranslations = useCallback(
+    (category: AdminCategoryRow) => {
+      setTranslationCategory(category)
+      setTranslationError(null)
+      setTranslationValues(
+        enabledTranslationLocales.reduce<Partial<Record<NonDefaultLocale, string>>>((acc, locale) => {
+          acc[locale] = category.translations?.[locale] ?? ''
+          return acc
+        }, {}),
+      )
+    },
+    [enabledTranslationLocales],
+  )
 
   const closeEventNoteEditor = useCallback(() => {
     setEventNoteCategory(null)
@@ -199,7 +203,17 @@ function useAdminCategoriesTableState() {
     setIsSavingTranslations(true)
     setTranslationError(null)
 
-    const result = await updateCategoryTranslationsAction(translationCategory.id, translationValues)
+    const scopedTranslationValues = enabledTranslationLocales.reduce<Partial<Record<NonDefaultLocale, string>>>(
+      (acc, locale) => {
+        const value = translationValues[locale]
+        if (typeof value === 'string') {
+          acc[locale] = value
+        }
+        return acc
+      },
+      {},
+    )
+    const result = await updateCategoryTranslationsAction(translationCategory.id, scopedTranslationValues)
     if (result.success) {
       queryClient.setQueriesData<{ data: AdminCategoryRow[]; totalCount: number }>(
         { queryKey: ['admin-categories'] },
@@ -232,7 +246,7 @@ function useAdminCategoriesTableState() {
 
     setTranslationError(result.error ?? t('Failed to update category translations'))
     setIsSavingTranslations(false)
-  }, [closeTranslationsDialog, queryClient, t, translationCategory, translationValues])
+  }, [closeTranslationsDialog, enabledTranslationLocales, queryClient, t, translationCategory, translationValues])
 
   const handleSaveEventNote = useCallback(async () => {
     if (!eventNoteCategory) {
@@ -335,7 +349,13 @@ function useAdminCategoriesTableState() {
   }
 }
 
-export default function AdminCategoriesTable() {
+interface AdminCategoriesTableProps {
+  enabledTranslationLocales?: NonDefaultLocale[]
+}
+
+export default function AdminCategoriesTable({
+  enabledTranslationLocales = NON_DEFAULT_LOCALES,
+}: AdminCategoriesTableProps) {
   const t = useExtracted()
   const [isCategoryActionsExpanded, setIsCategoryActionsExpanded] = useState(false)
   const {
@@ -377,7 +397,7 @@ export default function AdminCategoriesTable() {
     closeEventNoteEditor,
     handleSaveEventNote,
     columns,
-  } = useAdminCategoriesTableState()
+  } = useAdminCategoriesTableState(enabledTranslationLocales)
 
   function handleSortChangeWithTranslation(column: string | null, order: 'asc' | 'desc' | null) {
     if (column === null || order === null) {
@@ -401,7 +421,7 @@ export default function AdminCategoriesTable() {
     <div className="flex items-center gap-2">
       <Switch id="admin-categories-main-only" checked={mainOnly} onCheckedChange={handleMainOnlyChange} />
       <Label htmlFor="admin-categories-main-only" className="text-sm font-normal text-muted-foreground">
-        {t('Only main')}
+        {t('Main only')}
       </Label>
     </div>
   )
@@ -469,15 +489,21 @@ export default function AdminCategoriesTable() {
   const translationFormFields = (
     <div className="grid gap-4 py-4">
       <div className="grid gap-2">
-        <Label htmlFor="translation-en">{t('English (source)')}</Label>
+        <Label htmlFor="translation-en" className="flex items-center gap-2">
+          <LocaleFlag locale="en" />
+          {t('English (source)')}
+        </Label>
         <Input id="translation-en" value={translationCategory?.name ?? ''} readOnly disabled />
       </div>
 
-      {NON_DEFAULT_LOCALES.map((locale) => {
+      {enabledTranslationLocales.map((locale) => {
         const fieldId = `translation-${locale}`
         return (
           <div key={locale} className="grid gap-2">
-            <Label htmlFor={fieldId}>{LOCALE_LABELS[locale]}</Label>
+            <Label htmlFor={fieldId} className="flex items-center gap-2">
+              <LocaleFlag locale={locale} />
+              {LOCALE_LABELS[locale]}
+            </Label>
             <Input
               id={fieldId}
               value={translationValues[locale] ?? ''}
@@ -499,7 +525,6 @@ export default function AdminCategoriesTable() {
         columns={columns}
         data={categories}
         totalCount={totalCount}
-        searchPlaceholder={t('Search categories...')}
         enableSelection={false}
         enablePagination
         enableColumnVisibility={false}

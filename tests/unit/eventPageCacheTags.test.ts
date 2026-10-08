@@ -1,6 +1,6 @@
+import { describe, expect, it } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { describe, expect, it } from 'vitest'
 
 const cachedEventPages = [
   {
@@ -26,5 +26,7 @@ describe('event page cache tags', () => {
 
     expect(cachedFunction).toContain("'use cache'")
     expect(cachedFunction).toContain('cacheTag(cacheTags.event(slug))')
+    expect(cachedFunction).toContain("eventPageData.event.series_slug?.trim() ?? ''")
+    expect(cachedFunction).toContain('cacheTag(cacheTags.seriesEvents(')
   })
 })

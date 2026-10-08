@@ -1,5 +1,7 @@
-import type { CommunityThemeRow, FontHint, LayoutPreset, SurfaceMode } from '@/lib/db/schema/communities/themes'
 import { eq, sql } from 'drizzle-orm'
+
+import type { CommunityThemeRow, FontHint, LayoutPreset, SurfaceMode } from '@/lib/db/schema/communities/themes'
+
 import { community_themes, LAYOUT_PRESETS } from '@/lib/db/schema/communities/themes'
 import { db } from '@/lib/drizzle'
 
@@ -72,7 +74,7 @@ export const CommunityThemeRepository = {
           .from(community_themes)
           .where(eq(community_themes.community_id, communityId))
           .limit(1)
-          .then(rows => rows[0] ?? null),
+          .then((rows) => rows[0] ?? null),
         readLayoutPreset(communityId),
       ])
 
@@ -84,8 +86,7 @@ export const CommunityThemeRepository = {
         hidden_sections: themeRow?.hidden_sections ?? [],
         featured_market_id: themeRow?.featured_market_id ?? null,
       }
-    }
-    catch (error) {
+    } catch (error) {
       console.error('Failed to load community theme', error)
       return DEFAULT_THEME
     }
@@ -127,7 +128,7 @@ export const CommunityThemeRepository = {
   /** Switch the community's layout preset. Validated against the union. */
   async setLayoutPreset(communityId: string, preset: LayoutPreset): Promise<void> {
     if (!isLayoutPreset(preset)) {
-      throw new Error(`Invalid preset: ${preset}`)
+      throw new Error(`Invalid preset: ${String(preset)}`)
     }
     await db.execute(sql`
       UPDATE communities SET layout_preset = ${preset} WHERE id = ${communityId}
@@ -140,14 +141,13 @@ async function readLayoutPreset(communityId: string): Promise<LayoutPreset | nul
     const result = await db.execute(sql`
       SELECT layout_preset FROM communities WHERE id = ${communityId} LIMIT 1
     `)
-    const row = ((result as unknown as { rows: Array<{ layout_preset: string }> }).rows
-      ?? (result as unknown as Array<{ layout_preset: string }>))[0]
+    const row = ((result as unknown as { rows: Array<{ layout_preset: string }> }).rows ??
+      (result as unknown as Array<{ layout_preset: string }>))[0]
     if (!row) {
       return null
     }
     return isLayoutPreset(row.layout_preset) ? row.layout_preset : 'classic'
-  }
-  catch {
+  } catch {
     return null
   }
 }

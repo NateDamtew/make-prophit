@@ -1,5 +1,6 @@
 import { setRequestLocale } from 'next-intl/server'
 import { Suspense } from 'react'
+
 import { WaitlistManager } from '@/app/[locale]/admin/waitlist/_components/WaitlistManager'
 import { Skeleton } from '@/components/ui/skeleton'
 import { requireAdmin } from '@/lib/admin-ui/guard'

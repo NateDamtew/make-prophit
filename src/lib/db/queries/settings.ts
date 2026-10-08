@@ -1,10 +1,12 @@
 import { and, eq, sql } from 'drizzle-orm'
 import { cacheLife, cacheTag, updateTag } from 'next/cache'
 
+import type { TermsOfServiceTranslationsPatch } from '@/lib/terms-of-service'
 import type { QueryResult } from '@/types'
 
 import { cacheTags } from '@/lib/cache-tags'
 import { hasDatabaseEnv } from '@/lib/db/env'
+import { upsertTermsOfServiceTranslationsInTransaction } from '@/lib/db/queries/terms-of-service'
 import { settings } from '@/lib/db/schema/settings/tables'
 import { runQuery } from '@/lib/db/utils/run-query'
 import { db } from '@/lib/drizzle'
@@ -13,10 +15,9 @@ type SettingsMap = Record<string, Record<string, { value: string; updated_at: st
 
 async function getCachedSettings(): Promise<QueryResult<SettingsMap>> {
   'use cache'
-  cacheLife('default')
   cacheTag(cacheTags.settings)
 
-  return runQuery(async () => {
+  const result = await runQuery(async () => {
     try {
       const data = await db
         .select({
@@ -42,6 +43,13 @@ async function getCachedSettings(): Promise<QueryResult<SettingsMap>> {
       return { data: null, error: 'Failed to fetch settings.' }
     }
   })
+
+  if (result.error) {
+    cacheLife('default')
+  } else {
+    cacheLife('max')
+  }
+  return result
 }
 
 export const SettingsRepository = {
@@ -76,6 +84,46 @@ export const SettingsRepository = {
         })
 
       updateTag(cacheTags.settings)
+
+      return { data, error: null }
+    })
+  },
+
+  async updateSettingsWithTermsOfService(
+    settingsArray: Array<{ group: string; key: string; value: string }>,
+    termsOfServiceTranslations: TermsOfServiceTranslationsPatch,
+  ): Promise<QueryResult<Array<typeof settings.$inferSelect>>> {
+    return runQuery(async () => {
+      const data = await db.transaction(async (tx) => {
+        const updatedSettings =
+          settingsArray.length > 0
+            ? await tx
+                .insert(settings)
+                .values(settingsArray)
+                .onConflictDoUpdate({
+                  target: [settings.group, settings.key],
+                  set: {
+                    value: sql`EXCLUDED.value`,
+                  },
+                })
+                .returning({
+                  id: settings.id,
+                  group: settings.group,
+                  key: settings.key,
+                  value: settings.value,
+                  created_at: settings.created_at,
+                  updated_at: settings.updated_at,
+                })
+            : []
+
+        await upsertTermsOfServiceTranslationsInTransaction(tx, termsOfServiceTranslations)
+        return updatedSettings
+      })
+
+      updateTag(cacheTags.settings)
+      if (Object.keys(termsOfServiceTranslations).length > 0) {
+        updateTag(cacheTags.termsOfService)
+      }
 
       return { data, error: null }
     })

@@ -11,6 +11,7 @@
  */
 
 import type { LucideIcon } from 'lucide-react'
+
 import { AwardIcon, BarChart3Icon, CoinsIcon, NewspaperIcon, TrophyIcon, VoteIcon } from 'lucide-react'
 
 export interface MarketTemplate {
@@ -40,7 +41,8 @@ export const MARKET_TEMPLATES = [
     icon: NewspaperIcon,
     binary_question_pattern: 'Will [event] happen by [date]?',
     resolution_source_hint: 'Reuters, Associated Press, or the official source cited in the original announcement.',
-    resolution_rules_skeleton: 'Resolves YES if [specific outcome] is reported by [resolution source] before [resolution date]. Resolves NO otherwise. Coverage from a single source is insufficient; require corroboration from at least two reputable outlets.',
+    resolution_rules_skeleton:
+      'Resolves YES if [specific outcome] is reported by [resolution source] before [resolution date]. Resolves NO otherwise. Coverage from a single source is insufficient; require corroboration from at least two reputable outlets.',
     default_days_to_resolution: 14,
     main_category_slug: 'news',
     examples: [
@@ -54,8 +56,10 @@ export const MARKET_TEMPLATES = [
     description: 'Will a specific candidate or party win a specific race?',
     icon: VoteIcon,
     binary_question_pattern: 'Will [candidate] win the [race] election?',
-    resolution_source_hint: 'The official electoral commission for the jurisdiction (e.g. UK Electoral Commission, FEC, Comelec).',
-    resolution_rules_skeleton: 'Resolves YES if [candidate] is officially declared the winner of [race] by [electoral body]. Concedes count as a YES once the formal declaration follows. Resolves NO if any other candidate is declared the winner or the result is annulled.',
+    resolution_source_hint:
+      'The official electoral commission for the jurisdiction (e.g. UK Electoral Commission, FEC, Comelec).',
+    resolution_rules_skeleton:
+      'Resolves YES if [candidate] is officially declared the winner of [race] by [electoral body]. Concedes count as a YES once the formal declaration follows. Resolves NO if any other candidate is declared the winner or the result is annulled.',
     default_days_to_resolution: 60,
     main_category_slug: 'politics',
     examples: [
@@ -70,13 +74,11 @@ export const MARKET_TEMPLATES = [
     icon: TrophyIcon,
     binary_question_pattern: 'Will [team] win against [opponent] on [date]?',
     resolution_source_hint: 'The official league or governing body (e.g. Premier League, NBA, FIFA, ICC).',
-    resolution_rules_skeleton: 'Resolves YES if [team] wins the match according to the official result published by [governing body]. Extra time and penalties count toward the official winner. Resolves NO on a draw or opposition win. If the match is cancelled or replayed, resolves based on the replayed result.',
+    resolution_rules_skeleton:
+      'Resolves YES if [team] wins the match according to the official result published by [governing body]. Extra time and penalties count toward the official winner. Resolves NO on a draw or opposition win. If the match is cancelled or replayed, resolves based on the replayed result.',
     default_days_to_resolution: 7,
     main_category_slug: 'sports',
-    examples: [
-      'Will Arsenal win their next Premier League match?',
-      'Will the Lakers make the NBA finals this season?',
-    ],
+    examples: ['Will Arsenal win their next Premier League match?', 'Will the Lakers make the NBA finals this season?'],
   },
   {
     id: 'earnings-beat',
@@ -84,8 +86,10 @@ export const MARKET_TEMPLATES = [
     description: 'Will a public company beat consensus EPS or revenue?',
     icon: BarChart3Icon,
     binary_question_pattern: 'Will [company] beat consensus EPS in [quarter]?',
-    resolution_source_hint: 'The company\'s quarterly earnings press release and the consensus estimate published by Bloomberg, Reuters, or Refinitiv at market close the day before earnings.',
-    resolution_rules_skeleton: 'Resolves YES if [company] reports GAAP earnings-per-share above the consensus estimate published by [data source] as of market close on the trading day prior to the earnings release. Resolves NO if reported EPS is at or below consensus. Non-GAAP figures are ignored.',
+    resolution_source_hint:
+      "The company's quarterly earnings press release and the consensus estimate published by Bloomberg, Reuters, or Refinitiv at market close the day before earnings.",
+    resolution_rules_skeleton:
+      'Resolves YES if [company] reports GAAP earnings-per-share above the consensus estimate published by [data source] as of market close on the trading day prior to the earnings release. Resolves NO if reported EPS is at or below consensus. Non-GAAP figures are ignored.',
     default_days_to_resolution: 45,
     main_category_slug: 'finance',
     examples: [
@@ -99,8 +103,10 @@ export const MARKET_TEMPLATES = [
     description: 'Will an asset trade above a threshold by a date?',
     icon: CoinsIcon,
     binary_question_pattern: 'Will [asset] close above [price] by [date]?',
-    resolution_source_hint: 'CoinGecko or CoinMarketCap daily-close in USD. Use the 00:00 UTC close as the reference time.',
-    resolution_rules_skeleton: 'Resolves YES if [asset] records at least one daily close at or above [price] in USD on [data source] between now and [resolution date], 23:59 UTC. Resolves NO otherwise. Intraday spikes that are not reflected in the daily close do not qualify.',
+    resolution_source_hint:
+      'CoinGecko or CoinMarketCap daily-close in USD. Use the 00:00 UTC close as the reference time.',
+    resolution_rules_skeleton:
+      'Resolves YES if [asset] records at least one daily close at or above [price] in USD on [data source] between now and [resolution date], 23:59 UTC. Resolves NO otherwise. Intraday spikes that are not reflected in the daily close do not qualify.',
     default_days_to_resolution: 30,
     main_category_slug: 'crypto',
     examples: [
@@ -114,8 +120,10 @@ export const MARKET_TEMPLATES = [
     description: 'Will a specific nominee win a specific award?',
     icon: AwardIcon,
     binary_question_pattern: 'Will [nominee] win [award]?',
-    resolution_source_hint: 'The official awarding body and its broadcast / press release (e.g. the Academy, BAFTA, the Booker Prize Foundation).',
-    resolution_rules_skeleton: 'Resolves YES if [nominee] is announced as the winner of [award] on the official ceremony broadcast, confirmed by [awarding body]\'s press materials. Resolves NO if any other nominee wins, or if the award is not given.',
+    resolution_source_hint:
+      'The official awarding body and its broadcast / press release (e.g. the Academy, BAFTA, the Booker Prize Foundation).',
+    resolution_rules_skeleton:
+      "Resolves YES if [nominee] is announced as the winner of [award] on the official ceremony broadcast, confirmed by [awarding body]'s press materials. Resolves NO if any other nominee wins, or if the award is not given.",
     default_days_to_resolution: 21,
     main_category_slug: 'culture',
     examples: [

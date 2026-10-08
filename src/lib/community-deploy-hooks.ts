@@ -15,16 +15,17 @@
  * decides whether to retry or escalate to super admin.
  */
 
-import { and, eq } from 'drizzle-orm'
-import { CommunityRepository } from '@/lib/db/queries/community'
-import { communities, community_markets } from '@/lib/db/schema/communities/tables'
-import { conditions, events, markets } from '@/lib/db/schema/events/tables'
-import { db } from '@/lib/drizzle'
+import { eq } from 'drizzle-orm'
+
 import {
   notifyMarketDeployFailed,
   notifyMarketDeployed,
   notifySuperAdminsOfDeployFailure,
 } from '@/lib/community-notifications'
+import { CommunityRepository } from '@/lib/db/queries/community'
+import { communities, community_markets } from '@/lib/db/schema/communities/tables'
+import { conditions, events, markets } from '@/lib/db/schema/events/tables'
+import { db } from '@/lib/drizzle'
 
 interface DraftPayloadHints {
   communityMarketId?: string
@@ -62,17 +63,10 @@ export async function onCommunityDraftDeployed(input: {
     return
   }
 
-  const [event] = await db
-    .select({ id: events.id })
-    .from(events)
-    .where(eq(events.slug, input.draftSlug))
-    .limit(1)
+  const [event] = await db.select({ id: events.id }).from(events).where(eq(events.slug, input.draftSlug)).limit(1)
 
   if (!event) {
-    console.error(
-      '[onCommunityDraftDeployed] Could not find deployed event by slug:',
-      input.draftSlug,
-    )
+    console.error('[onCommunityDraftDeployed] Could not find deployed event by slug:', input.draftSlug)
     return
   }
 
@@ -104,9 +98,7 @@ export async function onCommunityDraftDeployed(input: {
         .where(eq(conditions.id, condition_id))
     }
 
-    console.log(
-      `[onCommunityDraftDeployed] Linked community_market ${hints.communityMarketId} → event ${event.id}`,
-    )
+    console.log(`[onCommunityDraftDeployed] Linked community_market ${hints.communityMarketId} → event ${event.id}`)
 
     // Notify the community admin who created this market
     const [marketRow] = await db
@@ -128,8 +120,7 @@ export async function onCommunityDraftDeployed(input: {
         eventSlug: input.draftSlug,
       })
     }
-  }
-  catch (err) {
+  } catch (err) {
     console.error('[onCommunityDraftDeployed] Failed to link:', err)
   }
 }

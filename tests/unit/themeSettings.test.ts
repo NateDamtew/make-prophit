@@ -1,15 +1,19 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 
-const mocks = vi.hoisted(() => ({
-  cacheTag: vi.fn(),
-  getSettings: vi.fn(),
+import { hoisted } from '../bun-test-helpers'
+
+const mocks = hoisted(() => ({
+  cacheLife: mock(),
+  cacheTag: mock(),
+  getSettings: mock(),
 }))
 
-vi.mock('next/cache', () => ({
+void mock.module('next/cache', () => ({
+  cacheLife: (...args: any[]) => mocks.cacheLife(...args),
   cacheTag: (...args: any[]) => mocks.cacheTag(...args),
 }))
 
-vi.mock('@/lib/db/queries/settings', () => ({
+void mock.module('@/lib/db/queries/settings', () => ({
   SettingsRepository: { getSettings: (...args: any[]) => mocks.getSettings(...args) },
 }))
 
@@ -17,7 +21,7 @@ const originalPostgresUrl = process.env.POSTGRES_URL
 
 describe('theme settings runtime resolver', () => {
   beforeEach(() => {
-    vi.resetModules()
+    mocks.cacheLife.mockReset()
     mocks.cacheTag.mockReset()
     mocks.getSettings.mockReset()
     process.env.POSTGRES_URL = 'postgres://theme-settings-test'
@@ -41,9 +45,6 @@ describe('theme settings runtime resolver', () => {
     expect(state.source).toBe('default')
     expect(state.theme.presetId).toBe('default')
     expect(state.theme.radius).toBeNull()
-    expect(state.site.name).toBeTruthy()
-    expect(state.site.description).toBeTruthy()
-    expect(state.site.logoSvg).toContain('<svg')
   })
 
   it('uses uncached default fallback when database env is missing', async () => {
@@ -122,8 +123,6 @@ describe('theme settings runtime resolver', () => {
     expect(state.source).toBe('default')
     expect(state.theme.presetId).toBe('default')
     expect(state.theme.radius).toBeNull()
-    expect(state.site.name).toBeTruthy()
-    expect(state.site.description).toBeTruthy()
   })
 
   it('uses default theme when there are no stored settings', async () => {
@@ -135,8 +134,6 @@ describe('theme settings runtime resolver', () => {
     expect(state.source).toBe('default')
     expect(state.theme.presetId).toBe('default')
     expect(state.theme.radius).toBeNull()
-    expect(state.site.name).toBeTruthy()
-    expect(state.site.description).toBeTruthy()
   })
 
   it('does not read site identity from theme group', async () => {

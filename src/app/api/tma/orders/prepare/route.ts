@@ -1,9 +1,12 @@
-import type { Outcome } from '@/types'
 import { NextResponse } from 'next/server'
+
+import type { Outcome } from '@/types'
+
 import { getExchangeEip712Domain, ORDER_SIDE, ORDER_TYPE } from '@/lib/constants'
 import { getDepositWalletAddress } from '@/lib/deposit-wallet'
 import { buildOrderPayload } from '@/lib/orders'
 import { normalizeAddress } from '@/lib/wallet'
+
 import { badRequest, buildSignableEnvelope, findMarketByTokenId, requireTmaUser, serializeOrder } from '../../_lib'
 
 interface PrepareBody {
@@ -33,8 +36,7 @@ export async function POST(request: Request) {
   let body: PrepareBody
   try {
     body = await request.json()
-  }
-  catch {
+  } catch {
     return badRequest('Invalid JSON body.')
   }
 
@@ -55,9 +57,9 @@ export async function POST(request: Request) {
   // public-chain bytecode: KUEST's test relayer reports WALLET-CREATE as
   // mined while nothing lands on public Amoy (their test stack settles on a
   // chain we can't see), so a bytecode check would 409 forever.
-  const depositWalletAddress
-    = (user as { deposit_wallet_address?: string | null }).deposit_wallet_address
-      ?? await getDepositWalletAddress(address as `0x${string}`)
+  const depositWalletAddress =
+    (user as { deposit_wallet_address?: string | null }).deposit_wallet_address ??
+    (await getDepositWalletAddress(address as `0x${string}`))
   const dbStatus = (user as { deposit_wallet_status?: string | null }).deposit_wallet_status
   if (dbStatus !== 'deployed') {
     return NextResponse.json(

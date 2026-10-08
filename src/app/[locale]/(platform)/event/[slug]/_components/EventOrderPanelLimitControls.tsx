@@ -43,6 +43,17 @@ function resolveDraftExpirationFromNow() {
   return nextDate
 }
 
+function resolveInitialDraftExpiration(limitExpirationTimestamp: number | null) {
+  if (limitExpirationTimestamp) {
+    const currentExpiration = new Date(limitExpirationTimestamp * 1000)
+    if (currentExpiration.getTime() > Date.now()) {
+      return currentExpiration
+    }
+  }
+
+  return resolveDraftExpirationFromNow()
+}
+
 interface EventOrderPanelLimitControlsProps {
   side: OrderSide
   limitPrice: string
@@ -51,6 +62,7 @@ interface EventOrderPanelLimitControlsProps {
   limitExpirationTimestamp: number | null
   isLimitOrder: boolean
   matchingShares?: number | null
+  liquidityRewardMinShares?: number
   availableShares: number
   showLimitMinimumWarning: boolean
   shouldShakeShares?: boolean
@@ -115,6 +127,7 @@ export default function EventOrderPanelLimitControls({
   limitExpirationTimestamp,
   isLimitOrder,
   matchingShares,
+  liquidityRewardMinShares,
   availableShares,
   showLimitMinimumWarning,
   shouldShakeShares,
@@ -127,7 +140,7 @@ export default function EventOrderPanelLimitControls({
 }: EventOrderPanelLimitControlsProps) {
   const t = useExtracted()
   const isMobile = useIsMobile()
-  const { balance } = useBalance()
+  const { balance, isLoadingBalance, isBalanceError } = useBalance()
   const areValuesHidden = usePortfolioValueVisibility((state) => state.isHidden)
   const { limitPriceNumber, limitSharesNumber, totalValue, potentialWin } = useLimitControlsDerived(
     limitPrice,
@@ -163,8 +176,17 @@ export default function EventOrderPanelLimitControls({
   const formattedBalanceText = Number.isFinite(balance?.raw)
     ? (balance?.raw ?? 0).toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
     : '0.00'
+  const balanceLabel = isLoadingBalance || isBalanceError ? '—' : `$${formattedBalanceText}`
   const maxLabel = t('Max')
   const matchingSharesLabel = matchingShares && matchingShares > 0 ? formatSharesLabel(matchingShares) : null
+  const rewardMinimum =
+    Number.isFinite(liquidityRewardMinShares) && (liquidityRewardMinShares ?? 0) > 0
+      ? Number(liquidityRewardMinShares)
+      : null
+  const buyChips = useMemo(
+    () => [...new Set(rewardMinimum == null ? BUY_CHIPS : [...BUY_CHIPS, rewardMinimum])].sort((a, b) => a - b),
+    [rewardMinimum],
+  )
   const [isExpirationMenuOpen, setIsExpirationMenuOpen] = useState(false)
   const {
     isExpirationModalOpen,
@@ -271,19 +293,8 @@ export default function EventOrderPanelLimitControls({
     small: 'text-sm',
   })
 
-  function resolveInitialDraftExpiration() {
-    if (limitExpirationTimestamp) {
-      const currentExpiration = new Date(limitExpirationTimestamp * 1000)
-      if (currentExpiration.getTime() > Date.now()) {
-        return currentExpiration
-      }
-    }
-
-    return resolveDraftExpirationFromNow()
-  }
-
   function openExpirationModal() {
-    setDraftExpiration(resolveInitialDraftExpiration())
+    setDraftExpiration(resolveInitialDraftExpiration(limitExpirationTimestamp))
     setIsExpirationModalOpen(true)
   }
 
@@ -325,7 +336,7 @@ export default function EventOrderPanelLimitControls({
           <span className="text-lg font-medium text-foreground">{t('Limit Price')}</span>
           {isLimitOrder && side === ORDER_SIDE.BUY && (
             <span className="text-xs text-muted-foreground">
-              {t('Balance')} {areValuesHidden ? '****' : `$${formattedBalanceText}`}
+              {t('Balance')} {areValuesHidden ? '****' : balanceLabel}
             </span>
           )}
         </div>
@@ -384,20 +395,32 @@ export default function EventOrderPanelLimitControls({
             })}
           </div>
         ) : (
-          <div className="ml-auto flex h-8 w-1/2 justify-end gap-2">
-            {BUY_CHIPS.map((chip) => {
+          <div className="ml-auto flex h-8 max-w-full justify-end gap-2">
+            {buyChips.map((chip) => {
               const label = chip > 0 ? `+${chip}` : `${chip}`
-              return (
+              const isRewardMinimum = rewardMinimum === chip
+              const button = (
                 <Button
                   type="button"
                   key={chip}
                   size="sm"
                   variant="outline"
-                  className="px-2 text-xs"
+                  className={cn('px-2 text-xs', isRewardMinimum && 'text-violet-500 hover:text-violet-500')}
                   onClick={() => updateLimitShares(limitSharesNumber + chip)}
                 >
                   {label}
                 </Button>
+              )
+
+              if (!isRewardMinimum) {
+                return button
+              }
+
+              return (
+                <Tooltip key={chip}>
+                  <TooltipTrigger render={button} />
+                  <TooltipContent side="bottom">{t('Minimum liquidity reward')}</TooltipContent>
+                </Tooltip>
               )
             })}
           </div>

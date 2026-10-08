@@ -11,7 +11,7 @@ import { Address, beginCell } from '@ton/core'
  */
 
 /** TEP-74 jetton transfer op code. */
-const JETTON_TRANSFER_OP = 0xF8A7EA5
+const JETTON_TRANSFER_OP = 0xf8a7ea5
 /** TON forwarded with the transfer notification so the bridge sees the payload. */
 const FORWARD_TON_AMOUNT = 20_000_000n // 0.02 TON, in nanoton
 /** Total TON gas attached to the message (covers forward amount + jetton fees). */

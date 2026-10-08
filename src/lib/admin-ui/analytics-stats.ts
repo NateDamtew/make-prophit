@@ -1,4 +1,5 @@
 import { sql } from 'drizzle-orm'
+
 import { WaitlistAdminRepository } from '@/lib/db/queries/waitlist-admin'
 import { users } from '@/lib/db/schema/auth/tables'
 import { db } from '@/lib/drizzle'
@@ -18,8 +19,8 @@ export interface AnalyticsData {
   }
 }
 
-function densify(rows: Array<{ date: string, count: number }>, days: number): DailyPoint[] {
-  const byDate = new Map(rows.map(r => [r.date, Number(r.count)]))
+function densify(rows: Array<{ date: string; count: number }>, days: number): DailyPoint[] {
+  const byDate = new Map(rows.map((r) => [r.date, Number(r.count)]))
   const out: DailyPoint[] = []
   const today = new Date()
   for (let i = days - 1; i >= 0; i--) {
@@ -31,7 +32,7 @@ function densify(rows: Array<{ date: string, count: number }>, days: number): Da
   return out
 }
 
-async function dailyNewUsers(days: number): Promise<Array<{ date: string, count: number }>> {
+async function dailyNewUsers(days: number): Promise<Array<{ date: string; count: number }>> {
   try {
     return await db
       .select({
@@ -42,8 +43,7 @@ async function dailyNewUsers(days: number): Promise<Array<{ date: string, count:
       .where(sql`${users.created_at} >= now() - make_interval(days => ${days})`)
       .groupBy(sql`date_trunc('day', ${users.created_at})`)
       .orderBy(sql`date_trunc('day', ${users.created_at}) asc`)
-  }
-  catch (error) {
+  } catch (error) {
     console.error('dailyNewUsers failed', error)
     return []
   }

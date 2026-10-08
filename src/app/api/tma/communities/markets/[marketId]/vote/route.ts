@@ -1,10 +1,13 @@
 import type { NextRequest } from 'next/server'
+
 import { and, eq } from 'drizzle-orm'
 import { NextResponse } from 'next/server'
+
 import { castJuryVoteAction } from '@/app/[locale]/(platform)/community/[slug]/_actions/community-actions'
 import { CommunityRepository } from '@/lib/db/queries/community'
 import { jury_votes } from '@/lib/db/schema/communities/tables'
 import { db } from '@/lib/drizzle'
+
 import { requireTmaUser } from '../../../../_lib'
 
 /**
@@ -45,7 +48,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     canVote: role === 'juror' || role === 'admin',
     tally,
     myVote: ownVote?.vote ?? null,
-    votes: (votes ?? []).map(v => ({
+    votes: (votes ?? []).map((v) => ({
       vote: v.vote,
       reasoning: v.reasoning,
       votedAt: v.voted_at,
@@ -66,11 +69,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   }
 
   const { marketId } = await params
-  let body: { vote?: string, reasoning?: string, evidence_url?: string }
+  let body: { vote?: string; reasoning?: string; evidence_url?: string }
   try {
     body = await request.json()
-  }
-  catch {
+  } catch {
     return NextResponse.json({ error: 'Invalid JSON body.' }, { status: 400 })
   }
   if (body.vote !== 'yes' && body.vote !== 'no' && body.vote !== 'disputed') {

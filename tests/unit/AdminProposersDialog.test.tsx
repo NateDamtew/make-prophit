@@ -1,9 +1,17 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { beforeEach, describe, expect, it, mock } from 'bun:test'
 import { getAddress } from 'viem'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import AdminProposersDialog from '@/app/[locale]/admin/events/calendar/_components/AdminProposersDialog'
+import { DEFAULT_CHAIN_ID, POLYGON_MAINNET_CHAIN_ID } from '@/lib/network'
+
+import { hoisted, stubGlobal } from '../bun-test-helpers'
+
+// FORK: the network comes from NEXT_PUBLIC_NETWORK_KEY, so derive the chain
+// instead of assuming Amoy.
+const CHAIN_HEX = `0x${DEFAULT_CHAIN_ID.toString(16)}`
+const CHAIN_NAME = DEFAULT_CHAIN_ID === POLYGON_MAINNET_CHAIN_ID ? 'Polygon' : 'Polygon Amoy'
 
 function getRequestUrl(input: RequestInfo | URL) {
   if (typeof input === 'string') {
@@ -19,72 +27,67 @@ const WHITELIST = getAddress('0x00000000000000000000000000000000000000dd')
 const PROPOSER = getAddress('0x00000000000000000000000000000000000000ee')
 const DEPLOYER = getAddress('0x00000000000000000000000000000000000000ff')
 
-import { DEFAULT_CHAIN_ID, POLYGON_MAINNET_CHAIN_ID } from '@/lib/network'
-
-const CHAIN_HEX = `0x${DEFAULT_CHAIN_ID.toString(16)}`
-const CHAIN_NAME = DEFAULT_CHAIN_ID === POLYGON_MAINNET_CHAIN_ID ? 'Polygon' : 'Polygon Amoy'
-
-const mocks = vi.hoisted(() => ({
-  useAppKitAccount: vi.fn(),
-  useAppKitNetworkCore: vi.fn(),
-  useAppKitProvider: vi.fn(),
-  useWalletClient: vi.fn(),
-  usePublicClient: vi.fn(),
-  useUser: vi.fn(),
-  runWithSignaturePrompt: vi.fn(),
-  toastSuccess: vi.fn(),
-  toastError: vi.fn(),
-  sendTransaction: vi.fn(),
-  walletRequest: vi.fn(),
-  waitForTransactionReceipt: vi.fn(),
-  estimateFeesPerGas: vi.fn(),
-  getGasPrice: vi.fn(),
-  getCode: vi.fn(),
-  fetch: vi.fn(),
-  useIsMobile: vi.fn(() => false),
+const mocks = hoisted(() => ({
+  useAppKitAccount: mock(),
+  useAppKitNetworkCore: mock(),
+  useAppKitProvider: mock(),
+  useWalletClient: mock(),
+  usePublicClient: mock(),
+  useUser: mock(),
+  runWithSignaturePrompt: mock(),
+  toastSuccess: mock(),
+  toastError: mock(),
+  sendTransaction: mock(),
+  walletRequest: mock(),
+  waitForTransactionReceipt: mock(),
+  estimateFeesPerGas: mock(),
+  getGasPrice: mock(),
+  getCode: mock(),
+  fetch: mock(),
+  useIsMobile: mock(() => false),
 }))
 
-vi.mock('next-intl', () => ({
+void mock.module('next-intl', () => ({
   useExtracted: () => (value: string) => value,
 }))
 
-vi.mock('@/hooks/useAppKitAccount', () => ({
+void mock.module('@/hooks/useAppKitAccount', () => ({
   useAppKitAccount: () => mocks.useAppKitAccount(),
 }))
 
-vi.mock('@/hooks/useAppKitCompat', () => ({
+void mock.module('@/hooks/useAppKitCompat', () => ({
   useAppKitNetworkCore: () => mocks.useAppKitNetworkCore(),
   useAppKitProvider: () => mocks.useAppKitProvider(),
 }))
 
-vi.mock('wagmi', () => ({
+void mock.module('wagmi', () => ({
   useWalletClient: () => ({ data: mocks.useWalletClient() }),
   usePublicClient: () => mocks.usePublicClient(),
 }))
 
-vi.mock('@/stores/useUser', () => ({
+void mock.module('@/stores/useUser', () => ({
   useUser: () => mocks.useUser(),
 }))
 
-vi.mock('@/hooks/useSignaturePromptRunner', () => ({
+void mock.module('@/hooks/useSignaturePromptRunner', () => ({
   useSignaturePromptRunner: () => ({
     runWithSignaturePrompt: mocks.runWithSignaturePrompt,
   }),
 }))
 
-vi.mock('@/components/ui/toast', () => ({
+void mock.module('@/components/ui/toast', () => ({
   toast: {
     success: (...args: unknown[]) => mocks.toastSuccess(...args),
     error: (...args: unknown[]) => mocks.toastError(...args),
   },
 }))
 
-vi.mock('@/components/ui/button', () => ({
+void mock.module('@/components/ui/button', () => ({
   Button: ({ children, nativeButton: _nativeButton, render, ...props }: any) =>
     render ?? <button {...props}>{children}</button>,
 }))
 
-vi.mock('@/components/ui/dialog', () => ({
+void mock.module('@/components/ui/dialog', () => ({
   Dialog: ({ open, children }: any) => (open ? <div>{children}</div> : null),
   DialogContent: ({ children }: any) => <div>{children}</div>,
   DialogDescription: ({ children }: any) => <p>{children}</p>,
@@ -92,7 +95,7 @@ vi.mock('@/components/ui/dialog', () => ({
   DialogTitle: ({ children }: any) => <h2>{children}</h2>,
 }))
 
-vi.mock('@/components/ui/drawer', () => ({
+void mock.module('@/components/ui/drawer', () => ({
   Drawer: ({ open, children }: any) => (open ? <div data-testid="proposers-drawer">{children}</div> : null),
   DrawerContent: ({ children }: any) => <div>{children}</div>,
   DrawerDescription: ({ children }: any) => <p>{children}</p>,
@@ -100,11 +103,11 @@ vi.mock('@/components/ui/drawer', () => ({
   DrawerTitle: ({ children }: any) => <h2>{children}</h2>,
 }))
 
-vi.mock('@/components/ui/label', () => ({
+void mock.module('@/components/ui/label', () => ({
   Label: ({ children, ...props }: any) => <label {...props}>{children}</label>,
 }))
 
-vi.mock('@/components/ui/select', () => ({
+void mock.module('@/components/ui/select', () => ({
   Select: ({ children }: any) => <div>{children}</div>,
   SelectContent: ({ children }: any) => <div>{children}</div>,
   SelectItem: ({ children }: any) => <div>{children}</div>,
@@ -112,11 +115,11 @@ vi.mock('@/components/ui/select', () => ({
   SelectValue: ({ placeholder }: any) => <span>{placeholder}</span>,
 }))
 
-vi.mock('@/components/ui/textarea', () => ({
+void mock.module('@/components/ui/textarea', () => ({
   Textarea: ({ ...props }: any) => <textarea {...props} />,
 }))
 
-vi.mock('@/hooks/useIsMobile', () => ({
+void mock.module('@/hooks/useIsMobile', () => ({
   useIsMobile: mocks.useIsMobile,
 }))
 
@@ -229,13 +232,13 @@ describe('adminProposersDialog', () => {
 
       throw new Error(`Unexpected fetch: ${url}`)
     })
-    vi.stubGlobal('fetch', mocks.fetch)
+    stubGlobal('fetch', mocks.fetch)
   })
 
   it('uses a drawer on mobile', () => {
     mocks.useIsMobile.mockReturnValue(true)
 
-    render(<AdminProposersDialog open onOpenChange={vi.fn()} />)
+    render(<AdminProposersDialog open onOpenChange={mock()} />)
 
     expect(screen.getByTestId('proposers-drawer')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Proposers' })).toBeInTheDocument()
@@ -250,7 +253,7 @@ describe('adminProposersDialog', () => {
     })
     mocks.useUser.mockReturnValue({ address: CREATOR })
 
-    render(<AdminProposersDialog open onOpenChange={vi.fn()} />)
+    render(<AdminProposersDialog open onOpenChange={mock()} />)
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Create whitelist' })).toBeEnabled()
@@ -300,7 +303,7 @@ describe('adminProposersDialog', () => {
       request: mocks.walletRequest,
     })
 
-    render(<AdminProposersDialog open onOpenChange={vi.fn()} />)
+    render(<AdminProposersDialog open onOpenChange={mock()} />)
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Create whitelist' })).toBeEnabled()
@@ -340,7 +343,7 @@ describe('adminProposersDialog', () => {
       request: mocks.walletRequest,
     })
 
-    render(<AdminProposersDialog open onOpenChange={vi.fn()} />)
+    render(<AdminProposersDialog open onOpenChange={mock()} />)
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Create whitelist' })).toBeEnabled()
@@ -355,7 +358,7 @@ describe('adminProposersDialog', () => {
 
     expect(mocks.sendTransaction).not.toHaveBeenCalled()
     expect(mocks.toastError).not.toHaveBeenCalledWith(
-      'Switch wallet to Polygon Amoy before updating proposer whitelist.',
+      `Switch wallet to ${CHAIN_NAME} before updating proposer whitelist.`,
     )
     expect(mocks.toastSuccess).toHaveBeenCalledWith('Proposer whitelist updated.')
   })
@@ -403,7 +406,7 @@ describe('adminProposersDialog', () => {
       throw new Error(`Unexpected fetch: ${url}`)
     })
 
-    render(<AdminProposersDialog open onOpenChange={vi.fn()} />)
+    render(<AdminProposersDialog open onOpenChange={mock()} />)
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Create whitelist' })).toBeEnabled()
@@ -468,7 +471,7 @@ describe('adminProposersDialog', () => {
       throw new Error(`Unexpected fetch: ${url}`)
     })
 
-    render(<AdminProposersDialog open onOpenChange={vi.fn()} />)
+    render(<AdminProposersDialog open onOpenChange={mock()} />)
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Add proposers' })).toBeEnabled()
@@ -574,7 +577,7 @@ describe('adminProposersDialog', () => {
       throw new Error(`Unexpected fetch: ${url}`)
     })
 
-    render(<AdminProposersDialog open onOpenChange={vi.fn()} />)
+    render(<AdminProposersDialog open onOpenChange={mock()} />)
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Create whitelist' })).toBeEnabled()
@@ -657,7 +660,7 @@ describe('adminProposersDialog', () => {
       throw new Error(`Unexpected fetch: ${url}`)
     })
 
-    render(<AdminProposersDialog open onOpenChange={vi.fn()} />)
+    render(<AdminProposersDialog open onOpenChange={mock()} />)
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Create whitelist' })).toBeEnabled()
@@ -744,7 +747,7 @@ describe('adminProposersDialog', () => {
       throw new Error(`Unexpected fetch: ${url}`)
     })
 
-    render(<AdminProposersDialog open onOpenChange={vi.fn()} />)
+    render(<AdminProposersDialog open onOpenChange={mock()} />)
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Create whitelist' })).toBeEnabled()

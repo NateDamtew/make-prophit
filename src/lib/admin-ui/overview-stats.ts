@@ -1,5 +1,7 @@
-import type { WaitlistStatus } from '@/lib/db/schema/waitlist/tables'
 import { and, count, eq, gte, lt } from 'drizzle-orm'
+
+import type { WaitlistStatus } from '@/lib/db/schema/waitlist/tables'
+
 import { WaitlistAdminRepository } from '@/lib/db/queries/waitlist-admin'
 import { users } from '@/lib/db/schema/auth/tables'
 import { communities } from '@/lib/db/schema/communities/tables'
@@ -22,8 +24,7 @@ export interface OverviewStats {
 async function safeCount(run: () => Promise<number>): Promise<number> {
   try {
     return await run()
-  }
-  catch (error) {
+  } catch (error) {
     console.error('Overview stat query failed', error)
     return 0
   }
@@ -42,47 +43,37 @@ export async function getOverviewStats(): Promise<OverviewStats> {
   const weekAgo = new Date(now - 7 * 24 * 60 * 60 * 1000)
   const twoWeeksAgo = new Date(now - 14 * 24 * 60 * 60 * 1000)
 
-  const [
-    totalUsers,
-    usersThisWeek,
-    usersPrevWeek,
-    activeEvents,
-    communitiesCount,
-    waitlistStats,
-    waitlistDaily,
-  ] = await Promise.all([
-    safeCount(async () => {
-      const [row] = await db.select({ value: count() }).from(users)
-      return Number(row?.value ?? 0)
-    }),
-    safeCount(async () => {
-      const [row] = await db.select({ value: count() }).from(users).where(gte(users.created_at, weekAgo))
-      return Number(row?.value ?? 0)
-    }),
-    safeCount(async () => {
-      const [row] = await db
-        .select({ value: count() })
-        .from(users)
-        .where(and(gte(users.created_at, twoWeeksAgo), lt(users.created_at, weekAgo)))
-      return Number(row?.value ?? 0)
-    }),
-    safeCount(async () => {
-      const [row] = await db
-        .select({ value: count() })
-        .from(events)
-        .where(eq(events.status, 'active'))
-      return Number(row?.value ?? 0)
-    }),
-    safeCount(async () => {
-      const [row] = await db.select({ value: count() }).from(communities)
-      return Number(row?.value ?? 0)
-    }),
-    WaitlistAdminRepository.stats().catch(() => ({
-      total: 0,
-      byStatus: { pending: 0, invited: 0, joined: 0, spam: 0 } as Record<WaitlistStatus, number>,
-    })),
-    WaitlistAdminRepository.dailySignups(30).catch(() => [] as Array<{ date: string, count: number }>),
-  ])
+  const [totalUsers, usersThisWeek, usersPrevWeek, activeEvents, communitiesCount, waitlistStats, waitlistDaily] =
+    await Promise.all([
+      safeCount(async () => {
+        const [row] = await db.select({ value: count() }).from(users)
+        return Number(row?.value ?? 0)
+      }),
+      safeCount(async () => {
+        const [row] = await db.select({ value: count() }).from(users).where(gte(users.created_at, weekAgo))
+        return Number(row?.value ?? 0)
+      }),
+      safeCount(async () => {
+        const [row] = await db
+          .select({ value: count() })
+          .from(users)
+          .where(and(gte(users.created_at, twoWeeksAgo), lt(users.created_at, weekAgo)))
+        return Number(row?.value ?? 0)
+      }),
+      safeCount(async () => {
+        const [row] = await db.select({ value: count() }).from(events).where(eq(events.status, 'active'))
+        return Number(row?.value ?? 0)
+      }),
+      safeCount(async () => {
+        const [row] = await db.select({ value: count() }).from(communities)
+        return Number(row?.value ?? 0)
+      }),
+      WaitlistAdminRepository.stats().catch(() => ({
+        total: 0,
+        byStatus: { pending: 0, invited: 0, joined: 0, spam: 0 } as Record<WaitlistStatus, number>,
+      })),
+      WaitlistAdminRepository.dailySignups(30).catch(() => [] as Array<{ date: string; count: number }>),
+    ])
 
   // Build a dense 30-day sparkline (fill gaps with 0).
   const sparkline = buildDenseSeries(waitlistDaily, 30)
@@ -103,8 +94,8 @@ export async function getOverviewStats(): Promise<OverviewStats> {
   }
 }
 
-function buildDenseSeries(daily: Array<{ date: string, count: number }>, days: number): number[] {
-  const byDate = new Map(daily.map(d => [d.date, d.count]))
+function buildDenseSeries(daily: Array<{ date: string; count: number }>, days: number): number[] {
+  const byDate = new Map(daily.map((d) => [d.date, d.count]))
   const series: number[] = []
   const today = new Date()
   for (let i = days - 1; i >= 0; i--) {

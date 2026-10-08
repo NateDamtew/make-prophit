@@ -1,6 +1,5 @@
 import type { Metadata } from 'next'
 
-import { setRequestLocale } from 'next-intl/server'
 import { cacheTag } from 'next/cache'
 
 import PlatformViewerState from '@/app/[locale]/(platform)/_components/PlatformViewerState'
@@ -20,6 +19,7 @@ import { DEFAULT_FEE_RECEIVER_WALLET_ADDRESS } from '@/lib/contracts'
 import { SettingsRepository } from '@/lib/db/queries/settings'
 import { getFeeRecipientWalletFormValue } from '@/lib/theme-settings'
 import AppKitProvider from '@/providers/AppKitProvider'
+import { CommunityFollowsProvider } from '@/providers/CommunityFollowsProvider'
 
 export const instant = false
 
@@ -38,48 +38,46 @@ function getForkRepositoryUrl() {
   return `https://github.com/${encodeURIComponent(repoOwner)}/${encodeURIComponent(repoSlug)}`
 }
 
-export default async function AdminLayout({ params, children }: LayoutProps<'/[locale]/admin'>) {
+export default async function AdminLayout({ children }: LayoutProps<'/[locale]/admin'>) {
   'use cache'
 
   cacheTag(cacheTags.settings)
-  const { locale } = await params
-  setRequestLocale(locale)
   const forkRepositoryUrl = getForkRepositoryUrl()
   const { data: settings } = await SettingsRepository.getSettings()
   const supportSettings = getKuestSupportSettings(settings)
-  const feeRecipientWallet
-    = getFeeRecipientWalletFormValue(settings ?? undefined) || DEFAULT_FEE_RECEIVER_WALLET_ADDRESS
+  const feeRecipientWallet =
+    getFeeRecipientWalletFormValue(settings ?? undefined) || DEFAULT_FEE_RECEIVER_WALLET_ADDRESS
 
   return (
     <AppKitProvider>
-      <PlatformViewerState />
-      <AdminSidebarProvider>
-        <AdminCommandProvider>
-          <div className="flex min-h-svh w-full bg-background">
-            <AdminSidebar />
-            <div className="flex min-w-0 flex-1 flex-col">
-              <AdminHeader feeRecipientWallet={feeRecipientWallet} />
-              <main className="flex-1 px-4 py-6 lg:p-8">
-                <div className="mx-auto w-full max-w-6xl space-y-8">
-                  {children}
-                </div>
-              </main>
-              <footer className="px-4 pb-6 lg:px-8">
-                <div className="mx-auto w-full max-w-6xl">
-                  <CopyVersion forkRepositoryUrl={forkRepositoryUrl} />
-                </div>
-              </footer>
+      <CommunityFollowsProvider>
+        <PlatformViewerState />
+        <AdminSidebarProvider>
+          <AdminCommandProvider>
+            <div className="flex min-h-svh w-full bg-background">
+              <AdminSidebar />
+              <div className="flex min-w-0 flex-1 flex-col">
+                <AdminHeader feeRecipientWallet={feeRecipientWallet} />
+                <main className="flex-1 px-4 py-6 lg:p-8">
+                  <div className="mx-auto w-full max-w-6xl space-y-8">{children}</div>
+                </main>
+                <footer className="px-4 pb-6 lg:px-8">
+                  <div className="mx-auto w-full max-w-6xl">
+                    <CopyVersion forkRepositoryUrl={forkRepositoryUrl} />
+                  </div>
+                </footer>
+              </div>
             </div>
-          </div>
-        </AdminCommandProvider>
-      </AdminSidebarProvider>
-      {supportSettings.enabled && (
-        <AdminOnboardingSupportWidget
-          announcementDismissedAt={getSupportAnnouncementDismissedAt(settings)}
-          initialCompletedTasks={getCompletedAdminOnboardingTasks(settings)}
-          position={supportSettings.position}
-        />
-      )}
+          </AdminCommandProvider>
+        </AdminSidebarProvider>
+        {supportSettings.enabled && (
+          <AdminOnboardingSupportWidget
+            announcementDismissedAt={getSupportAnnouncementDismissedAt(settings)}
+            initialCompletedTasks={getCompletedAdminOnboardingTasks(settings)}
+            position={supportSettings.position}
+          />
+        )}
+      </CommunityFollowsProvider>
     </AppKitProvider>
   )
 }

@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'bun:test'
 
-import { isNextClientStaleAssetError, isNextStaticAssetUrl } from '@/lib/next-client-stale-assets'
+import { isNextClientStaleAssetError, isNextStaticAssetUrl } from '@/lib/errors/next-client-stale-assets'
 
 describe('next client stale assets', () => {
   it('matches Next static asset URLs', () => {

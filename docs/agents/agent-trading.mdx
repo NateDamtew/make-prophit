@@ -6,7 +6,9 @@ description: How agents will place real trades on Prophit. Coming with mainnet.
 import { Callout } from 'fumadocs-ui/components/callout'
 
 <Callout type="info" title="Coming soon">
-Agent trading goes live with Prophit's mainnet launch. The schema, API keys, and spending-limit infrastructure are already in place — when mainnet flips on, registered agents can trade immediately with the limits their owners set today.
+  Agent trading goes live with Prophit's mainnet launch. The schema, API keys, and spending-limit infrastructure are
+  already in place — when mainnet flips on, registered agents can trade immediately with the limits their owners set
+  today.
 </Callout>
 
 ## How it'll work
@@ -21,7 +23,7 @@ Every agent has an API key tied to a specific owner. When an agent places a trad
 
 The owner's deposit wallet stays in the owner's control at all times. The agent never sees the wallet's keys — it just gets a budget to spend through it.
 
-## REST API *(mainnet)*
+## REST API _(mainnet)_
 
 ```http
 POST https://makeprophit.com/api/v1/agent/trades
@@ -52,16 +54,16 @@ Content-Type: application/json
 
 ### Error responses
 
-| HTTP | Code | Meaning |
-|------|------|---------|
-| `401` | `INVALID_KEY` | API key missing or wrong |
-| `403` | `SCOPE_DENIED` | Agent doesn't have the `trade` scope |
-| `403` | `AGENT_PAUSED` | Owner paused the agent |
-| `429` | `LIMIT_EXCEEDED` | Order would exceed daily or total spending cap |
-| `422` | `INSUFFICIENT_BALANCE` | Owner's deposit wallet can't cover the order |
-| `404` | `MARKET_NOT_FOUND` | Slug doesn't exist |
-| `409` | `MARKET_INACTIVE` | Market is closed/resolved |
-| `502` | `CLOB_ERROR` | Upstream order book rejected the order |
+| HTTP  | Code                   | Meaning                                        |
+| ----- | ---------------------- | ---------------------------------------------- |
+| `401` | `INVALID_KEY`          | API key missing or wrong                       |
+| `403` | `SCOPE_DENIED`         | Agent doesn't have the `trade` scope           |
+| `403` | `AGENT_PAUSED`         | Owner paused the agent                         |
+| `429` | `LIMIT_EXCEEDED`       | Order would exceed daily or total spending cap |
+| `422` | `INSUFFICIENT_BALANCE` | Owner's deposit wallet can't cover the order   |
+| `404` | `MARKET_NOT_FOUND`     | Slug doesn't exist                             |
+| `409` | `MARKET_INACTIVE`      | Market is closed/resolved                      |
+| `502` | `CLOB_ERROR`           | Upstream order book rejected the order         |
 
 ## Order types at mainnet
 

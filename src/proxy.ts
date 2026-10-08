@@ -1,7 +1,10 @@
 import type { NextRequest } from 'next/server'
+
 import createMiddleware from 'next-intl/middleware'
 import { NextResponse } from 'next/server'
+
 import { auth } from '@/lib/auth'
+
 import { routing } from './i18n/routing'
 
 const intlMiddleware = createMiddleware(routing)
@@ -64,15 +67,11 @@ async function isCommunityEventBlocked(slug: string, userId: string | undefined)
     const [member] = await db
       .select({ user_id: community_members.user_id })
       .from(community_members)
-      .where(and(
-        eq(community_members.community_id, row.community_id),
-        eq(community_members.user_id, userId),
-      ))
+      .where(and(eq(community_members.community_id, row.community_id), eq(community_members.user_id, userId)))
       .limit(1)
 
     return !member
-  }
-  catch (err) {
+  } catch (err) {
     console.warn('[isCommunityEventBlocked] Fail-open due to error:', err)
     return false
   }
@@ -81,16 +80,14 @@ async function isCommunityEventBlocked(slug: string, userId: string | undefined)
 export default async function proxy(request: NextRequest) {
   const url = new URL(request.url)
   const host = request.headers.get('host') || ''
-  
+
   // ─── Landing Page Routing ────────────────────────────────────────────────
   // Isolate the base domain, clean port if present
   const hostname = host.split(':')[0]
   const isPlatformDomain = hostname === 'beta.makeprophit.com' || hostname === 'tma.makeprophit.com'
-  const isLandingDomain = !isPlatformDomain && (
-    hostname === 'makeprophit.com' ||
-    hostname === 'www.makeprophit.com' ||
-    hostname === 'localhost'
-  )
+  const isLandingDomain =
+    !isPlatformDomain &&
+    (hostname === 'makeprophit.com' || hostname === 'www.makeprophit.com' || hostname === 'localhost')
 
   if (isLandingDomain) {
     if (url.pathname === '/' || url.pathname === '/en' || url.pathname === '/zh' || url.pathname === '/ru') {
@@ -105,7 +102,6 @@ export default async function proxy(request: NextRequest) {
   const pathname = stripLocale(url.pathname, pathnameLocale)
   const locale = resolveRequestLocale(pathnameLocale)
 
-
   // ─── Community event access gate ─────────────────────────────────────────
   // /event/[slug] pages for community-owned events should only be
   // accessible to community members. Redirect non-members to home.
@@ -119,9 +115,7 @@ export default async function proxy(request: NextRequest) {
     }
   }
 
-  const isProtected = protectedPrefixes.some(
-    prefix => pathname === prefix || pathname.startsWith(`${prefix}/`),
-  )
+  const isProtected = protectedPrefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))
 
   if (!isProtected) {
     return intlMiddleware(request)
@@ -136,6 +130,7 @@ export default async function proxy(request: NextRequest) {
   }
 
   if (pathname.startsWith('/admin')) {
+    // FORK: is_admin comes from customSession (wallet, email and username admins).
     if (!session.user?.is_admin) {
       return NextResponse.redirect(new URL(withLocale('/', locale), request.url))
     }
@@ -145,7 +140,5 @@ export default async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: [
-    '/((?!api|trpc|_next|_vercel|.*\\..*).*)',
-  ],
+  matcher: ['/((?!api|trpc|_next|_vercel|.*\\..*).*)'],
 }

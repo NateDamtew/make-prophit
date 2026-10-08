@@ -1,11 +1,11 @@
 'use client'
 
-import type { ShareCardPayload } from '@/lib/share-card'
 import { CopyIcon, Loader2Icon, ShareIcon } from 'lucide-react'
 import { useExtracted } from 'next-intl'
 import Image from 'next/image'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
+import type { ShareCardPayload } from '@/lib/share-card'
 
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -239,6 +239,7 @@ function useNativeImageShare({
   // navigator is undefined during SSR — probe capability on the client only.
   useEffect(() => {
     const probe = new File([new Blob([''], { type: 'image/png' })], 'probe.png', { type: 'image/png' })
+    // oxlint-disable-next-line react/set-state-in-effect
     setCanShareImage(canNativeShareFiles([probe]))
   }, [])
 
@@ -254,9 +255,8 @@ function useNativeImageShare({
 
     const profileSlug = payload?.userName?.trim() || 'user'
     const profilePath = buildPublicProfilePath(profileSlug) ?? '/@user'
-    const profileUrl = typeof window !== 'undefined'
-      ? new URL(profilePath, window.location.origin).toString()
-      : undefined
+    const profileUrl =
+      typeof window !== 'undefined' ? new URL(profilePath, window.location.origin).toString() : undefined
 
     setIsSharingImage(true)
     const result = await shareFiles({
@@ -338,55 +338,33 @@ function PositionShareDialogContent({ payload, shareCardUrl }: PositionShareDial
         )}
       </div>
       <div className="flex flex-col gap-3 sm:flex-row">
-        <Button
-          variant="outline"
-          className="flex-1"
-          onClick={handleCopyShareImage}
-          disabled={!isShareReady || isBusy}
-        >
+        <Button variant="outline" className="flex-1" onClick={handleCopyShareImage} disabled={!isShareReady || isBusy}>
           {isCopyingShareImage ? <Spinner className="size-4" /> : <CopyIcon className="size-4" />}
           {isCopyingShareImage ? t('Copying...') : t('Copy image')}
         </Button>
 
-        {canShareImage
-          ? (
-              // Mobile: native share sheet with the win-card image attached.
-              <Button
-                className="flex-1"
-                onClick={handleNativeShareImage}
-                disabled={!isShareReady || isBusy}
-              >
-                {isSharingImage
-                  ? <Loader2Icon className="size-4 animate-spin" />
-                  : <ShareIcon className="size-4" />}
-                {isSharingImage ? t('Opening...') : t('Share')}
-              </Button>
-            )
-          : (
-              // Desktop fallback: X intent.
-              <Button
-                className="flex-1"
-                onClick={handleShareOnX}
-                disabled={!isShareReady || isBusy}
-              >
-                {isSharingOnX
-                  ? <Loader2Icon className="size-4 animate-spin" />
-                  : (
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        viewBox="0 0 251 256"
-                        className="size-4"
-                        aria-hidden="true"
-                      >
-                        <path
-                          d="M149.079 108.399L242.33 0h-22.098l-80.97 94.12L74.59 0H0l97.796 142.328L0 256h22.1l85.507-99.395L175.905 256h74.59L149.073 108.399zM118.81 143.58l-9.909-14.172l-78.84-112.773h33.943l63.625 91.011l9.909 14.173l82.705 118.3H186.3l-67.49-96.533z"
-                          fill="currentColor"
-                        />
-                      </svg>
-                    )}
-                {isSharingOnX ? t('Opening...') : t('Share on X')}
-              </Button>
+        {canShareImage ? (
+          // Mobile: native share sheet with the win-card image attached.
+          <Button className="flex-1" onClick={handleNativeShareImage} disabled={!isShareReady || isBusy}>
+            {isSharingImage ? <Loader2Icon className="size-4 animate-spin" /> : <ShareIcon className="size-4" />}
+            {isSharingImage ? t('Opening...') : t('Share')}
+          </Button>
+        ) : (
+          // Desktop fallback: X intent.
+          <Button className="flex-1" onClick={handleShareOnX} disabled={!isShareReady || isBusy}>
+            {isSharingOnX ? (
+              <Loader2Icon className="size-4 animate-spin" />
+            ) : (
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 251 256" className="size-4" aria-hidden="true">
+                <path
+                  d="M149.079 108.399L242.33 0h-22.098l-80.97 94.12L74.59 0H0l97.796 142.328L0 256h22.1l85.507-99.395L175.905 256h74.59L149.073 108.399zM118.81 143.58l-9.909-14.172l-78.84-112.773h33.943l63.625 91.011l9.909 14.173l82.705 118.3H186.3l-67.49-96.533z"
+                  fill="currentColor"
+                />
+              </svg>
             )}
+            {isSharingOnX ? t('Opening...') : t('Share on X')}
+          </Button>
+        )}
       </div>
     </div>
   )

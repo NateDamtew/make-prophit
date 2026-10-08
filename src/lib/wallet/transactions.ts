@@ -11,11 +11,13 @@ import {
   DEPOSIT_WALLET_FACTORY_ADDRESS,
   FEE_CLAIM_EXCHANGE_ADDRESSES,
   NEG_RISK_CTF_EXCHANGE_ADDRESS,
+  RESOLUTION_REWARDS_ADDRESS,
   UMA_NEG_RISK_ADAPTER_ADDRESS,
   ZERO_BYTES32,
 } from '@/lib/contracts'
 import { DEPOSIT_WALLET_BATCH_DEADLINE_SECONDS, getDepositWalletDomain } from '@/lib/deposit-wallet'
 import { assertCurrentNegRiskAdapterAddress } from '@/lib/neg-risk-adapter'
+import { RESOLUTION_REWARDS_ABI } from '@/lib/resolution-rewards'
 
 export interface WalletCall {
   target: `0x${string}`
@@ -363,6 +365,39 @@ export function buildClaimFeesCalls(options?: ClaimFeesOptions): WalletCall[] {
   )
 }
 
+export function buildResolutionRewardsClaimCall(): WalletCall {
+  return createWalletCall(
+    RESOLUTION_REWARDS_ADDRESS,
+    encodeFunctionData({
+      abi: RESOLUTION_REWARDS_ABI,
+      functionName: 'claim',
+      args: [COLLATERAL_TOKEN_ADDRESS],
+    }),
+  )
+}
+
+export function buildResolutionRewardWithdrawalCall(proposalId: string | number | bigint): WalletCall {
+  return createWalletCall(
+    RESOLUTION_REWARDS_ADDRESS,
+    encodeFunctionData({
+      abi: RESOLUTION_REWARDS_ABI,
+      functionName: 'requestWithdrawal',
+      args: [BigInt(proposalId)],
+    }),
+  )
+}
+
+export function buildResolutionRewardReleaseCall(proposalId: string | number | bigint): WalletCall {
+  return createWalletCall(
+    RESOLUTION_REWARDS_ADDRESS,
+    encodeFunctionData({
+      abi: RESOLUTION_REWARDS_ABI,
+      functionName: 'releaseExpiredProposal',
+      args: [BigInt(proposalId)],
+    }),
+  )
+}
+
 export function buildSendErc20Call(params: {
   token: `0x${string}`
   to: `0x${string}`
@@ -399,17 +434,23 @@ export function buildRhinoWithdrawCalls(params: {
     throw new Error(`Invalid rhino commitment id: ${params.commitmentId}`)
   }
 
-  const approve = createWalletCall(params.token, encodeFunctionData({
-    abi: erc20Abi,
-    functionName: 'approve',
-    args: [params.bridgeContract, params.amount],
-  }))
+  const approve = createWalletCall(
+    params.token,
+    encodeFunctionData({
+      abi: erc20Abi,
+      functionName: 'approve',
+      args: [params.bridgeContract, params.amount],
+    }),
+  )
 
-  const deposit = createWalletCall(params.bridgeContract, encodeFunctionData({
-    abi: rhinoBridgeAbi,
-    functionName: 'depositWithId',
-    args: [params.token, params.amount, BigInt(`0x${params.commitmentId}`)],
-  }))
+  const deposit = createWalletCall(
+    params.bridgeContract,
+    encodeFunctionData({
+      abi: rhinoBridgeAbi,
+      functionName: 'depositWithId',
+      args: [params.token, params.amount, BigInt(`0x${params.commitmentId}`)],
+    }),
+  )
 
   return [approve, deposit]
 }

@@ -7,6 +7,7 @@ import { inflateSync } from 'node:zlib'
 
 import type { SupportedLocale } from '@/i18n/locales'
 
+import { getEnabledLocalesInOrderFromSettings } from '@/i18n/locale-settings'
 import { DEFAULT_LOCALE, SUPPORTED_LOCALES } from '@/i18n/locales'
 import { validateMarketContextSettingsInput } from '@/lib/ai/market-context-config'
 import {
@@ -32,7 +33,7 @@ import { validateHomeFeaturedSettingsInput } from '@/lib/home-featured-settings'
 import { reportOperatorDomainSnapshot } from '@/lib/operator-domain-register'
 import { resolvePublicRuntimeEnv } from '@/lib/public-runtime-config.shared'
 import resolveSiteUrl from '@/lib/site-url'
-import { uploadPublicAsset } from '@/lib/storage'
+import { uploadPublicAsset } from '@/lib/storage-upload'
 import {
   SUMSUB_APP_TOKEN_KEY,
   SUMSUB_ENABLED_KEY,
@@ -43,7 +44,7 @@ import {
   SUMSUB_WEBHOOK_SECRET_KEY,
   validateSumsubInput,
 } from '@/lib/sumsub/settings'
-import { normalizeTermsOfServicePdfPath, TERMS_OF_SERVICE_PDF_PATH_KEY } from '@/lib/terms-of-service'
+import { parseTermsOfServiceTranslations } from '@/lib/terms-of-service'
 import { validateThemeSiteSettingsInput } from '@/lib/theme-settings'
 
 const MAX_LOGO_FILE_SIZE = 2 * 1024 * 1024
@@ -54,7 +55,6 @@ const MAX_SIDE_CARD_IMAGE_FILE_SIZE = 2 * 1024 * 1024
 const MAX_SIDE_CARD_IMAGE_PIXELS = 40_000_000
 const MAX_SIDE_CARD_IMAGE_DECODED_BYTES = 64 * 1024 * 1024
 const ACCEPTED_SIDE_CARD_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/jpg']
-const MAX_TERMS_OF_SERVICE_PDF_FILE_SIZE = 2 * 1024 * 1024
 export interface GeneralSettingsActionState {
   error: string | null
 }
@@ -62,11 +62,6 @@ export interface GeneralSettingsActionState {
 function buildThemeAssetPath(prefix: string) {
   const random = Math.random().toString(36).slice(2, 8)
   return `theme/${prefix}-${Date.now()}-${random}.png`
-}
-
-function buildTermsOfServicePdfPath() {
-  const random = Math.random().toString(36).slice(2, 8)
-  return `legal/terms-of-service-${Date.now()}-${random}.pdf`
 }
 
 type SideCardImageExtension = 'jpg' | 'png'
@@ -584,33 +579,6 @@ async function processSideCardImageFile(file: File) {
   }
 }
 
-function isPdfFile(file: File) {
-  return file.type === 'application/pdf' || file.name.trim().toLowerCase().endsWith('.pdf')
-}
-
-async function processTermsOfServicePdfFile(file: File) {
-  if (!isPdfFile(file)) {
-    return { path: null as string | null, error: 'Terms of Use PDF must be a PDF file.' }
-  }
-
-  if (file.size > MAX_TERMS_OF_SERVICE_PDF_FILE_SIZE) {
-    return { path: null as string | null, error: 'Terms of Use PDF must be 2MB or smaller.' }
-  }
-
-  const buffer = Buffer.from(await file.arrayBuffer())
-  const filePath = buildTermsOfServicePdfPath()
-  const { error } = await uploadPublicAsset(filePath, buffer, {
-    contentType: 'application/pdf',
-    cacheControl: '31536000',
-  })
-
-  if (error) {
-    return { path: null as string | null, error: DEFAULT_ERROR_MESSAGE }
-  }
-
-  return { path: filePath, error: null as string | null }
-}
-
 async function updateCacheTag(tag: string) {
   try {
     const cache = await import('next/cache')
@@ -622,6 +590,7 @@ async function updateCacheTag(tag: string) {
 
 async function revalidateGeneralSettingsPaths() {
   await updateCacheTag(cacheTags.settings)
+  await updateCacheTag(cacheTags.termsOfService)
   await updateCacheTag(cacheTags.homeFeaturedEvents)
   revalidatePath('/[locale]/admin', 'layout')
   revalidatePath('/[locale]/admin/general', 'page')
@@ -673,7 +642,23 @@ async function syncGeoblockSettings() {
   throw new Error(detail || `Geoblock sync failed with status ${response.status}.`)
 }
 
-async function resolveCurrentLocale(): Promise<SupportedLocale> {
+function getLocaleOverride(formData: FormData): SupportedLocale | undefined {
+  const rawLocale = formData.get('locale')
+  if (typeof rawLocale !== 'string') {
+    return undefined
+  }
+
+  const normalizedLocale = rawLocale.trim().toLowerCase()
+  return SUPPORTED_LOCALES.includes(normalizedLocale as SupportedLocale)
+    ? (normalizedLocale as SupportedLocale)
+    : undefined
+}
+
+async function resolveCurrentLocale(localeOverride?: SupportedLocale): Promise<SupportedLocale> {
+  if (localeOverride) {
+    return localeOverride
+  }
+
   try {
     const locale = await getLocale()
     return SUPPORTED_LOCALES.includes(locale as SupportedLocale) ? (locale as SupportedLocale) : DEFAULT_LOCALE
@@ -689,6 +674,12 @@ async function updateGeneralSettingsActionImpl(
   const user = await UserRepository.getCurrentUser({ minimal: true })
   if (!user || !user.is_admin) {
     return { error: 'Unauthenticated.' }
+  }
+
+  let currentSettings: Awaited<ReturnType<typeof SettingsRepository.getSettings>> | null = null
+  async function loadCurrentSettings() {
+    currentSettings ??= await SettingsRepository.getSettings()
+    return currentSettings
   }
 
   const siteNameRaw = formData.get('site_name')
@@ -715,8 +706,7 @@ async function updateGeneralSettingsActionImpl(
   const globalAnnouncementDisabledOnJsonRaw = formData.get('global_announcement_disabled_on_json')
   const globalAnnouncementDisableFaucetBannerRaw = formData.get('global_announcement_disable_faucet_banner')
   const customJavascriptCodesJsonRaw = formData.get('custom_javascript_codes_json')
-  const tosPdfPathRaw = formData.get('tos_pdf_path')
-  const tosPdfFileRaw = formData.get('tos_pdf')
+  const termsOfServiceTranslationsRaw = formData.get('terms_of_service_translations_json')
   const lifiIntegratorRaw = formData.get('lifi_integrator')
   const lifiApiKeyRaw = formData.get('lifi_api_key')
   const arbitrageEnabledRaw = formData.get('arbitrage_enabled')
@@ -767,6 +757,7 @@ async function updateGeneralSettingsActionImpl(
   const hasOpenRouterPayload = typeof openRouterModelRaw === 'string' || typeof openRouterApiKeyRaw === 'string'
   const hasPandaScorePayload = typeof sportsPandaScoreTokenRaw === 'string'
   const hasTheSportsDbPayload = typeof sportsTheSportsDbApiKeyRaw === 'string'
+  const hasTermsOfServicePayload = typeof termsOfServiceTranslationsRaw === 'string'
 
   const siteName = typeof siteNameRaw === 'string' ? siteNameRaw : ''
   const siteDescription = typeof siteDescriptionRaw === 'string' ? siteDescriptionRaw : ''
@@ -791,7 +782,6 @@ async function updateGeneralSettingsActionImpl(
   const globalAnnouncementDisableFaucetBanner =
     typeof globalAnnouncementDisableFaucetBannerRaw === 'string' ? globalAnnouncementDisableFaucetBannerRaw : ''
   const customJavascriptCodesJson = typeof customJavascriptCodesJsonRaw === 'string' ? customJavascriptCodesJsonRaw : ''
-  let tosPdfPath = typeof tosPdfPathRaw === 'string' ? tosPdfPathRaw : ''
   const lifiIntegrator = typeof lifiIntegratorRaw === 'string' ? lifiIntegratorRaw : ''
   const lifiApiKey = typeof lifiApiKeyRaw === 'string' ? lifiApiKeyRaw : ''
   const openRouterModel = typeof openRouterModelRaw === 'string' ? openRouterModelRaw.trim() : ''
@@ -801,6 +791,23 @@ async function updateGeneralSettingsActionImpl(
     typeof sportsTheSportsDbApiKeyRaw === 'string' ? sportsTheSportsDbApiKeyRaw.trim() : ''
   const blockedCountriesInput = typeof blockedCountriesRaw === 'string' ? blockedCountriesRaw : ''
   const homeFeaturedEventsJson = typeof homeFeaturedEventsJsonRaw === 'string' ? homeFeaturedEventsJsonRaw : ''
+
+  let validatedTermsOfServiceTranslations: ReturnType<typeof parseTermsOfServiceTranslations>['data'] = null
+  if (hasTermsOfServicePayload) {
+    const { data: allSettings, error: settingsError } = await loadCurrentSettings()
+    if (settingsError) {
+      return { error: DEFAULT_ERROR_MESSAGE }
+    }
+
+    const parsedTermsOfServiceTranslations = parseTermsOfServiceTranslations(
+      typeof termsOfServiceTranslationsRaw === 'string' ? termsOfServiceTranslationsRaw : '',
+      getEnabledLocalesInOrderFromSettings(allSettings ?? undefined),
+    )
+    if (!parsedTermsOfServiceTranslations.data) {
+      return { error: parsedTermsOfServiceTranslations.error ?? 'Invalid Terms of Use content.' }
+    }
+    validatedTermsOfServiceTranslations = parsedTermsOfServiceTranslations.data
+  }
 
   if (openRouterModel.length > 160) {
     return { error: 'OpenRouter model is too long.' }
@@ -883,12 +890,6 @@ async function updateGeneralSettingsActionImpl(
     parsedHomeFeaturedEventsData = parsedHomeFeaturedEvents.data
   }
 
-  const normalizedTermsOfServicePdfPath = normalizeTermsOfServicePdfPath(tosPdfPath)
-  if (normalizedTermsOfServicePdfPath.error) {
-    return { error: normalizedTermsOfServicePdfPath.error }
-  }
-  tosPdfPath = normalizedTermsOfServicePdfPath.value
-
   if (logoFileRaw instanceof File && logoFileRaw.size > 0) {
     const processed = await processThemeLogoFile(logoFileRaw)
     if (!processed.mode) {
@@ -919,15 +920,6 @@ async function updateGeneralSettingsActionImpl(
       return { error: processed.error ?? DEFAULT_ERROR_MESSAGE }
     }
     pwaIcon512Path = processed.path
-  }
-
-  if (tosPdfFileRaw instanceof File && tosPdfFileRaw.size > 0) {
-    const processed = await processTermsOfServicePdfFile(tosPdfFileRaw)
-    if (!processed.path) {
-      return { error: processed.error ?? DEFAULT_ERROR_MESSAGE }
-    }
-
-    tosPdfPath = processed.path
   }
 
   if (validatedHomeFeaturedData) {
@@ -1003,7 +995,7 @@ async function updateGeneralSettingsActionImpl(
   let encryptedSumsubWebhookSecret = ''
   let validatedSumsub: NonNullable<ReturnType<typeof validateSumsubInput>['data']> | null = null
   try {
-    const { data: allSettings, error: settingsError } = await SettingsRepository.getSettings()
+    const { data: allSettings, error: settingsError } = await loadCurrentSettings()
     if (settingsError) {
       return { error: DEFAULT_ERROR_MESSAGE }
     }
@@ -1098,7 +1090,6 @@ async function updateGeneralSettingsActionImpl(
     ...(hasCustomJavascriptPayload
       ? [{ group: 'general', key: 'site_custom_javascript_codes', value: validated.data.customJavascriptCodesValue }]
       : []),
-    { group: 'general', key: TERMS_OF_SERVICE_PDF_PATH_KEY, value: tosPdfPath },
     ...(hasLiFiPayload
       ? [
           { group: 'general', key: 'lifi_integrator', value: validated.data.lifiIntegratorValue },
@@ -1155,7 +1146,17 @@ async function updateGeneralSettingsActionImpl(
     const { error } = await HomeFeaturedEventsRepository.replaceFeaturedEventsWithSettings(
       parsedHomeFeaturedEventsData,
       settingsToUpdate,
+      validatedTermsOfServiceTranslations ?? undefined,
     )
+    if (error) {
+      return { error: DEFAULT_ERROR_MESSAGE }
+    }
+  } else if (validatedTermsOfServiceTranslations) {
+    const { error } = await SettingsRepository.updateSettingsWithTermsOfService(
+      settingsToUpdate,
+      validatedTermsOfServiceTranslations,
+    )
+
     if (error) {
       return { error: DEFAULT_ERROR_MESSAGE }
     }
@@ -1169,7 +1170,7 @@ async function updateGeneralSettingsActionImpl(
 
   if (validatedHomeFeaturedData?.useAi) {
     await runOptionalGeneralSettingsTask('regenerate featured markets', async () => {
-      const locale = await resolveCurrentLocale()
+      const locale = await resolveCurrentLocale(getLocaleOverride(formData))
       const { regenerateHomeFeaturedEvents } = await import('@/lib/home-featured-ai')
       const regenerateResult = await regenerateHomeFeaturedEvents(locale, {
         settings: validatedHomeFeaturedData,
@@ -1208,23 +1209,4 @@ export async function updateGeneralSettingsAction(
     console.error('Failed to update general settings', error)
     return { error: DEFAULT_ERROR_MESSAGE }
   }
-}
-
-export async function removeTermsOfServicePdfAction(): Promise<GeneralSettingsActionState> {
-  const user = await UserRepository.getCurrentUser({ minimal: true })
-  if (!user || !user.is_admin) {
-    return { error: 'Unauthenticated.' }
-  }
-
-  const { error } = await SettingsRepository.updateSettings([
-    { group: 'general', key: TERMS_OF_SERVICE_PDF_PATH_KEY, value: '' },
-  ])
-
-  if (error) {
-    return { error: DEFAULT_ERROR_MESSAGE }
-  }
-
-  await runOptionalGeneralSettingsTask('revalidate general settings paths', revalidateGeneralSettingsPaths)
-
-  return { error: null }
 }

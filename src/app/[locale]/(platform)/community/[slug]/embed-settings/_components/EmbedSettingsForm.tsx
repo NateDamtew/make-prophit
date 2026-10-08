@@ -1,14 +1,16 @@
 'use client'
 
-import type { CommunityEmbedConfigRow, CommunityEmbedTheme } from '@/lib/db/schema/communities/embeds'
 import { ChevronLeftIcon, SaveIcon, XIcon } from 'lucide-react'
 import Link from 'next/link'
 import { useState } from 'react'
-import { toast } from '@/components/ui/toast'
+
+import type { CommunityEmbedConfigRow, CommunityEmbedTheme } from '@/lib/db/schema/communities/embeds'
+
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { toast } from '@/components/ui/toast'
 import { cn } from '@/lib/utils'
 
 interface EmbedSettingsFormProps {
@@ -18,7 +20,7 @@ interface EmbedSettingsFormProps {
   initial: CommunityEmbedConfigRow | null
 }
 
-const MODE_OPTIONS: Array<{ value: 'auto' | 'light' | 'dark', label: string, description: string }> = [
+const MODE_OPTIONS: Array<{ value: 'auto' | 'light' | 'dark'; label: string; description: string }> = [
   { value: 'auto', label: 'Auto', description: 'Follow the host page' },
   { value: 'light', label: 'Light', description: 'Force light theme' },
   { value: 'dark', label: 'Dark', description: 'Force dark theme' },
@@ -41,7 +43,7 @@ export function EmbedSettingsForm({ communityId, communityName, communitySlug, i
   }
 
   function removeDomain(value: string) {
-    setDomains(domains.filter(d => d !== value))
+    setDomains(domains.filter((d) => d !== value))
   }
 
   async function save() {
@@ -60,11 +62,9 @@ export function EmbedSettingsForm({ communityId, communityName, communitySlug, i
         throw new Error(body?.error || 'Could not save embed settings.')
       }
       toast.success('Embed settings saved.')
-    }
-    catch (error) {
+    } catch (error) {
       toast.error((error as Error).message)
-    }
-    finally {
+    } finally {
       setSaving(false)
     }
   }
@@ -77,9 +77,7 @@ export function EmbedSettingsForm({ communityId, communityName, communitySlug, i
           className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
         >
           <ChevronLeftIcon className="size-4" />
-          Back to
-          {' '}
-          {communityName}
+          Back to {communityName}
         </Link>
         <h1 className="mt-3 text-2xl font-bold">Embed settings</h1>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -94,7 +92,7 @@ export function EmbedSettingsForm({ communityId, communityName, communitySlug, i
           <p className="text-xs text-muted-foreground">How the embed renders inside the host page.</p>
         </div>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-          {MODE_OPTIONS.map(opt => (
+          {MODE_OPTIONS.map((opt) => (
             <button
               key={opt.value}
               type="button"
@@ -114,7 +112,7 @@ export function EmbedSettingsForm({ communityId, communityName, communitySlug, i
           <Input
             id="accent"
             value={accent}
-            onChange={e => setAccent(e.target.value)}
+            onChange={(e) => setAccent(e.target.value)}
             placeholder="#4f8cff or oklch(0.66 0.18 250)"
             maxLength={64}
           />
@@ -129,18 +127,14 @@ export function EmbedSettingsForm({ communityId, communityName, communitySlug, i
         <div>
           <h2 className="text-sm font-semibold">Allowed domains</h2>
           <p className="text-xs text-muted-foreground">
-            Restrict where the embed can be loaded. Leave empty to allow any site (recommended for v1).
-            Use
-            {' '}
-            <code>*.example.com</code>
-            {' '}
-            to match any subdomain.
+            Restrict where the embed can be loaded. Leave empty to allow any site (recommended for v1). Use{' '}
+            <code>*.example.com</code> to match any subdomain.
           </p>
         </div>
         <div className="flex gap-2">
           <Input
             value={domainInput}
-            onChange={e => setDomainInput(e.target.value)}
+            onChange={(e) => setDomainInput(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 e.preventDefault()
@@ -149,29 +143,32 @@ export function EmbedSettingsForm({ communityId, communityName, communitySlug, i
             }}
             placeholder="bbc.com or *.bbc.com"
           />
-          <Button variant="outline" onClick={addDomain}>Add</Button>
+          <Button variant="outline" onClick={addDomain}>
+            Add
+          </Button>
         </div>
-        {domains.length === 0
-          ? (
-              <p className="text-xs text-muted-foreground italic">No restrictions — embed anywhere.</p>
-            )
-          : (
-              <ul className="flex flex-wrap gap-1.5">
-                {domains.map(domain => (
-                  <li key={domain} className="inline-flex items-center gap-1.5 rounded-sm border border-border bg-background px-2 py-1 text-xs">
-                    {domain}
-                    <button
-                      type="button"
-                      onClick={() => removeDomain(domain)}
-                      className="text-muted-foreground hover:text-foreground"
-                      aria-label={`Remove ${domain}`}
-                    >
-                      <XIcon className="size-3" />
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
+        {domains.length === 0 ? (
+          <p className="text-xs text-muted-foreground italic">No restrictions — embed anywhere.</p>
+        ) : (
+          <ul className="flex flex-wrap gap-1.5">
+            {domains.map((domain) => (
+              <li
+                key={domain}
+                className="inline-flex items-center gap-1.5 rounded-sm border border-border bg-background px-2 py-1 text-xs"
+              >
+                {domain}
+                <button
+                  type="button"
+                  onClick={() => removeDomain(domain)}
+                  className="text-muted-foreground hover:text-foreground"
+                  aria-label={`Remove ${domain}`}
+                >
+                  <XIcon className="size-3" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
       </Card>
 
       <div className="flex justify-end">

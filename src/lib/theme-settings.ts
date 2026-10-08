@@ -1,4 +1,4 @@
-import { cacheTag } from 'next/cache'
+import { cacheLife, cacheTag } from 'next/cache'
 
 import type { CustomJavascriptCodeConfig } from '@/lib/custom-javascript-code'
 import type { ResolvedThemeConfig, ThemeOverrides, ThemePresetId, ThemeRadius } from '@/lib/theme'
@@ -73,7 +73,7 @@ export function validateThemeMode(value: string | null | undefined): ThemeMode {
   return 'both'
 }
 
-type SettingsGroup = Record<string, { value: string, updated_at: string }>
+type SettingsGroup = Record<string, { value: string; updated_at: string }>
 interface SettingsMap {
   [group: string]: SettingsGroup | undefined
 }
@@ -138,6 +138,8 @@ export interface RuntimeThemeState {
   site: ThemeSiteIdentity
   source: RuntimeThemeSource
   themeMode: ThemeMode
+  /** False when the theme/site values are fallback output from an error or missing DB. */
+  cacheable: boolean
 }
 
 export interface ThemeSettingsFormState {
@@ -557,6 +559,7 @@ function buildDefaultThemeState(): RuntimeThemeState {
     site: createDefaultThemeSiteIdentity(),
     source: 'default',
     themeMode: 'both',
+    cacheable: false,
   }
 }
 
@@ -842,6 +845,7 @@ async function loadCachedRuntimeThemeState(): Promise<RuntimeThemeState> {
   const { data: allSettings, error } = await SettingsRepository.getSettings()
 
   if (error) {
+    cacheLife('default')
     return defaults
   }
 
@@ -915,6 +919,13 @@ async function loadCachedRuntimeThemeState(): Promise<RuntimeThemeState> {
     : defaults.theme
 
   const site = normalizedSite?.data ? buildThemeSiteIdentity(normalizedSite.data) : defaults.site
+  const cacheable = !normalizedTheme?.error && !normalizedSite?.error
+
+  if (cacheable) {
+    cacheLife('max')
+  } else {
+    cacheLife('default')
+  }
 
   const themeModeRaw = themeSettings?.[THEME_MODE_KEY]?.value ?? ''
   const themeMode = validateThemeMode(themeModeRaw)
@@ -924,6 +935,7 @@ async function loadCachedRuntimeThemeState(): Promise<RuntimeThemeState> {
     site,
     source: normalizedTheme?.data || normalizedSite?.data ? 'settings' : 'default',
     themeMode,
+    cacheable,
   }
 }
 

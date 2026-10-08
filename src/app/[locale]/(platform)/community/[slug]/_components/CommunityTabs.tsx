@@ -1,10 +1,13 @@
 'use client'
 
-import type { CommunityTabContext, CommunityTabId } from './community-tabs/types'
 import { Activity, Info, Scale, Star, TrendingUp, Users } from 'lucide-react'
 import { useState } from 'react'
+
 import { useTabIndicatorPosition } from '@/hooks/useTabIndicatorPosition'
 import { cn } from '@/lib/utils'
+
+import type { CommunityTabContext, CommunityTabId } from './community-tabs/types'
+
 import { AboutTab } from './community-tabs/AboutTab'
 import { ActivityTab } from './community-tabs/ActivityTab'
 import { JuryTab } from './community-tabs/JuryTab'
@@ -12,7 +15,7 @@ import { MarketsTab } from './community-tabs/MarketsTab'
 import { MembersTab } from './community-tabs/MembersTab'
 import { ReviewsTab } from './community-tabs/ReviewsTab'
 
-const TABS: { id: CommunityTabId, label: string, icon: React.ElementType }[] = [
+const TABS: { id: CommunityTabId; label: string; icon: React.ElementType }[] = [
   { id: 'markets', label: 'Markets', icon: TrendingUp },
   { id: 'activity', label: 'Activity', icon: Activity },
   { id: 'members', label: 'Members', icon: Users },
@@ -42,7 +45,9 @@ export default function CommunityTabs(props: CommunityTabContext) {
             return (
               <button
                 key={tab.id}
-                ref={(el) => { tabRef.current[index] = el }}
+                ref={(el) => {
+                  tabRef.current[index] = el
+                }}
                 type="button"
                 onClick={() => setActiveTab(tab.id)}
                 className={cn(
@@ -58,10 +63,9 @@ export default function CommunityTabs(props: CommunityTabContext) {
         </div>
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-border/80" />
         <div
-          className={cn(
-            'pointer-events-none absolute bottom-0 h-0.5 bg-primary',
-            { 'transition-all duration-300 ease-out': isInitialized },
-          )}
+          className={cn('pointer-events-none absolute bottom-0 h-0.5 bg-primary', {
+            'transition-all duration-300 ease-out': isInitialized,
+          })}
           style={{ left: `${indicatorStyle.left}px`, width: `${indicatorStyle.width}px` }}
         />
       </div>
@@ -72,19 +76,12 @@ export default function CommunityTabs(props: CommunityTabContext) {
         )}
         {activeTab === 'activity' && <ActivityTab communityId={community.id} />}
         {activeTab === 'members' && (
-          <MembersTab
-            community={community}
-            members={members}
-            memberRole={memberRole}
-            currentUserId={currentUserId}
-          />
+          <MembersTab community={community} members={members} memberRole={memberRole} currentUserId={currentUserId} />
         )}
         {activeTab === 'jury' && (
           <JuryTab community={community} members={members} markets={markets} isJuror={isJuror} />
         )}
-        {activeTab === 'reviews' && (
-          <ReviewsTab community={community} reviews={reviews} memberRole={memberRole} />
-        )}
+        {activeTab === 'reviews' && <ReviewsTab community={community} reviews={reviews} memberRole={memberRole} />}
         {activeTab === 'about' && <AboutTab community={community} />}
       </div>
     </div>

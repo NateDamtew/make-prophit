@@ -1,9 +1,5 @@
 import type { ReactNode } from 'react'
 
-import { getExtracted, setRequestLocale } from 'next-intl/server'
-
-import type { SupportedLocale } from '@/i18n/locales'
-
 import { PlatformLayoutFooter } from '@/app/[locale]/(platform)/(home)/_components/PlatformFooter'
 import AffiliateQueryHandler from '@/app/[locale]/(platform)/_components/AffiliateQueryHandler'
 import Header from '@/app/[locale]/(platform)/_components/Header'
@@ -15,30 +11,13 @@ import { FilterProvider } from '@/app/[locale]/(platform)/_providers/FilterProvi
 import PlatformNavigationProvider from '@/app/[locale]/(platform)/_providers/PlatformNavigationProvider'
 import { QuickViewProvider } from '@/app/[locale]/(platform)/_providers/QuickViewProvider'
 import { TradingOnboardingProvider } from '@/app/[locale]/(platform)/_providers/TradingOnboardingProvider'
-import { loadPlatformMainTags } from '@/lib/platform-main-tags'
-import { buildChildParentMap, buildPlatformNavigationTags } from '@/lib/platform-navigation'
+import { loadPlatformLayoutNavigation } from '@/lib/platform-layout-navigation'
 import AppKitProvider from '@/providers/AppKitProvider'
+import { CommunityFollowsProvider } from '@/providers/CommunityFollowsProvider'
+import TradeAlertsProvider from '@/providers/TradeAlertsProvider'
 
-async function loadPlatformLayoutNavigation(locale: SupportedLocale) {
-  'use cache'
-
-  const t = await getExtracted({ locale })
-  const { data: mainTags, globalChilds } = await loadPlatformMainTags(locale)
-
-  return {
-    tags: buildPlatformNavigationTags({
-      mainTags: mainTags ?? [],
-      globalChilds,
-      trendingLabel: t('Trending'),
-      newLabel: t('New'),
-      communitiesLabel: t('Communities'),
-    }),
-    childParentMap: buildChildParentMap(mainTags ?? []),
-  }
-}
-
-async function PlatformLayoutContent({ children, locale }: { children: ReactNode; locale: SupportedLocale }) {
-  const { tags, childParentMap } = await loadPlatformLayoutNavigation(locale)
+async function PlatformLayoutContent({ children }: { children: ReactNode }) {
+  const { tags, childParentMap } = await loadPlatformLayoutNavigation()
 
   return (
     <TradingOnboardingProvider>
@@ -62,16 +41,14 @@ async function PlatformLayoutContent({ children, locale }: { children: ReactNode
   )
 }
 
-export default async function PlatformLayout({ params, children }: LayoutProps<'/[locale]'>) {
-  const { locale } = await params
-  const resolvedLocale = locale as SupportedLocale
-  setRequestLocale(resolvedLocale)
-
+export default function PlatformLayout({ children }: LayoutProps<'/[locale]'>) {
   return (
     <AppKitProvider>
-      <PlatformLayoutContent locale={resolvedLocale}>
-        {children}
-      </PlatformLayoutContent>
+      <CommunityFollowsProvider>
+        <TradeAlertsProvider>
+          <PlatformLayoutContent>{children}</PlatformLayoutContent>
+        </TradeAlertsProvider>
+      </CommunityFollowsProvider>
     </AppKitProvider>
   )
 }

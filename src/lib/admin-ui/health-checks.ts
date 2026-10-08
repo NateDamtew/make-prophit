@@ -1,4 +1,5 @@
 import { sql } from 'drizzle-orm'
+
 import { db } from '@/lib/drizzle'
 
 export type HealthState = 'ok' | 'warn' | 'down'
@@ -38,8 +39,7 @@ export async function runHealthChecks(): Promise<HealthReport> {
     const start = Date.now()
     await db.execute(sql`SELECT 1`)
     checks.push({ name: 'Database', state: 'ok', detail: `Reachable (${Date.now() - start}ms)` })
-  }
-  catch {
+  } catch {
     checks.push({ name: 'Database', state: 'down', detail: 'Unreachable' })
   }
 

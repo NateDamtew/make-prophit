@@ -1,32 +1,37 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, mock } from 'bun:test'
 
-const mocks = vi.hoisted(() => ({
-  getCurrentUser: vi.fn(),
-  loadOpenRouterProviderSettings: vi.fn(),
-  requestOpenRouterCompletion: vi.fn(),
+import { hoisted, stubGlobal } from '../bun-test-helpers'
+
+const mocks = hoisted(() => ({
+  getCurrentUser: mock(),
+  loadOpenRouterProviderSettings: mock(),
+  requestOpenRouterCompletion: mock(),
+  requestOpenRouterDecisions: mock(),
 }))
+const OPTIONAL_DECISION_REVIEW_TEST_MAX_MS = 2500
 
-vi.mock('@/lib/db/queries/user', () => ({
+void mock.module('@/lib/db/queries/user', () => ({
   UserRepository: {
     getCurrentUser: (...args: unknown[]) => mocks.getCurrentUser(...args),
   },
 }))
 
-vi.mock('@/lib/ai/market-context-config', () => ({
+void mock.module('@/lib/ai/market-context-config', () => ({
   loadOpenRouterProviderSettings: (...args: unknown[]) => mocks.loadOpenRouterProviderSettings(...args),
 }))
 
-vi.mock('@/lib/ai/openrouter', () => ({
+void mock.module('@/lib/ai/openrouter', () => ({
   requestOpenRouterCompletion: (...args: unknown[]) => mocks.requestOpenRouterCompletion(...args),
+  requestOpenRouterDecisions: (...args: unknown[]) => mocks.requestOpenRouterDecisions(...args),
 }))
 
 describe('event creation AI route', () => {
   beforeEach(() => {
-    vi.resetModules()
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('Gamma unavailable')))
+    stubGlobal('fetch', mock().mockRejectedValue(new Error('Gamma unavailable')))
     mocks.getCurrentUser.mockReset()
     mocks.loadOpenRouterProviderSettings.mockReset()
     mocks.requestOpenRouterCompletion.mockReset()
+    mocks.requestOpenRouterDecisions.mockReset()
   })
 
   it('keeps generated rules URLs and abbreviations intact when formatting paragraphs', async () => {
@@ -78,5 +83,102 @@ describe('event creation AI route', () => {
     expect(payload.rules).not.toContain('example. xyz')
     expect(payload.rules).not.toContain('app. dev')
     expect(payload.rules).not.toContain('result.This')
+
+    const generationMessages = mocks.requestOpenRouterCompletion.mock.calls[0]?.[0] as Array<{ content?: string }>
+    expect(generationMessages[0]?.content).toContain('MUST always be written in English')
+  })
+
+  it('asks the AI content check to flag non-English resolution rules', async () => {
+    mocks.getCurrentUser.mockResolvedValue({ id: 'admin-1', is_admin: true })
+    mocks.loadOpenRouterProviderSettings.mockResolvedValue({ apiKey: 'openrouter-key', model: 'test-model' })
+    mocks.requestOpenRouterCompletion.mockResolvedValueOnce(
+      JSON.stringify({
+        ok: false,
+        errors: [{ code: 'english', reason: 'Resolution rules must be in English.', step: 3 }],
+        warnings: [],
+      }),
+    )
+
+    const { POST } = await import('@/app/[locale]/admin/api/event-creations/ai/route')
+    const response = await POST(
+      new Request('https://example.com/admin/api/event-creations/ai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode: 'check_content',
+          data: {
+            title: 'Will this market resolve?',
+            endDateIso: '2026-07-20T00:00:00Z',
+            mainCategorySlug: 'politics',
+            categories: ['politics', 'government', 'elections', 'world'],
+            marketMode: 'binary',
+            binaryQuestion: 'Will this market resolve?',
+            binaryOutcomeYes: 'Yes',
+            binaryOutcomeNo: 'No',
+            resolutionRules:
+              'Este mercado será resuelto como Sí si la condición se cumple antes de la fecha límite especificada.',
+          },
+        }),
+      }),
+    )
+
+    expect(response.status).toBe(200)
+    const payload = await response.json()
+    expect(payload.errors).toContainEqual({
+      code: 'english',
+      reason: 'Resolution rules must be in English.',
+      step: 3,
+    })
+
+    const checkMessages = mocks.requestOpenRouterCompletion.mock.calls[0]?.[0] as Array<{ content?: string }>
+    expect(checkMessages[0]?.content).toContain('Resolution rules must be written in English')
+  })
+
+  it('does not wait for a slow optional Decision review', async () => {
+    mocks.getCurrentUser.mockResolvedValue({ id: 'admin-1', is_admin: true })
+    mocks.loadOpenRouterProviderSettings.mockResolvedValue({
+      apiKey: 'openrouter-key',
+      model: 'test-model',
+      decisionModel: 'typesafe/jev-1.13',
+    })
+    mocks.requestOpenRouterCompletion.mockResolvedValue(
+      JSON.stringify({
+        ok: true,
+        errors: [],
+        warnings: [],
+      }),
+    )
+    mocks.requestOpenRouterDecisions.mockImplementation(() => new Promise(() => {}))
+
+    const { POST } = await import('@/app/[locale]/admin/api/event-creations/ai/route')
+    const startedAt = Date.now()
+    const response = await POST(
+      new Request('https://example.com/admin/api/event-creations/ai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode: 'check_content',
+          data: {
+            title: 'Will this market resolve?',
+            endDateIso: '2026-07-20T00:00:00Z',
+            mainCategorySlug: 'politics',
+            categories: ['politics', 'government', 'elections', 'world'],
+            marketMode: 'binary',
+            binaryQuestion: 'Will this market resolve?',
+            binaryOutcomeYes: 'Yes',
+            binaryOutcomeNo: 'No',
+            resolutionRules: 'Resolve as Yes if the stated condition occurs before the deadline.',
+          },
+        }),
+      }),
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({ ok: true, warnings: [] })
+    expect(Date.now() - startedAt).toBeLessThan(OPTIONAL_DECISION_REVIEW_TEST_MAX_MS)
+    expect(mocks.requestOpenRouterDecisions).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ timeoutMs: 1500 }),
+    )
   })
 })

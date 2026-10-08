@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+
 import { createDepositWalletAction } from '@/app/[locale]/(platform)/_actions/deposit-wallet'
 
 /**

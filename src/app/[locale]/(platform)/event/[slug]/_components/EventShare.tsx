@@ -1,10 +1,12 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { CheckIcon, ShareIcon } from 'lucide-react'
+import { useExtracted } from 'next-intl'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import type { Event } from '@/types'
 
 import { getMarketSeriesLabel } from '@/app/[locale]/(platform)/event/[slug]/_utils/EventChartUtils'
+import { isMarketResolved } from '@/app/[locale]/(platform)/event/[slug]/_utils/eventMarketUtils'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -30,53 +32,98 @@ interface EventShareProps {
 
 interface AffiliateToastData {
   affiliateSharePercent: number | null
-  builderTakerFeePercent: number | null
+  builderTakerSharePercent: number | null
 }
 
 function getEmptyAffiliateToastData(): AffiliateToastData {
   return {
     affiliateSharePercent: null,
-    builderTakerFeePercent: null,
+    builderTakerSharePercent: null,
   }
 }
 
 function parseAffiliateToastData(result: {
   affiliateSharePercent: string
-  builderTakerFeePercent: string
+  builderTakerSharePercent: string
 }): AffiliateToastData {
   const shareParsed = Number.parseFloat(result.affiliateSharePercent)
-  const feeParsed = Number.parseFloat(result.builderTakerFeePercent)
+  const feeParsed = Number.parseFloat(result.builderTakerSharePercent)
 
   return {
     affiliateSharePercent: Number.isFinite(shareParsed) && shareParsed > 0 ? shareParsed : null,
-    builderTakerFeePercent: Number.isFinite(feeParsed) && feeParsed > 0 ? feeParsed : null,
+    builderTakerSharePercent: Number.isFinite(feeParsed) && feeParsed > 0 ? feeParsed : null,
   }
 }
 
 const MENU_CLOSE_DELAY_MS = 120
 const COPY_FEEDBACK_DURATION_MS = 1600
+const SHARE_SUCCESS_FEEDBACK_DURATION_MS = 2000
+
+function getMarketEndTime(market: Event['markets'][number]) {
+  if (!market.end_time) {
+    return null
+  }
+
+  const parsed = Date.parse(market.end_time)
+  return Number.isNaN(parsed) ? null : parsed
+}
+
+function sortMarketsByEndTime(markets: Event['markets']) {
+  return markets
+    .map((market, index) => ({
+      market,
+      index,
+      endTime: getMarketEndTime(market),
+    }))
+    .sort((a, b) => {
+      if (a.endTime == null && b.endTime == null) {
+        return a.index - b.index
+      }
+      if (a.endTime == null) {
+        return 1
+      }
+      if (b.endTime == null) {
+        return -1
+      }
+      return a.endTime - b.endTime
+    })
+    .map((item) => item.market)
+}
 
 function useCopyFeedback() {
   const [copiedKey, setCopiedKey] = useState<string | null>(null)
+  const [shareSuccess, setShareSuccess] = useState(false)
   const copyTimeoutRef = useRef<number | null>(null)
+  const shareSuccessTimeoutRef = useRef<number | null>(null)
 
-  useEffect(function clearCopyTimeoutOnUnmount() {
-    return function clearCopyTimeout() {
-      if (copyTimeoutRef.current) {
+  useEffect(function clearFeedbackTimeoutsOnUnmount() {
+    return function clearFeedbackTimeouts() {
+      if (copyTimeoutRef.current != null) {
         window.clearTimeout(copyTimeoutRef.current)
+      }
+      if (shareSuccessTimeoutRef.current != null) {
+        window.clearTimeout(shareSuccessTimeoutRef.current)
       }
     }
   }, [])
 
   function markKeyAsCopied(key: string) {
     setCopiedKey(key)
-    if (copyTimeoutRef.current) {
+    if (copyTimeoutRef.current != null) {
       window.clearTimeout(copyTimeoutRef.current)
     }
     copyTimeoutRef.current = window.setTimeout(setCopiedKey, COPY_FEEDBACK_DURATION_MS, null)
   }
 
-  return { copiedKey, markKeyAsCopied }
+  function markShareSuccess(duration: number) {
+    setShareSuccess(true)
+    if (shareSuccessTimeoutRef.current != null) {
+      window.clearTimeout(shareSuccessTimeoutRef.current)
+    }
+    shareSuccessTimeoutRef.current = window.setTimeout(setShareSuccess, duration, false)
+  }
+
+  return { copiedKey, markKeyAsCopied, markShareSuccess, shareSuccess }
 }
 
 function useShareMenuHover() {
@@ -167,7 +214,7 @@ function useAffiliateToastData({ affiliateCode, siteName }: { affiliateCode: str
     maybeShowAffiliateToast({
       affiliateCode,
       affiliateSharePercent: toastData.affiliateSharePercent,
-      builderTakerFeePercent: toastData.builderTakerFeePercent,
+      builderTakerSharePercent: toastData.builderTakerSharePercent,
       siteName,
       context: 'link',
     })
@@ -245,14 +292,22 @@ function useShareUrlBuilder(affiliateCode: string) {
 }
 
 export default function EventShare({ event }: EventShareProps) {
+  const t = useExtracted()
   const site = useSiteIdentity()
   const user = useUser()
-  const affiliateCode = user?.affiliate_code?.trim() ?? ''
+  const affiliateCode = user?.username?.trim() || user?.affiliate_code?.trim() || ''
   const isMultiMarket = event.total_markets_count > 1
   const eventPath = resolveEventPagePath(event)
+  const { activeMarkets, resolvedMarkets } = useMemo(() => {
+    const shareableMarkets = event.markets.filter((market) => market.slug)
 
-  const [shareSuccess, setShareSuccess] = useState(false)
-  const { copiedKey, markKeyAsCopied } = useCopyFeedback()
+    return {
+      activeMarkets: sortMarketsByEndTime(shareableMarkets.filter((market) => !isMarketResolved(market))),
+      resolvedMarkets: sortMarketsByEndTime(shareableMarkets.filter((market) => isMarketResolved(market))),
+    }
+  }, [event.markets])
+
+  const { copiedKey, markKeyAsCopied, markShareSuccess, shareSuccess } = useCopyFeedback()
   const {
     shareMenuOpen,
     setShareMenuOpen,
@@ -268,13 +323,39 @@ export default function EventShare({ event }: EventShareProps) {
   const { maybeHandleDebugCopy } = useDebugCopy(event)
   const buildShareUrl = useShareUrlBuilder(affiliateCode)
 
-  function handleWrapperPointerEnter() {
+  useEffect(
+    function closeShareMenuOnScroll() {
+      if (!shareMenuOpen) {
+        return
+      }
+
+      function closeMenu() {
+        setShareMenuOpen(false)
+      }
+
+      window.addEventListener('scroll', closeMenu, { passive: true })
+      return function removeScrollListener() {
+        window.removeEventListener('scroll', closeMenu)
+      }
+    },
+    [shareMenuOpen, setShareMenuOpen],
+  )
+
+  function handleWrapperPointerEnter(pointerEvent: React.PointerEvent) {
+    if (pointerEvent.pointerType !== 'mouse') {
+      return
+    }
+
     clearCloseTimeout()
     setShareMenuOpen(true)
     prefetchAffiliateToastData()
   }
 
   function handleWrapperPointerLeave(pointerEvent: React.PointerEvent) {
+    if (pointerEvent.pointerType !== 'mouse') {
+      return
+    }
+
     if (relatedTargetIsInsideWrapper(pointerEvent.relatedTarget)) {
       return
     }
@@ -290,8 +371,7 @@ export default function EventShare({ event }: EventShareProps) {
 
     if (result === 'copied') {
       // Desktop / no native sheet — show the inline "copied" checkmark.
-      setShareSuccess(true)
-      setTimeout(setShareSuccess, 2000, false)
+      markShareSuccess(SHARE_SUCCESS_FEEDBACK_DURATION_MS)
     }
 
     // Reinforce the referral earning on both native share and copy.
@@ -306,11 +386,31 @@ export default function EventShare({ event }: EventShareProps) {
 
     if (result === 'copied') {
       markKeyAsCopied(key)
+      markShareSuccess(SHARE_SUCCESS_FEEDBACK_DURATION_MS)
+      setShareMenuOpen(false)
     }
 
     if (result === 'shared' || result === 'copied') {
       await showAffiliateToast()
     }
+  }
+
+  function renderMarketItem(market: Event['markets'][number]) {
+    const label = getMarketSeriesLabel(market)
+    const key = `market-${market.condition_id}`
+
+    return (
+      <DropdownMenuItem
+        key={market.condition_id}
+        closeOnClick={false}
+        onClick={() => {
+          void handleCopy(key, resolveEventMarketPath(event, market.slug))
+        }}
+        className={cn('py-2 text-sm font-semibold', copiedKey === key ? 'text-foreground' : 'text-muted-foreground')}
+      >
+        {copiedKey === key ? t('Copied!') : label}
+      </DropdownMenuItem>
+    )
   }
 
   if (isMultiMarket) {
@@ -334,19 +434,19 @@ export default function EventShare({ event }: EventShareProps) {
                 variant="ghost"
                 size="icon"
                 className={cn(headerIconButtonClass, 'size-auto p-0')}
-                aria-label="Copy event link"
+                aria-label={t('Copy event link')}
                 onPointerDown={maybeHandleDebugCopy}
               />
             }
           >
-            <ShareIcon className="size-4" />
+            {shareSuccess ? <CheckIcon className="size-4 text-primary" /> : <ShareIcon className="size-4" />}
           </DropdownMenuTrigger>
           <DropdownMenuContent
             side="bottom"
             align="end"
             sideOffset={8}
             collisionPadding={16}
-            className="max-h-80 w-48 border border-border bg-background p-0 text-foreground shadow-xl"
+            className="max-h-56 w-48 overscroll-contain border border-border bg-background p-1 text-foreground shadow-xl"
           >
             <DropdownMenuItem
               closeOnClick={false}
@@ -354,36 +454,16 @@ export default function EventShare({ event }: EventShareProps) {
                 void handleCopy('event', eventPath)
               }}
               className={cn(
-                'rounded-none px-3 py-2.5 text-sm font-semibold transition-colors first:rounded-t-md last:rounded-b-md',
+                'py-2 text-sm font-semibold',
                 copiedKey === 'event' ? 'text-foreground' : 'text-muted-foreground',
-                'hover:bg-muted/70 hover:text-foreground focus:bg-muted',
               )}
             >
-              {copiedKey === 'event' ? 'Copied!' : 'Copy link'}
+              {copiedKey === 'event' ? t('Copied!') : t('Copy link')}
             </DropdownMenuItem>
-            <DropdownMenuSeparator className="my-0 bg-border" />
-            {event.markets
-              .filter((market) => market.slug)
-              .map((market) => {
-                const label = getMarketSeriesLabel(market)
-                const key = `market-${market.condition_id}`
-                return (
-                  <DropdownMenuItem
-                    key={market.condition_id}
-                    closeOnClick={false}
-                    onClick={() => {
-                      void handleCopy(key, resolveEventMarketPath(event, market.slug))
-                    }}
-                    className={cn(
-                      `rounded-none px-3 py-2.5 text-sm font-semibold transition-colors first:rounded-t-md last:rounded-b-md`,
-                      copiedKey === key ? 'text-foreground' : 'text-muted-foreground',
-                      'hover:bg-muted/70 hover:text-foreground focus:bg-muted',
-                    )}
-                  >
-                    {copiedKey === key ? 'Copied!' : label}
-                  </DropdownMenuItem>
-                )
-              })}
+            <DropdownMenuSeparator />
+            {activeMarkets.map(renderMarketItem)}
+            {activeMarkets.length > 0 && resolvedMarkets.length > 0 && <DropdownMenuSeparator />}
+            {resolvedMarkets.map(renderMarketItem)}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
@@ -402,7 +482,7 @@ export default function EventShare({ event }: EventShareProps) {
         }
         void handleShare()
       }}
-      aria-label="Copy event link"
+      aria-label={t('Copy event link')}
     >
       {shareSuccess ? <CheckIcon className="size-4 text-primary" /> : <ShareIcon className="size-4" />}
     </Button>

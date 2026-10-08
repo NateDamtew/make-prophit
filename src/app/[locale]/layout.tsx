@@ -1,16 +1,13 @@
 import type { Metadata, Viewport } from 'next'
 import type { ReactNode } from 'react'
 
-import { hasLocale, NextIntlClientProvider } from 'next-intl'
-import { setRequestLocale } from 'next-intl/server'
-import { cacheTag } from 'next/cache'
+import { NextIntlClientProvider } from 'next-intl'
+import { cacheLife, cacheTag } from 'next/cache'
 import { notFound } from 'next/navigation'
 import Script from 'next/script'
-import { Suspense } from 'react'
 
 import type { SupportedLocale } from '@/i18n/locales'
 import type { RuntimeThemeState } from '@/lib/theme-settings'
-
 
 import CustomJavascriptCode from '@/components/CustomJavascriptCode'
 import GlobalAnnouncementBanner from '@/components/GlobalAnnouncementBanner'
@@ -20,7 +17,7 @@ import PwaServiceWorker from '@/components/PwaServiceWorker'
 import SiteStructuredData from '@/components/seo/SiteStructuredData'
 import TestModeBannerDeferred from '@/components/TestModeBannerDeferred'
 import { loadEnabledLocales } from '@/i18n/locale-settings'
-import { routing } from '@/i18n/routing'
+import { getRootLocale } from '@/i18n/root-locale'
 import { cacheTags } from '@/lib/cache-tags'
 import { openSauceOne } from '@/lib/fonts'
 import { loadGlobalAnnouncementSettings } from '@/lib/global-announcement-settings'
@@ -43,6 +40,11 @@ export async function generateViewport(): Promise<Viewport> {
   cacheTag(cacheTags.settings)
 
   const runtimeTheme = await loadRuntimeThemeState()
+  if (runtimeTheme.cacheable) {
+    cacheLife('max')
+  } else {
+    cacheLife('default')
+  }
   const { lightSurface, darkSurface } = resolvePwaThemeColors(runtimeTheme.theme)
 
   return {
@@ -58,6 +60,11 @@ export async function generateMetadata(): Promise<Metadata> {
   cacheTag(cacheTags.settings)
 
   const runtimeTheme = await loadRuntimeThemeState()
+  if (runtimeTheme.cacheable) {
+    cacheLife('max')
+  } else {
+    cacheLife('default')
+  }
   const site = runtimeTheme.site
   const siteUrl = resolveSiteUrl(process.env)
   const defaultTitle = `${site.name} | ${site.description}`
@@ -114,35 +121,42 @@ export async function generateStaticParams() {
 
 interface LocaleDocumentProps {
   children: ReactNode
-  locale: SupportedLocale
 }
 
-interface LocaleRuntimeData {
+interface LocaleBodyProps extends LocaleDocumentProps {
+  locale: SupportedLocale
+  publicRuntimeConfig: Awaited<ReturnType<typeof getPublicRuntimeConfig>>
+}
+
+interface LocalePublicData {
   globalAnnouncement: Awaited<ReturnType<typeof loadGlobalAnnouncementSettings>>
   hasGlobalAnnouncement: boolean
-  publicRuntimeConfig: ReturnType<typeof getPublicRuntimeConfig>
   runtimeTheme: RuntimeThemeState
 }
 
-async function loadLocaleRuntimeData(locale: SupportedLocale): Promise<LocaleRuntimeData> {
-  await deferPublicShellPrerenderIfNeeded()
+async function loadLocalePublicData(locale: SupportedLocale): Promise<LocalePublicData> {
+  'use cache'
+  cacheTag(cacheTags.settings)
 
   const enabledLocales = await loadEnabledLocales()
   if (!enabledLocales.includes(locale)) {
     notFound()
   }
 
-  const runtimeTheme = await loadRuntimeThemeState()
-  const publicRuntimeConfig = getPublicRuntimeConfig()
-  const globalAnnouncement = await loadGlobalAnnouncementSettings()
+  const [runtimeTheme, globalAnnouncement] = await Promise.all([
+    loadRuntimeThemeState(),
+    loadGlobalAnnouncementSettings(),
+  ])
+  if (runtimeTheme.cacheable) {
+    cacheLife('max')
+  } else {
+    cacheLife('default')
+  }
   const hasGlobalAnnouncement = globalAnnouncement.message.trim().length > 0
-
-  setRequestLocale(locale)
 
   return {
     globalAnnouncement,
     hasGlobalAnnouncement,
-    publicRuntimeConfig,
     runtimeTheme,
   }
 }
@@ -174,28 +188,26 @@ function LocaleBody({
   publicRuntimeConfig,
   runtimeTheme,
   syncRootPreset,
-}: LocaleDocumentProps & LocaleRuntimeData & { syncRootPreset: boolean }) {
+}: LocaleBodyProps & LocalePublicData & { syncRootPreset: boolean }) {
   return (
     <body className="flex min-h-screen flex-col font-sans">
       <Script src="https://telegram.org/js/telegram-web-app.js" strategy="beforeInteractive" />
       <PublicRuntimeConfigScript config={publicRuntimeConfig} />
       <ThemeDocumentState runtimeTheme={runtimeTheme} syncRootPreset={syncRootPreset} />
-      <SiteStructuredData locale={locale} site={runtimeTheme.site} />
+      <SiteStructuredData site={runtimeTheme.site} />
       <PwaServiceWorker />
       <PublicRuntimeConfigProvider config={publicRuntimeConfig}>
         <SiteIdentityProvider site={runtimeTheme.site}>
           <NextIntlClientProvider locale={locale}>
             <AppProviders themeMode={runtimeTheme.themeMode}>
-              {hasGlobalAnnouncement
-                ? (
-                    <GlobalAnnouncementBanner
-                      locale={locale}
-                      message={globalAnnouncement.message}
-                      linkUrl={globalAnnouncement.linkUrl}
-                      disabledOn={globalAnnouncement.disabledOn}
-                    />
-                  )
-                : null}
+              {hasGlobalAnnouncement ? (
+                <GlobalAnnouncementBanner
+                  locale={locale}
+                  message={globalAnnouncement.message}
+                  linkUrl={globalAnnouncement.linkUrl}
+                  disabledOn={globalAnnouncement.disabledOn}
+                />
+              ) : null}
               {IS_TEST_MODE && !globalAnnouncement.disableFaucetBanner && <TestModeBannerDeferred />}
               <PwaInstallStateSync />
               {children}
@@ -208,26 +220,30 @@ function LocaleBody({
   )
 }
 
-async function PrerenderedLocaleDocument({ locale, children }: LocaleDocumentProps) {
-  const runtimeData = await loadLocaleRuntimeData(locale)
+async function PrerenderedLocaleDocument({ children }: LocaleDocumentProps) {
+  const locale = await getRootLocale()
+  const [publicData, publicRuntimeConfig] = await Promise.all([loadLocalePublicData(locale), getPublicRuntimeConfig()])
 
   return (
     <html
       lang={locale}
       dir={locale === 'ar' ? 'rtl' : 'ltr'}
       className={openSauceOne.variable}
-      data-theme-preset={runtimeData.runtimeTheme.theme.presetId}
+      data-theme-preset={publicData.runtimeTheme.theme.presetId}
       suppressHydrationWarning
     >
-      <LocaleBody {...runtimeData} locale={locale} syncRootPreset={false}>
+      <LocaleBody {...publicData} publicRuntimeConfig={publicRuntimeConfig} locale={locale} syncRootPreset={false}>
         {children}
       </LocaleBody>
     </html>
   )
 }
 
-async function RuntimeLocaleDocument({ locale, children }: LocaleDocumentProps) {
-  const runtimeData = await loadLocaleRuntimeData(locale)
+async function RuntimeLocaleDocument({ children }: LocaleDocumentProps) {
+  await deferPublicShellPrerenderIfNeeded()
+
+  const locale = await getRootLocale()
+  const [publicData, publicRuntimeConfig] = await Promise.all([loadLocalePublicData(locale), getPublicRuntimeConfig()])
 
   return (
     <html
@@ -236,25 +252,17 @@ async function RuntimeLocaleDocument({ locale, children }: LocaleDocumentProps) 
       className={openSauceOne.variable}
       suppressHydrationWarning
     >
-      <LocaleBody {...runtimeData} locale={locale} syncRootPreset>
+      <LocaleBody {...publicData} publicRuntimeConfig={publicRuntimeConfig} locale={locale} syncRootPreset>
         {children}
       </LocaleBody>
     </html>
   )
 }
 
-export default async function LocaleLayout({ params, children }: LayoutProps<'/[locale]'>) {
-  const { locale } = await params
-
-  if (!hasLocale(routing.locales, locale)) {
-    notFound()
-  }
-
-  setRequestLocale(locale)
-
+export default async function LocaleLayout({ children }: LayoutProps<'/[locale]'>) {
   return shouldPrerenderPublicShell() ? (
-    <PrerenderedLocaleDocument locale={locale}>{children}</PrerenderedLocaleDocument>
+    <PrerenderedLocaleDocument>{children}</PrerenderedLocaleDocument>
   ) : (
-    <RuntimeLocaleDocument locale={locale}>{children}</RuntimeLocaleDocument>
+    <RuntimeLocaleDocument>{children}</RuntimeLocaleDocument>
   )
 }

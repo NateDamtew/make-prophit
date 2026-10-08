@@ -1,14 +1,12 @@
 import type { Metadata } from 'next'
 
-import { setRequestLocale } from 'next-intl/server'
 import { cacheTag } from 'next/cache'
 import { notFound } from 'next/navigation'
-
-import type { SupportedLocale } from '@/i18n/locales'
 
 import EventContent from '@/app/[locale]/(platform)/event/[slug]/_components/EventContent'
 import EventStructuredData from '@/components/seo/EventStructuredData'
 import { redirect } from '@/i18n/navigation'
+import { getRootLocale } from '@/i18n/root-locale'
 import { cacheTags } from '@/lib/cache-tags'
 import { buildTranslatedEventFaqItems } from '@/lib/event-faq-server'
 import { buildEventPageMetadata } from '@/lib/event-open-graph'
@@ -28,9 +26,8 @@ export async function generateStaticParams() {
 }
 
 export async function generateMetadata({ params }: PageProps<'/[locale]/event/[slug]'>): Promise<Metadata> {
-  const { locale, slug } = await params
-  setRequestLocale(locale)
-  const resolvedLocale = locale as SupportedLocale
+  const { slug } = await params
+  const locale = await getRootLocale()
   if (slug === STATIC_PARAMS_PLACEHOLDER) {
     if (shouldBypassPublicShellPlaceholder(slug)) {
       return {}
@@ -39,13 +36,14 @@ export async function generateMetadata({ params }: PageProps<'/[locale]/event/[s
   }
   return await buildEventPageMetadata({
     eventSlug: slug,
-    locale: resolvedLocale,
+    locale,
   })
 }
 
-async function CachedEventPageContent({ locale, slug }: { locale: SupportedLocale; slug: string }) {
+async function CachedEventPageContent({ slug }: { slug: string }) {
   'use cache'
 
+  const locale = await getRootLocale()
   cacheTag(cacheTags.event(slug))
 
   const eventRoute = await getEventRouteBySlug(slug)
@@ -68,6 +66,10 @@ async function CachedEventPageContent({ locale, slug }: { locale: SupportedLocal
   if (!eventPageData) {
     notFound()
   }
+  const seriesSlug = eventPageData.event.series_slug?.trim() ?? ''
+  if (seriesSlug) {
+    cacheTag(cacheTags.seriesEvents(seriesSlug))
+  }
 
   const faqItems = await buildTranslatedEventFaqItems({
     event: eventPageData.event,
@@ -79,7 +81,6 @@ async function CachedEventPageContent({ locale, slug }: { locale: SupportedLocal
     <>
       <EventStructuredData
         event={eventPageData.event}
-        locale={locale}
         pagePath={resolveEventPagePath(eventPageData.event)}
         site={runtimeTheme.site}
         faqItems={faqItems}
@@ -97,9 +98,7 @@ async function CachedEventPageContent({ locale, slug }: { locale: SupportedLocal
 }
 
 export default async function EventPage({ params }: PageProps<'/[locale]/event/[slug]'>) {
-  const { locale, slug } = await params
-  setRequestLocale(locale)
-  const resolvedLocale = locale as SupportedLocale
+  const { slug } = await params
   if (slug === STATIC_PARAMS_PLACEHOLDER) {
     if (shouldBypassPublicShellPlaceholder(slug)) {
       return null
@@ -107,5 +106,5 @@ export default async function EventPage({ params }: PageProps<'/[locale]/event/[
     notFound()
   }
 
-  return <CachedEventPageContent locale={resolvedLocale} slug={slug} />
+  return <CachedEventPageContent slug={slug} />
 }

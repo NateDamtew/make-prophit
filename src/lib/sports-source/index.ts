@@ -1,9 +1,12 @@
 import type { SportsSourceProvider } from '@/lib/sports-source/providers'
 import type { SportsSourceSearchTeam } from '@/lib/sports-source/search-query'
+import type { SportsSegmentScore } from '@/types'
 
+import { rankCandidatesWithDecisionModel } from '@/lib/ai/decision-model'
 import { loadOpenRouterProviderSettings } from '@/lib/ai/market-context-config'
 import { requestOpenRouterCompletion } from '@/lib/ai/openrouter'
 import { slugifyText } from '@/lib/slug'
+import { resolvePandaScoreSegmentScores, resolveSportsSourceSegmentCount } from '@/lib/sports-segment-score'
 import {
   DEFAULT_SPORTS_SOURCE_PROVIDER_ORDER,
   getConfiguredSportsSourceProviders,
@@ -36,6 +39,8 @@ export interface SportsSourceCandidate {
   homeTeam: SportsSourceTeam | null
   awayTeam: SportsSourceTeam | null
   score: string | null
+  segmentScores?: SportsSegmentScore[] | null
+  segmentCount?: number | null
   period: string | null
   elapsed: string | null
   live: boolean | null
@@ -85,6 +90,7 @@ export interface SportsSourceSuggestParams {
   provider?: string | null
   limit?: number | null
   auth?: SportsSourceAuth | null
+  useDecisionModel?: boolean
 }
 
 interface SportsSourceAuth {
@@ -102,6 +108,7 @@ interface SportsMatchHints {
 
 const DEFAULT_LIMIT = 10
 const MAX_LIMIT = 25
+const DECISION_MODEL_CANDIDATE_LIMIT = MAX_LIMIT
 const REQUEST_TIMEOUT_MS = 12_000
 const YOUTUBE_OR_TWITCH_HOST_PATTERN = /(?:^|\.)(?:youtube\.com|youtu\.be|twitch\.tv)$/i
 const THE_SPORTS_DB_FALLBACK_LIMIT = 100
@@ -968,6 +975,8 @@ function normalizePandaScoreMatch(raw: Record<string, unknown>): SportsSourceCan
     homeTeam: normalizedOpponents[0] ?? null,
     awayTeam: normalizedOpponents[1] ?? null,
     score: buildScore(homeResult?.score, awayResult?.score),
+    segmentScores: resolvePandaScoreSegmentScores(raw.games, opponents),
+    segmentCount: resolveSportsSourceSegmentCount(raw),
     period: status || null,
     elapsed: null,
     live: status === 'running',
@@ -976,6 +985,41 @@ function normalizePandaScoreMatch(raw: Record<string, unknown>): SportsSourceCan
     confidence: 0,
     matchReason: [],
     raw,
+  }
+}
+
+function shouldFetchPandaScoreMatchGames(raw: Record<string, unknown>) {
+  const status = normalizeText(normalizeStringValue(raw.status)).toLowerCase()
+  if (status === 'running' || status === 'finished') {
+    return true
+  }
+
+  const startTime = Date.parse(normalizeStringValue(raw.begin_at))
+  return status !== 'canceled' && Number.isFinite(startTime) && startTime <= Date.now()
+}
+
+async function fetchPandaScoreMatchGames(raw: Record<string, unknown>, matchId: string, token: string) {
+  const videogame =
+    raw.videogame && typeof raw.videogame === 'object' && !Array.isArray(raw.videogame)
+      ? (raw.videogame as Record<string, unknown>)
+      : null
+  const videogameSlug = resolvePandaScoreVideogameSlug(normalizeStringValue(videogame?.slug))
+  const endpoint = videogameSlug ? PANDASCORE_VIDEOGAME_ENDPOINTS[videogameSlug] : null
+  if (!endpoint) {
+    return null
+  }
+
+  try {
+    const payload = await fetchJson(
+      buildPandaScoreMatchesUrl(
+        `/${endpoint}/matches/${encodeURIComponent(matchId)}/games`,
+        PANDASCORE_DATE_SEARCH_LIMIT,
+      ),
+      { Authorization: `Bearer ${token}` },
+    )
+    return Array.isArray(payload) ? payload : null
+  } catch {
+    return null
   }
 }
 
@@ -1004,9 +1048,13 @@ async function resolvePandaScore(params: SportsSourceResolveParams): Promise<Spo
 
   const url = new URL(`https://api.pandascore.co/matches/${encodeURIComponent(id)}`)
   const payload = await fetchJson(url, { Authorization: `Bearer ${token}` })
-  return payload && typeof payload === 'object' && !Array.isArray(payload)
-    ? normalizePandaScoreMatch(payload as Record<string, unknown>)
-    : null
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return null
+  }
+
+  const raw = payload as Record<string, unknown>
+  const games = shouldFetchPandaScoreMatchGames(raw) ? await fetchPandaScoreMatchGames(raw, id, token) : null
+  return normalizePandaScoreMatch({ ...raw, ...(games?.length ? { games } : {}) })
 }
 
 function normalizeTheSportsDbEvent(raw: Record<string, unknown>): SportsSourceCandidate | null {
@@ -1376,6 +1424,7 @@ export async function findSportsEvents(params: SportsSourceSuggestParams) {
     return []
   }
   const searchQuery = hints.teams.length >= 2 ? `${hints.teams[0]} vs ${hints.teams[1]}` : query
+  const candidateLimit = params.useDecisionModel ? Math.max(limit, DECISION_MODEL_CANDIDATE_LIMIT) : limit
 
   const candidates = await searchSportsEvents({
     q: searchQuery,
@@ -1386,11 +1435,11 @@ export async function findSportsEvents(params: SportsSourceSuggestParams) {
     category: params.category,
     tags: params.tags,
     provider: params.provider,
-    limit,
+    limit: candidateLimit,
     auth: params.auth,
   })
 
-  return candidates
+  const scoredCandidates = candidates
     .map((candidate) => {
       const scored = scoreSportsCandidate(params, candidate, hints)
       return {
@@ -1400,5 +1449,46 @@ export async function findSportsEvents(params: SportsSourceSuggestParams) {
       }
     })
     .sort((left, right) => right.confidence - left.confidence)
-    .slice(0, limit)
+
+  if (params.useDecisionModel && scoredCandidates.length > 1) {
+    try {
+      const openRouterSettings = await loadOpenRouterProviderSettings()
+      if (openRouterSettings.apiKey && openRouterSettings.decisionModel) {
+        return (
+          await rankCandidatesWithDecisionModel({
+            apiKey: openRouterSettings.apiKey,
+            model: openRouterSettings.decisionModel,
+            candidates: scoredCandidates,
+            state: {
+              title: params.title,
+              question: params.question,
+              outcomes: params.outcomes,
+              sport: hints.sport,
+              league: hints.league,
+              date: hints.date,
+              category: params.category,
+            },
+            serializeCandidate: (candidate) => ({
+              provider: candidate.provider,
+              eventName: candidate.eventName,
+              sport: candidate.sportSlug,
+              league: candidate.leagueSlug,
+              date: candidate.eventDate ?? candidate.startTime,
+              homeTeam: candidate.homeTeam?.name,
+              awayTeam: candidate.awayTeam?.name,
+              live: candidate.live,
+              score: candidate.score,
+            }),
+            buildInstructions: (_candidate, index) =>
+              `Score candidate ${index} for how well it matches the requested sports or esports event. Match the teams, sport, league, date, and event type; do not reward generic team-name overlap alone.`,
+            timeoutMs: 6_000,
+          })
+        ).slice(0, limit)
+      }
+    } catch (error) {
+      console.error('Sports decision model ranking failed:', error)
+    }
+  }
+
+  return scoredCandidates.slice(0, limit)
 }

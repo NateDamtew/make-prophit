@@ -2,7 +2,7 @@
 
 import type { Route } from 'next'
 import type { ComponentProps, ReactNode } from 'react'
-import type { SupportedLocale } from '@/i18n/locales'
+
 import {
   BookOpenIcon,
   ChartLineIcon,
@@ -14,20 +14,20 @@ import {
   MenuIcon,
   SearchIcon,
   SparkleIcon,
-  TrophyIcon,
-  UnplugIcon,
 } from 'lucide-react'
 import { useExtracted, useLocale } from 'next-intl'
 import { lazy, Suspense, useEffect, useState } from 'react'
+
+import type { SupportedLocale } from '@/i18n/locales'
+
 import SearchDiscoveryContent from '@/app/[locale]/(platform)/_components/SearchDiscoveryContent'
 import { MOBILE_BOTTOM_NAV_OFFSET } from '@/app/[locale]/(platform)/_lib/mobile-bottom-nav'
-import { toast } from '@/components/ui/toast'
 import AppLink from '@/components/AppLink'
 import LocaleFlag from '@/components/LocaleFlag'
-import PwaInstallIosInstructions from '@/components/PwaInstallIosInstructions'
-import ThemeSelector from '@/components/ThemeSelector'
+import PwaInstallDialog from '@/components/PwaInstallDialog'
 import { Button } from '@/components/ui/button'
 import { Drawer, DrawerClose, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer'
+import { toast } from '@/components/ui/toast'
 import { useAppKit } from '@/hooks/useAppKit'
 import { useHasHydrated } from '@/hooks/useHasHydrated'
 import { usePwaInstall } from '@/hooks/usePwaInstall'
@@ -36,7 +36,6 @@ import { usePathname, useRouter } from '@/i18n/navigation'
 import { authClient } from '@/lib/auth-client'
 import { stripLocalePrefix, withLocalePrefix } from '@/lib/locale-path'
 import { cn } from '@/lib/utils'
-import { useThemeMode } from '@/providers/ThemeModeProvider'
 import { useUser } from '@/stores/useUser'
 
 const HeaderSearch = lazy(() => import('@/app/[locale]/(platform)/_components/HeaderSearch'))
@@ -59,6 +58,7 @@ function useMobileBottomNavState() {
   const [searchFocusTrigger, setSearchFocusTrigger] = useState(0)
   const [isGuestMenuOpen, setIsGuestMenuOpen] = useState(false)
   const [isHowItWorksOpen, setIsHowItWorksOpen] = useState(false)
+  const [isInstallDialogOpen, setIsInstallDialogOpen] = useState(false)
 
   return {
     isSearchOpen,
@@ -69,16 +69,17 @@ function useMobileBottomNavState() {
     setIsGuestMenuOpen,
     isHowItWorksOpen,
     setIsHowItWorksOpen,
+    isInstallDialogOpen,
+    setIsInstallDialogOpen,
   }
 }
 
 function MobileBottomNavContent({ pathname }: MobileBottomNavContentProps) {
   const t = useExtracted()
   const router = useRouter()
-  const { open } = useAppKit()
+  const { open: openAppKit } = useAppKit()
   const { data: session } = useSession()
   const user = useUser()
-  const themeMode = useThemeMode()
   const hasHydrated = useHasHydrated()
   const { canShowInstallUi, isIos, isPrompting, requestInstall } = usePwaInstall()
   const {
@@ -90,6 +91,8 @@ function MobileBottomNavContent({ pathname }: MobileBottomNavContentProps) {
     setIsGuestMenuOpen,
     isHowItWorksOpen,
     setIsHowItWorksOpen,
+    isInstallDialogOpen,
+    setIsInstallDialogOpen,
   } = useMobileBottomNavState()
 
   const isAuthenticated = hasHydrated && (Boolean(session?.user) || Boolean(user))
@@ -115,7 +118,7 @@ function MobileBottomNavContent({ pathname }: MobileBottomNavContentProps) {
       return
     }
 
-    setSearchFocusTrigger(prev => prev + 1)
+    setSearchFocusTrigger((prev) => prev + 1)
   }
 
   function resetSearchDrawerInteractionState() {
@@ -155,19 +158,15 @@ function MobileBottomNavContent({ pathname }: MobileBottomNavContentProps) {
     setIsGuestMenuOpen(false)
 
     if (isIos) {
-      toast.info(t('Install app'), {
-        duration: 10_000,
-        description: (
-          <PwaInstallIosInstructions className="max-w-sm pt-1" />
-        ),
-      })
+      window.setTimeout(() => {
+        setIsInstallDialogOpen(true)
+      }, 120)
       return
     }
 
     try {
       await requestInstall()
-    }
-    catch {
+    } catch {
       toast.error(t('An unexpected error occurred. Please try again.'))
     }
   }
@@ -175,7 +174,7 @@ function MobileBottomNavContent({ pathname }: MobileBottomNavContentProps) {
   function handleAuthAction() {
     setIsGuestMenuOpen(false)
     window.setTimeout(() => {
-      void open()
+      void openAppKit()
     }, 120)
   }
 
@@ -193,12 +192,7 @@ function MobileBottomNavContent({ pathname }: MobileBottomNavContentProps) {
       {isHowItWorksOpen && (
         <div className="lg:hidden">
           <Suspense fallback={null}>
-            <HowItWorks
-              open={isHowItWorksOpen}
-              onOpenChange={setIsHowItWorksOpen}
-              hideTrigger
-              displayMode="mobile"
-            />
+            <HowItWorks open={isHowItWorksOpen} onOpenChange={setIsHowItWorksOpen} hideTrigger displayMode="mobile" />
           </Suspense>
         </div>
       )}
@@ -206,10 +200,9 @@ function MobileBottomNavContent({ pathname }: MobileBottomNavContentProps) {
       <Drawer open={isSearchOpen} onOpenChange={handleSearchOpenChange}>
         <DrawerContent
           data-mobile-search-drawer="true"
-          className={cn(`
-            h-[90dvh] max-h-dvh overflow-y-auto rounded-none border-x-0 border-b-0 border-border/70 bg-background px-4
-            pt-2 pb-6
-          `)}
+          className={cn(
+            `h-[90dvh] max-h-dvh overflow-y-auto rounded-none border-x-0 border-b-0 border-border/70 bg-background px-4 pt-2 pb-6`,
+          )}
         >
           <DrawerHeader className="sr-only p-0">
             <DrawerTitle>{t('Search')}</DrawerTitle>
@@ -238,10 +231,9 @@ function MobileBottomNavContent({ pathname }: MobileBottomNavContentProps) {
                   <>
                     <button
                       type="button"
-                      className={cn(`
-                        flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-semibold
-                        disabled:pointer-events-none disabled:opacity-50
-                      `)}
+                      className={cn(
+                        `flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-semibold disabled:pointer-events-none disabled:opacity-50`,
+                      )}
                       onClick={handleInstallAction}
                       disabled={isPrompting}
                     >
@@ -252,71 +244,86 @@ function MobileBottomNavContent({ pathname }: MobileBottomNavContentProps) {
                   </>
                 )}
 
-                <DrawerClose render={<button
-                    type="button"
-                    className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-semibold"
-                    onClick={handleHowItWorksAction} />}>
-                    <InfoIcon className="size-4 text-primary" />
-                    {t('How it works')}
-                  </DrawerClose>
+                <DrawerClose
+                  render={
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-semibold"
+                      onClick={handleHowItWorksAction}
+                    />
+                  }
+                >
+                  <InfoIcon className="size-4 text-primary" />
+                  {t('How it works')}
+                </DrawerClose>
 
                 <div className="mx-4 h-px bg-border/70" />
 
-                <DrawerClose render={<AppLink
-                    intentPrefetch
-                    href="/docs"
-                    target="_blank"
-                    className="flex items-center gap-3 px-4 py-3 text-sm font-semibold" />}>
-                    <BookOpenIcon className="size-4 text-muted-foreground" />
-                    {t('Documentation')}
-                  </DrawerClose>
+                <DrawerClose
+                  render={
+                    <AppLink
+                      intentPrefetch
+                      href="/docs"
+                      target="_blank"
+                      className="flex items-center gap-3 px-4 py-3 text-sm font-semibold"
+                    />
+                  }
+                >
+                  <BookOpenIcon className="size-4 text-muted-foreground" />
+                  {t('Documentation')}
+                </DrawerClose>
 
                 <div className="mx-4 h-px bg-border/70" />
 
-                <DrawerClose render={<AppLink
-                    intentPrefetch
-                    href="/tos"
-                    className="flex items-center gap-3 px-4 py-3 text-sm font-semibold" />}>
-                    <FileTextIcon className="size-4 text-muted-foreground" />
-                    {t('Terms of Use')}
-                  </DrawerClose>
+                <DrawerClose
+                  render={
+                    <AppLink
+                      intentPrefetch
+                      href="/tos"
+                      className="flex items-center gap-3 px-4 py-3 text-sm font-semibold"
+                    />
+                  }
+                >
+                  <FileTextIcon className="size-4 text-muted-foreground" />
+                  {t('Terms of Use')}
+                </DrawerClose>
               </div>
 
               <DrawerClose render={<Button type="button" className="h-11 w-full" onClick={handleAuthAction} />}>
-                  {t('Get Started')}
-                </DrawerClose>
+                {t('Get Started')}
+              </DrawerClose>
             </div>
           </DrawerContent>
         </Drawer>
       )}
 
+      <PwaInstallDialog open={isInstallDialogOpen} onOpenChange={setIsInstallDialogOpen} />
+
       <nav
         className="fixed inset-x-0 z-40 lg:hidden"
         style={{ bottom: 'calc(env(safe-area-inset-bottom) + 0.5rem)' }}
-        aria-label="Primary navigation"
+        aria-label={t('Primary navigation')}
       >
         <div className="mx-3 flex justify-center">
           <div
             className={cn(
-              "flex w-full max-w-md items-center justify-between gap-1 rounded-full bg-primary p-1.5",
-              "shadow-[0_12px_32px_-8px_rgba(0,0,0,0.35)]"
+              'flex w-full max-w-md items-center justify-between gap-1 rounded-full bg-primary p-1.5',
+              'shadow-[0_12px_32px_-8px_rgba(0,0,0,0.35)]',
             )}
           >
             <MobileNavLink href="/" label={t('Home')} active={pathname === '/'} icon={HouseIcon} />
             <MobileNavButton label={t('Search')} active={isSearchOpen} onClick={handleSearchAction} icon={SearchIcon} />
             <MobileNavLink href="/new" label={t('New')} active={pathname === '/new'} icon={SparkleIcon} />
-            {isAuthenticated
-              ? (
-                  <MobilePortfolioNavLink active={pathname.startsWith('/portfolio')} />
-                )
-              : (
-                  <MobileNavButton
-                    label={t('More')}
-                    active={isGuestMenuOpen}
-                    onClick={() => setIsGuestMenuOpen(true)}
-                    icon={MenuIcon}
-                  />
-                )}
+            {isAuthenticated ? (
+              <MobilePortfolioNavLink active={pathname.startsWith('/portfolio')} />
+            ) : (
+              <MobileNavButton
+                label={t('More')}
+                active={isGuestMenuOpen}
+                onClick={() => setIsGuestMenuOpen(true)}
+                icon={MenuIcon}
+              />
+            )}
           </div>
         </div>
       </nav>
@@ -332,23 +339,15 @@ function MobileBottomNavContent({ pathname }: MobileBottomNavContentProps) {
  */
 function navChipClassName(active: boolean) {
   return cn(
-    "flex h-11 items-center justify-center rounded-full px-3 text-black transition-[background-color,flex-grow]",
-    "duration-200 ease-out",
-    "focus-visible:ring-2 focus-visible:ring-black/40 focus-visible:outline-none",
-    "active:scale-[0.97]",
+    'flex h-11 items-center justify-center rounded-full px-3 text-black transition-[background-color,flex-grow]',
+    'duration-200 ease-out',
+    'focus-visible:ring-2 focus-visible:ring-black/40 focus-visible:outline-none',
+    'active:scale-[0.97]',
     active ? 'flex-1 bg-black/15' : 'flex-none hover:bg-black/5',
   )
 }
 
-function NavChipContents({
-  Icon,
-  label,
-  active,
-}: {
-  Icon: typeof HouseIcon
-  label: ReactNode
-  active: boolean
-}) {
+function NavChipContents({ Icon, label, active }: { Icon: typeof HouseIcon; label: ReactNode; active: boolean }) {
   return (
     <>
       <Icon className="size-5 shrink-0" strokeWidth={2.25} aria-hidden="true" />
@@ -447,8 +446,7 @@ function useEnabledLocalesFetch() {
         if (normalized.length > 0) {
           setEnabledLocales(normalized)
         }
-      }
-      catch (error) {
+      } catch (error) {
         console.error('Failed to load enabled locales', error)
       }
     }
@@ -489,7 +487,11 @@ function useLocaleChangeHandler({
   return { isPending, handleLocaleChange }
 }
 
+// FORK: upstream renders this in its guest drawer; the fork's drawer doesn't yet.
+// Kept (not deleted) so upstream syncs don't keep re-adding it as a conflict.
+// oxlint-disable-next-line no-unused-vars
 function MobileLocaleSwitcher({ onLocaleChange }: MobileLocaleSwitcherProps) {
+  const t = useExtracted()
   const locale = useLocale() as SupportedLocale
   const enabledLocales = useEnabledLocalesFetch()
   const { isPending, handleLocaleChange } = useLocaleChangeHandler({ locale, onLocaleChange })
@@ -498,10 +500,10 @@ function MobileLocaleSwitcher({ onLocaleChange }: MobileLocaleSwitcherProps) {
     <div className="rounded-2xl border border-border/70 px-4 py-3">
       <div className="mb-3 flex items-center gap-2 text-sm font-semibold">
         <LocaleFlag locale={locale} />
-        <span>{LOOP_LABELS[locale] ?? 'Language'}</span>
+        <span>{LOOP_LABELS[locale] ?? t('Language')}</span>
       </div>
       <div className="grid grid-cols-2 gap-2">
-        {enabledLocales.map(option => (
+        {enabledLocales.map((option) => (
           <Button
             key={option}
             type="button"

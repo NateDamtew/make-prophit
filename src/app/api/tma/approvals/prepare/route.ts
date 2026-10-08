@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server'
+
 import { getDepositWalletNonceAction } from '@/app/[locale]/(platform)/_actions/approve-tokens'
 import { DEFAULT_CHAIN_ID } from '@/lib/network'
 import { getDepositWalletBatchTypedData } from '@/lib/wallet/transactions'
+
 import { buildStandardApprovalCalls, requireTmaUser } from '../../_lib'
 
 /**
@@ -16,7 +18,8 @@ export async function POST() {
   if (guard.unauthorized) {
     return guard.unauthorized
   }
-  const user = guard.user as typeof guard.user & {
+  const user = guard.user as {
+    address?: string | null
     deposit_wallet_address?: string | null
     deposit_wallet_status?: string | null
   }
@@ -56,7 +59,7 @@ export async function POST() {
         wallet: typedData.message.wallet,
         nonce: typedData.message.nonce.toString(),
         deadline: typedData.message.deadline.toString(),
-        calls: typedData.message.calls.map(call => ({
+        calls: typedData.message.calls.map((call) => ({
           target: call.target,
           value: call.value.toString(),
           data: call.data,

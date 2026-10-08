@@ -12,6 +12,7 @@ import {
   timestamp,
   unique,
 } from 'drizzle-orm/pg-core'
+
 import { users } from '@/lib/db/schema/auth/tables'
 import { communities, community_markets } from '@/lib/db/schema/communities/tables'
 
@@ -29,7 +30,9 @@ export type CommentReactionKind = (typeof COMMENT_REACTION_KINDS)[number]
 export const community_comments = pgTable(
   'community_comments',
   {
-    id: char({ length: 26 }).primaryKey().default(sql`generate_ulid()`),
+    id: char({ length: 26 })
+      .primaryKey()
+      .default(sql`generate_ulid()`),
     market_id: char({ length: 26 })
       .notNull()
       .references(() => community_markets.id, { onDelete: 'cascade' }),
@@ -48,7 +51,7 @@ export const community_comments = pgTable(
     created_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
     updated_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
-  table => [
+  (table) => [
     index('idx_community_comments_market_created').on(table.market_id, table.created_at.desc()),
     index('idx_community_comments_community_created').on(table.community_id, table.created_at.desc()),
     index('idx_community_comments_user').on(table.user_id, table.created_at.desc()),
@@ -63,7 +66,9 @@ export type CommunityCommentInsert = typeof community_comments.$inferInsert
 export const community_reactions = pgTable(
   'community_reactions',
   {
-    id: char({ length: 26 }).primaryKey().default(sql`generate_ulid()`),
+    id: char({ length: 26 })
+      .primaryKey()
+      .default(sql`generate_ulid()`),
     community_id: char({ length: 26 })
       .notNull()
       .references(() => communities.id, { onDelete: 'cascade' }),
@@ -75,18 +80,12 @@ export const community_reactions = pgTable(
     kind: text().notNull().$type<CommentReactionKind>(),
     created_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
-  table => [
+  (table) => [
     index('idx_community_reactions_target').on(table.target_type, table.target_id),
     index('idx_community_reactions_user_created').on(table.user_id, table.created_at.desc()),
     unique('uniq_community_reactions').on(table.target_type, table.target_id, table.user_id, table.kind),
-    check(
-      'chk_community_reactions_target_type',
-      sql`${table.target_type} IN ('market', 'comment')`,
-    ),
-    check(
-      'chk_community_reactions_kind',
-      sql`${table.kind} IN ('like', 'fire', 'target', 'thinking')`,
-    ),
+    check('chk_community_reactions_target_type', sql`${table.target_type} IN ('market', 'comment')`),
+    check('chk_community_reactions_kind', sql`${table.kind} IN ('like', 'fire', 'target', 'thinking')`),
   ],
 )
 
@@ -96,7 +95,9 @@ export type CommunityReactionRow = typeof community_reactions.$inferSelect
 export const community_events = pgTable(
   'community_events',
   {
-    id: char({ length: 26 }).primaryKey().default(sql`generate_ulid()`),
+    id: char({ length: 26 })
+      .primaryKey()
+      .default(sql`generate_ulid()`),
     community_id: char({ length: 26 })
       .notNull()
       .references(() => communities.id, { onDelete: 'cascade' }),
@@ -105,10 +106,13 @@ export const community_events = pgTable(
     kind: text().notNull(),
     target_type: text(),
     target_id: char({ length: 26 }),
-    payload: jsonb().$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
+    payload: jsonb()
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
     created_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
-  table => [
+  (table) => [
     index('idx_community_events_community_created').on(table.community_id, table.created_at.desc()),
     index('idx_community_events_kind').on(table.kind, table.created_at.desc()),
   ],
@@ -132,9 +136,7 @@ export const community_notification_prefs = pgTable(
     mute_resolutions: boolean().notNull().default(false),
     updated_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
-  table => [
-    primaryKey({ columns: [table.user_id, table.community_id] }),
-  ],
+  (table) => [primaryKey({ columns: [table.user_id, table.community_id] })],
 )
 
 export type CommunityNotificationPrefRow = typeof community_notification_prefs.$inferSelect

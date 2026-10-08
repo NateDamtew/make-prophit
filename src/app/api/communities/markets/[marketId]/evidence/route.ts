@@ -1,7 +1,9 @@
 import type { NextRequest } from 'next/server'
+
 import { eq } from 'drizzle-orm'
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
+
 import { recordCommunityEvent } from '@/lib/communities/events'
 import { CommunityRepository } from '@/lib/db/queries/community'
 import { CommunityIntegrityRepository } from '@/lib/db/queries/community-integrity'
@@ -49,8 +51,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   let body: unknown
   try {
     body = await request.json()
-  }
-  catch {
+  } catch {
     return NextResponse.json({ error: 'Invalid JSON.' }, { status: 400 })
   }
 
@@ -77,8 +78,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       payload: { evidence_url: parsed.data.url, market_title: market.title },
     })
     return NextResponse.json({ data: { id: created.id } }, { status: 201 })
-  }
-  catch (error) {
+  } catch (error) {
     console.error('Add evidence error', error)
     return NextResponse.json({ error: 'Failed to attach evidence.' }, { status: 500 })
   }

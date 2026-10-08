@@ -1,11 +1,14 @@
 'use client'
 
-import type { AdminNavItem } from './nav'
 import { CornerDownLeftIcon, SearchIcon } from 'lucide-react'
 import { createContext, use, useCallback, useEffect, useMemo, useState } from 'react'
+
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { useRouter } from '@/i18n/navigation'
 import { cn } from '@/lib/utils'
+
+import type { AdminNavItem } from './nav'
+
 import { ADMIN_NAV } from './nav'
 
 interface AdminCommandContextValue {
@@ -28,9 +31,7 @@ interface FlatItem extends AdminNavItem {
 }
 
 function flatten(): FlatItem[] {
-  return ADMIN_NAV.flatMap(group =>
-    group.items.map(item => ({ ...item, groupLabel: group.label })),
-  )
+  return ADMIN_NAV.flatMap((group) => group.items.map((item) => ({ ...item, groupLabel: group.label })))
 }
 
 function matches(item: FlatItem, query: string): boolean {
@@ -38,7 +39,10 @@ function matches(item: FlatItem, query: string): boolean {
     return true
   }
   const haystack = [item.label, item.groupLabel ?? '', ...(item.keywords ?? [])].join(' ').toLowerCase()
-  return query.toLowerCase().split(/\s+/).every(token => haystack.includes(token))
+  return query
+    .toLowerCase()
+    .split(/\s+/)
+    .every((token) => haystack.includes(token))
 }
 
 export function AdminCommandProvider({ children }: { children: React.ReactNode }) {
@@ -48,7 +52,7 @@ export function AdminCommandProvider({ children }: { children: React.ReactNode }
   const [activeIndex, setActiveIndex] = useState(0)
 
   const allItems = useMemo(() => flatten(), [])
-  const results = useMemo(() => allItems.filter(item => matches(item, query)), [allItems, query])
+  const results = useMemo(() => allItems.filter((item) => matches(item, query)), [allItems, query])
 
   const open = useCallback(() => {
     setQuery('')
@@ -56,7 +60,7 @@ export function AdminCommandProvider({ children }: { children: React.ReactNode }
     setIsOpen(true)
   }, [])
 
-  const toggle = useCallback(() => setIsOpen(prev => !prev), [])
+  const toggle = useCallback(() => setIsOpen((prev) => !prev), [])
 
   // Global ⌘K / Ctrl+K listener.
   useEffect(() => {
@@ -76,24 +80,25 @@ export function AdminCommandProvider({ children }: { children: React.ReactNode }
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [])
 
-  const select = useCallback((item: FlatItem) => {
-    if (item.comingSoon) {
-      return
-    }
-    setIsOpen(false)
-    router.push(item.href as Parameters<typeof router.push>[0])
-  }, [router])
+  const select = useCallback(
+    (item: FlatItem) => {
+      if (item.comingSoon) {
+        return
+      }
+      setIsOpen(false)
+      router.push(item.href as Parameters<typeof router.push>[0])
+    },
+    [router],
+  )
 
   function onInputKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
     if (event.key === 'ArrowDown') {
       event.preventDefault()
-      setActiveIndex(prev => Math.min(prev + 1, results.length - 1))
-    }
-    else if (event.key === 'ArrowUp') {
+      setActiveIndex((prev) => Math.min(prev + 1, results.length - 1))
+    } else if (event.key === 'ArrowUp') {
       event.preventDefault()
-      setActiveIndex(prev => Math.max(prev - 1, 0))
-    }
-    else if (event.key === 'Enter') {
+      setActiveIndex((prev) => Math.max(prev - 1, 0))
+    } else if (event.key === 'Enter') {
       event.preventDefault()
       const item = results[activeIndex]
       if (item) {
@@ -109,10 +114,7 @@ export function AdminCommandProvider({ children }: { children: React.ReactNode }
       {children}
 
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
-        <DialogContent
-          showCloseButton={false}
-          className="overflow-hidden p-0 sm:max-w-lg"
-        >
+        <DialogContent showCloseButton={false} className="overflow-hidden p-0 sm:max-w-lg">
           <DialogTitle className="sr-only">Command menu</DialogTitle>
 
           <div className="flex items-center gap-2 border-b border-border/60 px-3">
@@ -131,38 +133,36 @@ export function AdminCommandProvider({ children }: { children: React.ReactNode }
           </div>
 
           <div className="max-h-80 overflow-y-auto p-2">
-            {results.length === 0
-              ? (
-                  <p className="px-3 py-6 text-center text-sm text-muted-foreground">No results.</p>
-                )
-              : (
-                  results.map((item, index) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      disabled={item.comingSoon}
-                      onMouseEnter={() => setActiveIndex(index)}
-                      onClick={() => select(item)}
-                      className={cn(
-                        'flex w-full items-center gap-3 rounded-sm px-3 py-2 text-left text-sm',
-                        index === activeIndex && 'bg-accent text-accent-foreground',
-                        item.comingSoon && 'cursor-not-allowed opacity-50',
-                      )}
-                    >
-                      <item.icon className="size-4 shrink-0 text-muted-foreground" />
-                      <span className="flex-1">{item.label}</span>
-                      {item.groupLabel && (
-                        <span className="text-xs text-muted-foreground">{item.groupLabel}</span>
-                      )}
-                      {item.comingSoon && (
-                        <span className="rounded-sm bg-muted px-1.5 py-0.5 text-2xs font-medium text-muted-foreground">Soon</span>
-                      )}
-                      {index === activeIndex && !item.comingSoon && (
-                        <CornerDownLeftIcon className="size-3.5 text-muted-foreground" />
-                      )}
-                    </button>
-                  ))
-                )}
+            {results.length === 0 ? (
+              <p className="px-3 py-6 text-center text-sm text-muted-foreground">No results.</p>
+            ) : (
+              results.map((item, index) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  disabled={item.comingSoon}
+                  onMouseEnter={() => setActiveIndex(index)}
+                  onClick={() => select(item)}
+                  className={cn(
+                    'flex w-full items-center gap-3 rounded-sm px-3 py-2 text-left text-sm',
+                    index === activeIndex && 'bg-accent text-accent-foreground',
+                    item.comingSoon && 'cursor-not-allowed opacity-50',
+                  )}
+                >
+                  <item.icon className="size-4 shrink-0 text-muted-foreground" />
+                  <span className="flex-1">{item.label}</span>
+                  {item.groupLabel && <span className="text-xs text-muted-foreground">{item.groupLabel}</span>}
+                  {item.comingSoon && (
+                    <span className="rounded-sm bg-muted px-1.5 py-0.5 text-2xs font-medium text-muted-foreground">
+                      Soon
+                    </span>
+                  )}
+                  {index === activeIndex && !item.comingSoon && (
+                    <CornerDownLeftIcon className="size-3.5 text-muted-foreground" />
+                  )}
+                </button>
+              ))
+            )}
           </div>
         </DialogContent>
       </Dialog>

@@ -2,7 +2,8 @@
 
 import type { Route } from 'next'
 
-import { useExtracted } from 'next-intl'
+import { useQueryClient } from '@tanstack/react-query'
+import { useExtracted, useLocale } from 'next-intl'
 import dynamic from 'next/dynamic'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
@@ -20,24 +21,27 @@ import { usePlatformNavigationData } from '@/app/[locale]/(platform)/_providers/
 import EventFaq from '@/app/[locale]/(platform)/event/[slug]/_components/EventFaq'
 import { usePathname, useRouter } from '@/i18n/navigation'
 import { resolveCategorySidebarPageTitle } from '@/lib/category-sidebar-config'
+import {
+  fetchHomeEventsQueryPage,
+  getHomeEventsNextPageParam,
+  getHomeEventsQueryKey,
+  HOME_FEED_REFRESH_INTERVAL_MS,
+} from '@/lib/home-events-query'
 import { getDefaultHomeRouteSortBy } from '@/lib/home-route-sort'
 import { parsePlatformPathname, resolvePlatformNavigationSelection } from '@/lib/platform-navigation'
 import { buildDynamicHomeCategorySlugSet } from '@/lib/platform-routing'
+import { useUser } from '@/stores/useUser'
 
 const CategorySidebar = dynamic(() => import('@/app/[locale]/(platform)/(home)/_components/CategorySidebar'))
 
-const HomeHero = dynamic(
-  () => import('@/app/[locale]/(platform)/(home)/_components/HomeHero'),
-  {
-    loading: () => <div className="mb-6 h-96 w-full animate-pulse rounded-xl bg-accent/20" />,
-  },
-)
+const HomeHero = dynamic(() => import('@/app/[locale]/(platform)/(home)/_components/HomeHero'), {
+  loading: () => <div className="mb-6 h-96 w-full animate-pulse rounded-xl bg-accent/20" />,
+})
 
 interface HomeClientProps {
   categoryFaqItems: EventFaqItem[]
   initialEvents: Event[]
   initialHasMore: boolean
-  initialNewEvents: Event[]
   initialFeaturedEvents: HomeFeaturedEventCard[]
   initialFeaturedHotTopics: HomeFeaturedHotTopic[]
   initialFeaturedSideCard: HomeFeaturedSideCardSettings
@@ -124,7 +128,6 @@ export default function HomeClient({
   categoryFaqItems,
   initialEvents,
   initialHasMore,
-  initialNewEvents,
   initialFeaturedEvents,
   initialFeaturedHotTopics,
   initialFeaturedSideCard,
@@ -157,7 +160,6 @@ export default function HomeClient({
       initialCurrentTimestamp={initialCurrentTimestamp}
       initialEvents={initialEvents}
       initialHasMore={initialHasMore}
-      initialNewEvents={initialNewEvents}
       initialFeaturedEvents={initialFeaturedEvents}
       initialFeaturedHotTopics={initialFeaturedHotTopics}
       initialFeaturedSideCard={initialFeaturedSideCard}
@@ -179,7 +181,6 @@ interface HomeClientContentProps {
   initialCurrentTimestamp: number | null
   initialEvents: Event[]
   initialHasMore: boolean
-  initialNewEvents: Event[]
   initialFeaturedEvents: HomeFeaturedEventCard[]
   initialFeaturedHotTopics: HomeFeaturedHotTopic[]
   initialFeaturedSideCard: HomeFeaturedSideCardSettings
@@ -215,6 +216,9 @@ function useHomeClientContentState({
   targetTag,
 }: HomeClientContentStateInput) {
   const router = useRouter()
+  const locale = useLocale()
+  const queryClient = useQueryClient()
+  const user = useUser()
   const { updateFilters } = useFilters()
   const [homeFilters, setHomeFilters] = useState<FilterState>(() => createHomeRouteFilters(targetTag, targetMainTag))
   const canUseServerInitialEvents = useMemo(
@@ -322,29 +326,94 @@ function useHomeClientContentState({
       })
     : null
 
+  const resolveSecondaryNavigationPath = useCallback(
+    ({ slug: targetTag, href }: { href?: string; slug: string }) => {
+      if (!activeNavigationTag) {
+        return null
+      }
+
+      if (href) {
+        return href
+      }
+
+      if (shouldUsePathSubcategoryNavigation) {
+        return targetTag === activeNavigationTag.slug
+          ? `/${activeNavigationTag.slug}`
+          : `/${activeNavigationTag.slug}/${targetTag}`
+      }
+
+      return null
+    },
+    [activeNavigationTag, shouldUsePathSubcategoryNavigation],
+  )
+
   const handleSecondaryNavigation = useCallback(
+    ({ slug: targetTag, href }: { href?: string; slug: string }) => {
+      const nextPath = resolveSecondaryNavigationPath({ slug: targetTag, href })
+      if (nextPath) {
+        router.push(nextPath as Route)
+        return
+      }
+
+      if (activeNavigationTag) {
+        handleFiltersChange({ tag: targetTag, mainTag: activeNavigationTag.slug })
+      }
+    },
+    [activeNavigationTag, handleFiltersChange, resolveSecondaryNavigationPath, router],
+  )
+
+  const handlePrefetchSecondaryNavigation = useCallback(
     ({ slug: targetTag, href }: { href?: string; slug: string }) => {
       if (!activeNavigationTag) {
         return
       }
 
+      const nextPath = resolveSecondaryNavigationPath({ slug: targetTag, href })
+      if (nextPath) {
+        router.prefetch(nextPath as Route)
+      }
+
       if (href) {
-        router.push(href as Route)
         return
       }
 
-      if (shouldUsePathSubcategoryNavigation) {
-        const nextPath =
-          targetTag === activeNavigationTag.slug
-            ? `/${activeNavigationTag.slug}`
-            : `/${activeNavigationTag.slug}/${targetTag}`
-        router.push(nextPath as Route)
-        return
-      }
+      const targetFilters = shouldUsePathSubcategoryNavigation
+        ? createHomeRouteFilters(targetTag, activeNavigationTag.slug)
+        : { ...homeFilters, tag: targetTag, mainTag: activeNavigationTag.slug }
+      const homeFeedClockState = targetFilters.status === 'active' ? 'clock-ready' : 'clock-static'
+      const queryKey = getHomeEventsQueryKey({
+        filters: targetFilters,
+        locale,
+        queryUserScope: user?.id ?? 'guest',
+        homeFeedClockState,
+      })
 
-      handleFiltersChange({ tag: targetTag, mainTag: activeNavigationTag.slug })
+      void queryClient
+        .prefetchInfiniteQuery({
+          queryKey,
+          queryFn: ({ pageParam }) =>
+            fetchHomeEventsQueryPage({
+              pageParam,
+              currentTimestamp: targetFilters.status === 'active' ? Date.now() : null,
+              filters: targetFilters,
+              locale,
+            }),
+          getNextPageParam: getHomeEventsNextPageParam,
+          initialPageParam: 0,
+          staleTime: HOME_FEED_REFRESH_INTERVAL_MS,
+        })
+        .catch(() => undefined)
     },
-    [activeNavigationTag, handleFiltersChange, router, shouldUsePathSubcategoryNavigation],
+    [
+      activeNavigationTag,
+      homeFilters,
+      locale,
+      queryClient,
+      resolveSecondaryNavigationPath,
+      router,
+      shouldUsePathSubcategoryNavigation,
+      user?.id,
+    ],
   )
 
   const secondaryNavigation = activeNavigationTag ? (
@@ -354,6 +423,7 @@ function useHomeClientContentState({
       heading={categoryPageTitle ?? undefined}
       showCategoryTitle={showCategoryPathTitle}
       hideOnDesktop={hasCategorySidebar}
+      onPrefetchTag={handlePrefetchSecondaryNavigation}
       onSelectTag={handleSecondaryNavigation}
     />
   ) : null
@@ -379,7 +449,6 @@ function HomeClientContent({
   initialCurrentTimestamp,
   initialEvents,
   initialHasMore,
-  initialNewEvents,
   initialFeaturedEvents,
   initialFeaturedHotTopics,
   initialFeaturedSideCard,
@@ -417,9 +486,7 @@ function HomeClientContent({
 
   return (
     <div className="space-y-6">
-      {pathState.isHomePage && initialEvents.length > 0 && (
-        <HomeHero events={initialEvents} />
-      )}
+      {pathState.isHomePage && initialEvents.length > 0 && <HomeHero events={initialEvents} />}
       <div className="flex min-w-0 gap-6 lg:items-start lg:gap-10">
         {categorySidebar && (
           <CategorySidebar
@@ -449,6 +516,7 @@ function HomeClientContent({
 
                 <div className="min-w-0">
                   <FilterToolbar
+                    collapsibleSearch
                     filters={homeFilters}
                     onFiltersChange={handleFiltersChange}
                     showFilterCheckboxes={pathState.isHomePage}
@@ -486,7 +554,7 @@ function HomeClientContent({
 
       <PlatformFooter
         categoryPopularEvents={initialEvents}
-        categoryNewEvents={initialNewEvents}
+        categoryTag={pathState.isMainTagPathPage ? targetTag : null}
         categorySlug={pathState.isMainTagPathPage ? targetMainTag : null}
       />
     </div>

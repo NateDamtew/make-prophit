@@ -1,7 +1,9 @@
 import type { NextRequest } from 'next/server'
+
 import { eq } from 'drizzle-orm'
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
+
 import { recordCommunityEvent } from '@/lib/communities/events'
 import { dispatchCommunityNotification } from '@/lib/communities/notifications'
 import { consumeRateLimit, RATE_LIMITS } from '@/lib/communities/rate-limit'
@@ -38,8 +40,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     })
 
     return NextResponse.json(result)
-  }
-  catch (error) {
+  } catch (error) {
     console.error('List community comments error', error)
     return NextResponse.json({ error: 'Failed to load comments.' }, { status: 500 })
   }
@@ -57,8 +58,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   let body: unknown
   try {
     body = await request.json()
-  }
-  catch {
+  } catch {
     return NextResponse.json({ error: 'Invalid JSON.' }, { status: 400 })
   }
 
@@ -145,8 +145,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     return NextResponse.json({ data: { id: created.id } }, { status: 201 })
-  }
-  catch (error) {
+  } catch (error) {
     console.error('Create community comment error', error)
     return NextResponse.json({ error: 'Failed to post comment.' }, { status: 500 })
   }

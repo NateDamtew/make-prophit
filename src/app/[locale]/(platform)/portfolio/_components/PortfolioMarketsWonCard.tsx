@@ -4,7 +4,6 @@ import type { DataApiPosition } from '@/lib/data-api/user'
 
 import { MICRO_UNIT, OUTCOME_INDEX } from '@/lib/constants'
 import { getDataApiUrl } from '@/lib/data-api/client'
-import { markets } from '@/lib/db/schema/events/tables'
 import { db } from '@/lib/drizzle'
 import { resolveNegRiskAdapterAddressFromMetadata } from '@/lib/neg-risk-adapter'
 import { getPublicAssetUrl } from '@/lib/storage'
@@ -139,6 +138,7 @@ async function fetchDataApiPositions(address: string): Promise<DataApiPosition[]
       limit: limit.toString(),
       offset: offset.toString(),
       sizeThreshold: '0.01',
+      redeemable: 'true',
     })
 
     let response: Response
@@ -174,7 +174,7 @@ async function fetchMarketMetadata(conditionIds: string[]): Promise<Map<string, 
   }
 
   const rows = await db.query.markets.findMany({
-    where: inArray(markets.condition_id, conditionIds),
+    where: { RAW: (table) => inArray(table.condition_id, conditionIds) },
     columns: {
       condition_id: true,
       title: true,

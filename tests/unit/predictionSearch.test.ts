@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'bun:test'
 
 import {
   buildPredictionResultsUrlSearchParams,
@@ -20,6 +20,14 @@ const navigationTags = [
     slug: 'science',
     name: 'Science',
     childs: [{ slug: 'space', name: 'Space' }],
+  },
+] as const
+
+const sportsNavigationTags = [
+  {
+    slug: ' Sports ',
+    name: 'Sports',
+    childs: [{ slug: ' HCL ', name: 'HCL' }],
   },
 ] as const
 
@@ -45,6 +53,25 @@ describe('prediction search helpers', () => {
       mainTag: 'politics',
       query: '',
       tag: 'brazil',
+    })
+  })
+
+  it('resolves children of dedicated sports categories to prediction tag contexts', () => {
+    expect(resolvePredictionSearchContext(sportsNavigationTags as any, 'hcl')).toMatchObject({
+      kind: 'child-tag',
+      label: 'HCL',
+      mainTag: ' Sports ',
+      query: '',
+      tag: ' HCL ',
+    })
+  })
+
+  it('preserves stored parent slugs while matching normalized routes', () => {
+    expect(resolvePredictionSearchContext(sportsNavigationTags as any, 'sports')).toMatchObject({
+      kind: 'main-tag',
+      mainTag: ' Sports ',
+      query: '',
+      tag: ' Sports ',
     })
   })
 

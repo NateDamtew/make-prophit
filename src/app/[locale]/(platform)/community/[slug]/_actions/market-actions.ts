@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
+
 import { analyzeMarketQuestion } from '@/lib/ai/gemini'
 import { recordCommunityEvent } from '@/lib/communities/events'
 import { dispatchCommunityNotification } from '@/lib/communities/notifications'
@@ -23,7 +24,13 @@ const MarketOptionSchema = z.object({
 
 const MarketDraftSchema = z.object({
   title: z.string().trim().min(10, 'Title must be at least 10 characters').max(200),
-  slug: z.string().trim().min(3).max(60).regex(/^[a-z0-9-]+$/).optional(),
+  slug: z
+    .string()
+    .trim()
+    .min(3)
+    .max(60)
+    .regex(/^[a-z0-9-]+$/)
+    .optional(),
   image_url: z.string().trim().max(500).optional(),
   description: z.string().trim().max(1000).optional(),
   resolution_source: z.string().trim().max(500).optional(),
@@ -46,7 +53,7 @@ async function requireAdmin(communityId: string, userId: string) {
   return true
 }
 
-export async function analyzeMarketAction(input: { question: string, context?: string }) {
+export async function analyzeMarketAction(input: { question: string; context?: string }) {
   const user = await UserRepository.getCurrentUser({ disableCookieCache: true, minimal: true })
   if (!user) {
     return { error: 'Unauthenticated.', data: null }
@@ -62,8 +69,7 @@ export async function analyzeMarketAction(input: { question: string, context?: s
       context: input.context?.trim(),
     })
     return { error: null, data: suggestion }
-  }
-  catch (err) {
+  } catch (err) {
     const message = err instanceof Error ? err.message : DEFAULT_ERROR_MESSAGE
     console.error('Gemini analysis failed:', err)
     return { error: message, data: null }
@@ -118,11 +124,7 @@ export async function createMarketDraftAction(
   return { error: null, data: result.data }
 }
 
-export async function publishMarketAction(
-  marketId: string,
-  communityId: string,
-  communitySlug: string,
-) {
+export async function publishMarketAction(marketId: string, communityId: string, communitySlug: string) {
   const user = await UserRepository.getCurrentUser({ disableCookieCache: true, minimal: true })
   if (!user) {
     return { error: 'Unauthenticated.', data: null }
@@ -162,11 +164,7 @@ export async function publishMarketAction(
   return { error: null, data: result.data }
 }
 
-export async function deleteMarketAction(
-  marketId: string,
-  communityId: string,
-  communitySlug: string,
-) {
+export async function deleteMarketAction(marketId: string, communityId: string, communitySlug: string) {
   const user = await UserRepository.getCurrentUser({ disableCookieCache: true, minimal: true })
   if (!user) {
     return { error: 'Unauthenticated.', data: null }

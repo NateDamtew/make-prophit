@@ -1,6 +1,7 @@
 'use client'
 
 import { BotIcon, UsersIcon } from 'lucide-react'
+
 import { useRouter } from '@/i18n/navigation'
 import { cn } from '@/lib/utils'
 
@@ -26,8 +27,7 @@ export default function LeaderboardViewToggle({ view }: LeaderboardViewTogglePro
     const url = new URL(window.location.href)
     if (next === 'agents') {
       url.searchParams.set('view', 'agents')
-    }
-    else {
+    } else {
       url.searchParams.delete('view')
     }
     router.push(`${url.pathname}${url.search}` as never)

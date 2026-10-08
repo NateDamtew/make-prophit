@@ -1,5 +1,7 @@
-import type { SyncJobStatus } from '@/lib/admin-ui/job-status'
 import { and, desc, eq, ilike, or, sql } from 'drizzle-orm'
+
+import type { SyncJobStatus } from '@/lib/admin-ui/job-status'
+
 import { SYNC_JOB_STATUSES } from '@/lib/admin-ui/job-status'
 import { jobs } from '@/lib/db/schema/events/tables'
 import { db } from '@/lib/drizzle'
@@ -40,20 +42,23 @@ export const JobsAdminRepository = {
         .orderBy(sortOrder === 'asc' ? jobs.updated_at : desc(jobs.updated_at))
         .limit(boundedLimit)
         .offset(Math.max(offset, 0)),
-      db.select({ count: sql<number>`count(*)::int` }).from(jobs).where(where),
+      db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(jobs)
+        .where(where),
     ])
 
     return { rows, totalCount: Number(count) }
   },
 
   /** Counts per status + total, for the KPI strip. */
-  async stats(): Promise<{ total: number, byStatus: Record<SyncJobStatus, number> }> {
+  async stats(): Promise<{ total: number; byStatus: Record<SyncJobStatus, number> }> {
     const rows = await db
       .select({ status: jobs.status, count: sql<number>`count(*)::int` })
       .from(jobs)
       .groupBy(jobs.status)
 
-    const byStatus = Object.fromEntries(SYNC_JOB_STATUSES.map(s => [s, 0])) as Record<SyncJobStatus, number>
+    const byStatus = Object.fromEntries(SYNC_JOB_STATUSES.map((s) => [s, 0])) as Record<SyncJobStatus, number>
     let total = 0
     for (const row of rows) {
       const status = row.status as SyncJobStatus

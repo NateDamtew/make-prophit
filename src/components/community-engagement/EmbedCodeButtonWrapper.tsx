@@ -1,4 +1,5 @@
 import resolveSiteUrl from '@/lib/site-url'
+
 import { EmbedCodeButton } from './EmbedCodeButton'
 
 /**
@@ -6,16 +7,7 @@ import { EmbedCodeButton } from './EmbedCodeButton'
  * and hands it to the client EmbedCodeButton. Keeps the iframe src absolute
  * regardless of where the page renders (preview, prod, local).
  */
-export function CommunityMarketEmbedButton({ communitySlug, marketId }: {
-  communitySlug: string
-  marketId: string
-}) {
+export function CommunityMarketEmbedButton({ communitySlug, marketId }: { communitySlug: string; marketId: string }) {
   const siteUrl = resolveSiteUrl(process.env)
-  return (
-    <EmbedCodeButton
-      communitySlug={communitySlug}
-      marketId={marketId}
-      siteOrigin={siteUrl}
-    />
-  )
+  return <EmbedCodeButton communitySlug={communitySlug} marketId={marketId} siteOrigin={siteUrl} />
 }

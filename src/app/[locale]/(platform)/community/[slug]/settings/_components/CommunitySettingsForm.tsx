@@ -2,13 +2,15 @@
 
 import { Globe, ImageIcon, Lock, SaveIcon, Upload } from 'lucide-react'
 import { useRef, useState, useTransition } from 'react'
-import { toast } from '@/components/ui/toast'
+
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { toast } from '@/components/ui/toast'
 import { cn } from '@/lib/utils'
+
 import { updateCommunitySettingsAction } from '../../_actions/community-settings-actions'
 
 interface Props {
@@ -75,7 +77,9 @@ export function CommunitySettingsForm({ communityId, communitySlug, initial }: P
       <Card className="gap-4 p-5">
         <div>
           <h2 className="text-sm font-semibold">Branding</h2>
-          <p className="text-xs text-muted-foreground">Your icon and banner appear across the community page and shared links.</p>
+          <p className="text-xs text-muted-foreground">
+            Your icon and banner appear across the community page and shared links.
+          </p>
         </div>
 
         {/* Banner */}
@@ -84,25 +88,17 @@ export function CommunitySettingsForm({ communityId, communitySlug, initial }: P
           <button
             type="button"
             onClick={() => bannerInputRef.current?.click()}
-            className="
-              group relative flex h-32 w-full items-center justify-center overflow-hidden rounded-xl border
-              border-dashed bg-muted/30 transition-colors
-              hover:border-primary/50
-            "
+            className="group relative flex h-32 w-full items-center justify-center overflow-hidden rounded-xl border border-dashed bg-muted/30 transition-colors hover:border-primary/50"
           >
-            {bannerPreview
-              ? <img src={bannerPreview} alt="" className="size-full object-cover" />
-              : (
-                  <span className="flex flex-col items-center gap-1 text-xs text-muted-foreground">
-                    <ImageIcon className="size-5" />
-                    Click to upload a banner
-                  </span>
-                )}
-            <span className="
-              absolute inset-0 hidden items-center justify-center bg-background/60 text-xs font-medium backdrop-blur-sm
-              group-hover:flex
-            "
-            >
+            {bannerPreview ? (
+              <img src={bannerPreview} alt="" className="size-full object-cover" />
+            ) : (
+              <span className="flex flex-col items-center gap-1 text-xs text-muted-foreground">
+                <ImageIcon className="size-5" />
+                Click to upload a banner
+              </span>
+            )}
+            <span className="absolute inset-0 hidden items-center justify-center bg-background/60 text-xs font-medium backdrop-blur-sm group-hover:flex">
               <Upload className="mr-1.5 size-3.5" />
               Change banner
             </span>
@@ -113,7 +109,7 @@ export function CommunitySettingsForm({ communityId, communitySlug, initial }: P
             name="banner"
             accept="image/jpeg,image/png,image/webp"
             className="hidden"
-            onChange={e => previewFile(e.target.files?.[0], setBannerPreview)}
+            onChange={(e) => previewFile(e.target.files?.[0], setBannerPreview)}
           />
           {errors.banner && <p className="text-xs text-destructive">{errors.banner}</p>}
         </div>
@@ -125,20 +121,14 @@ export function CommunitySettingsForm({ communityId, communitySlug, initial }: P
             <button
               type="button"
               onClick={() => iconInputRef.current?.click()}
-              className="
-                group relative flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl border
-                border-dashed bg-muted/30 transition-colors
-                hover:border-primary/50
-              "
+              className="group relative flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-dashed bg-muted/30 transition-colors hover:border-primary/50"
             >
-              {iconPreview
-                ? <img src={iconPreview} alt="" className="size-full object-cover" />
-                : <ImageIcon className="size-5 text-muted-foreground" />}
-              <span className="
-                absolute inset-0 hidden items-center justify-center bg-background/60 backdrop-blur-sm
-                group-hover:flex
-              "
-              >
+              {iconPreview ? (
+                <img src={iconPreview} alt="" className="size-full object-cover" />
+              ) : (
+                <ImageIcon className="size-5 text-muted-foreground" />
+              )}
+              <span className="absolute inset-0 hidden items-center justify-center bg-background/60 backdrop-blur-sm group-hover:flex">
                 <Upload className="size-4" />
               </span>
             </button>
@@ -153,7 +143,7 @@ export function CommunitySettingsForm({ communityId, communitySlug, initial }: P
             name="icon"
             accept="image/jpeg,image/png,image/webp"
             className="hidden"
-            onChange={e => previewFile(e.target.files?.[0], setIconPreview)}
+            onChange={(e) => previewFile(e.target.files?.[0], setIconPreview)}
           />
           {errors.icon && <p className="text-xs text-destructive">{errors.icon}</p>}
         </div>
@@ -174,17 +164,23 @@ export function CommunitySettingsForm({ communityId, communitySlug, initial }: P
 
         <div className="grid gap-2">
           <Label htmlFor="description">Description</Label>
-          <Textarea id="description" name="description" defaultValue={initial.description ?? ''} maxLength={500} rows={3} />
+          <Textarea
+            id="description"
+            name="description"
+            defaultValue={initial.description ?? ''}
+            maxLength={500}
+            rows={3}
+          />
           {errors.description && <p className="text-xs text-destructive">{errors.description}</p>}
         </div>
 
         <div className="grid gap-1.5">
           <Label>Visibility</Label>
           <div className="grid grid-cols-2 gap-2">
-            {([
+            {[
               { value: 'public' as const, label: 'Public', desc: 'Anyone can find and join', icon: Globe },
               { value: 'private' as const, label: 'Private', desc: 'Invite-only', icon: Lock },
-            ]).map((opt) => {
+            ].map((opt) => {
               const Icon = opt.icon
               return (
                 <button
@@ -212,9 +208,7 @@ export function CommunitySettingsForm({ communityId, communitySlug, initial }: P
       <Card className="gap-4 p-5">
         <div>
           <h2 className="text-sm font-semibold">Jury</h2>
-          <p className="text-xs text-muted-foreground">
-            How many juror votes are needed to resolve a market.
-          </p>
+          <p className="text-xs text-muted-foreground">How many juror votes are needed to resolve a market.</p>
         </div>
         <div className="grid gap-2">
           <Label htmlFor="jury_size">Jury size</Label>
@@ -225,15 +219,15 @@ export function CommunitySettingsForm({ communityId, communitySlug, initial }: P
               min={1}
               max={10}
               value={jurySize}
-              onChange={e => setJurySize(Number(e.target.value))}
+              onChange={(e) => setJurySize(Number(e.target.value))}
               className="h-2 flex-1 cursor-pointer accent-primary"
             />
             <span className="w-8 text-center text-base font-bold tabular-nums">{jurySize}</span>
           </div>
           {jurySize !== initial.jury_size && (
             <p className="rounded-md bg-amber-500/10 px-3 py-2 text-xs text-amber-600">
-              Changing the jury size affects how future markets resolve. Markets already awaiting
-              resolution keep the size they were created with.
+              Changing the jury size affects how future markets resolve. Markets already awaiting resolution keep the
+              size they were created with.
             </p>
           )}
           {errors.jury_size && <p className="text-xs text-destructive">{errors.jury_size}</p>}

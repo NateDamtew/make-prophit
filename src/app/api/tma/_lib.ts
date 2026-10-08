@@ -1,13 +1,13 @@
-import type { BlockchainOrder } from '@/types'
 import { eq } from 'drizzle-orm'
-
+import { NextResponse } from 'next/server'
 // --- order payload (de)serialization + ERC-7739 envelope -------------------
 // Orders are signature_type 3 (DepositWallet): the deposit wallet is
 // maker/signer and the user's EOA signs a TypedDataSign envelope wrapping the
 // Order struct (see src/lib/orders/signing.ts — this mirrors it server-side so
 // the TMA client only raw-signs typed data and never needs viem).
 
-import { NextResponse } from 'next/server'
+import type { BlockchainOrder } from '@/types'
+
 import { EIP712_TYPES } from '@/lib/constants'
 import {
   CONDITIONAL_TOKENS_CONTRACT,
@@ -20,16 +20,11 @@ import { UserRepository } from '@/lib/db/queries/user'
 import { markets, outcomes } from '@/lib/db/schema/events/tables'
 import { db } from '@/lib/drizzle'
 import { DEFAULT_CHAIN_ID } from '@/lib/network'
-import {
-  buildCollateralApproveCall,
-  buildConditionalSetApprovalForAllCall,
-} from '@/lib/wallet/transactions'
+import { buildCollateralApproveCall, buildConditionalSetApprovalForAllCall } from '@/lib/wallet/transactions'
 
 type TmaUser = NonNullable<Awaited<ReturnType<typeof UserRepository.getCurrentUser>>>
 
-type TmaUserGuard
-  = | { user: TmaUser, unauthorized: null }
-    | { user: null, unauthorized: NextResponse }
+type TmaUserGuard = { user: TmaUser; unauthorized: null } | { user: null; unauthorized: NextResponse }
 
 /**
  * Session guard for the TMA bridge routes. The TMA backend calls these with
@@ -73,8 +68,8 @@ export function buildStandardApprovalCalls() {
     UMA_NEG_RISK_ADAPTER_ADDRESS,
   ] as const
   return [
-    ...collateralSpenders.map(spender => buildCollateralApproveCall(spender)),
-    ...conditionalOperators.map(operator => buildConditionalSetApprovalForAllCall(operator)),
+    ...collateralSpenders.map((spender) => buildCollateralApproveCall(spender)),
+    ...conditionalOperators.map((operator) => buildConditionalSetApprovalForAllCall(operator)),
   ]
 }
 

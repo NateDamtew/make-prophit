@@ -1,15 +1,14 @@
 'use client'
 
-import { useQuery } from '@tanstack/react-query'
 import { CheckIcon, Clock3Icon, PlusIcon, SparkleIcon, TrophyIcon } from 'lucide-react'
-import { useExtracted } from 'next-intl'
-import { useMemo } from 'react'
+import { useExtracted, useLocale } from 'next-intl'
 
 import type { Event } from '@/types'
 
+import { useEventVolumes } from '@/app/[locale]/(platform)/event/[slug]/_hooks/useEventVolumes'
+import { formatEventExpiryCountdown } from '@/app/[locale]/(platform)/event/[slug]/_utils/eventExpiryCountdown'
 import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from '@/components/ui/popover'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { usePublicRuntimeConfig } from '@/hooks/usePublicRuntimeConfig'
 import { formatCurrency, formatDate } from '@/lib/formatters'
 import { isMarketNew } from '@/lib/utils'
 
@@ -18,93 +17,34 @@ interface EventMetaInformationProps {
   event: Event
 }
 
-function useEventVolume(event: Event) {
-  const { clobUrl } = usePublicRuntimeConfig()
-  const volumeRequestPayload = useMemo(() => {
-    const conditions = event.markets
-      .map((market) => {
-        const tokenIds = (market.outcomes ?? [])
-          .map((outcome) => outcome.token_id)
-          .filter(Boolean)
-          .slice(0, 2)
-        if (!market.condition_id || tokenIds.length < 2) {
-          return null
-        }
-        return {
-          condition_id: market.condition_id,
-          token_ids: tokenIds as [string, string],
-        }
-      })
-      .filter((item): item is { condition_id: string; token_ids: [string, string] } => item !== null)
-
-    const signature = conditions
-      .map((condition) => `${condition.condition_id}:${condition.token_ids.join(':')}`)
-      .join('|')
-
-    return { conditions, signature }
-  }, [event.markets])
-
-  const { data: volumeFromApi } = useQuery({
-    queryKey: ['trade-volumes', clobUrl, event.id, volumeRequestPayload.signature],
-    enabled: volumeRequestPayload.conditions.length > 0 && Boolean(clobUrl),
-    staleTime: 60_000,
-    refetchInterval: 60_000,
-    queryFn: async () => {
-      const response = await fetch(`${clobUrl}/data/volumes`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          include_24h: false,
-          conditions: volumeRequestPayload.conditions,
-        }),
-      })
-
-      const payload = (await response.json()) as Array<{
-        condition_id: string
-        status: number
-        volume?: string
-      }>
-
-      return payload
-        .filter((entry) => entry?.status === 200)
-        .reduce((total, entry) => {
-          const numeric = Number(entry.volume ?? 0)
-          return Number.isFinite(numeric) ? total + numeric : total
-        }, 0)
-    },
-  })
-
-  return useMemo(() => {
-    if (typeof volumeFromApi === 'number' && Number.isFinite(volumeFromApi)) {
-      return volumeFromApi
-    }
-    return event.volume
-  }, [event.volume, volumeFromApi])
-}
-
 export default function EventMetaInformation({ event, currentTimestamp }: EventMetaInformationProps) {
   const t = useExtracted()
-  const resolvedVolume = useEventVolume(event)
+  const locale = useLocale()
+  const { totalVolume } = useEventVolumes(event)
+  const resolvedVolume = totalVolume ?? event.volume
 
   const isNegRiskEnabled = Boolean(event.enable_neg_risk || event.neg_risk)
   const isNegRiskAugmented = Boolean(event.neg_risk_augmented)
   const shouldShowNew = event.markets.some((market) => isMarketNew(market.created_at, undefined, currentTimestamp))
   const shouldShowVolume = isNegRiskEnabled || !shouldShowNew
   const shouldShowMetaBlock = isNegRiskEnabled || shouldShowVolume
-  const expiryTooltip = t.rich('This is estimated end date.<br></br>See rules below for specific resolution details.', {
-    br: () => ' ',
+  const expiryTooltip = t({
+    id: 'seeResolutionDetails',
+    message: 'See rules below for specific resolution details',
   })
   const volumeLabel = t('{amount} Vol.', { amount: formatCurrency(resolvedVolume || 0) })
 
   const parsedEndTimestamp = event.end_date ? Date.parse(event.end_date) : Number.NaN
   const expiryTimestamp = Number.isFinite(parsedEndTimestamp) ? parsedEndTimestamp : null
-  const remainingDays =
-    expiryTimestamp !== null && currentTimestamp !== null
-      ? Math.max(0, Math.ceil((expiryTimestamp - currentTimestamp) / (24 * 60 * 60 * 1000)))
+  const remainingTime = expiryTimestamp !== null ? formatEventExpiryCountdown(expiryTimestamp, currentTimestamp) : null
+  const remainingLabel =
+    remainingTime !== null
+      ? t({
+          id: 'estimatedTimeRemaining',
+          message: 'Estimated time remaining: {time}',
+          values: { time: remainingTime },
+        })
       : null
-  const remainingLabel = remainingDays !== null ? t('In {days} days', { days: String(remainingDays) }) : ''
   const shouldShowDividerAfterNew = shouldShowNew && (shouldShowMetaBlock || expiryTimestamp !== null)
 
   return (
@@ -178,13 +118,17 @@ export default function EventMetaInformation({ event, currentTimestamp }: EventM
           <TooltipTrigger>
             <span className="flex items-center gap-1.5 text-sm/tight text-muted-foreground">
               <Clock3Icon className="size-4 text-muted-foreground" strokeWidth={2.5} />
-              <span>{formatDate(expiryTimestamp)}</span>
+              <span>{formatDate(expiryTimestamp, locale)}</span>
             </span>
           </TooltipTrigger>
-          <TooltipContent side="bottom" collisionPadding={16} className="max-w-64 text-left">
-            <div className="flex flex-col gap-1">
-              <span className="text-sm font-semibold">{remainingLabel}</span>
-              <span className="text-xs text-foreground">{expiryTooltip}</span>
+          <TooltipContent
+            side="bottom"
+            collisionPadding={16}
+            className="w-max max-w-[calc(100vw-2rem)] text-left text-xs leading-4"
+          >
+            <div className="flex max-w-full min-w-0 flex-col gap-0.5">
+              {remainingLabel !== null && <span className="font-semibold whitespace-nowrap">{remainingLabel}</span>}
+              <span className="font-normal wrap-break-word text-foreground">{expiryTooltip}</span>
             </div>
           </TooltipContent>
         </Tooltip>

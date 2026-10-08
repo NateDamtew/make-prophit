@@ -1,9 +1,11 @@
 'use client'
 
-import type { ColumnDef } from '@tanstack/react-table'
-import type { AuditFeedItem } from '@/lib/admin-ui/audit'
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
+
+import type { AuditFeedItem } from '@/lib/admin-ui/audit'
+import type { DataTableColumnDef } from '@/lib/data-table'
+
 import { DataTable } from '@/app/[locale]/admin/_components/DataTable'
 import { formatAbsolute, formatRelativeTime } from '@/components/admin-ui/format'
 import { PageHeader } from '@/components/admin-ui/PageHeader'
@@ -18,15 +20,19 @@ async function fetchAuditLog(pageIndex: number, pageSize: number, search: string
   if (!res.ok) {
     throw new Error(`Failed to load audit log (${res.status})`)
   }
-  return res.json() as Promise<{ data: AuditFeedItem[], totalCount: number }>
+  return res.json() as Promise<{ data: AuditFeedItem[]; totalCount: number }>
 }
 
-const columns: ColumnDef<AuditFeedItem>[] = [
+const columns: DataTableColumnDef<AuditFeedItem>[] = [
   {
     accessorKey: 'action',
     id: 'action',
     header: () => <span className="text-muted-foreground">Action</span>,
-    cell: ({ row }) => <Badge variant="outline" className="font-mono text-xs">{row.original.action}</Badge>,
+    cell: ({ row }) => (
+      <Badge variant="outline" className="font-mono text-xs">
+        {row.original.action}
+      </Badge>
+    ),
   },
   {
     accessorKey: 'summary',
@@ -69,10 +75,7 @@ export function AuditLogManager() {
 
   return (
     <section className="grid gap-6">
-      <PageHeader
-        title="Audit Log"
-        description="Every mutating admin action — who did what, and when."
-      />
+      <PageHeader title="Audit Log" description="Every mutating admin action — who did what, and when." />
 
       <DataTable
         columns={columns}

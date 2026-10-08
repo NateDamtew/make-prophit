@@ -1,7 +1,7 @@
 'use client'
 
 import { useQueryClient } from '@tanstack/react-query'
-import { createContext, use, useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
+import { createContext, use, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 
 import type { MarketQuote, MarketQuotesByMarket } from '@/app/[locale]/(platform)/event/[slug]/_hooks/useEventMidPrices'
 import type {
@@ -11,7 +11,11 @@ import type {
 import type { Market } from '@/types'
 
 import { usePublicRuntimeConfig } from '@/hooks/usePublicRuntimeConfig'
-import { closeWebSocketWhenReady, createWebSocketReconnectController } from '@/lib/websocket-reconnect'
+import {
+  closeWebSocketWhenReady,
+  createWebSocketHeartbeatController,
+  createWebSocketReconnectController,
+} from '@/lib/websocket-reconnect'
 
 type MarketChannelStatus = 'connecting' | 'live' | 'offline'
 type MarketChannelListener = (payload: any) => void
@@ -21,14 +25,30 @@ interface MarketChannelContextValue {
   subscribe: (listener: MarketChannelListener) => () => void
 }
 
+interface MarketChannelLiveVolumeContextValue {
+  liveVolumeByCondition: Record<string, number>
+  resetLiveVolumes: () => void
+}
+
 interface TokenMapping {
   tokenIds: string[]
   tokenIdToConditionId: Map<string, string>
 }
 
+interface LiveVolumeState {
+  tokenIdsSignature: string
+  byCondition: Record<string, number>
+}
+
 const MarketChannelContext = createContext<MarketChannelContextValue | null>(null)
+const MarketChannelLiveVolumeContext = createContext<MarketChannelLiveVolumeContextValue | null>(null)
+const EMPTY_LIVE_VOLUME_CONTEXT: MarketChannelLiveVolumeContextValue = {
+  liveVolumeByCondition: {},
+  resetLiveVolumes: () => {},
+}
 const WEBSOCKET_PING_INTERVAL_MS = 10000
-const WEBSOCKET_STALE_TIMEOUT_MS = 70000
+const LIVE_VOLUME_FLUSH_INTERVAL_MS = 100
+const MAX_SEEN_LIVE_TRADE_KEYS = 4096
 
 function buildTokenMapping(markets: Market[]): TokenMapping {
   const tokenIds: string[] = []
@@ -78,6 +98,85 @@ function resolveQuote(bestBid: unknown, bestAsk: unknown): MarketQuote {
   const mid = bid != null && ask != null ? (bid + ask) / 2 : (ask ?? bid ?? null)
 
   return { bid, ask, mid }
+}
+
+export function resolveLiveTradeVolume(
+  payload: unknown,
+  tokenIdToConditionId: Map<string, string>,
+): { conditionId: string; volume: number } | null {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return null
+  }
+
+  const record = payload as Record<string, unknown>
+  if (record.event_type !== 'last_trade_price') {
+    return null
+  }
+
+  const assetId = typeof record.asset_id === 'string' ? record.asset_id : ''
+  const conditionId = tokenIdToConditionId.get(assetId)
+  if (!conditionId) {
+    return null
+  }
+
+  const price = Number(record.price)
+  const size = Number(record.size)
+  const volume = price * size
+  if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(size) || size <= 0 || !Number.isFinite(volume)) {
+    return null
+  }
+
+  return { conditionId, volume }
+}
+
+export function resolveLiveTradeEventKey(payload: unknown, tokenIdToConditionId: Map<string, string>) {
+  const trade = resolveLiveTradeVolume(payload, tokenIdToConditionId)
+  if (!trade || !payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return null
+  }
+
+  const record = payload as Record<string, unknown>
+  const assetId = typeof record.asset_id === 'string' ? record.asset_id : ''
+  const sequence = record.sequence
+  const streamId = record.stream_id
+  const tradeId = [record.trade_id, record.tradeId, record.id].find(
+    (value): value is string | number =>
+      (typeof value === 'string' && value.trim().length > 0) || typeof value === 'number',
+  )
+  const hasSequence = (typeof sequence === 'string' && sequence.trim().length > 0) || typeof sequence === 'number'
+  const hasStreamId = (typeof streamId === 'string' && streamId.trim().length > 0) || typeof streamId === 'number'
+  if (hasSequence) {
+    return hasStreamId
+      ? [trade.conditionId, 'stream', String(streamId), String(sequence), assetId].join(':')
+      : [trade.conditionId, 'stream', String(sequence), assetId].join(':')
+  }
+  if (tradeId !== undefined || hasStreamId) {
+    return [trade.conditionId, 'stream', hasStreamId ? String(streamId) : '', String(tradeId ?? ''), assetId].join(':')
+  }
+
+  const timestamp = Number(record.timestamp)
+  if (!assetId || !Number.isFinite(timestamp)) {
+    return null
+  }
+
+  const side = typeof record.side === 'string' ? record.side.toUpperCase() : ''
+  return [trade.conditionId, assetId, timestamp, Number(record.price), Number(record.size), side].join(':')
+}
+
+export function accumulateLiveTradeVolume(
+  current: Record<string, number>,
+  payload: unknown,
+  tokenIdToConditionId: Map<string, string>,
+) {
+  const trade = resolveLiveTradeVolume(payload, tokenIdToConditionId)
+  if (!trade) {
+    return current
+  }
+
+  return {
+    ...current,
+    [trade.conditionId]: (current[trade.conditionId] ?? 0) + trade.volume,
+  }
 }
 
 function updateOrderBookCaches(
@@ -263,6 +362,103 @@ function useMarketChannelConnection({
   const listenersRef = useRef(new Set<MarketChannelListener>())
   const connectionStatusRef = useRef<MarketChannelStatus>('connecting')
   const connectionStatusListenersRef = useRef(new Set<() => void>())
+  const tokenIdsSignature = tokenIds.join(',')
+  const [liveVolumeState, setLiveVolumeState] = useState<LiveVolumeState>(() => ({
+    tokenIdsSignature,
+    byCondition: {},
+  }))
+  const pendingLiveVolumeRef = useRef<Record<string, number>>({})
+  const liveVolumeFlushTimerRef = useRef<number | null>(null)
+  const seenLiveTradeKeysRef = useRef<{ tokenIdsSignature: string; keys: Set<string> }>({
+    tokenIdsSignature,
+    keys: new Set(),
+  })
+  const liveVolumeByCondition =
+    liveVolumeState.tokenIdsSignature === tokenIdsSignature
+      ? liveVolumeState.byCondition
+      : EMPTY_LIVE_VOLUME_CONTEXT.liveVolumeByCondition
+
+  const clearPendingLiveVolume = useCallback(() => {
+    pendingLiveVolumeRef.current = {}
+    if (liveVolumeFlushTimerRef.current !== null) {
+      window.clearTimeout(liveVolumeFlushTimerRef.current)
+      liveVolumeFlushTimerRef.current = null
+    }
+  }, [])
+
+  const flushPendingLiveVolume = useCallback(() => {
+    liveVolumeFlushTimerRef.current = null
+    const pending = pendingLiveVolumeRef.current
+    pendingLiveVolumeRef.current = {}
+
+    if (Object.keys(pending).length === 0) {
+      return
+    }
+
+    setLiveVolumeState((current) => {
+      const byCondition =
+        current.tokenIdsSignature === tokenIdsSignature
+          ? current.byCondition
+          : EMPTY_LIVE_VOLUME_CONTEXT.liveVolumeByCondition
+      const next = { ...byCondition }
+
+      for (const [conditionId, volume] of Object.entries(pending)) {
+        next[conditionId] = (next[conditionId] ?? 0) + volume
+      }
+
+      return { tokenIdsSignature, byCondition: next }
+    })
+  }, [tokenIdsSignature])
+
+  const resetLiveVolumes = useCallback(() => {
+    clearPendingLiveVolume()
+    seenLiveTradeKeysRef.current = { tokenIdsSignature, keys: new Set() }
+    setLiveVolumeState((current) => {
+      if (current.tokenIdsSignature !== tokenIdsSignature || Object.keys(current.byCondition).length === 0) {
+        return current
+      }
+
+      return { tokenIdsSignature, byCondition: {} }
+    })
+  }, [clearPendingLiveVolume, tokenIdsSignature])
+
+  const addLiveTradeVolume = useCallback(
+    (payload: unknown) => {
+      const trade = resolveLiveTradeVolume(payload, tokenIdToConditionId)
+      if (!trade) {
+        return
+      }
+
+      if (seenLiveTradeKeysRef.current.tokenIdsSignature !== tokenIdsSignature) {
+        seenLiveTradeKeysRef.current = { tokenIdsSignature, keys: new Set() }
+      }
+
+      const eventKey = resolveLiveTradeEventKey(payload, tokenIdToConditionId)
+      if (eventKey) {
+        if (seenLiveTradeKeysRef.current.keys.has(eventKey)) {
+          return
+        }
+        seenLiveTradeKeysRef.current.keys.add(eventKey)
+        while (seenLiveTradeKeysRef.current.keys.size > MAX_SEEN_LIVE_TRADE_KEYS) {
+          const oldestKey = seenLiveTradeKeysRef.current.keys.values().next().value
+          if (oldestKey === undefined) {
+            break
+          }
+          seenLiveTradeKeysRef.current.keys.delete(oldestKey)
+        }
+      }
+
+      pendingLiveVolumeRef.current[trade.conditionId] =
+        (pendingLiveVolumeRef.current[trade.conditionId] ?? 0) + trade.volume
+
+      if (liveVolumeFlushTimerRef.current === null) {
+        liveVolumeFlushTimerRef.current = window.setTimeout(flushPendingLiveVolume, LIVE_VOLUME_FLUSH_INTERVAL_MS)
+      }
+    },
+    [flushPendingLiveVolume, tokenIdToConditionId, tokenIdsSignature],
+  )
+
+  useEffect(() => clearPendingLiveVolume, [clearPendingLiveVolume, tokenIdsSignature])
 
   const subscribe = useCallback(function subscribeToMarketChannelListeners(listener: MarketChannelListener) {
     listenersRef.current.add(listener)
@@ -302,50 +498,13 @@ function useMarketChannelConnection({
 
       let isActive = true
       let ws: WebSocket | null = null
-      let lastMessageAt = Date.now()
-      let heartbeatHandle: number | null = null
-
-      function clearHeartbeat() {
-        if (heartbeatHandle != null) {
-          window.clearInterval(heartbeatHandle)
-          heartbeatHandle = null
-        }
-      }
-
-      function startHeartbeat() {
-        clearHeartbeat()
-        heartbeatHandle = window.setInterval(() => {
-          if (!isActive || !ws) {
-            return
-          }
-          if (Date.now() - lastMessageAt > WEBSOCKET_STALE_TIMEOUT_MS) {
-            const staleSocket = ws
-            ws = null
-            clearHeartbeat()
-            closeWebSocketWhenReady(staleSocket)
-            scheduleReconnect()
-            return
-          }
-          if (ws.readyState === WebSocket.OPEN) {
-            try {
-              ws.send('PING')
-            } catch {
-              const staleSocket = ws
-              ws = null
-              clearHeartbeat()
-              closeWebSocketWhenReady(staleSocket)
-              scheduleReconnect()
-            }
-          }
-        }, WEBSOCKET_PING_INTERVAL_MS)
-      }
 
       function handleOpen(socket: WebSocket) {
         if (socket !== ws) {
           return
         }
-        lastMessageAt = Date.now()
-        startHeartbeat()
+        reconnectController?.markConnected()
+        heartbeatController?.markOpen(socket)
         setConnectionStatus('connecting')
         socket.send(
           JSON.stringify({
@@ -361,7 +520,7 @@ function useMarketChannelConnection({
         if (!isActive || socket !== ws) {
           return
         }
-        lastMessageAt = Date.now()
+        heartbeatController?.markActivity(socket)
         setConnectionStatus('live')
         let payload: any
         try {
@@ -382,6 +541,7 @@ function useMarketChannelConnection({
           if (tokenId) {
             updateOrderBookFromLastTrade(queryClient, tokenId, payload.price, payload.side)
           }
+          addLiveTradeVolume(payload)
         }
 
         if (payload?.event_type === 'best_bid_ask') {
@@ -403,6 +563,7 @@ function useMarketChannelConnection({
       }
 
       let reconnectController: ReturnType<typeof createWebSocketReconnectController> | null = null
+      let heartbeatController: ReturnType<typeof createWebSocketHeartbeatController> | null = null
 
       function clearReconnect() {
         reconnectController?.clearReconnect()
@@ -420,7 +581,7 @@ function useMarketChannelConnection({
         if (socket !== ws) {
           return
         }
-        clearHeartbeat()
+        heartbeatController?.clear()
         if (isActive) {
           setConnectionStatus('offline')
           ws = null
@@ -429,7 +590,7 @@ function useMarketChannelConnection({
       }
 
       function disconnectSocket(socket: WebSocket) {
-        clearHeartbeat()
+        heartbeatController?.clear()
         socket.onopen = null
         socket.onmessage = null
         socket.onerror = null
@@ -448,17 +609,28 @@ function useMarketChannelConnection({
         socket.onerror = () => handleError(socket)
         socket.onclose = () => handleClose(socket)
         ws = socket
+        heartbeatController?.markConnecting(socket)
       }
 
       reconnectController = createWebSocketReconnectController({
         connect,
-        disconnectWebSocket: disconnectSocket,
         getWebSocket: () => ws,
         isActive: () => isActive,
-        reconnectOnVisible: true,
         resetWebSocket: () => {
+          heartbeatController?.clear()
           ws = null
         },
+      })
+      heartbeatController = createWebSocketHeartbeatController({
+        getWebSocket: () => ws,
+        isActive: () => isActive,
+        onConnectionLost: (socket) => {
+          ws = null
+          setConnectionStatus('offline')
+          closeWebSocketWhenReady(socket)
+          scheduleReconnect()
+        },
+        pingIntervalMs: WEBSOCKET_PING_INTERVAL_MS,
       })
 
       connect()
@@ -467,7 +639,7 @@ function useMarketChannelConnection({
       return function teardownMarketChannelConnection() {
         isActive = false
         clearReconnect()
-        clearHeartbeat()
+        heartbeatController.clear()
         document.removeEventListener('visibilitychange', handleVisibilityChange)
         const socket = ws
         if (socket) {
@@ -475,11 +647,11 @@ function useMarketChannelConnection({
         }
       }
     },
-    [hasMarketChannel, queryClient, setConnectionStatus, tokenIds, tokenIdToConditionId, wsUrl],
+    [addLiveTradeVolume, hasMarketChannel, queryClient, setConnectionStatus, tokenIds, tokenIdToConditionId, wsUrl],
   )
 
   const status: MarketChannelStatus = hasMarketChannel ? connectionStatus : 'offline'
-  return { status, subscribe }
+  return { status, subscribe, liveVolumeByCondition, resetLiveVolumes }
 }
 
 function EventMarketChannelProvider({ markets, children }: { markets: Market[]; children: React.ReactNode }) {
@@ -489,7 +661,7 @@ function EventMarketChannelProvider({ markets, children }: { markets: Market[]; 
   const wsUrl = wsClobUrl
   const hasMarketChannel = tokenIds.length > 0 && Boolean(wsUrl)
 
-  const { status, subscribe } = useMarketChannelConnection({
+  const { status, subscribe, liveVolumeByCondition, resetLiveVolumes } = useMarketChannelConnection({
     tokenIds,
     tokenIdToConditionId,
     wsUrl,
@@ -498,8 +670,16 @@ function EventMarketChannelProvider({ markets, children }: { markets: Market[]; 
   })
 
   const contextValue = useMemo(() => ({ status, subscribe }), [status, subscribe])
+  const liveVolumeContextValue = useMemo(
+    () => ({ liveVolumeByCondition, resetLiveVolumes }),
+    [liveVolumeByCondition, resetLiveVolumes],
+  )
 
-  return <MarketChannelContext value={contextValue}>{children}</MarketChannelContext>
+  return (
+    <MarketChannelContext value={contextValue}>
+      <MarketChannelLiveVolumeContext value={liveVolumeContextValue}>{children}</MarketChannelLiveVolumeContext>
+    </MarketChannelContext>
+  )
 }
 
 export function useMarketChannelStatus() {
@@ -531,6 +711,11 @@ export function useOptionalMarketChannelSubscription(listener: MarketChannelList
     },
     [context, listener],
   )
+}
+
+export function useOptionalMarketChannelLiveVolumes(): MarketChannelLiveVolumeContextValue {
+  const context = use(MarketChannelLiveVolumeContext)
+  return context ?? EMPTY_LIVE_VOLUME_CONTEXT
 }
 
 export default EventMarketChannelProvider

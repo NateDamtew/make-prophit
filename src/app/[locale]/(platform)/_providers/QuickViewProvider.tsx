@@ -1,7 +1,9 @@
 'use client'
 
 import type { ReactNode } from 'react'
+
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
+
 import QuickView from '@/app/[locale]/(platform)/_components/quick-view/QuickView'
 
 const AUTO_SHOWN_SESSION_KEY = 'quickview_autoshown'
@@ -34,8 +36,7 @@ export function QuickViewProvider({ children }: { children: ReactNode }) {
     let alreadyShown = false
     try {
       alreadyShown = sessionStorage.getItem(AUTO_SHOWN_SESSION_KEY) === 'true'
-    }
-    catch {
+    } catch {
       alreadyShown = false
     }
 
@@ -46,8 +47,7 @@ export function QuickViewProvider({ children }: { children: ReactNode }) {
     const timeout = window.setTimeout(() => {
       try {
         sessionStorage.setItem(AUTO_SHOWN_SESSION_KEY, 'true')
-      }
-      catch {
+      } catch {
         // ignore persistence failures
       }
       setOpen(true)

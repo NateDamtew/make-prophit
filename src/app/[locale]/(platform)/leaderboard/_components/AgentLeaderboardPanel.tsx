@@ -3,6 +3,7 @@
 import { ArrowUpRightIcon, BotIcon, Loader2Icon } from 'lucide-react'
 import Image from 'next/image'
 import { useEffect, useState } from 'react'
+
 import { Link } from '@/i18n/navigation'
 
 interface LeaderboardAgent {
@@ -47,7 +48,7 @@ export default function AgentLeaderboardPanel() {
         if (!response.ok) {
           throw new Error('Failed to load agents')
         }
-        const payload = await response.json() as { data?: LeaderboardAgent[] }
+        const payload = (await response.json()) as { data?: LeaderboardAgent[] }
         setAgents(payload.data ?? [])
       })
       .catch((error) => {
@@ -70,11 +71,7 @@ export default function AgentLeaderboardPanel() {
 
   if (isError) {
     return (
-      <div className="
-        grid place-items-center gap-2 rounded-xl border border-dashed bg-card/40 px-6 py-12 text-center text-sm
-        text-muted-foreground
-      "
-      >
+      <div className="grid place-items-center gap-2 rounded-xl border border-dashed bg-card/40 px-6 py-12 text-center text-sm text-muted-foreground">
         Couldn’t load the agent leaderboard. Please try again.
       </div>
     )
@@ -89,16 +86,13 @@ export default function AgentLeaderboardPanel() {
         <div className="grid gap-1">
           <p className="text-lg font-semibold">No agents on the leaderboard yet</p>
           <p className="max-w-md text-sm text-muted-foreground">
-            Agent trading goes live at mainnet. Register your agent now to lock in your slug and
-            start the moment trading opens.
+            Agent trading goes live at mainnet. Register your agent now to lock in your slug and start the moment
+            trading opens.
           </p>
         </div>
         <Link
           href={'/settings/agents' as never}
-          className="
-            mt-2 inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium
-            text-primary-foreground
-          "
+          className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground"
         >
           Register an agent
           <ArrowUpRightIcon className="size-3.5" />
@@ -115,37 +109,27 @@ export default function AgentLeaderboardPanel() {
             href={`/agent/${agent.slug}` as never}
             className="flex items-center gap-3 rounded-xl border bg-card p-3 transition-colors hover:bg-accent"
           >
-            <span className="w-6 text-right text-sm font-bold text-muted-foreground tabular-nums">
-              {index + 1}
-            </span>
+            <span className="w-6 text-right text-sm font-bold text-muted-foreground tabular-nums">{index + 1}</span>
             <div className="relative size-10 shrink-0 overflow-hidden rounded-md bg-primary/10">
-              {agent.avatar_url
-                ? (
-                    <Image src={agent.avatar_url} alt="" fill sizes="40px" unoptimized className="object-cover" />
-                  )
-                : (
-                    <div className="flex size-full items-center justify-center">
-                      <BotIcon className="size-5 text-primary" />
-                    </div>
-                  )}
+              {agent.avatar_url ? (
+                <Image src={agent.avatar_url} alt="" fill sizes="40px" unoptimized className="object-cover" />
+              ) : (
+                <div className="flex size-full items-center justify-center">
+                  <BotIcon className="size-5 text-primary" />
+                </div>
+              )}
             </div>
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-semibold">{agent.name}</p>
               <p className="truncate text-xs text-muted-foreground">
                 {agent.owner_username ? `@${agent.owner_username}` : 'Anonymous'}
                 {' · '}
-                {agent.total_trades}
-                {' '}
-                trades
+                {agent.total_trades} trades
               </p>
             </div>
             <div className="text-right">
               <p className="text-sm font-bold tabular-nums">{formatUsd(agent.total_pnl_usd)}</p>
-              <p className="text-2xs text-muted-foreground tabular-nums">
-                {formatUsd(agent.total_volume_usd)}
-                {' '}
-                vol
-              </p>
+              <p className="text-2xs text-muted-foreground tabular-nums">{formatUsd(agent.total_volume_usd)} vol</p>
             </div>
           </Link>
         </li>

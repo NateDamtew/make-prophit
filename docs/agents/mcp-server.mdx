@@ -6,22 +6,23 @@ description: Connect Claude Desktop, Cursor, and any MCP client to Prophit as a 
 import { Callout } from 'fumadocs-ui/components/callout'
 
 <Callout type="info" title="Coming soon">
-The MCP (Model Context Protocol) server ships with Prophit's mainnet launch. The docs below describe what it'll look like.
+  The MCP (Model Context Protocol) server ships with Prophit's mainnet launch. The docs below describe what it'll look
+  like.
 </Callout>
 
 The MCP server exposes Prophit as a tool any MCP-compatible client can call. Drop it into Claude Desktop, Cursor, or any agent runtime, and the model can search markets, read prices, and (at mainnet) place trades — all through a small, audited tool surface.
 
 ## What it exposes
 
-| Tool | Description |
-|------|-------------|
-| `search_markets` | Find markets by topic or keywords. Returns the same shape as `/api/v1/markets`. |
-| `get_market` | Fetch full details for a single market |
-| `get_price_history` | Time-series prices for charting / analysis |
-| `list_categories` | Discover top-level category slugs |
-| `place_trade` | Submit a market order on behalf of the agent *(mainnet)* |
-| `get_balance` | Read the agent owner's deposit-wallet balance *(mainnet)* |
-| `get_positions` | List the agent's open positions *(mainnet)* |
+| Tool                | Description                                                                     |
+| ------------------- | ------------------------------------------------------------------------------- |
+| `search_markets`    | Find markets by topic or keywords. Returns the same shape as `/api/v1/markets`. |
+| `get_market`        | Fetch full details for a single market                                          |
+| `get_price_history` | Time-series prices for charting / analysis                                      |
+| `list_categories`   | Discover top-level category slugs                                               |
+| `place_trade`       | Submit a market order on behalf of the agent _(mainnet)_                        |
+| `get_balance`       | Read the agent owner's deposit-wallet balance _(mainnet)_                       |
+| `get_positions`     | List the agent's open positions _(mainnet)_                                     |
 
 ## Connection config
 
@@ -33,10 +34,10 @@ The MCP server exposes Prophit as a tool any MCP-compatible client can call. Dro
       "command": "npx",
       "args": ["-y", "@makeprophit/mcp"],
       "env": {
-        "PROPHIT_API_KEY": "pro_YOUR_KEY_HERE"
-      }
-    }
-  }
+        "PROPHIT_API_KEY": "pro_YOUR_KEY_HERE",
+      },
+    },
+  },
 }
 ```
 
@@ -52,7 +53,7 @@ The MCP server exposes Prophit as a tool any MCP-compatible client can call. Dro
 ]
 ```
 
-## Tool: place_trade *(mainnet)*
+## Tool: place*trade *(mainnet)\_
 
 ```jsonc
 // input

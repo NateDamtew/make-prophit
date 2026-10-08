@@ -1,24 +1,31 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import * as actualNextCache from 'next/cache'
 
-const mocks = vi.hoisted(() => ({
-  listHomeEventsPage: vi.fn(),
+import { hoisted, useRealTimers } from '../bun-test-helpers'
+
+const mocks = hoisted(() => ({
+  listHomeEventsPage: mock(),
 }))
 
-vi.mock('@/lib/home-events-page', () => ({
+void mock.module('@/lib/home-events-page', () => ({
   listHomeEventsPage: (...args: any[]) => mocks.listHomeEventsPage(...args),
 }))
 
-vi.mock('next/cache', async () => {
-  const actual = await vi.importActual<typeof import('next/cache')>('next/cache')
+void mock.module('@/lib/home-featured-events', () => ({
+  getHomeFeaturedSideCard: mock().mockResolvedValue({ slides: [] }),
+  listHomeFeaturedEvents: mock().mockResolvedValue([]),
+  listHomeFeaturedHotTopics: mock().mockResolvedValue([]),
+}))
 
+void mock.module('next/cache', () => {
   return {
-    ...actual,
-    cacheLife: vi.fn(),
-    cacheTag: vi.fn(),
+    ...actualNextCache,
+    cacheLife: mock(),
+    cacheTag: mock(),
   }
 })
 
-vi.mock('@/app/[locale]/(platform)/(home)/_components/HomeClient', () => ({
+void mock.module('@/app/[locale]/(platform)/(home)/_components/HomeClient', () => ({
   default: () => null,
 }))
 
@@ -28,34 +35,27 @@ describe('homeContent', () => {
   })
 
   afterEach(() => {
-    vi.useRealTimers()
+    useRealTimers()
   })
 
-  it('uses the route main tag when fetching initial subcategory events', async () => {
+  it('uses the route main tag when fetching initial subcategory events without loading footer events', async () => {
     const currentTimestamp = Date.parse('2026-05-11T12:30:00.000Z')
     mocks.listHomeEventsPage.mockResolvedValue({ data: [], error: null })
 
     const HomeContent = (await import('@/app/[locale]/(platform)/(home)/_components/HomeContent')).default
     await HomeContent({
-      locale: 'en',
       initialTag: 'ai',
       initialMainTag: 'tech',
       currentTimestamp,
     })
 
+    expect(mocks.listHomeEventsPage).toHaveBeenCalledTimes(1)
     expect(mocks.listHomeEventsPage).toHaveBeenCalledWith(
       expect.objectContaining({
         tag: 'ai',
         mainTag: 'tech',
         locale: 'en',
         currentTimestamp,
-      }),
-    )
-    expect(mocks.listHomeEventsPage).toHaveBeenCalledWith(
-      expect.objectContaining({
-        tag: 'ai',
-        mainTag: 'tech',
-        sortBy: 'created_at',
       }),
     )
   })
@@ -66,7 +66,6 @@ describe('homeContent', () => {
 
     const HomeContent = (await import('@/app/[locale]/(platform)/(home)/_components/HomeContent')).default
     await HomeContent({
-      locale: 'en',
       currentTimestamp,
     })
 
@@ -82,7 +81,6 @@ describe('homeContent', () => {
 
     const HomeContent = (await import('@/app/[locale]/(platform)/(home)/_components/HomeContent')).default
     await HomeContent({
-      locale: 'en',
       initialTag: 'new',
       currentTimestamp: Date.parse('2026-05-11T12:30:00.000Z'),
     })

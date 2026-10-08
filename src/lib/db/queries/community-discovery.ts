@@ -1,4 +1,5 @@
 import { sql } from 'drizzle-orm'
+
 import { db } from '@/lib/drizzle'
 
 export interface DiscoveryCommunityRow {
@@ -58,11 +59,10 @@ export const CommunityDiscoveryRepository = {
         ORDER BY COALESCE(e.recent, 0) DESC, c.member_count DESC
         LIMIT ${bounded}
       `)
-      const rows = (result as unknown as { rows: DiscoveryCommunityRow[] }).rows
-        ?? (result as unknown as DiscoveryCommunityRow[])
+      const rows =
+        (result as unknown as { rows: DiscoveryCommunityRow[] }).rows ?? (result as unknown as DiscoveryCommunityRow[])
       return rows
-    }
-    catch (error) {
+    } catch (error) {
       console.error('listTrending error', error)
       return []
     }
@@ -82,11 +82,10 @@ export const CommunityDiscoveryRepository = {
         ORDER BY market_count DESC
         LIMIT ${Math.min(Math.max(limit, 1), 50)}
       `)
-      const rows = (result as unknown as { rows: DiscoveryCategoryRow[] }).rows
-        ?? (result as unknown as DiscoveryCategoryRow[])
-      return rows.filter(r => r.slug && r.slug.trim().length > 0)
-    }
-    catch (error) {
+      const rows =
+        (result as unknown as { rows: DiscoveryCategoryRow[] }).rows ?? (result as unknown as DiscoveryCategoryRow[])
+      return rows.filter((r) => r.slug && r.slug.trim().length > 0)
+    } catch (error) {
       console.error('listCategories error', error)
       return []
     }
@@ -110,11 +109,10 @@ export const CommunityDiscoveryRepository = {
         ORDER BY c.member_count DESC, c.created_at DESC
         LIMIT ${bounded}
       `)
-      const rows = (result as unknown as { rows: DiscoveryCommunityRow[] }).rows
-        ?? (result as unknown as DiscoveryCommunityRow[])
+      const rows =
+        (result as unknown as { rows: DiscoveryCommunityRow[] }).rows ?? (result as unknown as DiscoveryCommunityRow[])
       return rows
-    }
-    catch (error) {
+    } catch (error) {
       console.error('listByCategory error', error)
       return []
     }
@@ -123,7 +121,7 @@ export const CommunityDiscoveryRepository = {
   // ─── Sitemap source ──────────────────────────────────────────────────────
 
   /** All public community slugs + last activity for sitemap generation. */
-  async listAllForSitemap(): Promise<Array<{ slug: string, updated_at: string }>> {
+  async listAllForSitemap(): Promise<Array<{ slug: string; updated_at: string }>> {
     try {
       const result = await db.execute(sql`
         SELECT slug, GREATEST(updated_at, created_at)::text AS updated_at
@@ -132,18 +130,18 @@ export const CommunityDiscoveryRepository = {
         ORDER BY updated_at DESC
         LIMIT 5000
       `)
-      const rows = (result as unknown as { rows: Array<{ slug: string, updated_at: string }> }).rows
-        ?? (result as unknown as Array<{ slug: string, updated_at: string }>)
+      const rows =
+        (result as unknown as { rows: Array<{ slug: string; updated_at: string }> }).rows ??
+        (result as unknown as Array<{ slug: string; updated_at: string }>)
       return rows
-    }
-    catch (error) {
+    } catch (error) {
       console.error('listAllForSitemap error', error)
       return []
     }
   },
 
   /** Community markets that are currently public for the sitemap. */
-  async listMarketsForSitemap(): Promise<Array<{ community_slug: string, market_id: string, updated_at: string }>> {
+  async listMarketsForSitemap(): Promise<Array<{ community_slug: string; market_id: string; updated_at: string }>> {
     try {
       const result = await db.execute(sql`
         SELECT c.slug AS community_slug,
@@ -157,11 +155,11 @@ export const CommunityDiscoveryRepository = {
         ORDER BY cm.updated_at DESC
         LIMIT 20000
       `)
-      const rows = (result as unknown as { rows: Array<{ community_slug: string, market_id: string, updated_at: string }> }).rows
-        ?? (result as unknown as Array<{ community_slug: string, market_id: string, updated_at: string }>)
+      const rows =
+        (result as unknown as { rows: Array<{ community_slug: string; market_id: string; updated_at: string }> })
+          .rows ?? (result as unknown as Array<{ community_slug: string; market_id: string; updated_at: string }>)
       return rows
-    }
-    catch (error) {
+    } catch (error) {
       console.error('listMarketsForSitemap error', error)
       return []
     }

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
+
 import { DEFAULT_ERROR_MESSAGE } from '@/lib/constants'
 import { AgentRepository } from '@/lib/db/queries/agents'
 import { UserRepository } from '@/lib/db/queries/user'
@@ -9,13 +10,7 @@ import { UserRepository } from '@/lib/db/queries/user'
 const AgentDraftSchema = z.object({
   name: z.string().trim().min(2, 'Name must be at least 2 characters').max(60),
   description: z.string().trim().max(500).optional(),
-  avatar_url: z
-    .string()
-    .trim()
-    .max(500)
-    .url('Avatar URL must be a valid URL')
-    .optional()
-    .or(z.literal('')),
+  avatar_url: z.string().trim().max(500).url('Avatar URL must be a valid URL').optional().or(z.literal('')),
   is_public: z.boolean().default(true),
   daily_limit_usd: z.number().nonnegative().max(1_000_000).nullable().optional(),
   total_limit_usd: z.number().nonnegative().max(1_000_000).nullable().optional(),

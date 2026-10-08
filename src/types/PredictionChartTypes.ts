@@ -30,6 +30,7 @@ export interface PredictionChartAnnotationMarker {
 export interface PredictionChartProps {
   data?: DataPoint[]
   series?: SeriesConfig[]
+  locale?: string
   width?: number
   height?: number
   margin?: { top: number; right: number; bottom: number; left: number }
@@ -46,8 +47,18 @@ export interface PredictionChartProps {
   }
   xAxisTickFontSize?: number
   yAxisTickFontSize?: number
+  centerXAxisTickLabels?: boolean
+  clipXAxisLabelsToPlot?: boolean
+  xAxisLabelsRightClipRatio?: number
+  xAxisLabelsRightInset?: number
+  alignYAxisLabelsToChartEdge?: boolean
+  fadeYAxisEdges?: boolean
+  neutralAxisColors?: boolean
   showXAxisTopRule?: boolean
+  showXAxisTopRuleFullWidth?: boolean
+  hideYAxisMinimumLabel?: boolean
   cursorGuideTop?: number
+  cursorGuideColor?: string
   autoscale?: boolean
   showXAxis?: boolean
   showYAxis?: boolean
@@ -84,8 +95,11 @@ export interface PredictionChartProps {
   showAreaFill?: boolean
   areaFillTopOpacity?: number
   areaFillBottomOpacity?: number
+  areaFillBottomOffset?: number
   tooltipValueFormatter?: (value: number) => string
   tooltipDateFormatter?: (value: Date) => string
+  tooltipHeaderFontSize?: number
+  tooltipDateFontSize?: number
   showTooltipSeriesLabels?: boolean
   tooltipLabelVariant?: PredictionChartTooltipLabelVariant
   clampCursorToDataExtent?: boolean

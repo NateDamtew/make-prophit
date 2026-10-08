@@ -1,6 +1,8 @@
 import type { NextRequest } from 'next/server'
+
 import { inArray, sql } from 'drizzle-orm'
 import { NextResponse } from 'next/server'
+
 import { db } from '@/lib/drizzle'
 
 export interface PublicResolverStats {
@@ -20,7 +22,7 @@ export async function GET(request: NextRequest) {
   const idsParam = url.searchParams.get('ids') ?? ''
   const ids = idsParam
     .split(',')
-    .map(s => s.trim())
+    .map((s) => s.trim())
     .filter(Boolean)
     .slice(0, 50)
 
@@ -47,8 +49,9 @@ export async function GET(request: NextRequest) {
         AND ${inArray(sql`jv.juror_id`, ids)}
       GROUP BY jv.juror_id
     `)
-    const rows = (result as unknown as { rows: Array<{ user_id: string, markets_resolved: number, upheld_count: number }> }).rows
-      ?? (result as unknown as Array<{ user_id: string, markets_resolved: number, upheld_count: number }>)
+    const rows =
+      (result as unknown as { rows: Array<{ user_id: string; markets_resolved: number; upheld_count: number }> })
+        .rows ?? (result as unknown as Array<{ user_id: string; markets_resolved: number; upheld_count: number }>)
 
     const map = new Map<string, PublicResolverStats>()
     for (const row of rows) {
@@ -63,16 +66,18 @@ export async function GET(request: NextRequest) {
     }
 
     // Fill zeroes for users with no votes so the client can always look up by id.
-    const data: PublicResolverStats[] = ids.map(id => map.get(id) ?? {
-      user_id: id,
-      markets_resolved: 0,
-      upheld_count: 0,
-      upheld_rate: null,
-    })
+    const data: PublicResolverStats[] = ids.map(
+      (id) =>
+        map.get(id) ?? {
+          user_id: id,
+          markets_resolved: 0,
+          upheld_count: 0,
+          upheld_rate: null,
+        },
+    )
 
     return NextResponse.json({ data })
-  }
-  catch (error) {
+  } catch (error) {
     console.error('resolver-stats route error', error)
     return NextResponse.json({ data: [] })
   }

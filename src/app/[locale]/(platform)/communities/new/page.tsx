@@ -1,8 +1,10 @@
-import { Suspense } from 'react'
-import { redirect } from 'next/navigation'
 import { setRequestLocale } from 'next-intl/server'
+import { redirect } from 'next/navigation'
+import { Suspense } from 'react'
+
 import { UserRepository } from '@/lib/db/queries/user'
 import { STATIC_PARAMS_PLACEHOLDER } from '@/lib/static-params'
+
 import CreateCommunityForm from './_components/CreateCommunityForm'
 
 export async function generateStaticParams() {

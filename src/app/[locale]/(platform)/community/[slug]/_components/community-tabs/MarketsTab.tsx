@@ -1,10 +1,13 @@
 'use client'
 
-import type { CommunityMarketSummary, CommunitySummary } from './types'
 import { TrendingUp } from 'lucide-react'
 import Link from 'next/link'
 import { useMemo } from 'react'
+
 import { Button } from '@/components/ui/button'
+
+import type { CommunityMarketSummary, CommunitySummary } from './types'
+
 import CommunityMarketCard from '../CommunityMarketCard'
 
 interface MarketsTabProps {
@@ -16,16 +19,15 @@ interface MarketsTabProps {
 
 export function MarketsTab({ community, markets, memberRole, isJuror }: MarketsTabProps) {
   const { liveMarkets, pendingMarkets, resolvedMarkets } = useMemo(() => {
+    // oxlint-disable-next-line react/purity
     const now = Date.now()
-    const active = markets.filter(m => m.status === 'active')
-    const pending = active.filter(
-      m => m.resolution_date && new Date(m.resolution_date).getTime() <= now,
-    )
-    const pendingIds = new Set(pending.map(m => m.id))
+    const active = markets.filter((m) => m.status === 'active')
+    const pending = active.filter((m) => m.resolution_date && new Date(m.resolution_date).getTime() <= now)
+    const pendingIds = new Set(pending.map((m) => m.id))
     return {
-      liveMarkets: active.filter(m => !pendingIds.has(m.id)),
+      liveMarkets: active.filter((m) => !pendingIds.has(m.id)),
       pendingMarkets: pending,
-      resolvedMarkets: markets.filter(m => m.status === 'resolved' || m.status === 'disputed'),
+      resolvedMarkets: markets.filter((m) => m.status === 'resolved' || m.status === 'disputed'),
     }
   }, [markets])
 
@@ -34,10 +36,7 @@ export function MarketsTab({ community, markets, memberRole, isJuror }: MarketsT
       <div className="flex flex-col items-center justify-center gap-4 py-16 text-center">
         <div className="relative">
           <div className="absolute inset-0 animate-pulse rounded-full bg-primary/10 blur-xl" />
-          <div className="
-            relative flex size-20 items-center justify-center rounded-2xl bg-linear-to-br from-primary/20 to-primary/5
-          "
-          >
+          <div className="relative flex size-20 items-center justify-center rounded-2xl bg-linear-to-br from-primary/20 to-primary/5">
             <TrendingUp className="size-9 text-primary/80" />
           </div>
         </div>
@@ -50,10 +49,14 @@ export function MarketsTab({ community, markets, memberRole, isJuror }: MarketsT
           </p>
         </div>
         {memberRole === 'admin' && (
-          <Button size="sm" nativeButton={false} render={<Link href={`/community/${community.slug}/markets/new` as any} />}>
-              <TrendingUp className="mr-1.5 size-3.5" />
-              Create First Market
-            </Button>
+          <Button
+            size="sm"
+            nativeButton={false}
+            render={<Link href={`/community/${community.slug}/markets/new` as any} />}
+          >
+            <TrendingUp className="mr-1.5 size-3.5" />
+            Create First Market
+          </Button>
         )}
       </div>
     )
@@ -65,13 +68,11 @@ export function MarketsTab({ community, markets, memberRole, isJuror }: MarketsT
         <section>
           <div className="mb-3 flex items-center justify-between">
             <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-              Live Markets (
-              {liveMarkets.length}
-              )
+              Live Markets ({liveMarkets.length})
             </h3>
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {liveMarkets.map(m => (
+            {liveMarkets.map((m) => (
               <CommunityMarketCard
                 communitySlug={community.slug}
                 key={m.id}
@@ -90,16 +91,14 @@ export function MarketsTab({ community, markets, memberRole, isJuror }: MarketsT
         <section>
           <div className="mb-3 flex items-center gap-2">
             <h3 className="text-xs font-semibold tracking-wide text-amber-600 uppercase">
-              Awaiting Resolution (
-              {pendingMarkets.length}
-              )
+              Awaiting Resolution ({pendingMarkets.length})
             </h3>
             <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-2xs font-medium text-amber-600">
               Jury vote needed
             </span>
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {pendingMarkets.map(m => (
+            {pendingMarkets.map((m) => (
               <CommunityMarketCard
                 communitySlug={community.slug}
                 key={m.id}
@@ -117,12 +116,10 @@ export function MarketsTab({ community, markets, memberRole, isJuror }: MarketsT
       {resolvedMarkets.length > 0 && (
         <section>
           <h3 className="mb-3 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-            Resolved (
-            {resolvedMarkets.length}
-            )
+            Resolved ({resolvedMarkets.length})
           </h3>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {resolvedMarkets.map(m => (
+            {resolvedMarkets.map((m) => (
               <CommunityMarketCard
                 communitySlug={community.slug}
                 key={m.id}

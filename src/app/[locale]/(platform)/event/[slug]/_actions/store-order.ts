@@ -4,6 +4,9 @@ import { getExtracted } from 'next-intl/server'
 import { updateTag } from 'next/cache'
 import { z } from 'zod'
 
+import type { SupportedLocale } from '@/i18n/locales'
+
+import { DEFAULT_LOCALE, resolveSupportedLocale, SUPPORTED_LOCALES } from '@/i18n/locales'
 import { cacheTags } from '@/lib/cache-tags'
 import { CLOB_ORDER_TYPE, MAX_CLOB_BATCH_ORDERS, MAX_ORDER_SUBMISSION_ORDERS, ORDER_TYPE } from '@/lib/constants'
 import { OrderRepository } from '@/lib/db/queries/order'
@@ -44,11 +47,19 @@ const StoreOrderSchema = z.object({
   post_only: z.boolean().optional(),
   condition_id: z.string(),
   slug: z.string(),
+  locale: z.string().optional(),
 })
 const StoreOrdersSchema = z.array(StoreOrderSchema).min(1).max(MAX_ORDER_SUBMISSION_ORDERS)
 
 type StoreOrderInput = z.infer<typeof StoreOrderSchema>
 type ClobOrderType = Exclude<StoreOrderInput['clob_type'], undefined>
+
+export type StoreOrderActionResult = {
+  error: string | null
+  orderId?: string | null
+  code?: string
+  retryAfterSeconds?: number
+}
 
 const CLOB_REQUEST_TIMEOUT_MS = 20_000
 
@@ -83,6 +94,8 @@ type ClobErrorMessageKey =
   | 'invalidOrderSize'
   | 'outdatedTradingSettings'
   | 'orderExecutionFailed'
+  | 'postOnlyMode'
+  | 'tradingRestarting'
 
 const CLOB_ERROR_MESSAGES: Record<string, ClobErrorMessageKey> = {
   condition_paused: 'conditionPaused',
@@ -109,6 +122,10 @@ const CLOB_ERROR_MESSAGES: Record<string, ClobErrorMessageKey> = {
   'could not run the execution': 'couldNotExecute',
   'error delaying the order': 'orderDelayed',
   'order match delayed due to market conditions': 'matchingDelayed',
+  'post-only mode: only post-only orders and cancels are allowed': 'postOnlyMode',
+  post_only_mode: 'postOnlyMode',
+  'trading is temporarily unavailable while the clob is restarting.': 'tradingRestarting',
+  trading_restarting: 'tradingRestarting',
 }
 
 const CLOB_ERROR_PATTERNS: Array<{ pattern: RegExp; messageKey: ClobErrorMessageKey }> = [
@@ -137,6 +154,14 @@ const CLOB_ERROR_PATTERNS: Array<{ pattern: RegExp; messageKey: ClobErrorMessage
   {
     pattern: /\b(postonly would cross the best (ask|bid))\b/i,
     messageKey: 'postOnlyWouldCross',
+  },
+  {
+    pattern: /\b(post-only mode|only post-only orders and cancels are allowed)\b/i,
+    messageKey: 'postOnlyMode',
+  },
+  {
+    pattern: /\b(trading is temporarily unavailable while the clob is restarting|clob is restarting)\b/i,
+    messageKey: 'tradingRestarting',
   },
   {
     pattern:
@@ -179,7 +204,34 @@ function getStringField(payload: Record<string, unknown> | null, key: string) {
   return trimmed.length > 0 ? trimmed : null
 }
 
-function mapClobErrorMessageKey(rawError: string | null): ClobErrorMessageKey {
+function getNonNegativeIntegerField(payload: Record<string, unknown> | null, key: string) {
+  if (!payload) {
+    return null
+  }
+  const value = payload[key]
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) {
+    return null
+  }
+  return value
+}
+
+function buildClobActionError(
+  error: string,
+  code: string | null,
+  retryAfterSeconds: number | null,
+): StoreOrderActionResult {
+  return {
+    error,
+    ...(code ? { code } : {}),
+    ...(retryAfterSeconds != null ? { retryAfterSeconds } : {}),
+  }
+}
+
+function isPostOnlyModeError(rawError: string | null, code: string | null) {
+  return code?.trim().toLowerCase() === 'post_only_mode' || mapClobErrorMessageKey(rawError, false) === 'postOnlyMode'
+}
+
+function mapClobErrorMessageKey(rawError: string | null, logUnmapped = true): ClobErrorMessageKey {
   if (!rawError) {
     return 'default'
   }
@@ -200,13 +252,19 @@ function mapClobErrorMessageKey(rawError: string | null): ClobErrorMessageKey {
     }
   }
 
-  console.error('Unmapped CLOB error message.', normalized)
+  if (logUnmapped) {
+    console.error('Unmapped CLOB error message.', normalized)
+  }
   return 'default'
 }
 
-async function mapClobErrorMessage(rawError: string | null) {
+async function mapClobErrorMessage(
+  rawError: string | null,
+  locale: SupportedLocale = DEFAULT_LOCALE,
+  retryAfterSeconds: number | null = null,
+) {
   const messageKey = mapClobErrorMessageKey(rawError)
-  const t = await getExtracted()
+  const t = await getExtracted({ locale })
 
   switch (messageKey) {
     case 'conditionPaused':
@@ -267,11 +325,34 @@ async function mapClobErrorMessage(rawError: string | null) {
       return t('Trading settings are out of date. Refresh and try again.')
     case 'orderExecutionFailed':
       return t('Order execution failed. Please try again shortly.')
+    case 'postOnlyMode':
+      if (retryAfterSeconds == null || retryAfterSeconds < 1) {
+        return t('The matching engine is restarting. Please try again shortly. You can still cancel open orders.')
+      }
+      return t('Restart in progress. Trading resumes in {seconds}s. Cancels still available.', {
+        seconds: retryAfterSeconds.toString(),
+      })
+    case 'tradingRestarting':
+      return t('The matching engine is restarting. Please try again shortly. You can still cancel open orders.')
     case 'default':
       return t('Something went wrong while processing your order. Please try again.')
   }
 
   return t('Something went wrong while processing your order. Please try again.')
+}
+
+function resolveBatchLocale(payloads: unknown) {
+  if (!Array.isArray(payloads)) {
+    return DEFAULT_LOCALE
+  }
+
+  const locale = payloads
+    .map((payload) =>
+      isRecord(payload) && typeof payload.locale === 'string' ? payload.locale.trim().toLowerCase() : null,
+    )
+    .find((value): value is SupportedLocale => SUPPORTED_LOCALES.includes(value as SupportedLocale))
+
+  return locale ?? DEFAULT_LOCALE
 }
 
 async function readClobJsonResponsePayload(response: { text?: () => Promise<string>; json?: () => Promise<unknown> }) {
@@ -309,7 +390,7 @@ async function readClobResponsePayload(response: { text?: () => Promise<string>;
   return { responseText, payload: isRecord(payload) ? payload : null }
 }
 
-export async function storeOrderAction(payload: StoreOrderInput) {
+export async function storeOrderAction(payload: StoreOrderInput): Promise<StoreOrderActionResult> {
   const user = await UserRepository.getCurrentUser({ disableCookieCache: true, minimal: true })
   if (!user) {
     return { error: UNAUTHENTICATED_ERROR }
@@ -333,6 +414,11 @@ export async function storeOrderAction(payload: StoreOrderInput) {
     return {
       error: validated.error.issues[0].message,
     }
+  }
+
+  const locale = resolveSupportedLocale(validated.data.locale)
+  function getLocalizedClobError(rawError: string | null, retryAfterSeconds: number | null = null) {
+    return mapClobErrorMessage(rawError, locale, retryAfterSeconds)
   }
 
   const defaultMarketOrderType = user.settings?.trading?.market_order_type ?? CLOB_ORDER_TYPE.FAK
@@ -407,36 +493,47 @@ export async function storeOrderAction(payload: StoreOrderInput) {
       const responseError =
         getStringField(clobStoreOrderResponseJson, 'error') ??
         getStringField(clobStoreOrderResponseJson, 'errorMsg') ??
-        getStringField(clobStoreOrderResponseJson, 'message')
-      const humanMessage = await mapClobErrorMessage(responseError)
+        getStringField(clobStoreOrderResponseJson, 'message') ??
+        getStringField(clobStoreOrderResponseJson, 'code')
+      const responseCode = getStringField(clobStoreOrderResponseJson, 'code')
+      const retryAfterSeconds = getNonNegativeIntegerField(clobStoreOrderResponseJson, 'retry_after_seconds')
+      const humanMessage = await getLocalizedClobError(responseError, retryAfterSeconds)
       const message = `Status ${clobStoreOrderResponse.status} (${clobStoreOrderResponse.statusText})`
       console.error('Failed to send order to CLOB.', message, responseError ?? responseText)
-      return { error: humanMessage }
+      return buildClobActionError(humanMessage, responseCode, retryAfterSeconds)
     }
 
     if (!clobStoreOrderResponseJson) {
       console.error('Failed to send order to CLOB. Empty or invalid response payload.')
-      return { error: await mapClobErrorMessage(null) }
+      return { error: await getLocalizedClobError(null) }
     }
 
     if (clobStoreOrderResponseJson?.success === false) {
       const responseError =
         getStringField(clobStoreOrderResponseJson, 'errorMsg') ??
         getStringField(clobStoreOrderResponseJson, 'error') ??
-        getStringField(clobStoreOrderResponseJson, 'message')
-      return { error: await mapClobErrorMessage(responseError) }
+        getStringField(clobStoreOrderResponseJson, 'message') ??
+        getStringField(clobStoreOrderResponseJson, 'code')
+      const responseCode = getStringField(clobStoreOrderResponseJson, 'code')
+      const retryAfterSeconds = getNonNegativeIntegerField(clobStoreOrderResponseJson, 'retry_after_seconds')
+      return buildClobActionError(
+        await getLocalizedClobError(responseError, retryAfterSeconds),
+        responseCode,
+        retryAfterSeconds,
+      )
     }
 
     const clobOrderId =
       getStringField(clobStoreOrderResponseJson, 'orderID') ?? getStringField(clobStoreOrderResponseJson, 'orderId')
     if (!clobOrderId) {
       console.error('CLOB response did not include an order id.', clobStoreOrderResponseJson)
-      return { error: await mapClobErrorMessage(null) }
+      return { error: await getLocalizedClobError(null) }
     }
 
+    const { locale: _locale, ...orderData } = validated.data
     void OrderRepository.createOrder({
-      ...validated.data,
-      salt: BigInt(validated.data.salt),
+      ...orderData,
+      salt: BigInt(orderData.salt),
       maker_amount: BigInt(validated.data.maker_amount),
       taker_amount: BigInt(validated.data.taker_amount),
       nonce: BigInt(validated.data.nonce),
@@ -457,7 +554,7 @@ export async function storeOrderAction(payload: StoreOrderInput) {
     }
   } catch (error) {
     console.error('Failed to create order.', error)
-    return { error: await mapClobErrorMessage(null) }
+    return { error: await getLocalizedClobError(null) }
   }
 }
 
@@ -480,29 +577,36 @@ export async function storeOrdersAction(payloads: StoreOrderInput[]) {
   }
 
   const validated = StoreOrdersSchema.safeParse(payloads)
+  const batchLocale = resolveBatchLocale(payloads)
+
+  function getLocalizedClobError(rawError: string | null, retryAfterSeconds: number | null = null) {
+    return mapClobErrorMessage(rawError, batchLocale, retryAfterSeconds)
+  }
+
   if (!validated.success) {
-    return { error: await mapClobErrorMessage(null), results: null }
+    return { error: await getLocalizedClobError(null), results: null }
   }
 
   const expectedMaker = normalizeAddress(user.deposit_wallet_address)
   if (!expectedMaker) {
-    return { error: await mapClobErrorMessage(null), results: null }
+    return { error: await getLocalizedClobError(null), results: null }
   }
 
   const defaultMarketOrderType = user.settings?.trading?.market_order_type ?? CLOB_ORDER_TYPE.FAK
   const preparedOrders: Array<{ data: StoreOrderInput; clobOrderType: ClobOrderType }> = []
 
   for (const data of validated.data) {
+    const locale = resolveSupportedLocale(data.locale)
     const maker = normalizeAddress(data.maker)
     const signer = normalizeAddress(data.signer)
     if (!maker || !signer) {
-      return { error: await mapClobErrorMessage(null), results: null }
+      return { error: await mapClobErrorMessage(null, locale), results: null }
     }
     if (data.signature_type !== 3) {
-      return { error: await mapClobErrorMessage(null), results: null }
+      return { error: await mapClobErrorMessage(null, locale), results: null }
     }
     if (maker.toLowerCase() !== expectedMaker.toLowerCase() || signer.toLowerCase() !== expectedMaker.toLowerCase()) {
-      return { error: await mapClobErrorMessage(null), results: null }
+      return { error: await mapClobErrorMessage(null, locale), results: null }
     }
 
     const clobOrderType =
@@ -522,6 +626,13 @@ export async function storeOrdersAction(payloads: StoreOrderInput[]) {
     const results: Array<{ error: string | null; orderId: string | null }> = []
     let processedBatchCount = 0
     let batchFailureError: string | null = null
+    let batchFailureCode: string | null = null
+    let batchFailureRetryAfterSeconds: number | null = null
+    let postOnlyBatchFailure: {
+      error: string
+      code: string | null
+      retryAfterSeconds: number | null
+    } | null = null
 
     for (let batchOffset = 0; batchOffset < preparedOrders.length; batchOffset += MAX_CLOB_BATCH_ORDERS) {
       const preparedBatch = preparedOrders.slice(batchOffset, batchOffset + MAX_CLOB_BATCH_ORDERS)
@@ -573,55 +684,103 @@ export async function storeOrdersAction(payloads: StoreOrderInput[]) {
           const responseError =
             getStringField(responsePayload, 'error') ??
             getStringField(responsePayload, 'errorMsg') ??
-            getStringField(responsePayload, 'message')
-          const humanMessage = await mapClobErrorMessage(responseError)
+            getStringField(responsePayload, 'message') ??
+            getStringField(responsePayload, 'code')
+          const responseCode = getStringField(responsePayload, 'code')
+          const retryAfterSeconds = getNonNegativeIntegerField(responsePayload, 'retry_after_seconds')
           console.error(
             'Failed to send order batch to CLOB.',
             `Status ${response.status} (${response.statusText})`,
             responseError ?? responseText,
           )
-          batchFailureError ??= humanMessage
-          results.push(...preparedBatch.map(() => ({ error: humanMessage, orderId: null })))
+          const batchResults = await Promise.all(
+            preparedBatch.map(async ({ data }) => {
+              const error = await mapClobErrorMessage(
+                responseError,
+                resolveSupportedLocale(data.locale),
+                retryAfterSeconds,
+              )
+              return {
+                error,
+                orderId: null,
+                ...(responseCode ? { code: responseCode } : {}),
+                ...(retryAfterSeconds != null ? { retryAfterSeconds } : {}),
+              }
+            }),
+          )
+          if (postOnlyBatchFailure == null && isPostOnlyModeError(responseError, responseCode)) {
+            postOnlyBatchFailure = {
+              error: await getLocalizedClobError(responseError, retryAfterSeconds),
+              code: responseCode,
+              retryAfterSeconds,
+            }
+          }
+          if (batchFailureError == null) {
+            batchFailureError = batchResults[0]!.error
+            batchFailureCode = responseCode
+            batchFailureRetryAfterSeconds = retryAfterSeconds
+          }
+          results.push(...batchResults)
           continue
         }
 
         if (!Array.isArray(payload) || payload.length !== preparedBatch.length) {
           console.error('CLOB batch response did not match the submitted order count.', payload)
-          const humanMessage = await mapClobErrorMessage(null)
-          batchFailureError ??= humanMessage
-          results.push(...preparedBatch.map(() => ({ error: humanMessage, orderId: null })))
+          const batchResults = await Promise.all(
+            preparedBatch.map(async ({ data }) => ({
+              error: await mapClobErrorMessage(null, resolveSupportedLocale(data.locale)),
+              orderId: null,
+            })),
+          )
+          batchFailureError ??= batchResults[0]!.error
+          results.push(...batchResults)
           continue
         }
 
         processedBatchCount += 1
         const batchResults = await Promise.all(
           payload.map(async (rawResult, index) => {
+            const prepared = preparedBatch[index]
+            if (!prepared) {
+              return { error: await getLocalizedClobError(null), orderId: null }
+            }
+
+            const locale = resolveSupportedLocale(prepared.data.locale)
             if (!isRecord(rawResult)) {
-              return { error: await mapClobErrorMessage(null), orderId: null }
+              return { error: await mapClobErrorMessage(null, locale), orderId: null }
             }
             if (rawResult.success === false) {
               const responseError =
                 getStringField(rawResult, 'errorMsg') ??
                 getStringField(rawResult, 'error') ??
-                getStringField(rawResult, 'message')
-              return { error: await mapClobErrorMessage(responseError), orderId: null }
+                getStringField(rawResult, 'message') ??
+                getStringField(rawResult, 'code')
+              const responseCode = getStringField(rawResult, 'code')
+              const retryAfterSeconds = getNonNegativeIntegerField(rawResult, 'retry_after_seconds')
+              const error = await mapClobErrorMessage(responseError, locale, retryAfterSeconds)
+              return {
+                error,
+                orderId: null,
+                ...(responseCode ? { code: responseCode } : {}),
+                ...(retryAfterSeconds != null ? { retryAfterSeconds } : {}),
+              }
             }
 
             const orderId = getStringField(rawResult, 'orderID') ?? getStringField(rawResult, 'orderId')
             if (!orderId) {
-              return { error: await mapClobErrorMessage(null), orderId: null }
+              return { error: await mapClobErrorMessage(null, locale), orderId: null }
             }
 
-            const prepared = preparedBatch[index]
             try {
+              const { locale: _locale, ...orderData } = prepared.data
               await OrderRepository.createOrder({
-                ...prepared.data,
-                salt: BigInt(prepared.data.salt),
-                maker_amount: BigInt(prepared.data.maker_amount),
-                taker_amount: BigInt(prepared.data.taker_amount),
-                nonce: BigInt(prepared.data.nonce),
-                fee_rate_bps: Number(prepared.data.fee_rate_bps),
-                expiration: BigInt(prepared.data.expiration),
+                ...orderData,
+                salt: BigInt(orderData.salt),
+                maker_amount: BigInt(orderData.maker_amount),
+                taker_amount: BigInt(orderData.taker_amount),
+                nonce: BigInt(orderData.nonce),
+                fee_rate_bps: Number(orderData.fee_rate_bps),
+                expiration: BigInt(orderData.expiration),
                 user_id: user.id,
                 affiliate_user_id: user.referred_by_user_id,
                 type: prepared.clobOrderType,
@@ -639,15 +798,25 @@ export async function storeOrdersAction(payloads: StoreOrderInput[]) {
         results.push(...batchResults)
       } catch (error) {
         console.error('Failed to create order batch.', error)
-        const humanMessage = await mapClobErrorMessage(null)
-        batchFailureError ??= humanMessage
-        results.push(...preparedBatch.map(() => ({ error: humanMessage, orderId: null })))
+        const batchResults = await Promise.all(
+          preparedBatch.map(async ({ data }) => ({
+            error: await mapClobErrorMessage(null, resolveSupportedLocale(data.locale)),
+            orderId: null,
+          })),
+        )
+        batchFailureError ??= batchResults[0]!.error
+        results.push(...batchResults)
       }
     }
 
     if (processedBatchCount === 0) {
+      const topLevelFailure = postOnlyBatchFailure ?? {
+        error: batchFailureError ?? (await getLocalizedClobError(null)),
+        code: batchFailureCode,
+        retryAfterSeconds: batchFailureRetryAfterSeconds,
+      }
       return {
-        error: batchFailureError ?? (await mapClobErrorMessage(null)),
+        ...buildClobActionError(topLevelFailure.error, topLevelFailure.code, topLevelFailure.retryAfterSeconds),
         results: null,
       }
     }
@@ -658,6 +827,6 @@ export async function storeOrdersAction(payloads: StoreOrderInput[]) {
     return { error: null, results }
   } catch (error) {
     console.error('Failed to create order batch.', error)
-    return { error: await mapClobErrorMessage(null), results: null }
+    return { error: await getLocalizedClobError(null), results: null }
   }
 }

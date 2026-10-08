@@ -1,9 +1,12 @@
 import type { Metadata } from 'next'
 
+import { cacheLife, cacheTag } from 'next/cache'
+
 import {
   generateSportsVerticalSectionMetadata,
-  renderSportsVerticalSectionPage,
+  renderSportsVerticalSectionPageWithState,
 } from '@/app/[locale]/(platform)/sports/_utils/sports-section-page'
+import { cacheTags } from '@/lib/cache-tags'
 import { getPublicShellStaticParams, STATIC_PARAMS_PLACEHOLDER } from '@/lib/static-params'
 
 export const instant = false
@@ -12,11 +15,12 @@ export async function generateStaticParams() {
   return getPublicShellStaticParams({ sport: STATIC_PARAMS_PLACEHOLDER })
 }
 
-async function generateCachedMetadata(locale: string, sport: string) {
+async function generateCachedMetadata(sport: string) {
   'use cache'
+  cacheLife('max')
+  cacheTag(cacheTags.settings, cacheTags.sportsMenu)
 
   return await generateSportsVerticalSectionMetadata({
-    locale,
     sport,
     vertical: 'sports',
     section: 'games',
@@ -24,24 +28,31 @@ async function generateCachedMetadata(locale: string, sport: string) {
 }
 
 export async function generateMetadata({ params }: PageProps<'/[locale]/sports/[sport]/games'>): Promise<Metadata> {
-  const { locale, sport } = await params
+  const { sport } = await params
 
-  return await generateCachedMetadata(locale, sport)
+  return await generateCachedMetadata(sport)
 }
 
-async function renderCachedPage(locale: string, sport: string) {
+async function renderCachedPage(sport: string) {
   'use cache'
+  cacheTag(cacheTags.eventsList, cacheTags.sportsMenu)
 
-  return await renderSportsVerticalSectionPage({
-    locale,
+  const result = await renderSportsVerticalSectionPageWithState({
     sport,
     vertical: 'sports',
     section: 'games',
   })
+  if (result.hasEvents === false) {
+    cacheLife('days')
+  } else {
+    cacheLife('hours')
+  }
+
+  return result.content
 }
 
 export default async function SportsGamesBySportPage({ params }: PageProps<'/[locale]/sports/[sport]/games'>) {
-  const { locale, sport } = await params
+  const { sport } = await params
 
-  return await renderCachedPage(locale, sport)
+  return await renderCachedPage(sport)
 }

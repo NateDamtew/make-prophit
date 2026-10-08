@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+
 import { MyCommunitiesRepository } from '@/lib/db/queries/my-communities'
 import { UserRepository } from '@/lib/db/queries/user'
 
@@ -10,8 +11,7 @@ export async function GET() {
   try {
     const items = await MyCommunitiesRepository.listForUser(user.id)
     return NextResponse.json({ items })
-  }
-  catch (error) {
+  } catch (error) {
     console.error('My communities list error', error)
     return NextResponse.json({ error: 'Failed to load communities.' }, { status: 500 })
   }

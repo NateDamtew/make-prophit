@@ -1,5 +1,6 @@
 import { setRequestLocale } from 'next-intl/server'
 import { Suspense } from 'react'
+
 import { AuditLogManager } from '@/app/[locale]/admin/audit-log/_components/AuditLogManager'
 import { Skeleton } from '@/components/ui/skeleton'
 import { requireAdmin } from '@/lib/admin-ui/guard'

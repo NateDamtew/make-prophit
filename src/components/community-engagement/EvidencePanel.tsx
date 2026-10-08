@@ -1,14 +1,16 @@
 'use client'
 
-import type { EvidenceFeedItem } from '@/lib/db/queries/community-integrity'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ExternalLinkIcon, FileCheck2Icon, PlusIcon, Trash2Icon } from 'lucide-react'
 import { useState } from 'react'
-import { toast } from '@/components/ui/toast'
+
+import type { EvidenceFeedItem } from '@/lib/db/queries/community-integrity'
+
 import { formatAbsolute, formatRelativeTime } from '@/components/admin-ui/format'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { toast } from '@/components/ui/toast'
 
 interface EvidencePanelProps {
   marketId: string
@@ -81,108 +83,104 @@ export function EvidencePanel({ marketId, canManage }: EvidencePanelProps) {
           <h2 className="text-sm font-semibold">Editorial evidence</h2>
         </div>
         <span className="text-xs text-muted-foreground">
-          {items.length}
-          {' '}
-          {items.length === 1 ? 'source' : 'sources'}
+          {items.length} {items.length === 1 ? 'source' : 'sources'}
         </span>
       </header>
 
       <div className="p-5">
-        {items.length === 0 && !query.isLoading
-          ? (
-              <p className="text-sm text-muted-foreground">
-                No evidence attached yet.
-                {canManage && ' Add sources that will defend the eventual resolution.'}
-              </p>
-            )
-          : (
-              <ul className="space-y-2">
-                {items.map(item => (
-                  <li key={item.id} className="flex items-start gap-3 rounded-sm border border-border/60 bg-background p-3">
-                    <ExternalLinkIcon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
-                    <div className="min-w-0 flex-1">
-                      <a
-                        href={item.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="break-all text-sm font-medium text-primary hover:underline"
-                      >
-                        {item.url}
-                      </a>
-                      {item.note && (
-                        <p className="mt-0.5 text-xs text-muted-foreground">{item.note}</p>
-                      )}
-                      <p className="mt-1 text-2xs text-muted-foreground/80">
-                        <span>{item.submittedLabel}</span>
-                        {' · '}
-                        <time dateTime={item.createdAt} title={formatAbsolute(item.createdAt)}>
-                          {formatRelativeTime(item.createdAt)}
-                        </time>
-                      </p>
-                    </div>
-                    {canManage && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          toast.promise(remove.mutateAsync(item.id), {
-                            loading: 'Removing…',
-                            success: 'Evidence removed',
-                            error: err => (err as Error).message,
-                          })
-                        }}
-                        className="text-muted-foreground hover:text-(--no)"
-                        aria-label="Remove evidence"
-                      >
-                        <Trash2Icon className="size-3.5" />
-                      </button>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            )}
+        {items.length === 0 && !query.isLoading ? (
+          <p className="text-sm text-muted-foreground">
+            No evidence attached yet.
+            {canManage && ' Add sources that will defend the eventual resolution.'}
+          </p>
+        ) : (
+          <ul className="space-y-2">
+            {items.map((item) => (
+              <li key={item.id} className="flex items-start gap-3 rounded-sm border border-border/60 bg-background p-3">
+                <ExternalLinkIcon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+                <div className="min-w-0 flex-1">
+                  <a
+                    href={item.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm font-medium break-all text-primary hover:underline"
+                  >
+                    {item.url}
+                  </a>
+                  {item.note && <p className="mt-0.5 text-xs text-muted-foreground">{item.note}</p>}
+                  <p className="mt-1 text-2xs text-muted-foreground/80">
+                    <span>{item.submittedLabel}</span>
+                    {' · '}
+                    <time dateTime={item.createdAt} title={formatAbsolute(item.createdAt)}>
+                      {formatRelativeTime(item.createdAt)}
+                    </time>
+                  </p>
+                </div>
+                {canManage && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void toast.promise(remove.mutateAsync(item.id), {
+                        loading: 'Removing…',
+                        success: 'Evidence removed',
+                        error: (err) => (err as Error).message,
+                      })
+                    }}
+                    className="text-muted-foreground hover:text-(--no)"
+                    aria-label="Remove evidence"
+                  >
+                    <Trash2Icon className="size-3.5" />
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
 
         {canManage && (
           <div className="mt-4 border-t border-border/60 pt-4">
-            {showForm
-              ? (
-                  <div className="grid gap-2">
-                    <Input
-                      value={url}
-                      onChange={e => setUrl(e.target.value)}
-                      placeholder="https://… (source URL)"
-                    />
-                    <Input
-                      value={note}
-                      onChange={e => setNote(e.target.value)}
-                      placeholder="What does this source confirm? (optional)"
-                      maxLength={500}
-                    />
-                    <div className="flex items-center justify-end gap-1.5">
-                      <Button size="sm" variant="ghost" onClick={() => { setShowForm(false); setUrl(''); setNote('') }}>
-                        Cancel
-                      </Button>
-                      <Button
-                        size="sm"
-                        onClick={() => {
-                          toast.promise(add.mutateAsync(), {
-                            loading: 'Attaching…',
-                            success: 'Evidence added',
-                            error: err => (err as Error).message,
-                          })
-                        }}
-                        disabled={!url.trim() || add.isPending}
-                      >
-                        Attach
-                      </Button>
-                    </div>
-                  </div>
-                )
-              : (
-                  <Button size="sm" variant="outline" onClick={() => setShowForm(true)}>
-                    <PlusIcon className="size-3.5" />
-                    Attach evidence
+            {showForm ? (
+              <div className="grid gap-2">
+                <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://… (source URL)" />
+                <Input
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  placeholder="What does this source confirm? (optional)"
+                  maxLength={500}
+                />
+                <div className="flex items-center justify-end gap-1.5">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      setShowForm(false)
+                      setUrl('')
+                      setNote('')
+                    }}
+                  >
+                    Cancel
                   </Button>
-                )}
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      void toast.promise(add.mutateAsync(), {
+                        loading: 'Attaching…',
+                        success: 'Evidence added',
+                        error: (err) => (err as Error).message,
+                      })
+                    }}
+                    disabled={!url.trim() || add.isPending}
+                  >
+                    Attach
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <Button size="sm" variant="outline" onClick={() => setShowForm(true)}>
+                <PlusIcon className="size-3.5" />
+                Attach evidence
+              </Button>
+            )}
           </div>
         )}
       </div>

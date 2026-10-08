@@ -1,13 +1,17 @@
 import type { Metadata } from 'next'
-import type { SupportedLocale } from '@/i18n/locales'
+
 import { setRequestLocale } from 'next-intl/server'
 import { notFound } from 'next/navigation'
+
+import type { SupportedLocale } from '@/i18n/locales'
+
 import { CommunityMarketEmbedButton } from '@/components/community-engagement/EmbedCodeButtonWrapper'
 import { ModerationBar } from '@/components/community-engagement/ModerationBar'
 import { CommunityRepository } from '@/lib/db/queries/community'
 import { CommunityIntegrityRepository } from '@/lib/db/queries/community-integrity'
 import { UserRepository } from '@/lib/db/queries/user'
 import { STATIC_PARAMS_PLACEHOLDER } from '@/lib/static-params'
+
 import CommunityMarketDetail from './_components/CommunityMarketDetail'
 
 export async function generateStaticParams() {
@@ -17,7 +21,7 @@ export async function generateStaticParams() {
 export async function generateMetadata({
   params,
 }: {
-  params: Promise<{ marketId: string, slug: string }>
+  params: Promise<{ marketId: string; slug: string }>
 }): Promise<Metadata> {
   const { marketId } = await params
   const { data } = await CommunityRepository.getMarketWithCommunity(marketId)
@@ -30,12 +34,14 @@ export async function generateMetadata({
     openGraph: {
       title: data.market.title,
       description: data.market.description ?? `Prediction market in ${data.community.name}`,
-      images: [{
-        url: `/og/community/${data.community.slug}/market/${data.market.id}`,
-        width: 1200,
-        height: 630,
-        alt: data.market.title,
-      }],
+      images: [
+        {
+          url: `/og/community/${data.community.slug}/market/${data.market.id}`,
+          width: 1200,
+          height: 630,
+          alt: data.market.title,
+        },
+      ],
       type: 'article',
     },
     twitter: {
@@ -50,7 +56,7 @@ export async function generateMetadata({
 export default async function CommunityMarketDetailPage({
   params,
 }: {
-  params: Promise<{ locale: string, slug: string, marketId: string }>
+  params: Promise<{ locale: string; slug: string; marketId: string }>
 }) {
   const { locale, slug, marketId } = await params
   setRequestLocale(locale as SupportedLocale)
@@ -79,22 +85,18 @@ export default async function CommunityMarketDetailPage({
   // any reader could grab from the network tab otherwise).
   const isCommunityAdmin = memberRole === 'admin' || (user as any)?.is_admin === true
   const canManageEmbed = isCommunityAdmin && data.market.status === 'active'
-  const embedSlot = canManageEmbed
-    ? <CommunityMarketEmbedButton communitySlug={slug} marketId={marketId} />
-    : null
+  const embedSlot = canManageEmbed ? <CommunityMarketEmbedButton communitySlug={slug} marketId={marketId} /> : null
 
-  const moderationSlot = isCommunityAdmin
-    ? (
-        <ModerationBar
-          marketId={marketId}
-          initial={{
-            is_pinned: moderation?.is_pinned ?? false,
-            is_locked: !!moderation?.locked_at,
-            is_archived: !!moderation?.archived_at,
-          }}
-        />
-      )
-    : null
+  const moderationSlot = isCommunityAdmin ? (
+    <ModerationBar
+      marketId={marketId}
+      initial={{
+        is_pinned: moderation?.is_pinned ?? false,
+        is_locked: !!moderation?.locked_at,
+        is_archived: !!moderation?.archived_at,
+      }}
+    />
+  ) : null
 
   return (
     <CommunityMarketDetail

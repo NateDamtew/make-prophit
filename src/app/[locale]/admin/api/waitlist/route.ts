@@ -1,6 +1,9 @@
 import type { NextRequest } from 'next/server'
-import type { WaitlistStatus } from '@/lib/db/schema/waitlist/tables'
+
 import { NextResponse } from 'next/server'
+
+import type { WaitlistStatus } from '@/lib/db/schema/waitlist/tables'
+
 import { getAdminActor } from '@/lib/admin-ui/guard'
 import { WaitlistAdminRepository } from '@/lib/db/queries/waitlist-admin'
 import { WAITLIST_STATUSES } from '@/lib/db/schema/waitlist/tables'
@@ -28,7 +31,9 @@ export async function GET(request: NextRequest) {
     const status = parseStatus(searchParams.get('status'))
     const sortByRaw = searchParams.get('sortBy') || 'created_at'
     const sortBy = (['email', 'created_at', 'status'].includes(sortByRaw) ? sortByRaw : 'created_at') as
-      'email' | 'created_at' | 'status'
+      | 'email'
+      | 'created_at'
+      | 'status'
     const sortOrder = searchParams.get('sortOrder') === 'asc' ? 'asc' : 'desc'
 
     const [{ rows, totalCount }, stats] = await Promise.all([
@@ -36,7 +41,7 @@ export async function GET(request: NextRequest) {
       WaitlistAdminRepository.stats(),
     ])
 
-    const data = rows.map(row => ({
+    const data = rows.map((row) => ({
       id: row.id,
       name: row.name,
       email: row.email,
@@ -50,8 +55,7 @@ export async function GET(request: NextRequest) {
     }))
 
     return NextResponse.json({ data, totalCount, stats })
-  }
-  catch (error) {
+  } catch (error) {
     console.error('Admin waitlist list error', error)
     return NextResponse.json({ error: 'Failed to load waitlist.' }, { status: 500 })
   }

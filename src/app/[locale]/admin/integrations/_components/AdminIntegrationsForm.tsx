@@ -1,12 +1,12 @@
 'use client'
 
-import { FileBracesIcon, RefreshCwIcon } from 'lucide-react'
+import { FileBracesIcon, InfoIcon, RefreshCwIcon } from 'lucide-react'
 import { useExtracted } from 'next-intl'
 import Image from 'next/image'
 import { useActionState, useCallback, useMemo, useState } from 'react'
 
 import type { KuestSupportPosition } from '@/lib/admin-support-settings'
-import type { CustomJavascriptCodeConfig, CustomJavascriptCodeDisablePage } from '@/lib/custom-javascript-code'
+import type { CustomJavascriptCodeConfig, CustomJavascriptCodeRunOn } from '@/lib/custom-javascript-code'
 import type { SumsubEnforcement } from '@/lib/sumsub/types'
 
 import SettingsAccordionSection from '@/app/[locale]/admin/(general)/_components/SettingsAccordionSection'
@@ -20,11 +20,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/components/ui/toast'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { clearLocationHash, useLocationHash } from '@/hooks/useLocationHash'
 import {
   MAX_CUSTOM_JAVASCRIPT_CODE_NAME_LENGTH,
   MAX_CUSTOM_JAVASCRIPT_CODE_SNIPPET_LENGTH,
   MAX_CUSTOM_JAVASCRIPT_CODES,
+  CUSTOM_JAVASCRIPT_CODE_DEFAULT_RUN_ON,
+  CUSTOM_JAVASCRIPT_CODE_RUN_ON_OPTIONS,
   serializeCustomJavascriptCodes,
 } from '@/lib/custom-javascript-code'
 import { cn } from '@/lib/utils'
@@ -49,9 +52,15 @@ export interface AdminIntegrationsFormProps {
   lifiApiKeyConfigured: boolean
   openRouterSettings: {
     defaultModel?: string
+    translationModel?: string
+    decisionModel?: string
     isApiKeyConfigured: boolean
     modelOptions: ModelOption[]
+    translationModelOptions: ModelOption[]
+    decisionModelOptions: ModelOption[]
     modelsError?: string
+    translationModelsError?: string
+    decisionModelsError?: string
   }
   sportsSourceSettings: {
     isPandaScoreTokenConfigured: boolean
@@ -73,6 +82,11 @@ export interface AdminIntegrationsFormProps {
     secretKeyConfigured: boolean
     webhookSecretConfigured: boolean
   }
+  paymentsSettings: {
+    enabled: boolean
+    operatorKeyConfigured: boolean
+    operatorDomainChanged: boolean
+  }
 }
 
 function IntegrationLogo({ src, alt }: { src: string; alt: string }) {
@@ -87,16 +101,16 @@ function IntegrationHeader({
   title,
   description,
   logo,
-  customIcon = false,
+  icon,
 }: {
   title: string
   description: string
   logo?: string
-  customIcon?: boolean
+  icon?: 'code'
 }) {
   return (
     <div className="flex min-w-0 items-center gap-3">
-      {customIcon ? (
+      {icon ? (
         <span className="flex size-9 shrink-0 items-center justify-center rounded-lg border bg-muted/40">
           <FileBracesIcon className="size-5 text-muted-foreground" />
         </span>
@@ -130,8 +144,24 @@ function AdminIntegrationsFormInner(props: AdminIntegrationsFormProps) {
   const [googleAnalyticsId, setGoogleAnalyticsId] = useState(props.googleAnalyticsId)
   const [openRouterApiKey, setOpenRouterApiKey] = useState('')
   const [openRouterModel, setOpenRouterModel] = useState(props.openRouterSettings.defaultModel ?? '')
+  const [openRouterTranslationModel, setOpenRouterTranslationModel] = useState(
+    props.openRouterSettings.translationModel ?? '',
+  )
+  const [openRouterDecisionModel, setOpenRouterDecisionModel] = useState(props.openRouterSettings.decisionModel ?? '')
   const [openRouterModelOptions, setOpenRouterModelOptions] = useState(props.openRouterSettings.modelOptions)
+  const [openRouterTranslationModelOptions, setOpenRouterTranslationModelOptions] = useState(
+    props.openRouterSettings.translationModelOptions,
+  )
+  const [openRouterDecisionModelOptions, setOpenRouterDecisionModelOptions] = useState(
+    props.openRouterSettings.decisionModelOptions,
+  )
   const [openRouterModelsError, setOpenRouterModelsError] = useState(props.openRouterSettings.modelsError)
+  const [openRouterTranslationModelsError, setOpenRouterTranslationModelsError] = useState(
+    props.openRouterSettings.translationModelsError,
+  )
+  const [openRouterDecisionModelsError, setOpenRouterDecisionModelsError] = useState(
+    props.openRouterSettings.decisionModelsError,
+  )
   const [isRefreshingOpenRouterModels, setIsRefreshingOpenRouterModels] = useState(false)
   const [theSportsDbApiKey, setTheSportsDbApiKey] = useState('')
   const [pandaScoreToken, setPandaScoreToken] = useState('')
@@ -147,6 +177,8 @@ function AdminIntegrationsFormInner(props: AdminIntegrationsFormProps) {
   const [sumsubAppToken, setSumsubAppToken] = useState('')
   const [sumsubSecretKey, setSumsubSecretKey] = useState('')
   const [sumsubWebhookSecret, setSumsubWebhookSecret] = useState('')
+  const [paymentsEnabled, setPaymentsEnabled] = useState(props.paymentsSettings.enabled)
+  const [paymentsEnabledChanged, setPaymentsEnabledChanged] = useState(false)
   const [sumsubLevelName, setSumsubLevelName] = useState(props.sumsubSettings.levelName)
   const [sumsubEnforcement, setSumsubEnforcement] = useState<SumsubEnforcement>(props.sumsubSettings.enforcement)
   const [isTestingSumsub, setIsTestingSumsub] = useState(false)
@@ -157,14 +189,50 @@ function AdminIntegrationsFormInner(props: AdminIntegrationsFormProps) {
   const submitAction = useCallback(
     async (previousState: { error: string | null }, formData: FormData) => {
       const result = await updateIntegrationsSettingsAction(previousState, formData)
-      if (result.error) {
-        toast.error(result.error)
+      const paymentsErrors: Record<string, string> = {
+        payments_site_url_invalid: t(
+          'Payments require a permanent custom HTTPS domain. Localhost and platform URLs such as *.vercel.app are not supported.',
+        ),
+        payments_domain_banned: t('This domain is blocked by Kuest. Contact Kuest support.'),
+        payments_registration_rate_limited: t('Too many activation attempts. Wait a while and try again.'),
+        payments_domain_verification_failed: t(
+          'Kuest could not verify this domain. Confirm that the site is publicly reachable over HTTPS and try again.',
+        ),
+        payments_worker_unavailable: t('The payments service is unavailable. Please try again later.'),
+        payments_operator_registration_failed: t('The operator could not be registered. Please try again.'),
+        payments_operator_domain_change_key_missing: t(
+          'The previous operator key is missing. Restore it before changing the site domain so pending checkout status can be preserved.',
+        ),
+        payments_operator_domain_conflict: t(
+          'This domain already has another operator. Contact Kuest support before migrating it.',
+        ),
+        payments_operator_migration_conflict: t(
+          'The operator could not be migrated. Check the current key or contact Kuest support.',
+        ),
+        payments_operator_migration_key_revoked: t(
+          'The saved operator key has been revoked. Contact Kuest support before migrating the domain.',
+        ),
+        payments_operator_storage_failed: t(
+          'Payment registration data could not be saved securely. Check this site’s BETTER_AUTH_SECRET and try again.',
+        ),
+        payments_operator_saved_disabled: t(
+          'The operator key was saved securely, but payments remain disabled. Save again to activate payments.',
+        ),
+      }
+      const error = result.error ? (paymentsErrors[result.error] ?? result.error) : null
+      if (error) {
+        if (!props.paymentsSettings.enabled && formData.get('payments_enabled') === 'true') {
+          setPaymentsEnabled(false)
+          setPaymentsEnabledChanged(false)
+        }
+        toast.error(error)
       } else {
+        setPaymentsEnabledChanged(false)
         toast.success(t('Settings saved successfully!'))
       }
-      return result
+      return { error }
     },
-    [t],
+    [props.paymentsSettings.enabled, t],
   )
   const [state, formAction, isPending] = useActionState(submitAction, { error: null })
 
@@ -172,7 +240,7 @@ function AdminIntegrationsFormInner(props: AdminIntegrationsFormProps) {
     () => serializeCustomJavascriptCodes(customJavascriptCodes.map(({ id: _id, ...code }) => code)),
     [customJavascriptCodes],
   )
-  const customDisablePageOptions = useMemo(
+  const customRunOnOptions = useMemo(
     () => [
       { value: 'home' as const, label: t('Home') },
       { value: 'event' as const, label: '/event' },
@@ -180,6 +248,8 @@ function AdminIntegrationsFormInner(props: AdminIntegrationsFormProps) {
       { value: 'settings' as const, label: '/settings' },
       { value: 'docs' as const, label: '/docs' },
       { value: 'admin' as const, label: '/admin' },
+      { value: 'other' as const, label: t('Other') },
+      { value: 'deposit' as const, label: t('Deposit') },
     ],
     [t],
   )
@@ -208,22 +278,52 @@ function AdminIntegrationsFormInner(props: AdminIntegrationsFormProps) {
     }
     setIsRefreshingOpenRouterModels(true)
     setOpenRouterModelsError(undefined)
+    setOpenRouterTranslationModelsError(undefined)
+    setOpenRouterDecisionModelsError(undefined)
     try {
-      const response = await fetch(`/${props.locale}/admin/api/openrouter-models`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apiKey: openRouterApiKey.trim() }),
-      })
-      const payload = (await response.json()) as { models?: ModelOption[]; error?: string }
-      if (!response.ok || !payload.models) {
-        throw new Error(payload.error ?? t('Unable to load models. Please verify the API key.'))
+      async function loadModelOptions(): Promise<{
+        models: ModelOption[]
+        allModels: ModelOption[]
+        decisionModels: ModelOption[]
+      }> {
+        const response = await fetch(`/${props.locale}/admin/api/openrouter-models`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ apiKey: openRouterApiKey.trim() }),
+        })
+        const payload = (await response.json()) as {
+          models?: ModelOption[]
+          allModels?: ModelOption[]
+          decisionModels?: ModelOption[]
+          error?: string
+        }
+        if (!response.ok || !payload.models || !payload.allModels || !payload.decisionModels) {
+          throw new Error(payload.error ?? t('Unable to load models. Please verify the API key.'))
+        }
+        return { models: payload.models, allModels: payload.allModels, decisionModels: payload.decisionModels }
       }
-      setOpenRouterModelOptions(payload.models)
-      if (!payload.models.some((model) => model.id === openRouterModel)) {
+
+      const { models, allModels: translationModels, decisionModels } = await loadModelOptions()
+      setOpenRouterModelOptions(models)
+      setOpenRouterTranslationModelOptions(translationModels)
+      setOpenRouterDecisionModelOptions(decisionModels)
+      if (!models.some((model) => model.id === openRouterModel)) {
         setOpenRouterModel('')
+      }
+      if (!translationModels.some((model) => model.id === openRouterTranslationModel)) {
+        setOpenRouterTranslationModel('')
+      }
+      if (!decisionModels.some((model) => model.id === openRouterDecisionModel)) {
+        setOpenRouterDecisionModel('')
       }
     } catch (error) {
       setOpenRouterModelsError(
+        error instanceof Error ? error.message : t('Unable to load models. Please verify the API key.'),
+      )
+      setOpenRouterTranslationModelsError(
+        error instanceof Error ? error.message : t('Unable to load models. Please verify the API key.'),
+      )
+      setOpenRouterDecisionModelsError(
         error instanceof Error ? error.message : t('Unable to load models. Please verify the API key.'),
       )
     } finally {
@@ -259,24 +359,35 @@ function AdminIntegrationsFormInner(props: AdminIntegrationsFormProps) {
     )
   }
 
-  function toggleCustomDisabledOn(index: number, page: CustomJavascriptCodeDisablePage, checked: boolean) {
-    updateCustomCode(index, (code) => ({
-      ...code,
-      disabledOn: checked
-        ? Array.from(new Set([...code.disabledOn, page]))
-        : code.disabledOn.filter((value) => value !== page),
-    }))
+  function toggleCustomRunOn(index: number, context: CustomJavascriptCodeRunOn, checked: boolean) {
+    updateCustomCode(index, (code) => {
+      const nextRunOn = new Set(code.runOn)
+      if (checked) {
+        nextRunOn.add(context)
+      } else {
+        nextRunOn.delete(context)
+      }
+
+      return {
+        ...code,
+        runOn: CUSTOM_JAVASCRIPT_CODE_RUN_ON_OPTIONS.filter((value) => nextRunOn.has(value)),
+      }
+    })
   }
 
   return (
     <form action={formAction} className="grid max-w-full min-w-0 gap-6">
       <input type="hidden" name="openrouter_model" value={openRouterModel} />
+      <input type="hidden" name="openrouter_translation_model" value={openRouterTranslationModel} />
+      <input type="hidden" name="openrouter_decision_model" value={openRouterDecisionModel} />
       <input type="hidden" name="arbitrage_enabled" value={String(arbitrageEnabled)} />
       <input type="hidden" name="arbitrage_multi_wallet_enabled" value={String(arbitrageMultiWalletEnabled)} />
       <input type="hidden" name="kuest_support_enabled" value={String(kuestSupportEnabled)} />
       <input type="hidden" name="kuest_support_position" value={kuestSupportPosition} />
       <input type="hidden" name="sumsub_enabled" value={String(sumsubEnabled)} />
       <input type="hidden" name="sumsub_enforcement" value={sumsubEnforcement} />
+      <input type="hidden" name="payments_enabled" value={String(paymentsEnabled)} />
+      <input type="hidden" name="payments_enabled_changed" value={String(paymentsEnabledChanged)} />
       <input type="hidden" name="custom_javascript_codes_json" value={serializedCustomJavascriptCodes} />
 
       <div className="grid gap-4">
@@ -340,9 +451,49 @@ function AdminIntegrationsFormInner(props: AdminIntegrationsFormProps) {
                 }
               />
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="integration-openrouter-model">{t('Preferred OpenRouter model')}</Label>
-              <div className="flex gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <OfficialLink href="https://openrouter.ai/settings/keys">
+                {t('Create an API key on the official OpenRouter site')}
+              </OfficialLink>
+              <Button
+                type="button"
+                variant="secondary"
+                size="icon"
+                className="size-8 shrink-0"
+                disabled={!openRouterApiKey.trim() || isPending || isRefreshingOpenRouterModels}
+                onClick={refreshOpenRouterModels}
+                aria-label={t('Refresh models')}
+              >
+                <RefreshCwIcon className={cn('size-4', isRefreshingOpenRouterModels && 'animate-spin')} />
+              </Button>
+            </div>
+            <div className="grid gap-4 md:grid-cols-3">
+              <div className="grid gap-2">
+                <div className="flex h-8 items-center">
+                  <div className="flex items-center gap-1">
+                    <Label htmlFor="integration-openrouter-model">{t('Default model')}</Label>
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <button
+                            type="button"
+                            className="inline-flex size-4 items-center justify-center text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                            aria-label={t(
+                              'Used for market context on event pages, event creation, featured markets, and other general-purpose AI tasks.',
+                            )}
+                          >
+                            <InfoIcon className="size-3.5" aria-hidden />
+                          </button>
+                        }
+                      />
+                      <TooltipContent className="max-w-72 text-left">
+                        {t(
+                          'Used for market context on event pages, event creation, featured markets, and other general-purpose AI tasks.',
+                        )}
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                </div>
                 <Select
                   items={[
                     { label: t('Let OpenRouter decide'), value: AUTOMATIC_MODEL_VALUE },
@@ -366,23 +517,111 @@ function AdminIntegrationsFormInner(props: AdminIntegrationsFormProps) {
                     ))}
                   </SelectContent>
                 </Select>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="icon"
-                  className="size-12 shrink-0"
-                  disabled={!openRouterApiKey.trim() || isPending || isRefreshingOpenRouterModels}
-                  onClick={refreshOpenRouterModels}
-                  aria-label={t('Refresh models')}
-                >
-                  <RefreshCwIcon className={cn('size-4', isRefreshingOpenRouterModels && 'animate-spin')} />
-                </Button>
+                {openRouterModelsError && <p className="text-xs text-destructive">{openRouterModelsError}</p>}
               </div>
-              {openRouterModelsError && <p className="text-xs text-destructive">{openRouterModelsError}</p>}
+              <div className="grid gap-2">
+                <div className="flex h-8 items-center justify-between gap-2">
+                  <div className="flex items-center gap-1">
+                    <Label htmlFor="integration-openrouter-translation-model">{t('Translation model')}</Label>
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <button
+                            type="button"
+                            className="inline-flex size-4 items-center justify-center text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                            aria-label={t('Used only for automatic event and category translations.')}
+                          >
+                            <InfoIcon className="size-3.5" aria-hidden />
+                          </button>
+                        }
+                      />
+                      <TooltipContent className="max-w-72 text-left">
+                        {t('Used only for automatic event and category translations.')}
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                </div>
+                <Select
+                  items={[
+                    { label: t('Use the preferred OpenRouter model'), value: AUTOMATIC_MODEL_VALUE },
+                    ...openRouterTranslationModelOptions.map((model) => ({ label: model.label, value: model.id })),
+                  ]}
+                  value={openRouterTranslationModel || AUTOMATIC_MODEL_VALUE}
+                  onValueChange={(value) =>
+                    value !== null && setOpenRouterTranslationModel(value === AUTOMATIC_MODEL_VALUE ? '' : value)
+                  }
+                  disabled={isPending || (!props.openRouterSettings.isApiKeyConfigured && !openRouterApiKey.trim())}
+                >
+                  <SelectTrigger id="integration-openrouter-translation-model" className="h-12! w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={AUTOMATIC_MODEL_VALUE}>{t('Use the preferred OpenRouter model')}</SelectItem>
+                    {openRouterTranslationModelOptions.map((model) => (
+                      <SelectItem key={model.id} value={model.id}>
+                        {model.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {openRouterTranslationModelsError && (
+                  <p className="text-xs text-destructive">{openRouterTranslationModelsError}</p>
+                )}
+              </div>
+              <div className="grid gap-2">
+                <div className="flex h-8 items-center">
+                  <div className="flex items-center gap-1">
+                    <Label htmlFor="integration-openrouter-decision-model">{t('Decision model')}</Label>
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <button
+                            type="button"
+                            className="inline-flex size-4 items-center justify-center text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                            aria-label={t(
+                              'Used to review event creation and rank search, featured markets, and sports results. It does not resolve or settle markets.',
+                            )}
+                          >
+                            <InfoIcon className="size-3.5" aria-hidden />
+                          </button>
+                        }
+                      />
+                      <TooltipContent className="max-w-72 text-left">
+                        {t(
+                          'Used to review event creation and rank search, featured markets, and sports results. It does not resolve or settle markets.',
+                        )}
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                </div>
+                <Select
+                  items={[
+                    { label: t('Disabled'), value: AUTOMATIC_MODEL_VALUE },
+                    ...openRouterDecisionModelOptions.map((model) => ({ label: model.label, value: model.id })),
+                  ]}
+                  value={openRouterDecisionModel || AUTOMATIC_MODEL_VALUE}
+                  onValueChange={(value) =>
+                    value !== null && setOpenRouterDecisionModel(value === AUTOMATIC_MODEL_VALUE ? '' : value)
+                  }
+                  disabled={isPending || (!props.openRouterSettings.isApiKeyConfigured && !openRouterApiKey.trim())}
+                >
+                  <SelectTrigger id="integration-openrouter-decision-model" className="h-12! w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={AUTOMATIC_MODEL_VALUE}>{t('Disabled')}</SelectItem>
+                    {openRouterDecisionModelOptions.map((model) => (
+                      <SelectItem key={model.id} value={model.id}>
+                        {model.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {openRouterDecisionModelsError && (
+                  <p className="text-xs text-destructive">{openRouterDecisionModelsError}</p>
+                )}
+              </div>
             </div>
-            <OfficialLink href="https://openrouter.ai/settings/keys">
-              {t('Create an API key on the official OpenRouter site')}
-            </OfficialLink>
           </div>
         </SettingsAccordionSection>
 
@@ -617,6 +856,66 @@ function AdminIntegrationsFormInner(props: AdminIntegrationsFormProps) {
         </SettingsAccordionSection>
 
         <SettingsAccordionSection
+          value="on-off-ramp-payments"
+          isOpen={visibleOpenSections.has('on-off-ramp-payments')}
+          onToggle={toggleSection}
+          header={
+            <IntegrationHeader
+              title={t('On/Off Ramp Payments')}
+              description={t('Connect the Kuest payments service for hosted on-ramp and off-ramp providers.')}
+              logo="/images/logos/meld-icon.svg"
+            />
+          }
+        >
+          <div className="grid gap-4">
+            <div className="flex items-center justify-between gap-4">
+              <div className="grid gap-1">
+                <Label htmlFor="integration-payments-enabled">{t('Enable payments')}</Label>
+                <p className="text-sm text-muted-foreground">
+                  {isPending
+                    ? t('Verifying this site and saving payment settings…')
+                    : props.paymentsSettings.operatorDomainChanged
+                      ? t(
+                          'The site domain changed. Verify the new domain to migrate this operator and rotate its key before payments can resume.',
+                        )
+                      : props.paymentsSettings.operatorKeyConfigured
+                        ? paymentsEnabled
+                          ? t('Payments are active. The operator key is encrypted in this site’s server settings.')
+                          : t('The operator key is saved securely. Payments are currently disabled on this site.')
+                        : t('Enable and save to verify this site and register its operator automatically.')}
+                </p>
+              </div>
+              <Switch
+                id="integration-payments-enabled"
+                checked={paymentsEnabled}
+                onCheckedChange={(checked) => {
+                  setPaymentsEnabled(checked)
+                  setPaymentsEnabledChanged(true)
+                }}
+                disabled={isPending}
+              />
+            </div>
+            {(props.paymentsSettings.operatorKeyConfigured || props.paymentsSettings.operatorDomainChanged) && (
+              <Button
+                type="submit"
+                name="payments_reissue_operator_key"
+                value="true"
+                variant="outline"
+                className="w-fit"
+                disabled={isPending}
+              >
+                {t('Reverify this domain and replace its operator key')}
+              </Button>
+            )}
+            {props.paymentsSettings.operatorDomainChanged && (
+              <p className="text-xs text-muted-foreground">
+                {t('Keep the previous domain serving payment return pages for up to 30 days after a domain migration.')}
+              </p>
+            )}
+          </div>
+        </SettingsAccordionSection>
+
+        <SettingsAccordionSection
           value="polymarket"
           isOpen={visibleOpenSections.has('polymarket')}
           onToggle={toggleSection}
@@ -707,7 +1006,7 @@ function AdminIntegrationsFormInner(props: AdminIntegrationsFormProps) {
             <IntegrationHeader
               title={t('Custom Integrations')}
               description={t('Add third-party JavaScript for chat, analytics, support, and other tools.')}
-              customIcon
+              icon="code"
             />
           }
         >
@@ -721,7 +1020,12 @@ function AdminIntegrationsFormInner(props: AdminIntegrationsFormProps) {
                 onClick={() =>
                   setCustomJavascriptCodes((previous) => [
                     ...previous,
-                    { id: `custom-integration-${Date.now()}`, name: '', snippet: '', disabledOn: [] },
+                    {
+                      id: `custom-integration-${Date.now()}`,
+                      name: '',
+                      snippet: '',
+                      runOn: [...CUSTOM_JAVASCRIPT_CODE_DEFAULT_RUN_ON],
+                    },
                   ])
                 }
               >
@@ -773,23 +1077,25 @@ function AdminIntegrationsFormInner(props: AdminIntegrationsFormProps) {
                   />
                 </div>
                 <div className="grid gap-2">
-                  <Label>{t('Disable on')}</Label>
+                  <Label>{t('Run on')}</Label>
                   <div className="flex flex-wrap gap-3">
-                    {customDisablePageOptions.map((option) => (
-                      <label
+                    {customRunOnOptions.map((option) => (
+                      <div
                         key={option.value}
                         className={cn(
-                          `flex min-w-32 items-center gap-2 rounded-lg border px-3 py-2 text-sm`,
-                          code.disabledOn.includes(option.value) && `border-primary/50 bg-primary/5`,
+                          'flex min-w-32 items-center gap-2 rounded-lg border px-3 py-2 text-sm',
+                          code.runOn.includes(option.value) && 'border-primary/50 bg-primary/5',
                         )}
                       >
                         <Checkbox
-                          checked={code.disabledOn.includes(option.value)}
+                          id={`custom-run-on-${code.id}-${option.value}`}
+                          aria-label={option.label}
+                          checked={code.runOn.includes(option.value)}
                           disabled={isPending}
-                          onCheckedChange={(checked) => toggleCustomDisabledOn(index, option.value, checked === true)}
+                          onCheckedChange={(checked) => toggleCustomRunOn(index, option.value, checked === true)}
                         />
-                        <span>{option.label}</span>
-                      </label>
+                        <Label htmlFor={`custom-run-on-${code.id}-${option.value}`}>{option.label}</Label>
+                      </div>
                     ))}
                   </div>
                 </div>
@@ -810,7 +1116,7 @@ function AdminIntegrationsFormInner(props: AdminIntegrationsFormProps) {
 export default function AdminIntegrationsForm(props: AdminIntegrationsFormProps) {
   return (
     <AdminIntegrationsFormInner
-      key={`${props.kuestSupportSettings.enabled}:${props.kuestSupportSettings.position}`}
+      key={`${props.kuestSupportSettings.enabled}:${props.kuestSupportSettings.position}:${props.paymentsSettings.enabled}`}
       {...props}
     />
   )

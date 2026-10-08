@@ -1,9 +1,14 @@
 'use client'
 
-import type { RhinoPublicQuote } from '@/lib/rhino/types'
 import { useCallback, useRef, useState } from 'react'
 import { useSignTypedData } from 'wagmi'
-import { createTonWithdrawalAction, getTonWithdrawalQuoteAction } from '@/app/[locale]/(platform)/_actions/ton-withdrawal'
+
+import type { RhinoPublicQuote } from '@/lib/rhino/types'
+
+import {
+  createTonWithdrawalAction,
+  getTonWithdrawalQuoteAction,
+} from '@/app/[locale]/(platform)/_actions/ton-withdrawal'
 import { useAppKit } from '@/hooks/useAppKit'
 import { useSignaturePromptRunner } from '@/hooks/useSignaturePromptRunner'
 import { isTradingAuthRequiredError } from '@/lib/trading-auth/errors'
@@ -53,62 +58,66 @@ export function useTonWithdrawal(user: WithdrawalUser | null) {
     setIsQuoting(false)
   }, [])
 
-  const withdraw = useCallback(async (amount: string): Promise<boolean> => {
-    if (!user?.address) {
-      setError('You must be signed in.')
-      setStatus('error')
-      return false
-    }
-    if (!tonWalletAddress) {
-      setError('Connect a TON wallet first.')
-      setStatus('error')
-      return false
-    }
-
-    setError(null)
-    setNeedsTradingAuth(false)
-    setStatus('preparing')
-    try {
-      const { error: createError, order } = await createTonWithdrawalAction(amount, tonWalletAddress)
-      if (createError || !order) {
-        setError(createError ?? 'Could not prepare the TON withdrawal.')
+  const withdraw = useCallback(
+    async (amount: string): Promise<boolean> => {
+      if (!user?.address) {
+        setError('You must be signed in.')
+        setStatus('error')
+        return false
+      }
+      if (!tonWalletAddress) {
+        setError('Connect a TON wallet first.')
         setStatus('error')
         return false
       }
 
-      const calls = buildRhinoWithdrawCalls({
-        token: order.token as `0x${string}`,
-        bridgeContract: order.bridgeContract as `0x${string}`,
-        amount: BigInt(order.amountBaseUnits),
-        commitmentId: order.quoteId,
-      })
-
-      setStatus('signing')
-      const result = await runWithSignaturePrompt(() => signAndSubmitDepositWalletCalls({
-        user,
-        calls,
-        metadata: 'ton_withdraw',
-        signTypedDataAsync,
-      }))
-
-      if (result.error) {
-        if (isTradingAuthRequiredError(result.error)) {
-          setNeedsTradingAuth(true)
+      setError(null)
+      setNeedsTradingAuth(false)
+      setStatus('preparing')
+      try {
+        const { error: createError, order } = await createTonWithdrawalAction(amount, tonWalletAddress)
+        if (createError || !order) {
+          setError(createError ?? 'Could not prepare the TON withdrawal.')
+          setStatus('error')
+          return false
         }
-        setError(result.error)
+
+        const calls = buildRhinoWithdrawCalls({
+          token: order.token as `0x${string}`,
+          bridgeContract: order.bridgeContract as `0x${string}`,
+          amount: BigInt(order.amountBaseUnits),
+          commitmentId: order.quoteId,
+        })
+
+        setStatus('signing')
+        const result = await runWithSignaturePrompt(() =>
+          signAndSubmitDepositWalletCalls({
+            user,
+            calls,
+            metadata: 'ton_withdraw',
+            signTypedDataAsync,
+          }),
+        )
+
+        if (result.error) {
+          if (isTradingAuthRequiredError(result.error)) {
+            setNeedsTradingAuth(true)
+          }
+          setError(result.error)
+          setStatus('error')
+          return false
+        }
+
+        setStatus('submitted')
+        return true
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : 'TON withdrawal failed.')
         setStatus('error')
         return false
       }
-
-      setStatus('submitted')
-      return true
-    }
-    catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'TON withdrawal failed.')
-      setStatus('error')
-      return false
-    }
-  }, [user, tonWalletAddress, runWithSignaturePrompt, signTypedDataAsync])
+    },
+    [user, tonWalletAddress, runWithSignaturePrompt, signTypedDataAsync],
+  )
 
   const reset = useCallback(() => {
     setStatus('idle')

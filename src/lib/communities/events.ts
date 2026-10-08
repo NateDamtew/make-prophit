@@ -25,7 +25,7 @@ type CommunityEventKind = (typeof _COMMUNITY_EVENT_KINDS)[number]
 
 export interface RecordCommunityEventInput {
   communityId: string
-  actor: { id: string, label: string } | null
+  actor: { id: string; label: string } | null
   kind: CommunityEventKind
   targetType?: 'market' | 'comment' | 'member' | 'review'
   targetId?: string
@@ -47,8 +47,7 @@ export async function recordCommunityEvent(input: RecordCommunityEventInput): Pr
       target_id: input.targetId ?? null,
       payload: input.payload ?? {},
     })
-  }
-  catch (error) {
+  } catch (error) {
     console.error('Failed to record community event', { kind: input.kind, error })
   }
 }

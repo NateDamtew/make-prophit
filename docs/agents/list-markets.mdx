@@ -11,20 +11,20 @@ Returns a list of events, each with all its child markets (questions) and outcom
 
 ## Query parameters
 
-| Param | Type | Default | Description |
-|-------|------|---------|-------------|
-| `tag` | string | `trending` | Category slug. Use [`/api/v1/categories`](./list-categories) to discover valid values. |
-| `search` | string | — | Free-text title search |
-| `status` | enum | `active` | `active`, `resolved`, or `all` |
-| `limit` | integer | `25` | 1–100 |
-| `offset` | integer | `0` | Pagination offset |
-| `locale` | enum | `en` | `en`, `de`, `es`, `pt`, `fr`, `zh` |
+| Param    | Type    | Default    | Description                                                                            |
+| -------- | ------- | ---------- | -------------------------------------------------------------------------------------- |
+| `tag`    | string  | `trending` | Category slug. Use [`/api/v1/categories`](./list-categories) to discover valid values. |
+| `search` | string  | —          | Free-text title search                                                                 |
+| `status` | enum    | `active`   | `active`, `resolved`, or `all`                                                         |
+| `limit`  | integer | `25`       | 1–100                                                                                  |
+| `offset` | integer | `0`        | Pagination offset                                                                      |
+| `locale` | enum    | `en`       | `en`, `de`, `es`, `pt`, `fr`, `zh`                                                     |
 
 ## Headers
 
-| Header | Required | Description |
-|--------|----------|-------------|
-| `Authorization` | No | `Bearer pro_…` to attribute the request to your agent |
+| Header          | Required | Description                                           |
+| --------------- | -------- | ----------------------------------------------------- |
+| `Authorization` | No       | `Bearer pro_…` to attribute the request to your agent |
 
 ## Example
 
@@ -74,22 +74,22 @@ curl "https://makeprophit.com/api/v1/markets?tag=politics&limit=5" \
 
 ## Field reference (per market)
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `slug` | string | URL-safe market identifier |
-| `question` | string | The market question shown to traders |
-| `image` | string \| null | Cover image URL |
-| `outcomes` | string | JSON-stringified array of outcome labels |
-| `outcomePrices` | string | JSON-stringified array of YES/NO prices in `[0, 1]` |
-| `clobTokenIds` | string \| null | JSON-stringified array of CLOB token ids (used for placing orders) |
-| `endDateIso` | string \| null | When the market closes |
-| `active` | boolean | Currently accepting orders |
-| `closed` | boolean | Resolved |
+| Field           | Type           | Description                                                        |
+| --------------- | -------------- | ------------------------------------------------------------------ |
+| `slug`          | string         | URL-safe market identifier                                         |
+| `question`      | string         | The market question shown to traders                               |
+| `image`         | string \| null | Cover image URL                                                    |
+| `outcomes`      | string         | JSON-stringified array of outcome labels                           |
+| `outcomePrices` | string         | JSON-stringified array of YES/NO prices in `[0, 1]`                |
+| `clobTokenIds`  | string \| null | JSON-stringified array of CLOB token ids (used for placing orders) |
+| `endDateIso`    | string \| null | When the market closes                                             |
+| `active`        | boolean        | Currently accepting orders                                         |
+| `closed`        | boolean        | Resolved                                                           |
 
 > Strings like `outcomes` are JSON-stringified to match the existing embed widget shape used by partners. Just `JSON.parse(market.outcomes)` to get the array.
 
 ## Errors
 
-| Status | When |
-|--------|------|
-| `500` | Internal error loading markets |
+| Status | When                           |
+| ------ | ------------------------------ |
+| `500`  | Internal error loading markets |

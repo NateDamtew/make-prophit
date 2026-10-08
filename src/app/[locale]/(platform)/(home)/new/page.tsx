@@ -1,9 +1,5 @@
 import type { Metadata } from 'next'
 
-import { setRequestLocale } from 'next-intl/server'
-
-import type { SupportedLocale } from '@/i18n/locales'
-
 import HomeInitialContent from '@/app/[locale]/(platform)/(home)/_components/HomeInitialContent'
 import { getNewPageSeoTitle } from '@/lib/platform-routing'
 
@@ -13,10 +9,6 @@ export const metadata: Metadata = {
   title: getNewPageSeoTitle(),
 }
 
-export default async function NewPage({ params }: PageProps<'/[locale]/new'>) {
-  const { locale } = await params
-  const resolvedLocale = locale as SupportedLocale
-  setRequestLocale(resolvedLocale)
-
-  return <HomeInitialContent locale={resolvedLocale} initialTag={MAIN_TAG_SLUG} />
+export default async function NewPage() {
+  return <HomeInitialContent initialTag={MAIN_TAG_SLUG} />
 }

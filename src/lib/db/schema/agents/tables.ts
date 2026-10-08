@@ -1,15 +1,6 @@
 import { sql } from 'drizzle-orm'
-import {
-  boolean,
-  char,
-  date,
-  index,
-  integer,
-  numeric,
-  pgTable,
-  text,
-  timestamp,
-} from 'drizzle-orm/pg-core'
+import { boolean, char, date, index, integer, numeric, pgTable, text, timestamp } from 'drizzle-orm/pg-core'
+
 import { users } from '@/lib/db/schema/auth/tables'
 
 /**
@@ -40,7 +31,10 @@ export const agents = pgTable(
     api_key_prefix: text().notNull(),
 
     // Capability scopes. Always includes 'read'; 'trade' is gated until mainnet.
-    scopes: text().array().notNull().default(sql`ARRAY['read']::TEXT[]`),
+    scopes: text()
+      .array()
+      .notNull()
+      .default(sql`ARRAY['read']::TEXT[]`),
 
     // Lifecycle.
     status: text().notNull().default('active'),
@@ -64,10 +58,7 @@ export const agents = pgTable(
     updated_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
     last_active_at: timestamp({ withTimezone: true }),
   },
-  table => [
-    index('idx_agents_user_id').on(table.user_id),
-    index('idx_agents_status').on(table.status),
-  ],
+  (table) => [index('idx_agents_user_id').on(table.user_id), index('idx_agents_status').on(table.status)],
 )
 
 export type AgentStatus = 'active' | 'paused' | 'revoked'

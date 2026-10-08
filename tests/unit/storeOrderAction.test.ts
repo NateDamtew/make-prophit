@@ -1,13 +1,16 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, mock } from 'bun:test'
+import * as actualViem from 'viem'
 
 import type { storeOrderAction, storeOrdersAction } from '@/app/[locale]/(platform)/event/[slug]/_actions/store-order'
 
 import { MAX_CLOB_BATCH_ORDERS, MAX_ORDER_SUBMISSION_ORDERS } from '@/lib/constants'
 import { TRADING_AUTH_REQUIRED_ERROR } from '@/lib/trading-auth/errors'
 
-const sumsubMocks = vi.hoisted(() => ({ requireApproval: vi.fn() }))
+import { hoisted, spyOn } from '../bun-test-helpers'
 
-vi.mock('@/lib/sumsub/enforcement', () => ({
+const sumsubMocks = hoisted(() => ({ requireApproval: mock() }))
+
+void mock.module('@/lib/sumsub/enforcement', () => ({
   requireSumsubTradingApproval: sumsubMocks.requireApproval,
   SUMSUB_APPROVAL_REQUIRED_MESSAGE: 'Complete identity verification to continue.',
 }))
@@ -15,55 +18,55 @@ vi.mock('@/lib/sumsub/enforcement', () => ({
 type StoreOrderInput = Parameters<typeof storeOrderAction>[0]
 type StoreOrdersInput = Parameters<typeof storeOrdersAction>[0]
 
-const mocks = vi.hoisted(() => ({
-  updateTag: vi.fn(),
-  createPublicClient: vi.fn(),
-  http: vi.fn(() => ({ transport: 'http' })),
-  buildClobHmacSignature: vi.fn(() => 'sig'),
-  getUserTradingAuthSecrets: vi.fn(),
-  getExtracted: vi.fn(),
-  getCurrentUser: vi.fn(),
-  createOrder: vi.fn(),
-  fetch: vi.fn(),
+const mocks = hoisted(() => ({
+  updateTag: mock(),
+  createPublicClient: mock(),
+  http: mock(() => ({ transport: 'http' })),
+  buildClobHmacSignature: mock(() => 'sig'),
+  getUserTradingAuthSecrets: mock(),
+  getExtracted: mock(),
+  getCurrentUser: mock(),
+  createOrder: mock(),
+  fetch: mock(),
 }))
 
-vi.mock('next/cache', () => ({
+void mock.module('next/cache', () => ({
   updateTag: mocks.updateTag,
 }))
 
-vi.mock('next-intl/server', () => ({
+void mock.module('next-intl/server', () => ({
   getExtracted: (...args: any[]) => mocks.getExtracted(...args),
 }))
 
-vi.mock('viem', () => ({
+void mock.module('viem', () => ({
+  ...actualViem,
   createPublicClient: mocks.createPublicClient,
   erc1155Abi: [],
   http: mocks.http,
 }))
 
-vi.mock('@/lib/appkit', () => ({
+void mock.module('@/lib/appkit', () => ({
   defaultNetwork: { rpcUrls: { default: { http: ['https://rpc.local'] } } },
 }))
 
-vi.mock('@/lib/hmac', () => ({
+void mock.module('@/lib/hmac', () => ({
   buildClobHmacSignature: mocks.buildClobHmacSignature,
 }))
 
-vi.mock('@/lib/trading-auth/server', () => ({
+void mock.module('@/lib/trading-auth/server', () => ({
   getUserTradingAuthSecrets: mocks.getUserTradingAuthSecrets,
 }))
 
-vi.mock('@/lib/db/queries/user', () => ({
+void mock.module('@/lib/db/queries/user', () => ({
   UserRepository: { getCurrentUser: (...args: any[]) => mocks.getCurrentUser(...args) },
 }))
 
-vi.mock('@/lib/db/queries/order', () => ({
+void mock.module('@/lib/db/queries/order', () => ({
   OrderRepository: { createOrder: (...args: any[]) => mocks.createOrder(...args) },
 }))
 
 describe('storeOrderAction', () => {
   beforeEach(() => {
-    vi.resetModules()
     mocks.updateTag.mockReset()
     mocks.createPublicClient.mockReset()
     mocks.http.mockClear()
@@ -119,7 +122,7 @@ describe('storeOrderAction', () => {
     process.env.CLOB_URL = 'https://clob.local'
     mocks.getCurrentUser.mockResolvedValueOnce({ id: 'user-1' })
     sumsubMocks.requireApproval.mockResolvedValueOnce({ allowed: false })
-    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+    const fetchSpy = spyOn(globalThis, 'fetch')
     fetchSpy.mockClear()
 
     const { storeOrderAction } = await import('@/app/[locale]/(platform)/event/[slug]/_actions/store-order')
@@ -189,7 +192,7 @@ describe('storeOrderAction', () => {
     mocks.getUserTradingAuthSecrets.mockResolvedValueOnce({
       clob: { key: 'k', passphrase: 'p', secret: 's' },
     })
-    const fetchMock = vi.fn().mockResolvedValueOnce({
+    const fetchMock = mock().mockResolvedValueOnce({
       status: 422,
       statusText: 'Unprocessable Entity',
       ok: false,
@@ -228,7 +231,7 @@ describe('storeOrderAction', () => {
     mocks.getUserTradingAuthSecrets.mockResolvedValueOnce({
       clob: { key: 'k', passphrase: 'p', secret: 's' },
     })
-    const fetchMock = vi.fn().mockResolvedValueOnce({
+    const fetchMock = mock().mockResolvedValueOnce({
       status: 422,
       statusText: 'Unprocessable Entity',
       ok: false,
@@ -268,8 +271,7 @@ describe('storeOrderAction', () => {
       clob: { key: 'k', passphrase: 'p', secret: 's' },
     })
 
-    const fetchMock = vi
-      .fn()
+    const fetchMock = mock()
       .mockResolvedValueOnce({
         status: 201,
         statusText: 'Created',
@@ -324,7 +326,7 @@ describe('storeOrderAction', () => {
       clob: { key: 'k', passphrase: 'p', secret: 's' },
     })
 
-    const fetchMock = vi.fn().mockResolvedValueOnce({
+    const fetchMock = mock().mockResolvedValueOnce({
       status: 200,
       statusText: 'OK',
       ok: true,
@@ -404,8 +406,7 @@ describe('storeOrderAction', () => {
       orderID: `order-${index + 1}`,
       status: 'matched',
     }))
-    const fetchMock = vi
-      .fn()
+    const fetchMock = mock()
       .mockResolvedValueOnce({
         status: 200,
         statusText: 'OK',
@@ -460,8 +461,7 @@ describe('storeOrderAction', () => {
       orderID: `order-${index + 1}`,
       status: 'live',
     }))
-    globalThis.fetch = vi
-      .fn()
+    globalThis.fetch = mock()
       .mockResolvedValueOnce({
         status: 200,
         statusText: 'OK',
@@ -517,7 +517,7 @@ describe('storeOrderAction', () => {
       clob: { key: 'k', passphrase: 'p', secret: 's' },
     })
 
-    globalThis.fetch = vi.fn().mockResolvedValue({
+    globalThis.fetch = mock().mockResolvedValue({
       status: 503,
       statusText: 'Service Unavailable',
       ok: false,
@@ -543,6 +543,102 @@ describe('storeOrderAction', () => {
     expect(mocks.createOrder).not.toHaveBeenCalled()
   })
 
+  it('preserves warmup metadata on top-level batch failures', async () => {
+    process.env.CLOB_URL = 'https://clob.local'
+    const depositWallet = address('01')
+    mocks.getCurrentUser.mockResolvedValueOnce({
+      id: 'user-1',
+      address: address('aa'),
+      deposit_wallet_address: depositWallet,
+      referred_by_user_id: null,
+      settings: { trading: { market_order_type: 'FAK' } },
+    })
+    mocks.getUserTradingAuthSecrets.mockResolvedValueOnce({
+      clob: { key: 'k', passphrase: 'p', secret: 's' },
+    })
+    mocks.getExtracted.mockResolvedValue((message: string, values?: { seconds?: string }) =>
+      message.replace('{seconds}', values?.seconds ?? ''),
+    )
+
+    globalThis.fetch = mock().mockResolvedValue({
+      status: 503,
+      statusText: 'Service Unavailable',
+      ok: false,
+      json: async () => ({
+        error: 'post-only mode: only post-only orders and cancels are allowed',
+        code: 'post_only_mode',
+        retry_after_seconds: 79,
+      }),
+    }) as any
+
+    const { storeOrdersAction } = await import('@/app/[locale]/(platform)/event/[slug]/_actions/store-order')
+    const result = await storeOrdersAction(
+      Array.from({ length: MAX_ORDER_SUBMISSION_ORDERS }, (_, index) =>
+        basePayload({
+          maker: depositWallet,
+          signer: depositWallet,
+          salt: (index + 1).toString(),
+        }),
+      ),
+    )
+
+    expect(result).toEqual({
+      error: 'Restart in progress. Trading resumes in 79s. Cancels still available.',
+      code: 'post_only_mode',
+      retryAfterSeconds: 79,
+      results: null,
+    })
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2)
+  })
+
+  it('preserves a later warmup failure after an earlier batch throws', async () => {
+    process.env.CLOB_URL = 'https://clob.local'
+    const depositWallet = address('01')
+    mocks.getCurrentUser.mockResolvedValueOnce({
+      id: 'user-1',
+      address: address('aa'),
+      deposit_wallet_address: depositWallet,
+      referred_by_user_id: null,
+      settings: { trading: { market_order_type: 'FAK' } },
+    })
+    mocks.getUserTradingAuthSecrets.mockResolvedValueOnce({
+      clob: { key: 'k', passphrase: 'p', secret: 's' },
+    })
+    mocks.getExtracted.mockResolvedValue((message: string, values?: { seconds?: string }) =>
+      message.replace('{seconds}', values?.seconds ?? ''),
+    )
+
+    globalThis.fetch = mock()
+      .mockRejectedValueOnce(new Error('first batch transport failure'))
+      .mockResolvedValueOnce({
+        status: 503,
+        statusText: 'Service Unavailable',
+        ok: false,
+        json: async () => ({
+          error: 'Post-only mode: only post-only orders and cancels are allowed.',
+          retry_after_seconds: 79,
+        }),
+      }) as any
+
+    const { storeOrdersAction } = await import('@/app/[locale]/(platform)/event/[slug]/_actions/store-order')
+    const result = await storeOrdersAction(
+      Array.from({ length: MAX_ORDER_SUBMISSION_ORDERS }, (_, index) =>
+        basePayload({
+          maker: depositWallet,
+          signer: depositWallet,
+          salt: (index + 1).toString(),
+        }),
+      ),
+    )
+
+    expect(result).toEqual({
+      error: 'Restart in progress. Trading resumes in 79s. Cancels still available.',
+      retryAfterSeconds: 79,
+      results: null,
+    })
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2)
+  })
+
   it('blocks batch order storage when Sumsub approval is required', async () => {
     process.env.CLOB_URL = 'https://clob.local'
     mocks.getCurrentUser.mockResolvedValueOnce({ id: 'user-1' })
@@ -554,6 +650,62 @@ describe('storeOrderAction', () => {
     })
     expect(mocks.getUserTradingAuthSecrets).not.toHaveBeenCalled()
     expect(mocks.createOrder).not.toHaveBeenCalled()
+  })
+
+  it.each([null, undefined])('returns a validation error for malformed batch input: %s', async (payloads) => {
+    process.env.CLOB_URL = 'https://clob.local'
+    const depositWallet = address('01')
+    mocks.getCurrentUser.mockResolvedValueOnce({
+      id: 'user-1',
+      address: address('aa'),
+      deposit_wallet_address: depositWallet,
+      referred_by_user_id: null,
+      settings: { trading: { market_order_type: 'FAK' } },
+    })
+    mocks.getUserTradingAuthSecrets.mockResolvedValueOnce({
+      clob: { key: 'k', passphrase: 'p', secret: 's' },
+    })
+    const fetchMock = mock()
+    globalThis.fetch = fetchMock as any
+
+    const { storeOrdersAction } = await import('@/app/[locale]/(platform)/event/[slug]/_actions/store-order')
+    const result = await storeOrdersAction(payloads as StoreOrdersInput)
+
+    expect(result).toEqual({
+      error: 'Something went wrong while processing your order. Please try again.',
+      results: null,
+    })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('uses a supported raw locale when batch schema validation fails', async () => {
+    process.env.CLOB_URL = 'https://clob.local'
+    const depositWallet = address('01')
+    mocks.getCurrentUser.mockResolvedValueOnce({
+      id: 'user-1',
+      address: address('aa'),
+      deposit_wallet_address: depositWallet,
+      referred_by_user_id: null,
+      settings: { trading: { market_order_type: 'FAK' } },
+    })
+    mocks.getUserTradingAuthSecrets.mockResolvedValueOnce({
+      clob: { key: 'k', passphrase: 'p', secret: 's' },
+    })
+    mocks.getExtracted.mockImplementation(
+      async ({ locale }: { locale: string }) =>
+        (message: string) =>
+          `${locale}:${message}`,
+    )
+
+    const { storeOrdersAction } = await import('@/app/[locale]/(platform)/event/[slug]/_actions/store-order')
+    const result = await storeOrdersAction([
+      { ...basePayload({ locale: 'pt', maker: depositWallet, signer: depositWallet }), side: 2 },
+    ] as unknown as StoreOrdersInput)
+
+    expect(result).toEqual({
+      error: 'pt:Something went wrong while processing your order. Please try again.',
+      results: null,
+    })
   })
 
   it('preserves individual failures returned by the CLOB batch endpoint', async () => {
@@ -570,7 +722,7 @@ describe('storeOrderAction', () => {
       clob: { key: 'k', passphrase: 'p', secret: 's' },
     })
 
-    globalThis.fetch = vi.fn().mockResolvedValueOnce({
+    globalThis.fetch = mock().mockResolvedValueOnce({
       status: 200,
       statusText: 'OK',
       ok: true,
@@ -600,6 +752,55 @@ describe('storeOrderAction', () => {
     })
   })
 
+  it('uses each order locale for individual batch errors', async () => {
+    process.env.CLOB_URL = 'https://clob.local'
+    const depositWallet = address('01')
+    mocks.getCurrentUser.mockResolvedValueOnce({
+      id: 'user-1',
+      address: address('aa'),
+      deposit_wallet_address: depositWallet,
+      referred_by_user_id: null,
+      settings: { trading: { market_order_type: 'FAK' } },
+    })
+    mocks.getUserTradingAuthSecrets.mockResolvedValueOnce({
+      clob: { key: 'k', passphrase: 'p', secret: 's' },
+    })
+    mocks.getExtracted.mockImplementation(
+      async ({ locale }: { locale: string }) =>
+        (message: string) =>
+          `${locale}:${message}`,
+    )
+
+    globalThis.fetch = mock().mockResolvedValueOnce({
+      status: 200,
+      statusText: 'OK',
+      ok: true,
+      json: async () => [
+        { success: true, errorMsg: '', orderID: 'yes-123', status: 'matched' },
+        {
+          success: false,
+          errorMsg: "order couldn't be fully filled, FOK orders are fully filled/killed",
+          orderID: '',
+          status: 'unmatched',
+        },
+      ],
+    }) as any
+
+    const { storeOrdersAction } = await import('@/app/[locale]/(platform)/event/[slug]/_actions/store-order')
+    const result = await storeOrdersAction([
+      basePayload({ maker: depositWallet, signer: depositWallet, token_id: '1' }),
+      basePayload({ maker: depositWallet, signer: depositWallet, token_id: '2', salt: '2', locale: 'pt' }),
+    ])
+
+    expect(result).toEqual({
+      error: null,
+      results: [
+        { error: null, orderId: 'yes-123' },
+        { error: 'pt:Not enough liquidity to fully fill this order right now.', orderId: null },
+      ],
+    })
+  })
+
   it('returns default message for unmapped CLOB errors', async () => {
     process.env.CLOB_URL = 'https://clob.local'
     const depositWallet = address('01')
@@ -615,7 +816,7 @@ describe('storeOrderAction', () => {
       clob: { key: 'k', passphrase: 'p', secret: 's' },
     })
 
-    const fetchMock = vi.fn().mockResolvedValueOnce({
+    const fetchMock = mock().mockResolvedValueOnce({
       status: 200,
       statusText: 'OK',
       ok: true,
@@ -634,6 +835,130 @@ describe('storeOrderAction', () => {
 
     expect(result).toEqual({
       error: 'Something went wrong while processing your order. Please try again.',
+    })
+  })
+
+  it('explains post-restart warmup errors with the CLOB countdown', async () => {
+    process.env.CLOB_URL = 'https://clob.local'
+    const depositWallet = address('01')
+    mocks.getCurrentUser.mockResolvedValueOnce({
+      id: 'user-1',
+      address: address('aa'),
+      deposit_wallet_address: depositWallet,
+      referred_by_user_id: null,
+      settings: {},
+    })
+    mocks.getUserTradingAuthSecrets.mockResolvedValueOnce({
+      clob: { key: 'k', passphrase: 'p', secret: 's' },
+    })
+    mocks.getExtracted.mockResolvedValueOnce((message: string, values?: { seconds?: string }) =>
+      message.replace('{seconds}', values?.seconds ?? ''),
+    )
+
+    globalThis.fetch = mock().mockResolvedValueOnce({
+      status: 503,
+      statusText: 'Service Unavailable',
+      ok: false,
+      json: async () => ({
+        error: 'post-only mode: only post-only orders and cancels are allowed',
+        code: 'post_only_mode',
+        retry_after_seconds: 79,
+      }),
+    }) as any
+
+    const { storeOrderAction } = await import('@/app/[locale]/(platform)/event/[slug]/_actions/store-order')
+    const result = await storeOrderAction(
+      basePayload({
+        maker: depositWallet,
+        signer: depositWallet,
+        type: 'MARKET',
+        locale: 'pt',
+      }),
+    )
+
+    expect(result).toEqual({
+      error: 'Restart in progress. Trading resumes in 79s. Cancels still available.',
+      code: 'post_only_mode',
+      retryAfterSeconds: 79,
+    })
+    expect(mocks.getExtracted).toHaveBeenCalledWith({ locale: 'pt' })
+  })
+
+  it('does not turn the restart retry hint into a one-second completion estimate', async () => {
+    process.env.CLOB_URL = 'https://clob.local'
+    const depositWallet = address('01')
+    mocks.getCurrentUser.mockResolvedValueOnce({
+      id: 'user-1',
+      address: address('aa'),
+      deposit_wallet_address: depositWallet,
+      referred_by_user_id: null,
+      settings: {},
+    })
+    mocks.getUserTradingAuthSecrets.mockResolvedValueOnce({
+      clob: { key: 'k', passphrase: 'p', secret: 's' },
+    })
+
+    globalThis.fetch = mock().mockResolvedValueOnce({
+      status: 425,
+      statusText: 'Too Early',
+      ok: false,
+      json: async () => ({
+        error: 'Trading is temporarily unavailable while the CLOB is restarting.',
+        retry_after_seconds: 1,
+      }),
+    }) as any
+
+    const { storeOrderAction } = await import('@/app/[locale]/(platform)/event/[slug]/_actions/store-order')
+    const result = await storeOrderAction(
+      basePayload({
+        maker: depositWallet,
+        signer: depositWallet,
+        type: 'MARKET',
+      }),
+    )
+
+    expect(result).toEqual({
+      error: 'The matching engine is restarting. Please try again shortly. You can still cancel open orders.',
+      retryAfterSeconds: 1,
+    })
+  })
+
+  it('does not invent a countdown when post-restart warmup omits its retry hint', async () => {
+    process.env.CLOB_URL = 'https://clob.local'
+    const depositWallet = address('01')
+    mocks.getCurrentUser.mockResolvedValueOnce({
+      id: 'user-1',
+      address: address('aa'),
+      deposit_wallet_address: depositWallet,
+      referred_by_user_id: null,
+      settings: {},
+    })
+    mocks.getUserTradingAuthSecrets.mockResolvedValueOnce({
+      clob: { key: 'k', passphrase: 'p', secret: 's' },
+    })
+
+    globalThis.fetch = mock().mockResolvedValueOnce({
+      status: 503,
+      statusText: 'Service Unavailable',
+      ok: false,
+      json: async () => ({
+        error: 'post-only mode: only post-only orders and cancels are allowed',
+        code: 'post_only_mode',
+      }),
+    }) as any
+
+    const { storeOrderAction } = await import('@/app/[locale]/(platform)/event/[slug]/_actions/store-order')
+    const result = await storeOrderAction(
+      basePayload({
+        maker: depositWallet,
+        signer: depositWallet,
+        locale: 'pt',
+      }),
+    )
+
+    expect(result).toEqual({
+      error: 'The matching engine is restarting. Please try again shortly. You can still cancel open orders.',
+      code: 'post_only_mode',
     })
   })
 })

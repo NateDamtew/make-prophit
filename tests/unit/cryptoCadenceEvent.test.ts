@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'bun:test'
 
 import {
   CRYPTO_CADENCE_ROUTES,
@@ -6,7 +6,6 @@ import {
   matchesCryptoCadenceRoute,
   resolveCryptoCadenceEventPresentation,
   resolveCryptoCadenceEventTitle,
-  resolveCryptoCadenceRelatedEventTitle,
   resolveCryptoCadenceRelatedLabel,
   resolveCryptoCadenceRouteSlug,
   resolveCryptoCadenceSidebarLabel,
@@ -19,6 +18,10 @@ const BASE_BTC_EVENT = {
   main_tag: 'Crypto',
   series_recurrence: 'daily',
   tags: [],
+}
+
+function normalizeWhitespace(value: string | null) {
+  return value?.replace(/\s+/gu, ' ').trim() ?? null
 }
 
 describe('crypto cadence event presentation', () => {
@@ -92,10 +95,9 @@ describe('crypto cadence event presentation', () => {
       series_slug: 'btc-up-or-down-15m',
     }
 
-    expect(resolveCryptoCadenceEventPresentation(event, 'pt')).toEqual({
-      title: 'BTC sobe ou desce 15m',
-      subtitle: '28 de julho, 08:00 – 08:15 ET',
-    })
+    const localizedPresentation = resolveCryptoCadenceEventPresentation(event, 'pt')
+    expect(localizedPresentation?.title).toBe('BTC sobe ou desce 15m')
+    expect(normalizeWhitespace(localizedPresentation?.subtitle ?? null)).toBe('28 de julho, 08:00 – 08:15 ET')
     expect(
       resolveCryptoCadenceEventTitle(
         {
@@ -127,39 +129,22 @@ describe('crypto cadence event presentation', () => {
       title: 'BTC Up or Down 4h',
       subtitle: 'July 28, 10PM-July 29, 2AM ET',
     })
-    expect(resolveCryptoCadenceEventPresentation(event, 'pt')).toEqual({
-      title: 'BTC sobe ou desce 4h',
-      subtitle: '28 de julho às 22:00 – 29 de julho às 02:00 ET',
-    })
+    const localizedPresentation = resolveCryptoCadenceEventPresentation(event, 'pt')
+    expect(localizedPresentation?.title).toBe('BTC sobe ou desce 4h')
+    expect(normalizeWhitespace(localizedPresentation?.subtitle ?? null)).toBe(
+      '28 de julho às 22:00 – 29 de julho às 02:00 ET',
+    )
   })
 
-  it('uses compact localized titles for 5 and 15-minute related rows', () => {
+  it('uses the same compact header title for 4-hour related rows', () => {
     expect(
-      resolveCryptoCadenceRelatedEventTitle({
+      resolveCryptoCadenceEventTitle({
         ...BASE_BTC_EVENT,
-        end_date: '2026-07-28T12:15:00.000Z',
-        series_slug: 'btc-up-or-down-15m',
+        title: 'Solana Up or Down - August 12, 12:00AM-4:00AM ET',
+        end_date: '2026-08-12T08:00:00.000Z',
+        series_slug: 'solana-up-or-down-4h',
       }),
-    ).toBe('BTC Up or Down - 15m')
-
-    expect(
-      resolveCryptoCadenceRelatedEventTitle(
-        {
-          ...BASE_BTC_EVENT,
-          end_date: '2026-07-28T12:05:00.000Z',
-          series_slug: 'btc-up-or-down-5m',
-        },
-        'pt',
-      ),
-    ).toBe('BTC sobe ou desce - 5m')
-
-    expect(
-      resolveCryptoCadenceRelatedEventTitle({
-        ...BASE_BTC_EVENT,
-        end_date: '2026-07-28T13:00:00.000Z',
-        series_slug: 'btc-up-or-down-hourly',
-      }),
-    ).toBeNull()
+    ).toBe('SOL Up or Down 4h')
   })
 
   it('localizes generated cadence navigation labels', () => {

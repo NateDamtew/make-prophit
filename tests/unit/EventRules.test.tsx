@@ -1,30 +1,56 @@
-import { render, screen } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { act, fireEvent, render, screen } from '@testing-library/react'
+import { beforeEach, describe, expect, it, mock } from 'bun:test'
 
 import type { Event } from '@/types'
 
-const mocks = vi.hoisted(() => ({
-  useLocale: vi.fn(),
+import { useOrder } from '@/stores/useOrder'
+
+import { hoisted } from '../bun-test-helpers'
+
+const mocks = hoisted(() => ({
+  useLocale: mock(),
 }))
 
-vi.mock('next-intl', () => ({
+void mock.module('next-intl', () => ({
   useExtracted: () => (message: string | { message: string }) =>
     typeof message === 'string' ? message : message.message,
   useLocale: () => mocks.useLocale(),
 }))
 
-vi.mock('@/components/ui/button', () => ({
+void mock.module('@/i18n/navigation', () => ({
+  Link: ({ children, href, ...props }: any) => (
+    <a href={href} {...props}>
+      {children}
+    </a>
+  ),
+}))
+
+void mock.module('@/components/ui/button', () => ({
   Button: function MockButton({ children, nativeButton: _nativeButton, render, ...props }: any) {
     return render ?? <button {...props}>{children}</button>
   },
 }))
 
-vi.mock('@/hooks/useSiteIdentity', () => ({
+void mock.module('@/hooks/useSiteIdentity', () => ({
   useSiteIdentity: () => ({ name: 'Kuest' }),
 }))
 
-vi.mock('@/lib/uma', () => ({
+void mock.module('@/lib/uma', () => ({
   resolveUmaProposeTarget: () => null,
+}))
+
+void mock.module('@/app/[locale]/(platform)/event/[slug]/_components/DirectResolutionButton', () => ({
+  default: ({ market, resolutionSourceLabel, onResolutionRewardAmountChange }: any) => (
+    <section>
+      <h4>{market.is_resolved ? 'Resolution' : 'Propose resolution'}</h4>
+      <span data-testid="direct-resolution-market">{market.condition_id}</span>
+      <span data-testid="direct-resolution-question">{market.question}</span>
+      {resolutionSourceLabel && <span>{resolutionSourceLabel}</span>}
+      <button type="button" onClick={() => onResolutionRewardAmountChange?.('$4')}>
+        Load reward
+      </button>
+    </section>
+  ),
 }))
 
 const { default: EventRules } = await import('@/app/[locale]/(platform)/event/[slug]/_components/EventRules')
@@ -63,6 +89,7 @@ describe('eventRules', () => {
   beforeEach(() => {
     mocks.useLocale.mockReset()
     mocks.useLocale.mockReturnValue('en')
+    useOrder.getState().reset()
   })
 
   it('renders the created-at label for english with the full localized timestamp', () => {
@@ -103,6 +130,69 @@ describe('eventRules', () => {
     expect(screen.getByText('Abelardo de la Espriella has been added as an option to this market.')).toBeInTheDocument()
   })
 
+  it('shows market-specific rules once in place of the event fallback', () => {
+    render(
+      <EventRules
+        event={createEvent({
+          rules: 'General event rules.',
+          markets: [
+            {
+              condition_id: 'condition-1',
+              market_rules: 'Resolve using the market-specific official source.',
+              outcomes: [],
+            } as any,
+          ],
+        })}
+        mode="inline"
+      />,
+    )
+
+    expect(screen.getByText('Resolve using the market-specific official source.')).toBeInTheDocument()
+    expect(screen.queryByText('General event rules.')).not.toBeInTheDocument()
+  })
+
+  it('uses the selected NegRisk market throughout rules and resolution', () => {
+    const lulaMarket = {
+      condition_id: 'condition-lula',
+      question_id: `0x${'a'.repeat(64)}`,
+      question: 'Will Trump endorse Lula da Silva for President of Brazil?',
+      market_rules: 'Rules for Lula.',
+      metadata: JSON.stringify({ resolution_type: 'dro_moov2' }),
+      outcomes: [],
+    } as any
+    const zemaMarket = {
+      condition_id: 'condition-zema',
+      question_id: `0x${'b'.repeat(64)}`,
+      question: 'Will Trump endorse Romeu Zema for President of Brazil?',
+      market_rules: 'Rules for Zema.',
+      metadata: JSON.stringify({ resolution_type: 'dro_moov2' }),
+      outcomes: [],
+    } as any
+    const negRiskEvent = createEvent({
+      neg_risk_market_id: `0x${'c'.repeat(64)}`,
+      markets: [lulaMarket, zemaMarket],
+    })
+
+    act(() => useOrder.getState().setMarket(zemaMarket))
+    render(<EventRules event={negRiskEvent} mode="inline" />)
+
+    expect(screen.getByText('Rules for Zema.')).toBeInTheDocument()
+    expect(screen.queryByText('Rules for Lula.')).not.toBeInTheDocument()
+    expect(screen.getByTestId('direct-resolution-market')).toHaveTextContent('condition-zema')
+    expect(screen.getByTestId('direct-resolution-question')).toHaveTextContent(
+      'Will Trump endorse Romeu Zema for President of Brazil?',
+    )
+
+    act(() => useOrder.getState().setMarket(lulaMarket))
+
+    expect(screen.getByText('Rules for Lula.')).toBeInTheDocument()
+    expect(screen.queryByText('Rules for Zema.')).not.toBeInTheDocument()
+    expect(screen.getByTestId('direct-resolution-market')).toHaveTextContent('condition-lula')
+    expect(screen.getByTestId('direct-resolution-question')).toHaveTextContent(
+      'Will Trump endorse Lula da Silva for President of Brazil?',
+    )
+  })
+
   it('starts expanded in accordion mode when additional context exists', () => {
     render(
       <EventRules
@@ -113,13 +203,13 @@ describe('eventRules', () => {
       />,
     )
 
-    expect(screen.getByRole('button', { name: 'Rules' })).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByRole('button', { name: 'Rules & Resolution' })).toHaveAttribute('aria-expanded', 'true')
   })
 
   it('re-syncs the accordion expansion when the event additional context changes', () => {
     const { rerender } = render(<EventRules event={createEvent()} />)
 
-    expect(screen.getByRole('button', { name: 'Rules' })).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.getByRole('button', { name: 'Rules & Resolution' })).toHaveAttribute('aria-expanded', 'false')
 
     rerender(
       <EventRules
@@ -132,6 +222,65 @@ describe('eventRules', () => {
       />,
     )
 
-    expect(screen.getByRole('button', { name: 'Rules' })).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByRole('button', { name: 'Rules & Resolution' })).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('shows the resolution reward badge for an active NegRisk direct-resolution market', () => {
+    render(
+      <EventRules
+        event={createEvent({
+          markets: [
+            {
+              condition_id: 'condition-1',
+              question_id: `0x${'a'.repeat(64)}`,
+              neg_risk: true,
+              neg_risk_request_id: `0x${'b'.repeat(64)}`,
+              is_active: true,
+              is_resolved: false,
+              metadata: JSON.stringify({ resolution_type: 'dro_moov2', mirror_resolution_type: 'chainlink' }),
+              condition: { resolved: false },
+              outcomes: [],
+            } as any,
+          ],
+        })}
+        mode="inline"
+      />,
+    )
+
+    expect(screen.getByRole('heading', { name: 'Propose resolution' })).toBeInTheDocument()
+    expect(screen.getByText('Chainlink')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Propose resolution' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Load reward' }))
+
+    expect(screen.getByLabelText('Resolution reward: $4')).toBeInTheDocument()
+  })
+
+  it('hides the resolution reward badge after the market is resolved', () => {
+    render(
+      <EventRules
+        event={createEvent({
+          status: 'resolved',
+          active_markets_count: 0,
+          markets: [
+            {
+              condition_id: 'condition-1',
+              question_id: `0x${'a'.repeat(64)}`,
+              neg_risk: true,
+              neg_risk_request_id: `0x${'b'.repeat(64)}`,
+              is_active: false,
+              is_resolved: true,
+              metadata: JSON.stringify({ resolution_type: 'dro_moov2' }),
+              condition: { resolved: true },
+              outcomes: [],
+            } as any,
+          ],
+        })}
+        mode="inline"
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Load reward' }))
+
+    expect(screen.queryByLabelText('Resolution reward: $4')).not.toBeInTheDocument()
   })
 })

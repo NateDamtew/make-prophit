@@ -1,5 +1,7 @@
 import type { NextRequest } from 'next/server'
+
 import { NextResponse } from 'next/server'
+
 import { listAuditEvents } from '@/lib/admin-ui/audit'
 import { getAdminActor } from '@/lib/admin-ui/guard'
 
@@ -17,8 +19,7 @@ export async function GET(request: NextRequest) {
 
     const { rows, totalCount } = await listAuditEvents({ limit, offset: pageIndex * limit, search })
     return NextResponse.json({ data: rows, totalCount })
-  }
-  catch (error) {
+  } catch (error) {
     console.error('Admin audit-log list error', error)
     return NextResponse.json({ error: 'Failed to load audit log.' }, { status: 500 })
   }

@@ -15,20 +15,18 @@ export function WhiteLabelBrandBar({ communityName, communityIcon }: WhiteLabelB
     <div className="rounded-sm border bg-card px-4 py-3">
       <div className="flex items-center gap-3">
         <div className="flex size-9 shrink-0 items-center justify-center rounded-sm bg-primary/10 text-base">
-          {communityIcon
-            ? <img src={communityIcon} alt="" className="size-full rounded-sm object-cover" />
-            : '🏛️'}
+          {communityIcon ? <img src={communityIcon} alt="" className="size-full rounded-sm object-cover" /> : '🏛️'}
         </div>
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold">
-            <span>{communityName}</span>
-            {' '}
+            <span>{communityName}</span>{' '}
             <BadgeCheckIcon className="ms-1 inline size-3.5 text-primary" aria-label="Verified" />
           </p>
           <p className="text-2xs text-muted-foreground">
-            Independent prediction markets, hosted on
-            {' '}
-            <a href="/" className="font-medium hover:underline">Prophit</a>
+            Independent prediction markets, hosted on {/* oxlint-disable-next-line next/no-html-link-for-pages */}
+            <a href="/" className="font-medium hover:underline">
+              Prophit
+            </a>
           </p>
         </div>
       </div>

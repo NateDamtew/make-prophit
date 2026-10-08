@@ -2,9 +2,12 @@
 
 import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
 
+import { useLeaderboardTranslations } from '@/app/[locale]/(platform)/leaderboard/_utils/leaderboardTranslations'
 import { cn } from '@/lib/utils'
 
 interface LeaderboardPaginationProps {
+  hasItems: boolean
+  hasNextPage: boolean
   page: number
   setPageValue: (nextPage: number | ((currentPage: number) => number)) => void
 }
@@ -23,9 +26,21 @@ function paginationChevronClass(isDisabled: boolean) {
   )
 }
 
-export default function LeaderboardPagination({ page, setPageValue }: LeaderboardPaginationProps) {
+export default function LeaderboardPagination({
+  hasItems,
+  hasNextPage,
+  page,
+  setPageValue,
+}: LeaderboardPaginationProps) {
+  const { translateNextPage, translatePreviousPage } = useLeaderboardTranslations()
+
+  if (!hasItems) {
+    return null
+  }
+
   const pageWindowStart = Math.max(1, page - 3)
-  const pageNumbers = Array.from({ length: 6 }, (_, index) => pageWindowStart + index)
+  const pageWindowEnd = page + (hasNextPage ? 1 : 0)
+  const pageNumbers = Array.from({ length: pageWindowEnd - pageWindowStart + 1 }, (_, index) => pageWindowStart + index)
 
   return (
     <div className="mt-4 flex items-center justify-center gap-2">
@@ -34,7 +49,7 @@ export default function LeaderboardPagination({ page, setPageValue }: Leaderboar
         onClick={() => setPageValue((prev) => Math.max(1, prev - 1))}
         className={paginationChevronClass(page === 1)}
         disabled={page === 1}
-        aria-label="Previous page"
+        aria-label={translatePreviousPage()}
       >
         <ChevronLeftIcon className="size-4" />
       </button>
@@ -49,12 +64,17 @@ export default function LeaderboardPagination({ page, setPageValue }: Leaderboar
           {pageNumber}
         </button>
       ))}
-      <span className="text-sm text-muted-foreground">{'\u2026'}</span>
+      {hasNextPage && <span className="text-sm text-muted-foreground">{'\u2026'}</span>}
       <button
         type="button"
-        onClick={() => setPageValue((prev) => prev + 1)}
-        className={paginationChevronClass(false)}
-        aria-label="Next page"
+        onClick={() => {
+          if (hasNextPage) {
+            setPageValue((prev) => prev + 1)
+          }
+        }}
+        className={paginationChevronClass(!hasNextPage)}
+        disabled={!hasNextPage}
+        aria-label={translateNextPage()}
       >
         <ChevronRightIcon className="size-4" />
       </button>

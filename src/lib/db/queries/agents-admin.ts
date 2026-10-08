@@ -1,5 +1,7 @@
-import type { AgentStatus } from '@/lib/admin-ui/agent-status'
 import { and, desc, eq, ilike, or, sql } from 'drizzle-orm'
+
+import type { AgentStatus } from '@/lib/admin-ui/agent-status'
+
 import { AGENT_STATUSES } from '@/lib/admin-ui/agent-status'
 import { agents } from '@/lib/db/schema/agents/tables'
 import { users } from '@/lib/db/schema/auth/tables'
@@ -37,7 +39,7 @@ function buildFilters(search?: string, status?: AgentStatus | 'all') {
 }
 
 export const AgentsAdminRepository = {
-  async list(params: ListParams = {}): Promise<{ rows: AdminAgentRow[], totalCount: number }> {
+  async list(params: ListParams = {}): Promise<{ rows: AdminAgentRow[]; totalCount: number }> {
     const { limit = 50, offset = 0, search, status = 'all' } = params
     const boundedLimit = Math.min(Math.max(limit, 1), 200)
     const where = buildFilters(search, status)
@@ -62,11 +64,14 @@ export const AgentsAdminRepository = {
         .orderBy(desc(agents.created_at))
         .limit(boundedLimit)
         .offset(Math.max(offset, 0)),
-      db.select({ count: sql<number>`count(*)::int` }).from(agents).where(where),
+      db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(agents)
+        .where(where),
     ])
 
     return {
-      rows: rows.map(row => ({
+      rows: rows.map((row) => ({
         id: row.id,
         name: row.name,
         slug: row.slug,
@@ -81,13 +86,13 @@ export const AgentsAdminRepository = {
     }
   },
 
-  async stats(): Promise<{ total: number, byStatus: Record<AgentStatus, number> }> {
+  async stats(): Promise<{ total: number; byStatus: Record<AgentStatus, number> }> {
     const rows = await db
       .select({ status: agents.status, count: sql<number>`count(*)::int` })
       .from(agents)
       .groupBy(agents.status)
 
-    const byStatus = Object.fromEntries(AGENT_STATUSES.map(s => [s, 0])) as Record<AgentStatus, number>
+    const byStatus = Object.fromEntries(AGENT_STATUSES.map((s) => [s, 0])) as Record<AgentStatus, number>
     let total = 0
     for (const row of rows) {
       const status = row.status as AgentStatus

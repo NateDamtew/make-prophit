@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'bun:test'
 
 import {
   buildChildParentMap,
@@ -22,7 +22,7 @@ describe('platform navigation helpers', () => {
     })
 
     // Nav order: trending, communities (no childs), new, then the main tags.
-    expect(tags.map(tag => tag.slug)).toEqual(['trending', 'communities', 'new', 'geopolitics'])
+    expect(tags.map((tag) => tag.slug)).toEqual(['trending', 'communities', 'new', 'geopolitics'])
     expect(tags[0].childs).toEqual([{ slug: 'ukraine', name: 'Ukraine', count: 9 }])
     expect(tags[1].childs).toEqual([])
     expect(tags[2].childs).toEqual([{ slug: 'ukraine', name: 'Ukraine', count: 9 }])

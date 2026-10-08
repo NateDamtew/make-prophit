@@ -23,8 +23,13 @@ import { useCurrentTimestamp } from '@/hooks/useCurrentTimestamp'
 import { useDebounce } from '@/hooks/useDebounce'
 import { useHasHydrated } from '@/hooks/useHasHydrated'
 import { matchesCryptoCadenceRoute } from '@/lib/crypto-cadence-event'
-import { fetchHomeEventsPageApi } from '@/lib/events-api'
 import { filterHomeEvents, isEventResolvedLike } from '@/lib/home-events'
+import {
+  fetchHomeEventsQueryPage,
+  getHomeEventsNextPageParam,
+  getHomeEventsQueryKey,
+  HOME_FEED_REFRESH_INTERVAL_MS,
+} from '@/lib/home-events-query'
 import { getDefaultHomeRouteSortBy } from '@/lib/home-route-sort'
 import { resolveDisplayPrice } from '@/lib/market-chance'
 import { buildHomeSportsMoneylineModel } from '@/lib/sports-home-card'
@@ -47,8 +52,6 @@ const eventsSnapshotCache = new Map<string, Event[]>()
 const EVENTS_SNAPSHOT_CACHE_LIMIT = 24
 const HOME_LIVE_PRICE_OBSERVER_ROOT_MARGIN = '200px 0px'
 const HOME_LIVE_OVERRIDE_SETTLE_DELAY_MS = 2_000
-const HOME_FEED_REFRESH_INTERVAL_MS = 60_000
-
 function hasFiniteTimestamp(value: number | null | undefined) {
   return typeof value === 'number' && Number.isFinite(value)
 }
@@ -103,34 +106,6 @@ function setEventsSnapshot(key: string, events: Event[]) {
 
     eventsSnapshotCache.delete(oldestKey)
   }
-}
-
-async function fetchEvents({
-  pageParam,
-  currentTimestamp,
-  filters,
-  locale,
-}: {
-  currentTimestamp: number | null
-  pageParam: number
-  filters: FilterState
-  locale: string
-}): Promise<HomeEventsApiPage> {
-  return fetchHomeEventsPageApi({
-    tag: filters.tag,
-    mainTag: filters.mainTag,
-    search: filters.search,
-    bookmarked: filters.bookmarked,
-    frequency: filters.frequency,
-    status: filters.status,
-    sort: filters.sortBy,
-    offset: pageParam,
-    locale,
-    currentTimestamp,
-    hideSports: filters.hideSports,
-    hideCrypto: filters.hideCrypto,
-    hideEarnings: filters.hideEarnings,
-  })
 }
 
 interface UseEventsListParams {
@@ -428,6 +403,7 @@ interface UseInfiniteScrollLoadMoreParams {
   isFetching: boolean
   isFetchingNextPage: boolean
   loadMoreStateKey: string
+  fallbackErrorMessage: string
 }
 
 function useInfiniteScrollLoadMore({
@@ -437,10 +413,10 @@ function useInfiniteScrollLoadMore({
   isFetching,
   isFetchingNextPage,
   loadMoreStateKey,
+  fallbackErrorMessage,
 }: UseInfiniteScrollLoadMoreParams) {
   const loadMoreRef = useRef<HTMLDivElement | null>(null)
   const canRetryLoadMoreAfterErrorRef = useRef(true)
-  const previousLoadMoreStateKeyRef = useRef(loadMoreStateKey)
   const [infiniteScrollErrorState, setInfiniteScrollErrorState] = useState<{
     key: string
     value: string | null
@@ -450,13 +426,12 @@ function useInfiniteScrollLoadMore({
   })
   const infiniteScrollError = infiniteScrollErrorState.key === loadMoreStateKey ? infiniteScrollErrorState.value : null
 
-  if (previousLoadMoreStateKeyRef.current !== loadMoreStateKey) {
-    previousLoadMoreStateKeyRef.current = loadMoreStateKey
-    canRetryLoadMoreAfterErrorRef.current = true
-  }
-
   useEffect(
     function observeLoadMoreSentinelForFetch() {
+      if (infiniteScrollErrorState.key !== loadMoreStateKey) {
+        canRetryLoadMoreAfterErrorRef.current = true
+      }
+
       if (!enabled || !loadMoreRef.current || !hasNextPage || typeof IntersectionObserver === 'undefined') {
         return
       }
@@ -492,7 +467,7 @@ function useInfiniteScrollLoadMore({
             canRetryLoadMoreAfterErrorRef.current = false
             setInfiniteScrollErrorState({
               key: loadMoreStateKey,
-              value: error?.message || 'Failed to load more events.',
+              value: error?.message || fallbackErrorMessage,
             })
           })
         },
@@ -504,12 +479,21 @@ function useInfiniteScrollLoadMore({
         observer.disconnect()
       }
     },
-    [enabled, fetchNextPage, hasNextPage, infiniteScrollError, isFetching, isFetchingNextPage, loadMoreStateKey],
+    [
+      enabled,
+      fetchNextPage,
+      fallbackErrorMessage,
+      hasNextPage,
+      infiniteScrollError,
+      infiniteScrollErrorState.key,
+      isFetching,
+      isFetchingNextPage,
+      loadMoreStateKey,
+    ],
   )
 
   return { loadMoreRef, infiniteScrollError }
 }
-
 export default function EventsGrid({
   filters,
   initialEvents,
@@ -523,7 +507,7 @@ export default function EventsGrid({
   const t = useExtracted()
   const locale = useLocale()
   const user = useUser()
-  const { open: openLoginModal } = useAppKit()
+  const { open: openAppKit } = useAppKit()
   const queryUserScope = user?.id ?? 'guest'
   const currentTimestamp = useCurrentTimestamp({
     initialTimestamp: initialCurrentTimestamp,
@@ -599,22 +583,7 @@ export default function EventsGrid({
   })
   const infiniteScrollEnabled = infiniteScrollState.key === loadMoreStateKey && infiniteScrollState.enabled
 
-  const eventsQueryKey = [
-    'events',
-    filters.tag,
-    filters.mainTag,
-    filters.search,
-    filters.bookmarked,
-    filters.frequency,
-    filters.sortBy,
-    filters.status,
-    filters.hideSports,
-    filters.hideCrypto,
-    filters.hideEarnings,
-    locale,
-    queryUserScope,
-    homeFeedClockState,
-  ]
+  const eventsQueryKey = getHomeEventsQueryKey({ filters, locale, queryUserScope, homeFeedClockState })
 
   const {
     status,
@@ -629,22 +598,21 @@ export default function EventsGrid({
   } = useInfiniteQuery({
     queryKey: eventsQueryKey,
     queryFn: ({ pageParam }) =>
-      fetchEvents({
+      fetchHomeEventsQueryPage({
         pageParam,
-        currentTimestamp: resolvedCurrentTimestamp,
+        currentTimestamp: shouldAutoRefreshEvents ? Date.now() : resolvedCurrentTimestamp,
         filters,
         locale,
       }),
-    getNextPageParam: (lastPage, allPages) =>
-      lastPage.hasMore ? allPages.reduce((offset, page) => offset + page.events.length, 0) : undefined,
+    getNextPageParam: getHomeEventsNextPageParam,
     initialPageParam: 0,
     initialData: shouldUseInitialData
       ? { pages: [{ events: initialEvents, hasMore: initialHasMore }], pageParams: [0] }
       : undefined,
     enabled: shouldEnableEventsQuery,
-    refetchOnMount: false,
+    refetchOnMount: shouldAutoRefreshEvents ? true : false,
     refetchOnWindowFocus: false,
-    staleTime: 'static',
+    staleTime: shouldAutoRefreshEvents ? HOME_FEED_REFRESH_INTERVAL_MS : 'static',
     refetchInterval: shouldAutoRefreshEvents ? HOME_FEED_REFRESH_INTERVAL_MS : false,
     refetchIntervalInBackground: true,
     initialDataUpdatedAt: 0,
@@ -686,6 +654,7 @@ export default function EventsGrid({
     isFetching,
     isFetchingNextPage,
     loadMoreStateKey,
+    fallbackErrorMessage: t('Failed to load more events.'),
   })
 
   async function handleLoadMore() {
@@ -694,7 +663,7 @@ export default function EventsGrid({
     }
 
     if (!user) {
-      await openLoginModal()
+      await openAppKit()
       return
     }
 
@@ -726,7 +695,7 @@ export default function EventsGrid({
   }
 
   if (status === 'error') {
-    return <p className="text-center text-sm text-muted-foreground">Could not load more events.</p>
+    return <p className="text-center text-sm text-muted-foreground">{t('Could not load more events.')}</p>
   }
 
   if (hydrationSafeEventsToRender.length === 0 && (!allEvents || allEvents.length === 0)) {
@@ -736,7 +705,7 @@ export default function EventsGrid({
   if (hydrationSafeEventsToRender.length === 0) {
     return (
       <div ref={parentRef} className="flex min-h-50 min-w-0 items-center justify-center text-sm text-muted-foreground">
-        No events match your filters.
+        {t('No events match your filters.')}
       </div>
     )
   }

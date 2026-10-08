@@ -84,7 +84,7 @@ interface TradingOnboardingDialogsProps {
   withdrawModalOpen: boolean
   onWithdrawOpenChange: (open: boolean) => void
   user: User | null
-  meldUrl: string | null
+  canBuyMeld: boolean
 }
 
 function OnboardingDialogShell({
@@ -434,7 +434,9 @@ function EmailDialog({
   onSkip: () => void
 }) {
   const t = useExtracted()
-  const [email, setEmail] = useState(defaultValue)
+  const [emailDraft, setEmailDraft] = useState('')
+  const [isEmailEdited, setIsEmailEdited] = useState(false)
+  const email = isEmailEdited ? emailDraft : defaultValue
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -457,7 +459,10 @@ function EmailDialog({
       <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
         <Input
           value={email}
-          onChange={(event) => setEmail(event.target.value)}
+          onChange={(event) => {
+            setIsEmailEdited(true)
+            setEmailDraft(event.target.value)
+          }}
           placeholder={t('Email address')}
           type="email"
           className="h-12 text-base"
@@ -1021,7 +1026,7 @@ export default function TradingOnboardingDialogs({
   withdrawModalOpen,
   onWithdrawOpenChange,
   user,
-  meldUrl,
+  canBuyMeld,
 }: TradingOnboardingDialogsProps) {
   return (
     <>
@@ -1035,6 +1040,7 @@ export default function TradingOnboardingDialogs({
       />
 
       <EmailDialog
+        key={activeModal === 'email' ? 'open' : 'closed'}
         open={activeModal === 'email'}
         onOpenChange={(open) => onModalOpenChange('email', open)}
         defaultValue={emailDefaultValue}
@@ -1094,7 +1100,7 @@ export default function TradingOnboardingDialogs({
         withdrawOpen={withdrawModalOpen}
         onWithdrawOpenChange={onWithdrawOpenChange}
         user={user}
-        meldUrl={meldUrl}
+        canBuyMeld={canBuyMeld}
       />
     </>
   )

@@ -32,7 +32,7 @@ function titleCase(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1)
 }
 
-export function StatusBadge({ status, className }: { status: string, className?: string }) {
+export function StatusBadge({ status, className }: { status: string; className?: string }) {
   const tone = STATUS_TONE[status] ?? 'neutral'
   return <Badge className={cn(TONE_CLASS[tone], className)}>{titleCase(status)}</Badge>
 }

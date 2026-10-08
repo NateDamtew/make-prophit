@@ -10,6 +10,7 @@ import {
   subgraph_syncs,
 } from '@/lib/db/schema'
 import { db } from '@/lib/drizzle'
+import { resolvePublicRuntimeEnv } from '@/lib/public-runtime-config.shared'
 import {
   syncMissingOnChainResolvedPayouts,
   updateOutcomePayoutsFromResolutionPrice,
@@ -24,7 +25,6 @@ import {
 
 export const maxDuration = 300
 
-const RESOLUTION_SUBGRAPH_URL = 'https://subgraphs.kuest.com/resolution-subgraph'
 const SYNC_TIME_LIMIT_MS = 250_000
 const RESOLUTION_PAGE_SIZE = 200
 const SAFETY_PERIOD_V4_SECONDS = 60 * 60
@@ -37,6 +37,10 @@ const RESOLUTION_SYNC_STATE = {
   serviceName: 'resolution_sync',
   subgraphName: 'resolution',
 } as const
+
+function getResolutionSubgraphUrl() {
+  return new URL('/resolution-subgraph', resolvePublicRuntimeEnv(process.env).subgraphsUrl).toString()
+}
 
 interface ResolutionCursor {
   lastUpdateTimestamp: number
@@ -460,7 +464,7 @@ async function fetchResolutionPage(
         pageSize: RESOLUTION_PAGE_SIZE,
       }
 
-  const response = await fetch(RESOLUTION_SUBGRAPH_URL!, {
+  const response = await fetch(getResolutionSubgraphUrl(), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     keepalive: true,
@@ -558,17 +562,18 @@ async function processResolution(
     return { eventId: null, changed: false }
   }
 
-  const conditionChanged = !existingCondition
-    || existingCondition.resolved !== isResolved
-    || (existingCondition.resolution_status ?? null) !== status
-    || (existingCondition.resolution_flagged ?? null) !== resolution.flagged
-    || (existingCondition.resolution_paused ?? null) !== resolution.paused
-    || (existingCondition.resolution_last_update?.toISOString() ?? null) !== lastUpdateAt.toISOString()
-    || (existingCondition.resolution_price ?? null) !== nextResolutionPrice
-    || (existingCondition.resolution_was_disputed ?? null) !== resolution.wasDisputed
-    || (existingCondition.resolution_approved ?? null) !== nextResolutionApproved
-    || (existingCondition.resolution_deadline_at?.toISOString() ?? null) !== nextResolutionDeadlineIso
-    || (existingCondition.resolution_liveness_seconds ?? null) !== resolutionLivenessSeconds
+  const conditionChanged =
+    !existingCondition ||
+    existingCondition.resolved !== isResolved ||
+    (existingCondition.resolution_status ?? null) !== status ||
+    (existingCondition.resolution_flagged ?? null) !== resolution.flagged ||
+    (existingCondition.resolution_paused ?? null) !== resolution.paused ||
+    (existingCondition.resolution_last_update?.toISOString() ?? null) !== lastUpdateAt.toISOString() ||
+    (existingCondition.resolution_price ?? null) !== nextResolutionPrice ||
+    (existingCondition.resolution_was_disputed ?? null) !== resolution.wasDisputed ||
+    (existingCondition.resolution_approved ?? null) !== nextResolutionApproved ||
+    (existingCondition.resolution_deadline_at?.toISOString() ?? null) !== nextResolutionDeadlineIso ||
+    (existingCondition.resolution_liveness_seconds ?? null) !== resolutionLivenessSeconds
 
   if (conditionChanged) {
     await db
@@ -820,14 +825,15 @@ async function invalidateEventCaches(eventIds: string[], options: { includeList?
   const uniqueEventIds = Array.from(new Set(eventIds.filter(Boolean)))
   const listTagInvalidated = options.includeList === true
   if (listTagInvalidated) {
-    revalidateTag(cacheTags.eventsList, 'max')
-    revalidateTag(cacheTags.homeFeaturedEvents, 'max')
+    revalidateTag(cacheTags.eventsList, { expire: 0 })
+    revalidateTag(cacheTags.homeFeaturedEvents, { expire: 0 })
   }
 
   if (uniqueEventIds.length === 0) {
     return {
       listTagInvalidated,
       eventTagInvalidations: 0,
+      seriesEventsTagInvalidations: 0,
       uniqueEventIdsCount: 0,
     }
   }
@@ -835,21 +841,28 @@ async function invalidateEventCaches(eventIds: string[], options: { includeList?
   const rows = await db
     .select({
       slug: eventsTable.slug,
+      series_slug: eventsTable.series_slug,
     })
     .from(eventsTable)
     .where(inArray(eventsTable.id, uniqueEventIds))
 
   let eventTagInvalidations = 0
+  let seriesEventsTagInvalidations = 0
   for (const row of rows) {
     if (row.slug) {
-      revalidateTag(cacheTags.event(row.slug), 'max')
+      revalidateTag(cacheTags.event(row.slug), { expire: 0 })
       eventTagInvalidations += 1
+    }
+    if (row.series_slug) {
+      revalidateTag(cacheTags.seriesEvents(row.series_slug), { expire: 0 })
+      seriesEventsTagInvalidations += 1
     }
   }
 
   return {
     listTagInvalidated,
     eventTagInvalidations,
+    seriesEventsTagInvalidations,
     uniqueEventIdsCount: uniqueEventIds.length,
   }
 }

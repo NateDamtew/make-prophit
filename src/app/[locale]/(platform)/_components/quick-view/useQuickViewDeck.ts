@@ -1,9 +1,11 @@
 'use client'
 
-import type { Event } from '@/types'
 import { useQuery } from '@tanstack/react-query'
 import { useLocale } from 'next-intl'
 import { useMemo } from 'react'
+
+import type { Event } from '@/types'
+
 import { OUTCOME_INDEX } from '@/lib/constants'
 import { fetchEventsApi } from '@/lib/events-api'
 
@@ -63,29 +65,29 @@ function pickBinaryMarket(event: Event): QuickViewCard | null {
   // Choose the highest-volume market on the event that has exactly the two
   // Yes/No outcomes and isn't resolved — that's a clean swipe candidate.
   const candidate = [...event.markets]
-    .filter(market => market.is_active !== false && market.is_resolved !== true)
-    .filter(market => market.outcomes.length === 2)
+    .filter((market) => market.is_active !== false && market.is_resolved !== true)
+    .filter((market) => market.outcomes.length === 2)
     .sort((left, right) => (right.volume ?? 0) - (left.volume ?? 0))[0]
 
   if (!candidate || !candidate.slug || !candidate.condition_id) {
     return null
   }
 
-  const yes = candidate.outcomes.find(o => o.outcome_index === OUTCOME_INDEX.YES) ?? candidate.outcomes[0]
-  const no = candidate.outcomes.find(o => o.outcome_index === OUTCOME_INDEX.NO) ?? candidate.outcomes[1]
+  const yes = candidate.outcomes.find((o) => o.outcome_index === OUTCOME_INDEX.YES) ?? candidate.outcomes[0]
+  const no = candidate.outcomes.find((o) => o.outcome_index === OUTCOME_INDEX.NO) ?? candidate.outcomes[1]
   if (!yes || !no) {
     return null
   }
 
   const yesPrice = typeof yes.buy_price === 'number' ? yes.buy_price : candidate.price
-  const noPrice = typeof no.buy_price === 'number'
-    ? no.buy_price
-    : (Number.isFinite(candidate.price) ? 1 - candidate.price : 0.5)
+  const noPrice =
+    typeof no.buy_price === 'number' ? no.buy_price : Number.isFinite(candidate.price) ? 1 - candidate.price : 0.5
 
   // Prefer a non-trending tag for the category chip; fall back to main_tag.
-  const primaryTag = event.tags?.find(tag => tag.isMainCategory && tag.slug !== 'trending')
-    ?? event.tags?.find(tag => tag.slug !== 'trending')
-    ?? null
+  const primaryTag =
+    event.tags?.find((tag) => tag.isMainCategory && tag.slug !== 'trending') ??
+    event.tags?.find((tag) => tag.slug !== 'trending') ??
+    null
   const category = primaryTag?.name?.trim() || event.main_tag?.trim() || ''
 
   return {
@@ -93,9 +95,7 @@ function pickBinaryMarket(event: Event): QuickViewCard | null {
     eventSlug: event.slug,
     marketSlug: candidate.slug,
     conditionId: candidate.condition_id,
-    title: event.total_markets_count > 1 && candidate.title?.trim()
-      ? candidate.title.trim()
-      : event.title,
+    title: event.total_markets_count > 1 && candidate.title?.trim() ? candidate.title.trim() : event.title,
     iconUrl: candidate.icon_url || event.icon_url || '',
     yesChance: toCents(candidate.probability ?? candidate.price),
     yesPriceCents: toCents(yesPrice),
@@ -127,13 +127,14 @@ export function useQuickViewDeck(enabled: boolean) {
     queryKey: ['quick-view-deck', locale],
     enabled,
     staleTime: 60_000,
-    queryFn: () => fetchEventsApi({
-      tag: 'trending',
-      mainTag: 'trending',
-      status: 'active',
-      homeFeed: true,
-      locale,
-    }),
+    queryFn: () =>
+      fetchEventsApi({
+        tag: 'trending',
+        mainTag: 'trending',
+        status: 'active',
+        homeFeed: true,
+        locale,
+      }),
   })
 
   const cards = useMemo<QuickViewCard[]>(() => {

@@ -1,26 +1,29 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, mock } from 'bun:test'
+import * as actualNextCache from 'next/cache'
 
-const mocks = vi.hoisted(() => ({
-  revalidatePath: vi.fn(),
-  getCurrentUser: vi.fn(),
-  updateSettings: vi.fn(),
+import { hoisted } from '../bun-test-helpers'
+
+const mocks = hoisted(() => ({
+  revalidatePath: mock(),
+  getCurrentUser: mock(),
+  updateSettings: mock(),
 }))
 
-vi.mock('next/cache', () => ({
+void mock.module('next/cache', () => ({
+  ...actualNextCache,
   revalidatePath: mocks.revalidatePath,
 }))
 
-vi.mock('@/lib/db/queries/user', () => ({
+void mock.module('@/lib/db/queries/user', () => ({
   UserRepository: { getCurrentUser: (...args: any[]) => mocks.getCurrentUser(...args) },
 }))
 
-vi.mock('@/lib/db/queries/settings', () => ({
+void mock.module('@/lib/db/queries/settings', () => ({
   SettingsRepository: { updateSettings: (...args: any[]) => mocks.updateSettings(...args) },
 }))
 
 describe('updateThemeSettingsAction', () => {
   beforeEach(() => {
-    vi.resetModules()
     mocks.revalidatePath.mockReset()
     mocks.getCurrentUser.mockReset()
     mocks.updateSettings.mockReset()
@@ -85,14 +88,14 @@ describe('updateThemeSettingsAction', () => {
     expect(result).toEqual({ error: null })
     expect(mocks.updateSettings).toHaveBeenCalledTimes(1)
 
-    const savedPayload = mocks.updateSettings.mock.calls[0][0] as Array<{ key: string, value: string }>
+    const savedPayload = mocks.updateSettings.mock.calls[0][0] as Array<{ key: string; value: string }>
     expect(savedPayload).toHaveLength(5)
 
-    const savedPreset = savedPayload.find(entry => entry.key === 'preset')
-    const savedRadius = savedPayload.find(entry => entry.key === 'radius')
-    const savedLight = savedPayload.find(entry => entry.key === 'light_json')
-    const savedDark = savedPayload.find(entry => entry.key === 'dark_json')
-    const savedThemeMode = savedPayload.find(entry => entry.key === 'theme_mode')
+    const savedPreset = savedPayload.find((entry) => entry.key === 'preset')
+    const savedRadius = savedPayload.find((entry) => entry.key === 'radius')
+    const savedLight = savedPayload.find((entry) => entry.key === 'light_json')
+    const savedDark = savedPayload.find((entry) => entry.key === 'dark_json')
+    const savedThemeMode = savedPayload.find((entry) => entry.key === 'theme_mode')
     expect(savedThemeMode).toBeDefined()
 
     expect(savedPreset?.value).toBe('midnight')

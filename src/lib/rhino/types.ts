@@ -90,13 +90,7 @@ export interface RhinoUserQuote extends RhinoPublicQuote {
   recipient: string
 }
 
-export type RhinoBridgeState
-  = | 'PENDING'
-    | 'PROCESSING'
-    | 'EXECUTED'
-    | 'COMPLETED'
-    | 'FAILED'
-    | (string & {})
+export type RhinoBridgeState = 'PENDING' | 'PROCESSING' | 'EXECUTED' | 'COMPLETED' | 'FAILED' | (string & {})
 
 export interface RhinoBridgeStatus {
   bridgeId?: string

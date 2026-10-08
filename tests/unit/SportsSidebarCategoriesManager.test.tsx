@@ -3,20 +3,22 @@ import type { ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, mock } from 'bun:test'
 
 import SportsSidebarCategoriesManager from '@/app/[locale]/admin/categories/_components/SportsSidebarCategoriesManager'
 
-const mocks = vi.hoisted(() => ({
-  getCategories: vi.fn(),
-  getEsportsCategories: vi.fn(),
-  updateCategories: vi.fn(),
-  updateEsportsCategories: vi.fn(),
-  toastSuccess: vi.fn(),
-  useIsMobile: vi.fn(() => false),
+import { hoisted } from '../bun-test-helpers'
+
+const mocks = hoisted(() => ({
+  getCategories: mock(),
+  getEsportsCategories: mock(),
+  updateCategories: mock(),
+  updateEsportsCategories: mock(),
+  toastSuccess: mock(),
+  useIsMobile: mock(() => false),
 }))
 
-vi.mock('next-intl', () => ({
+void mock.module('next-intl', () => ({
   useExtracted: () => (value: string, variables?: Record<string, string>) =>
     Object.entries(variables ?? {}).reduce(
       (message, [key, replacement]) => message.replaceAll(`{${key}}`, replacement),
@@ -24,24 +26,24 @@ vi.mock('next-intl', () => ({
     ),
 }))
 
-vi.mock('@/components/ui/toast', () => ({
+void mock.module('@/components/ui/toast', () => ({
   toast: {
     success: (...args: unknown[]) => mocks.toastSuccess(...args),
   },
 }))
 
-vi.mock('@/hooks/useIsMobile', () => ({
+void mock.module('@/hooks/useIsMobile', () => ({
   useIsMobile: mocks.useIsMobile,
 }))
 
-vi.mock('@/app/[locale]/admin/categories/_actions/sports-sidebar-categories', () => ({
+void mock.module('@/app/[locale]/admin/categories/_actions/sports-sidebar-categories', () => ({
   getSportsSidebarCategoriesAction: (...args: unknown[]) => mocks.getCategories(...args),
   getEsportsSidebarCategoriesAction: (...args: unknown[]) => mocks.getEsportsCategories(...args),
   updateSportsSidebarCategoriesAction: (...args: unknown[]) => mocks.updateCategories(...args),
   updateEsportsSidebarCategoriesAction: (...args: unknown[]) => mocks.updateEsportsCategories(...args),
 }))
 
-vi.mock('@/components/ui/dialog', () => ({
+void mock.module('@/components/ui/dialog', () => ({
   Dialog: ({
     children,
     open,
@@ -66,7 +68,7 @@ vi.mock('@/components/ui/dialog', () => ({
   DialogTitle: ({ children }: { children: ReactNode }) => <h2>{children}</h2>,
 }))
 
-vi.mock('@/components/ui/drawer', () => ({
+void mock.module('@/components/ui/drawer', () => ({
   Drawer: ({ children, open }: { children: ReactNode; open: boolean }) =>
     open ? <div data-testid="mobile-drawer">{children}</div> : null,
   DrawerContent: ({ children }: { children: ReactNode }) => <div>{children}</div>,
@@ -123,7 +125,7 @@ const initialCategories = [
   },
 ]
 
-function renderManager(onOpenChange = vi.fn(), vertical: 'sports' | 'esports' = 'sports') {
+function renderManager(onOpenChange = mock(), vertical: 'sports' | 'esports' = 'sports') {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
@@ -233,7 +235,8 @@ describe('sportsSidebarCategoriesManager', () => {
     renderManager()
 
     await screen.findByDisplayValue('Golf')
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Parent sport' }), 'golf')
+    await user.click(screen.getByRole('combobox', { name: 'Parent sport' }))
+    await user.click(await screen.findByRole('option', { name: 'Golf' }))
     await user.type(screen.getByRole('textbox', { name: 'New category name' }), 'PGA Tour')
     await user.click(screen.getByRole('button', { name: 'Add' }))
 
@@ -288,7 +291,7 @@ describe('sportsSidebarCategoriesManager', () => {
 
   it('ignores passive dismissal while saving and closes after the update finishes', async () => {
     const user = userEvent.setup()
-    const onOpenChange = vi.fn()
+    const onOpenChange = mock()
     let resolveUpdate!: (value: { success: true; data: typeof initialCategories }) => void
     const pendingUpdate = new Promise<{ success: true; data: typeof initialCategories }>((resolve) => {
       resolveUpdate = resolve
@@ -315,6 +318,7 @@ describe('sportsSidebarCategoriesManager', () => {
   })
 
   it('lists every top-level sport as a possible parent', async () => {
+    const user = userEvent.setup()
     mocks.getCategories.mockResolvedValue({
       success: true,
       data: Array.from({ length: 15 }, (_, index) => ({
@@ -332,16 +336,17 @@ describe('sportsSidebarCategoriesManager', () => {
     renderManager()
 
     const parentSelect = await screen.findByRole('combobox', { name: 'Parent sport' })
-    expect(within(parentSelect).getAllByRole('option')).toHaveLength(16)
+    await user.click(parentSelect)
+    expect(await screen.findAllByRole('option')).toHaveLength(16)
   })
 
   it('keeps the manager open when the parent picker loses focus inside it', async () => {
     const user = userEvent.setup()
-    const onOpenChange = vi.fn()
+    const onOpenChange = mock()
     renderManager(onOpenChange)
 
     const parentSelect = await screen.findByRole('combobox', { name: 'Parent sport' })
-    expect(parentSelect.tagName).toBe('SELECT')
+    expect(parentSelect.tagName).toBe('BUTTON')
     await user.click(parentSelect)
     await user.click(screen.getByRole('textbox', { name: 'New category name' }))
 
@@ -406,13 +411,11 @@ describe('sportsSidebarCategoriesManager', () => {
     ]
     mocks.getEsportsCategories.mockResolvedValue({ success: true, data: esportsCategories })
     mocks.updateEsportsCategories.mockResolvedValue({ success: true, data: esportsCategories })
-    renderManager(vi.fn(), 'esports')
+    renderManager(mock(), 'esports')
 
     expect(await screen.findByRole('heading', { name: 'Manage esports sidebar' })).toBeInTheDocument()
-    await user.selectOptions(
-      await screen.findByRole('combobox', { name: 'Parent game' }),
-      'group-esports-league-of-legends',
-    )
+    await user.click(await screen.findByRole('combobox', { name: 'Parent game' }))
+    await user.click(await screen.findByRole('option', { name: 'LoL' }))
     await user.type(screen.getByRole('textbox', { name: 'New game or league name' }), 'LCS')
     await user.click(screen.getByRole('button', { name: 'Add' }))
     await user.click(screen.getByRole('button', { name: 'Save sidebar' }))

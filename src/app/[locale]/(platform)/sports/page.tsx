@@ -2,20 +2,21 @@
 
 import type { Metadata } from 'next'
 
-import { setRequestLocale } from 'next-intl/server'
+import { getExtracted } from 'next-intl/server'
 
 import type { SupportedLocale } from '@/i18n/locales'
 
 import { redirect } from '@/i18n/navigation'
 import { SportsMenuRepository } from '@/lib/db/queries/sports-menu'
 
-export const metadata: Metadata = {
-  title: 'Sports',
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getExtracted()
+
+  return { title: t('Sports') }
 }
 
 export default async function SportsPage({ params }: PageProps<'/[locale]/sports'>) {
   const { locale } = await params
-  setRequestLocale(locale)
   const { data: landingHref } = await SportsMenuRepository.getLandingHref('sports')
 
   redirect({

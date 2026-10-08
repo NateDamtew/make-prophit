@@ -1,12 +1,14 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, mock } from 'bun:test'
+
+import { hoisted } from '../bun-test-helpers'
 
 // FORK: appkit.ts builds a plain wagmi config for the Dynamic connector
 // (upstream's version builds a Reown WagmiAdapter with cookie SSR storage).
-const mocks = vi.hoisted(() => ({
-  createConfig: vi.fn(() => 'wagmi-config'),
+const mocks = hoisted(() => ({
+  createConfig: mock(() => 'wagmi-config'),
 }))
 
-vi.mock('wagmi', () => ({
+void mock.module('wagmi', () => ({
   createConfig: mocks.createConfig,
 }))
 

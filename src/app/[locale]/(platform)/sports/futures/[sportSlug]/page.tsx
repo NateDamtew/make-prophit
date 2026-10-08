@@ -2,7 +2,6 @@
 
 import type { Metadata } from 'next'
 
-import { setRequestLocale } from 'next-intl/server'
 import { notFound } from 'next/navigation'
 
 import SportsContent from '@/app/[locale]/(platform)/sports/_components/SportsContent'
@@ -23,8 +22,7 @@ export const metadata: Metadata = {
 }
 
 export default async function SportsFuturesBySportPage({ params }: PageProps<'/[locale]/sports/futures/[sportSlug]'>) {
-  const { locale, sportSlug } = await params
-  setRequestLocale(locale)
+  const { sportSlug } = await params
   if (sportSlug === STATIC_PARAMS_PLACEHOLDER) {
     if (shouldBypassPublicShellPlaceholder(sportSlug)) {
       return null
@@ -49,7 +47,7 @@ export default async function SportsFuturesBySportPage({ params }: PageProps<'/[
 
   return (
     <div className="grid gap-4">
-      <SportsContent locale={locale} initialTag="sports" initialMode="futures" sportsSportSlug={canonicalSportSlug} />
+      <SportsContent initialTag="sports" initialMode="futures" sportsSportSlug={canonicalSportSlug} />
     </div>
   )
 }

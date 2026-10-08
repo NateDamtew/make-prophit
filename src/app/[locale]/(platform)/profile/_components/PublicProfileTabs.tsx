@@ -1,6 +1,7 @@
 'use client'
 
 import type { Route } from 'next'
+import type { ReactNode } from 'react'
 
 import { useExtracted } from 'next-intl'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
@@ -12,26 +13,29 @@ import PublicPositionsList from '@/app/[locale]/(platform)/profile/_components/P
 import { Tabs, TabsContent, TabsIndicator, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
 
-// 'communities' is fork-only; upstream ships positions/activity.
-type TabType = 'positions' | 'activity' | 'communities'
+// 'communities' is fork-only; upstream ships positions/activity/resolutions.
+type TabType = 'positions' | 'activity' | 'resolutions' | 'communities'
 
 const TAB_QUERY_PARAM = 'tab'
 
-const baseTabs = [{ id: 'positions' as const }, { id: 'activity' as const }, { id: 'communities' as const }]
+const baseTabs = [
+  { id: 'positions' as const },
+  { id: 'activity' as const },
+  { id: 'resolutions' as const },
+  { id: 'communities' as const },
+]
 
 function parseTab(value: string | null | undefined): TabType {
   const normalized = value?.toLowerCase()
-  if (normalized === 'activity') {
-    return 'activity'
-  }
-  if (normalized === 'communities') {
-    return 'communities'
+  if (normalized === 'activity' || normalized === 'resolutions' || normalized === 'communities') {
+    return normalized
   }
   return 'positions'
 }
 
 interface PublicProfileTabsProps {
   userAddress: string
+  resolutionsContent: ReactNode
   userId?: string | null
 }
 
@@ -59,7 +63,7 @@ function usePublicProfileTabs() {
   return { activeTab, handleTabChange }
 }
 
-export default function PublicProfileTabs({ userAddress, userId = null }: PublicProfileTabsProps) {
+export default function PublicProfileTabs({ userAddress, resolutionsContent, userId = null }: PublicProfileTabsProps) {
   const t = useExtracted()
   const { activeTab, handleTabChange } = usePublicProfileTabs()
 
@@ -70,24 +74,26 @@ export default function PublicProfileTabs({ userAddress, userId = null }: Public
     if (id === 'activity') {
       return t('Activity')
     }
-    return 'Communities'
+    if (id === 'resolutions') {
+      return t('Resolutions')
+    }
+    return t('Communities')
   }
 
   return (
     <Tabs
       value={activeTab}
-      onValueChange={value => handleTabChange(value as TabType)}
+      onValueChange={(value) => handleTabChange(value as TabType)}
       className="overflow-hidden rounded-2xl border"
     >
       <div className="relative">
         <TabsList className="relative flex h-auto w-full items-center justify-start gap-6 rounded-none bg-transparent px-4 pt-4 pb-0 sm:px-6">
-          {baseTabs.map(tab => (
+          {baseTabs.map((tab) => (
             <TabsTrigger
               key={tab.id}
               value={tab.id}
               className={cn(
-                `relative rounded-none bg-transparent px-0 pt-0 pb-3 text-sm font-semibold shadow-none transition-colors
-                data-active:bg-transparent data-active:shadow-none`,
+                `relative rounded-none bg-transparent px-0 pt-0 pb-3 text-sm font-semibold shadow-none transition-colors data-active:bg-transparent data-active:shadow-none`,
                 activeTab === tab.id ? 'text-foreground' : 'text-muted-foreground hover:text-foreground',
               )}
             >
@@ -106,6 +112,9 @@ export default function PublicProfileTabs({ userAddress, userId = null }: Public
         </TabsContent>
         <TabsContent value="activity" className="mt-0">
           <PublicActivityList userAddress={userAddress} />
+        </TabsContent>
+        <TabsContent value="resolutions" className="mt-0">
+          {resolutionsContent}
         </TabsContent>
         <TabsContent value="communities" className="mt-0">
           <PublicCommunitiesList userId={userId} />

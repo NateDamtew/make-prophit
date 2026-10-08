@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
+
 import { recordCommunityEvent } from '@/lib/communities/events'
 import { dispatchCommunityNotification } from '@/lib/communities/notifications'
 import { DEFAULT_ERROR_MESSAGE } from '@/lib/constants'
@@ -145,12 +146,7 @@ export async function submitReviewAction(
     return { error: 'You must be a member to leave a review.', data: null }
   }
 
-  const result = await CommunityRepository.addReview(
-    communityId,
-    user.id,
-    parsed.data.rating,
-    parsed.data.review_text,
-  )
+  const result = await CommunityRepository.addReview(communityId, user.id, parsed.data.rating, parsed.data.review_text)
   if (result.error) {
     return { error: result.error, data: null }
   }
@@ -233,9 +229,14 @@ export async function castJuryVoteAction(
       await dispatchCommunityNotification({
         communityId,
         category: 'community.market_resolved',
-        title: resolution.status === 'disputed' ? 'A market was disputed' : `Market resolved: ${resolution.outcome ?? '—'}`,
+        title:
+          resolution.status === 'disputed' ? 'A market was disputed' : `Market resolved: ${resolution.outcome ?? '—'}`,
         description: title,
-        link: { type: 'internal', url: `/community/${communitySlug}/market/${communityMarketId}`, label: 'View market' },
+        link: {
+          type: 'internal',
+          url: `/community/${communitySlug}/market/${communityMarketId}`,
+          label: 'View market',
+        },
         fanout: 'all-members',
         payload: { market_id: communityMarketId, outcome: resolution.outcome ?? null },
       })

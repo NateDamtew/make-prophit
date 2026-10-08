@@ -1,40 +1,44 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, mock } from 'bun:test'
 
-const mocks = vi.hoisted(() => ({
-  buildSportsGamesCards: vi.fn(),
-  cacheTag: vi.fn(),
-  getLayoutData: vi.fn(),
-  hasDatabaseEnv: vi.fn(),
-  listEvents: vi.fn(),
-  listSportsFeedEvents: vi.fn(),
+import { hoisted } from '../bun-test-helpers'
+
+const mocks = hoisted(() => ({
+  buildSportsGamesCards: mock(),
+  cacheLife: mock(),
+  cacheTag: mock(),
+  getLayoutData: mock(),
+  hasDatabaseEnv: mock(),
+  listEvents: mock(),
+  listSportsFeedEvents: mock(),
 }))
 
-vi.mock('next/cache', () => ({
+void mock.module('next/cache', () => ({
+  cacheLife: (...args: any[]) => mocks.cacheLife(...args),
   cacheTag: (...args: any[]) => mocks.cacheTag(...args),
 }))
 
-vi.mock('@/app/[locale]/(platform)/sports/_components/SportsGamesCenter', () => ({
+void mock.module('@/app/[locale]/(platform)/sports/_components/SportsGamesCenter', () => ({
   default: function SportsGamesCenter() {
     return null
   },
 }))
 
-vi.mock('@/app/[locale]/(platform)/sports/_utils/sports-games-data', () => ({
+void mock.module('@/app/[locale]/(platform)/sports/_utils/sports-games-data', () => ({
   buildSportsGamesCards: (...args: any[]) => mocks.buildSportsGamesCards(...args),
 }))
 
-vi.mock('@/lib/db/env', () => ({
+void mock.module('@/lib/db/env', () => ({
   hasDatabaseEnv: () => mocks.hasDatabaseEnv(),
 }))
 
-vi.mock('@/lib/db/queries/event', () => ({
+void mock.module('@/lib/db/queries/event', () => ({
   EventRepository: {
     listEvents: (...args: any[]) => mocks.listEvents(...args),
     listSportsFeedEvents: (...args: any[]) => mocks.listSportsFeedEvents(...args),
   },
 }))
 
-vi.mock('@/lib/db/queries/sports-menu', () => ({
+void mock.module('@/lib/db/queries/sports-menu', () => ({
   SportsMenuRepository: {
     getLayoutData: (...args: any[]) => mocks.getLayoutData(...args),
   },
@@ -46,6 +50,7 @@ const { default: SportsFeedPageContent } =
 describe('sportsFeedPageContent', () => {
   beforeEach(() => {
     mocks.buildSportsGamesCards.mockReset()
+    mocks.cacheLife.mockReset()
     mocks.cacheTag.mockReset()
     mocks.getLayoutData.mockReset()
     mocks.hasDatabaseEnv.mockReset()
@@ -65,7 +70,6 @@ describe('sportsFeedPageContent', () => {
     mocks.buildSportsGamesCards.mockReturnValueOnce(cards)
 
     const element = await SportsFeedPageContent({
-      locale: 'en',
       pageMode: 'soon',
       sportSlug: 'soon',
       sportTitle: 'Upcoming Sports Games',
@@ -104,7 +108,6 @@ describe('sportsFeedPageContent', () => {
     mocks.buildSportsGamesCards.mockReturnValueOnce(cards)
 
     await SportsFeedPageContent({
-      locale: 'en',
       pageMode: 'liveAndSoon',
       sportSlug: 'live',
       sportTitle: 'Live',
@@ -129,7 +132,6 @@ describe('sportsFeedPageContent', () => {
     mocks.hasDatabaseEnv.mockReturnValueOnce(false)
 
     const element = await SportsFeedPageContent({
-      locale: 'en',
       pageMode: 'soon',
       sportSlug: 'soon',
       sportTitle: 'Upcoming Sports Games',

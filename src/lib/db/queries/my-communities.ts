@@ -1,4 +1,5 @@
 import { desc, eq } from 'drizzle-orm'
+
 import { communities, community_members } from '@/lib/db/schema/communities/tables'
 import { db } from '@/lib/drizzle'
 
@@ -38,7 +39,7 @@ export const MyCommunitiesRepository = {
       .where(eq(community_members.user_id, userId))
       .orderBy(desc(community_members.joined_at))
 
-    return rows.map(row => ({
+    return rows.map((row) => ({
       ...row,
       joined_at: row.joined_at.toISOString(),
     }))

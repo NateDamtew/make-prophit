@@ -1,25 +1,16 @@
 'use client'
 
+import { FileEdit, Send, Trash2, Calendar, Clock, CheckCircle, XCircle, AlertCircle, Rocket } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState, useTransition } from 'react'
-import {
-  FileEdit,
-  Send,
-  Trash2,
-  Calendar,
-  Loader2,
-  Clock,
-  CheckCircle,
-  XCircle,
-  AlertCircle,
-  Rocket,
-} from 'lucide-react'
+
+import { Button } from '@/components/ui/button'
+import { toast } from '@/components/ui/toast'
+import { cn } from '@/lib/utils'
+
 import { deleteMarketAction } from '../../../_actions/market-actions'
 import { submitMarketForReviewAction } from '../../../_actions/review-actions'
 import SubmitForReviewDialog from './SubmitForReviewDialog'
-import { toast } from '@/components/ui/toast'
-import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
 
 interface Draft {
   id: string
@@ -47,7 +38,7 @@ interface Props {
 function StatusBadge({ status }: { status: string | null }) {
   if (!status) {
     return (
-      <span className="flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium uppercase text-muted-foreground">
+      <span className="flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground uppercase">
         <FileEdit className="size-3" />
         Draft
       </span>
@@ -55,7 +46,7 @@ function StatusBadge({ status }: { status: string | null }) {
   }
   if (status === 'pending') {
     return (
-      <span className="flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium uppercase text-amber-600">
+      <span className="flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-600 uppercase">
         <Clock className="size-3" />
         Review by Admin
       </span>
@@ -63,7 +54,7 @@ function StatusBadge({ status }: { status: string | null }) {
   }
   if (status === 'approved') {
     return (
-      <span className="flex items-center gap-1 rounded-full bg-blue-500/10 px-2 py-0.5 text-[10px] font-medium uppercase text-blue-600">
+      <span className="flex items-center gap-1 rounded-full bg-blue-500/10 px-2 py-0.5 text-[10px] font-medium text-blue-600 uppercase">
         <CheckCircle className="size-3" />
         Approved
       </span>
@@ -71,7 +62,7 @@ function StatusBadge({ status }: { status: string | null }) {
   }
   if (status === 'rejected') {
     return (
-      <span className="flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] font-medium uppercase text-destructive">
+      <span className="flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] font-medium text-destructive uppercase">
         <XCircle className="size-3" />
         Rejected
       </span>
@@ -79,7 +70,7 @@ function StatusBadge({ status }: { status: string | null }) {
   }
   if (status === 'deploying' || status === 'deploy_retry') {
     return (
-      <span className="flex items-center gap-1 rounded-full bg-blue-500/10 px-2 py-0.5 text-[10px] font-medium uppercase text-blue-600">
+      <span className="flex items-center gap-1 rounded-full bg-blue-500/10 px-2 py-0.5 text-[10px] font-medium text-blue-600 uppercase">
         <Rocket className="size-3" />
         {status === 'deploy_retry' ? 'Retrying' : 'Deploying'}
       </span>
@@ -87,7 +78,7 @@ function StatusBadge({ status }: { status: string | null }) {
   }
   if (status === 'deploy_failed') {
     return (
-      <span className="flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] font-medium uppercase text-destructive">
+      <span className="flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] font-medium text-destructive uppercase">
         <AlertCircle className="size-3" />
         Deploy Failed
       </span>
@@ -95,7 +86,7 @@ function StatusBadge({ status }: { status: string | null }) {
   }
   if (status === 'deploy_blocked') {
     return (
-      <span className="flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium uppercase text-amber-600">
+      <span className="flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-600 uppercase">
         <AlertCircle className="size-3" />
         Blocked
       </span>
@@ -107,7 +98,7 @@ function StatusBadge({ status }: { status: string | null }) {
 export default function DraftsList({ communityId, communitySlug, drafts }: Props) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
-  const [submitDialog, setSubmitDialog] = useState<{ id: string, title: string } | null>(null)
+  const [submitDialog, setSubmitDialog] = useState<{ id: string; title: string } | null>(null)
 
   function handleDelete(draftId: string) {
     if (!confirm('Delete this draft? This cannot be undone.')) {
@@ -188,9 +179,7 @@ export default function DraftsList({ communityId, communitySlug, drafts }: Props
                   </div>
                   <p className="mt-2 font-semibold">{draft.title}</p>
                   {draft.description && (
-                    <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
-                      {draft.description}
-                    </p>
+                    <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{draft.description}</p>
                   )}
                 </div>
               </div>
@@ -218,7 +207,7 @@ export default function DraftsList({ communityId, communitySlug, drafts }: Props
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground">
                     {status === 'deploy_blocked'
-                      ? 'A platform admin is investigating. We\'ll notify you when it\'s resolved.'
+                      ? "A platform admin is investigating. We'll notify you when it's resolved."
                       : 'Auto-retry attempted. Platform admin has been notified.'}
                   </p>
                 </div>
@@ -264,21 +253,14 @@ export default function DraftsList({ communityId, communitySlug, drafts }: Props
                     size="sm"
                     onClick={() => handleDelete(draft.id)}
                     disabled={isPending}
-                    className={cn(
-                      'text-destructive',
-                      'hover:bg-destructive/10 hover:text-destructive',
-                    )}
+                    className={cn('text-destructive', 'hover:bg-destructive/10 hover:text-destructive')}
                   >
                     <Trash2 className="mr-1.5 size-3.5" />
                     Delete
                   </Button>
                 )}
                 {canSubmit && (
-                  <Button
-                    size="sm"
-                    onClick={() => handleQuickSubmit(draft)}
-                    disabled={isPending}
-                  >
+                  <Button size="sm" onClick={() => handleQuickSubmit(draft)} disabled={isPending}>
                     <Send className="mr-1.5 size-3.5" />
                     {status === 'rejected' ? 'Revise & Resubmit' : 'Submit for Review'}
                   </Button>
@@ -292,7 +274,11 @@ export default function DraftsList({ communityId, communitySlug, drafts }: Props
       {submitDialog && (
         <SubmitForReviewDialog
           open={true}
-          onOpenChange={(open) => { if (!open) setSubmitDialog(null) }}
+          onOpenChange={(open) => {
+            if (!open) {
+              setSubmitDialog(null)
+            }
+          }}
           marketId={submitDialog.id}
           marketTitle={submitDialog.title}
           communityId={communityId}

@@ -35,6 +35,7 @@ Next.js App Router with `next-intl` i18n. All user-facing routes live under `src
 - `api/` — API routes at `src/app/api/` (outside `[locale]`).
 
 **`cacheComponents` is enabled** in `next.config.ts`. This means:
+
 - `generateStaticParams` must return at least one result (empty arrays cause build errors).
 - `export const dynamic = 'force-dynamic'` is incompatible — use `next/dynamic` with `ssr: false` instead.
 - Route groups under `[locale]` inherit the root layout's `generateStaticParams([{locale:'en'}])`.
@@ -48,6 +49,7 @@ Telegram Mini App auth uses a custom plugin at `/api/auth/telegram/verify-tma` t
 When adding trusted domains (e.g., subdomains), add them to `trustedOrigins` in `src/lib/auth.ts`.
 
 **SIWE sign-in rules — do not break these:**
+
 - `verifyMessage` in `src/lib/auth.ts` uses **pure ECDSA** (`viemVerifyMessage`) as the primary path. Do NOT replace this with WalletConnect RPC as the primary — WalletConnect RPC requires domain allowlisting in WalletConnect Cloud and breaks in production. The RPC is only kept as a fallback for smart contract wallets (EIP-1271); it still reads `REOWN_APPKIT_PROJECT_ID`.
 - `driveSIWEHandshake` in `src/providers/AppKitProvider.tsx` reads the wallet's **actual connected chainId** (`getConnectedAccount`) for both nonce and verify. Do NOT hardcode `defaultNetwork.id` — forcing a chain switch before sign-in breaks Metamask, Binance Wallet, and any wallet not already on Polygon. Chain restriction is for trading, not authentication.
 - SIWE is signed with `primaryWallet.signMessage()` (Dynamic Wallet), NOT the wagmi `signMessage` action — embedded/social wallets aren't in wagmi yet at `onAuthSuccess`.
@@ -57,6 +59,7 @@ When adding trusted domains (e.g., subdomains), add them to `trustedOrigins` in 
 ### Database
 
 Drizzle ORM with PostgreSQL (Supabase). Schema at `src/lib/db/schema/`:
+
 - `auth/` — users, sessions, accounts, wallets, two_factors, verifications
 - `events/` — conditions, markets, outcomes, tags, event_tags, sports tables
 - `orders/` — CLOB orders with on-chain settlement data
@@ -88,6 +91,7 @@ Onboarding modals are gated by `hasValidWalletAddress` — users with `null` add
 ### TMA (Telegram Mini App)
 
 Same app, same routes. Detection via `window.Telegram?.WebApp` or `tma.*` hostname. `TmaAutoLogin` component in platform layout handles:
+
 - Inside Telegram with `initData` → auto-auth silently
 - Inside Telegram without `initData` → browse normally
 - On `tma.*` in browser → Telegram login screen

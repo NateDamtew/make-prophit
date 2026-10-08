@@ -1,5 +1,7 @@
-import type { CommunityCommentRow } from '@/lib/db/schema/communities/engagement'
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm'
+
+import type { CommunityCommentRow } from '@/lib/db/schema/communities/engagement'
+
 import { users } from '@/lib/db/schema/auth/tables'
 import { community_comments, community_reactions } from '@/lib/db/schema/communities/engagement'
 import { db } from '@/lib/drizzle'
@@ -21,7 +23,7 @@ export interface CommentTree {
     image: string | null
   }
   /** Reactions: map of kind -> { count, mine }. */
-  reactions: Record<string, { count: number, mine: boolean }>
+  reactions: Record<string, { count: number; mine: boolean }>
   /** One level of replies, oldest-first. */
   replies: CommentTree[]
 }
@@ -41,10 +43,10 @@ export interface ListCommentsParams {
 const DELETED_BODY = '[deleted]'
 
 function serializeReactionMap(
-  rows: Array<{ target_id: string, kind: string, user_id: string }>,
+  rows: Array<{ target_id: string; kind: string; user_id: string }>,
   viewerId: string | null | undefined,
-): Map<string, Record<string, { count: number, mine: boolean }>> {
-  const map = new Map<string, Record<string, { count: number, mine: boolean }>>()
+): Map<string, Record<string, { count: number; mine: boolean }>> {
+  const map = new Map<string, Record<string, { count: number; mine: boolean }>>()
   for (const row of rows) {
     const forTarget = map.get(row.target_id) ?? {}
     const slot = forTarget[row.kind] ?? { count: 0, mine: false }
@@ -95,50 +97,49 @@ export const CommunityCommentRepository = {
       .limit(boundedLimit)
       .offset(Math.max(offset, 0))
 
-    const topLevelIds = topLevelRows.map(r => r.id)
+    const topLevelIds = topLevelRows.map((r) => r.id)
 
     // Replies for those top-level comments (oldest-first per thread).
-    const replyRows = topLevelIds.length === 0
-      ? []
-      : await db
-          .select({
-            id: community_comments.id,
-            market_id: community_comments.market_id,
-            community_id: community_comments.community_id,
-            user_id: community_comments.user_id,
-            parent_id: community_comments.parent_id,
-            body: community_comments.body,
-            edited_at: community_comments.edited_at,
-            deleted_at: community_comments.deleted_at,
-            reply_count: community_comments.reply_count,
-            reaction_count: community_comments.reaction_count,
-            created_at: community_comments.created_at,
-            author_username: users.username,
-            author_image: users.image,
-          })
-          .from(community_comments)
-          .leftJoin(users, eq(community_comments.user_id, users.id))
-          .where(inArray(community_comments.parent_id, topLevelIds))
-          .orderBy(asc(community_comments.created_at))
+    const replyRows =
+      topLevelIds.length === 0
+        ? []
+        : await db
+            .select({
+              id: community_comments.id,
+              market_id: community_comments.market_id,
+              community_id: community_comments.community_id,
+              user_id: community_comments.user_id,
+              parent_id: community_comments.parent_id,
+              body: community_comments.body,
+              edited_at: community_comments.edited_at,
+              deleted_at: community_comments.deleted_at,
+              reply_count: community_comments.reply_count,
+              reaction_count: community_comments.reaction_count,
+              created_at: community_comments.created_at,
+              author_username: users.username,
+              author_image: users.image,
+            })
+            .from(community_comments)
+            .leftJoin(users, eq(community_comments.user_id, users.id))
+            .where(inArray(community_comments.parent_id, topLevelIds))
+            .orderBy(asc(community_comments.created_at))
 
     // Reactions for the union of all comment ids.
-    const allIds = [...topLevelIds, ...replyRows.map(r => r.id)]
-    const reactionRows = allIds.length === 0
-      ? []
-      : await db
-          .select({
-            target_id: community_reactions.target_id,
-            kind: community_reactions.kind,
-            user_id: community_reactions.user_id,
-          })
-          .from(community_reactions)
-          .where(and(
-            eq(community_reactions.target_type, 'comment'),
-            inArray(community_reactions.target_id, allIds),
-          ))
+    const allIds = [...topLevelIds, ...replyRows.map((r) => r.id)]
+    const reactionRows =
+      allIds.length === 0
+        ? []
+        : await db
+            .select({
+              target_id: community_reactions.target_id,
+              kind: community_reactions.kind,
+              user_id: community_reactions.user_id,
+            })
+            .from(community_reactions)
+            .where(and(eq(community_reactions.target_type, 'comment'), inArray(community_reactions.target_id, allIds)))
     const reactionsByTarget = serializeReactionMap(reactionRows, viewerId)
 
-    function toTree(row: typeof topLevelRows[number]): CommentTree {
+    function toTree(row: (typeof topLevelRows)[number]): CommentTree {
       return {
         id: row.id,
         market_id: row.market_id,

@@ -1,6 +1,8 @@
-import type { QueryResult } from '@/types'
-import { createHash, randomBytes } from 'node:crypto'
 import { and, desc, eq, isNotNull, sql } from 'drizzle-orm'
+import { createHash, randomBytes } from 'node:crypto'
+
+import type { QueryResult } from '@/types'
+
 import { agents } from '@/lib/db/schema/agents/tables'
 import { users } from '@/lib/db/schema/auth/tables'
 import { runQuery } from '@/lib/db/utils/run-query'
@@ -101,7 +103,7 @@ function normalizeLimit(value: number | null | undefined) {
 }
 
 export const AgentRepository = {
-  async create(input: CreateAgentInput): Promise<QueryResult<{ agent: AgentRecord, rawApiKey: string }>> {
+  async create(input: CreateAgentInput): Promise<QueryResult<{ agent: AgentRecord; rawApiKey: string }>> {
     return runQuery(async () => {
       const { raw, hash, displayPrefix } = generateApiKey()
       const slug = generateAgentSlug(input.name)
@@ -132,11 +134,7 @@ export const AgentRepository = {
 
   async listByUser(userId: string): Promise<QueryResult<AgentRecord[]>> {
     return runQuery(async () => {
-      const rows = await db
-        .select()
-        .from(agents)
-        .where(eq(agents.user_id, userId))
-        .orderBy(desc(agents.created_at))
+      const rows = await db.select().from(agents).where(eq(agents.user_id, userId)).orderBy(desc(agents.created_at))
       return { data: rows as AgentRecord[], error: null }
     })
   },
@@ -229,7 +227,7 @@ export const AgentRepository = {
     })
   },
 
-  async rotateApiKey(id: string, userId: string): Promise<QueryResult<{ agent: AgentRecord, rawApiKey: string }>> {
+  async rotateApiKey(id: string, userId: string): Promise<QueryResult<{ agent: AgentRecord; rawApiKey: string }>> {
     return runQuery(async () => {
       const { raw, hash, displayPrefix } = generateApiKey()
       const [row] = await db
@@ -258,14 +256,17 @@ export const AgentRepository = {
    * Public leaderboard rows. Sorted by total_pnl_usd by default; the page can
    * pass an alternate sort (volume, win-rate, etc.) once the data is real.
    */
-  async leaderboard(options: { limit?: number, sort?: 'pnl' | 'volume' | 'trades' } = {}): Promise<QueryResult<PublicAgentRecord[]>> {
+  async leaderboard(
+    options: { limit?: number; sort?: 'pnl' | 'volume' | 'trades' } = {},
+  ): Promise<QueryResult<PublicAgentRecord[]>> {
     return runQuery(async () => {
       const limit = options.limit ?? 50
-      const orderBy = options.sort === 'volume'
-        ? desc(agents.total_volume_usd)
-        : options.sort === 'trades'
-          ? desc(agents.total_trades)
-          : desc(agents.total_pnl_usd)
+      const orderBy =
+        options.sort === 'volume'
+          ? desc(agents.total_volume_usd)
+          : options.sort === 'trades'
+            ? desc(agents.total_trades)
+            : desc(agents.total_pnl_usd)
 
       const rows = await db
         .select({
@@ -275,16 +276,12 @@ export const AgentRepository = {
         })
         .from(agents)
         .leftJoin(users, eq(agents.user_id, users.id))
-        .where(and(
-          eq(agents.status, 'active'),
-          eq(agents.is_public, true),
-          isNotNull(agents.last_active_at),
-        ))
+        .where(and(eq(agents.status, 'active'), eq(agents.is_public, true), isNotNull(agents.last_active_at)))
         .orderBy(orderBy)
         .limit(limit)
 
       return {
-        data: rows.map(row => ({
+        data: rows.map((row) => ({
           ...(row.agent as AgentRecord),
           owner_username: row.owner_username ?? null,
           owner_image: row.owner_image ?? null,

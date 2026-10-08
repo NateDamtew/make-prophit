@@ -1,12 +1,15 @@
-import type { SupportedLocale } from '@/i18n/locales'
-import { notFound, redirect } from 'next/navigation'
 import { setRequestLocale } from 'next-intl/server'
+import { notFound, redirect } from 'next/navigation'
 import { Suspense } from 'react'
+
+import type { SupportedLocale } from '@/i18n/locales'
+
 import { Skeleton } from '@/components/ui/skeleton'
 import { CommunityRepository } from '@/lib/db/queries/community'
 import { CommunityThemeRepository } from '@/lib/db/queries/community-theme'
 import { UserRepository } from '@/lib/db/queries/user'
 import { STATIC_PARAMS_PLACEHOLDER } from '@/lib/static-params'
+
 import { ThemeEditor } from './_components/ThemeEditor'
 
 export async function generateStaticParams() {
@@ -40,16 +43,12 @@ async function ThemeContent({ slug }: { slug: string }) {
       communityIconUrl={community.icon_url}
       communityBannerUrl={community.banner_url}
       initial={theme}
-      markets={(markets.data ?? []).map(m => ({ id: m.id, title: m.title, status: m.status }))}
+      markets={(markets.data ?? []).map((m) => ({ id: m.id, title: m.title, status: m.status }))}
     />
   )
 }
 
-export default async function CommunityThemePage({
-  params,
-}: {
-  params: Promise<{ locale: string, slug: string }>
-}) {
+export default async function CommunityThemePage({ params }: { params: Promise<{ locale: string; slug: string }> }) {
   const { locale, slug } = await params
   setRequestLocale(locale as SupportedLocale)
   if (slug === STATIC_PARAMS_PLACEHOLDER) {

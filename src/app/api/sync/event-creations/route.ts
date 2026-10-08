@@ -2,6 +2,7 @@ import { and, asc, eq, lte } from 'drizzle-orm'
 import { createPublicClient, createWalletClient, getAddress, http, keccak256, stringToHex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { polygon, polygonAmoy } from 'viem/chains'
+
 import {
   onCommunityDraftDeployed,
   onCommunityDraftDeploying,
@@ -544,11 +545,12 @@ async function processClaimedJob(job: JobRow, defaultChainId: number) {
   // Hook: community-governed market entering deploy phase
   await onCommunityDraftDeploying(draft.draftPayload)
 
-  let pending = draft.pendingRequestId
-    && draft.pendingPayloadHash?.toLowerCase() === payloadHash.toLowerCase()
-    && draft.pendingChainId === chain.id
-    ? await fetchPendingRequest(creator, chain.id, draft.pendingRequestId)
-    : null
+  let pending =
+    draft.pendingRequestId &&
+    draft.pendingPayloadHash?.toLowerCase() === payloadHash.toLowerCase() &&
+    draft.pendingChainId === chain.id
+      ? await fetchPendingRequest(creator, chain.id, draft.pendingRequestId)
+      : null
 
   if (pending && pending.payloadHash.toLowerCase() !== payloadHash.toLowerCase()) {
     pending = null
@@ -789,8 +791,7 @@ async function runSync() {
               exhausted: retry.exhausted,
             })
           }
-        }
-        catch (hookErr) {
+        } catch (hookErr) {
           console.error('[community failure hook] Failed:', hookErr)
         }
       }

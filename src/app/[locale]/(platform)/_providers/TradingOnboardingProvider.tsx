@@ -32,6 +32,12 @@ import { useAppKit } from '@/hooks/useAppKit'
 import { useDepositWalletPolling } from '@/hooks/useDepositWalletPolling'
 import { usePublicRuntimeConfig } from '@/hooks/usePublicRuntimeConfig'
 import { useSignaturePromptRunner } from '@/hooks/useSignaturePromptRunner'
+import {
+  resolveReferralExchangeReads,
+  resolveReferralSetupStatus,
+  type ReferralExchangeReadResult,
+  type ReferralSetupStatus,
+} from '@/lib/affiliate-referral'
 import { authClient } from '@/lib/auth-client'
 import { clearCommunityAuth, ensureCommunityToken, parseCommunityError } from '@/lib/community-auth'
 import {
@@ -47,7 +53,9 @@ import {
   CTF_EXCHANGE_ADDRESS,
   NEG_RISK_CTF_EXCHANGE_ADDRESS,
   UMA_NEG_RISK_ADAPTER_ADDRESS,
+  ZERO_ADDRESS,
 } from '@/lib/contracts'
+import { DEPOSIT_MODAL_OPEN_EVENT } from '@/lib/custom-javascript-code'
 import { fetchReferralLocked } from '@/lib/exchange'
 import { SUMSUB_ENFORCEMENTS } from '@/lib/sumsub/types'
 import {
@@ -57,9 +65,19 @@ import {
   TRADING_AUTH_TYPES,
 } from '@/lib/trading-auth/client'
 import { isTradingAuthRequiredError } from '@/lib/trading-auth/errors'
+import {
+  mapApproveTokensError,
+  mapAutoRedeemError,
+  mapDepositWalletCreateError,
+  mapTradingAuthError,
+} from '@/lib/trading-flow-errors'
 import { hasUsableUserEmail } from '@/lib/user-email'
 import { createViemTransport, defaultViemNetwork, resolveViemRpcUrls } from '@/lib/viem-network'
-import { isRecoverableWalletConnectorError, isUserRejectedRequestError } from '@/lib/wallet'
+import {
+  isRecoverableWalletConnectorError,
+  isUserRejectedRequestError,
+  WalletConnectorNotConnectedError,
+} from '@/lib/wallet'
 import { signAndSubmitDepositWalletCalls } from '@/lib/wallet/client'
 import {
   buildAutoRedeemAllowanceCalls,
@@ -73,6 +91,10 @@ import { mergeSessionUserState, useUser } from '@/stores/useUser'
 type OnboardingModal = 'username' | 'email' | 'sumsub' | 'enable' | 'enable-status' | 'approve' | 'auto-redeem' | null
 type EnableTradingStep = 'idle' | 'enabling' | 'deploying' | 'completed'
 type ApprovalsStep = 'idle' | 'signing' | 'completed'
+interface ReferralSetupVerification {
+  key: string
+  status: ReferralSetupStatus
+}
 interface OpenNextRequirementOptions {
   forceTradingAuth?: boolean
   allowTradingAuthPrompt?: boolean
@@ -224,7 +246,11 @@ function mergeUserSettings(previous: User, settingsPatch?: Record<string, any>) 
   }
 }
 
-function useOnboardingStatus(user: User | null, requiresTradingAuthRefresh: boolean) {
+function useOnboardingStatus(
+  user: User | null,
+  requiresTradingAuthRefresh: boolean,
+  referralSetupStatus: ReferralSetupStatus,
+) {
   return useMemo(() => {
     const onboardingSettings = user?.settings?.onboarding ?? {}
     const tradingAuthSettings = user?.settings?.tradingAuth ?? null
@@ -248,7 +274,10 @@ function useOnboardingStatus(user: User | null, requiresTradingAuthRefresh: bool
     )
     const hasTokenApprovals = Boolean(tradingAuthSettings?.approvals?.enabled)
     const hasAutoRedeemApproval = Boolean(tradingAuthSettings?.autoRedeem?.enabled)
-    const tradingReady = hasDeployedDepositWallet && hasTradingAuth && hasTokenApprovals
+    const isReferralSetupPending = referralSetupStatus === 'checking'
+    const needsReferralSetup = referralSetupStatus === 'required'
+    const hasReferralSetup = !isReferralSetupPending && !needsReferralSetup
+    const tradingReady = hasDeployedDepositWallet && hasTradingAuth && hasTokenApprovals && hasReferralSetup
 
     return {
       needsUsername,
@@ -259,10 +288,12 @@ function useOnboardingStatus(user: User | null, requiresTradingAuthRefresh: bool
       isDepositWalletDeploying,
       hasTradingAuth,
       hasTokenApprovals,
+      isReferralSetupPending,
+      needsReferralSetup,
       hasAutoRedeemApproval,
       tradingReady,
     }
-  }, [requiresTradingAuthRefresh, user])
+  }, [referralSetupStatus, requiresTradingAuthRefresh, user])
 }
 
 function resolveNextOnboardingModal({
@@ -272,6 +303,8 @@ function resolveNextOnboardingModal({
   hasDeployedDepositWallet,
   hasTradingAuth,
   hasTokenApprovals,
+  isReferralSetupPending,
+  needsReferralSetup,
   allowTradingAuthPrompt,
   needsSumsub,
 }: {
@@ -281,6 +314,8 @@ function resolveNextOnboardingModal({
   hasDeployedDepositWallet: boolean
   hasTradingAuth: boolean
   hasTokenApprovals: boolean
+  isReferralSetupPending: boolean
+  needsReferralSetup: boolean
   allowTradingAuthPrompt: boolean
   needsSumsub: boolean
 }): Exclude<OnboardingModal, null> | null {
@@ -306,7 +341,10 @@ function resolveNextOnboardingModal({
   if (allowTradingAuthPrompt && !hasTradingAuth) {
     return 'enable-status'
   }
-  if (allowTradingAuthPrompt && !hasTokenApprovals) {
+  if (isReferralSetupPending) {
+    return null
+  }
+  if (allowTradingAuthPrompt && (!hasTokenApprovals || needsReferralSetup)) {
     return 'approve'
   }
   return null
@@ -430,7 +468,12 @@ function isSumsubVerificationStatus(value: unknown): value is SumsubVerification
   )
 }
 
+function isPaymentsEnabledResponse(value: unknown): value is { enabled: boolean } {
+  return typeof value === 'object' && value !== null && 'enabled' in value && typeof value.enabled === 'boolean'
+}
+
 function TradingOnboardingProviderContent({ children, user }: TradingOnboardingProviderContentProps) {
+  const userId = user?.id
   const [activeModal, setActiveModal] = useState<OnboardingModal>(null)
   const [dismissedModal, setDismissedModal] = useState<OnboardingModal>(null)
   const [fundModalOpen, setFundModalOpen] = useState(false)
@@ -448,6 +491,7 @@ function TradingOnboardingProviderContent({ children, user }: TradingOnboardingP
   const [approvalsStep, setApprovalsStep] = useState<ApprovalsStep>('idle')
   const [autoRedeemStep, setAutoRedeemStep] = useState<ApprovalsStep>('idle')
   const [requiresTradingAuthRefresh, setRequiresTradingAuthRefresh] = useState(false)
+  const [referralSetupVerification, setReferralSetupVerification] = useState<ReferralSetupVerification | null>(null)
   const [shouldContinueTradingAuthPrompt, setShouldContinueTradingAuthPrompt] = useState(false)
   const [sumsubStatus, setSumsubStatus] = useState<SumsubVerificationStatus>({
     enabled: false,
@@ -461,8 +505,12 @@ function TradingOnboardingProviderContent({ children, user }: TradingOnboardingP
   })
   const [sumsubLoaded, setSumsubLoaded] = useState(false)
   const [sumsubObserveDismissed, setSumsubObserveDismissed] = useState(false)
+  const [paymentsEnabled, setPaymentsEnabled] = useState(false)
+  const [paymentsEnabledUserId, setPaymentsEnabledUserId] = useState<string | null>(null)
+  const paymentsEnabledRefreshRef = useRef<(() => void) | null>(null)
   const pendingTradingReadyActionRef = useRef<(() => void) | null>(null)
   const pendingTradingReadyFlowStartedRef = useRef(false)
+  const referralSetupVerificationVersionRef = useRef(0)
   const sumsubRefreshPromiseRef = useRef<Promise<SumsubVerificationStatus | null> | null>(null)
   const [communityUsernameHint, setCommunityUsernameHint] = useState<{
     address: string
@@ -479,13 +527,23 @@ function TradingOnboardingProviderContent({ children, user }: TradingOnboardingP
   const autoEmailRef = useRef<string | null>(null)
   const refreshSessionUserState = useSessionRefresher()
   const { communityUrl, polygonRpcUrl } = usePublicRuntimeConfig()
+
   const allowsRouteTradingAuthPrompt = useRouteTradingAuthPrompt()
   const communityApiUrl = communityUrl
   const viemRpcUrls = useMemo(() => resolveViemRpcUrls(polygonRpcUrl), [polygonRpcUrl])
   const handleWalletActionError = useCallback(
-    (error: unknown, setError: (message: string) => void) => {
+    (
+      error: unknown,
+      setError: (message: string) => void,
+      mapError: (message: string | null | undefined) => string = (message) => message ?? DEFAULT_ERROR_MESSAGE,
+    ) => {
       if (isUserRejectedRequestError(error)) {
         setError(signatureRejectedMessage)
+        return
+      }
+
+      if (error instanceof WalletConnectorNotConnectedError) {
+        setError(walletConnectorReconnectMessage)
         return
       }
 
@@ -496,21 +554,81 @@ function TradingOnboardingProviderContent({ children, user }: TradingOnboardingP
       }
 
       if (error instanceof Error) {
-        setError(error.message || DEFAULT_ERROR_MESSAGE)
+        setError(mapError(error.message))
         return
       }
 
-      setError(DEFAULT_ERROR_MESSAGE)
+      setError(mapError(null))
     },
     [openAppKit, signatureRejectedMessage, walletConnectorReconnectMessage],
   )
 
-  const status = useOnboardingStatus(user, requiresTradingAuthRefresh)
+  const hasReferredUser = Boolean(user?.referred_by_user_id)
+  const depositWalletAddress = user?.deposit_wallet_address
+  const hasAffiliateMetadata =
+    affiliateMetadata.referrerAddress !== ZERO_ADDRESS && affiliateMetadata.affiliateAddress !== ZERO_ADDRESS
+  const referralSetupVerificationKey =
+    hasReferredUser &&
+    !affiliateMetadata.isLoading &&
+    depositWalletAddress &&
+    user?.deposit_wallet_status === 'deployed' &&
+    hasAffiliateMetadata
+      ? [
+          user.referred_by_user_id,
+          depositWalletAddress,
+          affiliateMetadata.referrerAddress,
+          affiliateMetadata.affiliateAddress,
+          ...viemRpcUrls,
+        ].join(':')
+      : null
+  const referralSetupStatus: ReferralSetupStatus = !hasReferredUser
+    ? 'not-required'
+    : affiliateMetadata.isLoading
+      ? 'checking'
+      : !referralSetupVerificationKey
+        ? 'required'
+        : referralSetupVerification?.key === referralSetupVerificationKey
+          ? referralSetupVerification.status
+          : 'checking'
+
+  useEffect(
+    function verifyAffiliateReferralSetup() {
+      if (!referralSetupVerificationKey || !depositWalletAddress) {
+        return
+      }
+
+      const verificationVersion = referralSetupVerificationVersionRef.current + 1
+      referralSetupVerificationVersionRef.current = verificationVersion
+      const exchanges = [CTF_EXCHANGE_ADDRESS, NEG_RISK_CTF_EXCHANGE_ADDRESS] as const
+      void Promise.all(
+        exchanges.map((exchange) => fetchReferralLocked(exchange, depositWalletAddress as `0x${string}`, viemRpcUrls)),
+      ).then((results) => {
+        if (verificationVersion !== referralSetupVerificationVersionRef.current) {
+          return
+        }
+        const resolvedStatus = resolveReferralSetupStatus(results)
+        if (results.includes(null)) {
+          console.warn('Failed to verify affiliate referral status; referral setup remains required.')
+        }
+        setReferralSetupVerification({ key: referralSetupVerificationKey, status: resolvedStatus })
+      })
+
+      return () => {
+        referralSetupVerificationVersionRef.current += 1
+      }
+    },
+    [depositWalletAddress, referralSetupVerificationKey, viemRpcUrls],
+  )
+
+  const status = useOnboardingStatus(user, requiresTradingAuthRefresh, referralSetupStatus)
   const sumsubApproved = sumsubStatus.status === 'approved'
   const sumsubRequired = sumsubStatus.effective && sumsubStatus.enforcement === 'required'
   const needsSumsub = sumsubStatus.effective && !sumsubApproved
   const needsSumsubForFlow = needsSumsub && !(sumsubStatus.enforcement === 'observe' && sumsubObserveDismissed)
   const tradingReady = isTradingReady({ onboardingStatus: status, sumsubLoaded, sumsubStatus })
+  // FORK: Dynamic surfaces the embedded/social wallet's email via AppKitContext.
+  const walletProviderEmail = hasUsableUserEmail(walletEmail) ? (walletEmail?.trim() ?? '') : ''
+  const emailDefaultValue = hasUsableUserEmail(user?.email) ? (user?.email?.trim() ?? '') : walletProviderEmail
 
   const runPendingTradingReadyAction = useCallback(() => {
     const action = pendingTradingReadyActionRef.current
@@ -708,36 +826,39 @@ function TradingOnboardingProviderContent({ children, user }: TradingOnboardingP
   // Social/email logins (Google etc.) already provide an email via the wallet
   // provider. Auto-complete the email step from it instead of re-asking — the
   // SIWE-created better-auth user only has a placeholder email otherwise.
-  useEffect(function autoCompleteEmailFromWallet() {
-    if (!user || !status.needsEmail) {
-      return
-    }
-    const email = walletEmail?.trim()
-    if (!email || !email.includes('@') || autoEmailRef.current === email) {
-      return
-    }
-    autoEmailRef.current = email
-
-    void (async () => {
-      const result = await updateOnboardingEmailAction({ email })
-      if (result.error || !result.data) {
-        autoEmailRef.current = null // let the user enter it manually / retry
+  useEffect(
+    function autoCompleteEmailFromWallet() {
+      if (!user || !status.needsEmail) {
         return
       }
-      const data = result.data
-      useUser.setState((previous) => {
-        if (!previous) {
-          return previous
+      const email = walletEmail?.trim()
+      if (!email || !email.includes('@') || autoEmailRef.current === email) {
+        return
+      }
+      autoEmailRef.current = email
+
+      void (async () => {
+        const result = await updateOnboardingEmailAction({ email })
+        if (result.error || !result.data) {
+          autoEmailRef.current = null // let the user enter it manually / retry
+          return
         }
-        return {
-          ...previous,
-          email: data.email,
-          settings: mergeUserSettings(previous, data.settings),
-        }
-      })
-      void refreshSessionUserState()
-    })()
-  }, [user, status.needsEmail, walletEmail, refreshSessionUserState])
+        const data = result.data
+        useUser.setState((previous) => {
+          if (!previous) {
+            return previous
+          }
+          return {
+            ...previous,
+            email: data.email,
+            settings: mergeUserSettings(previous, data.settings),
+          }
+        })
+        void refreshSessionUserState()
+      })()
+    },
+    [user, status.needsEmail, walletEmail, refreshSessionUserState],
+  )
 
   useEffect(
     function syncNextOnboardingModal() {
@@ -873,7 +994,7 @@ function TradingOnboardingProviderContent({ children, user }: TradingOnboardingP
     } catch {
       setFundModalOpen(true)
     }
-  }, [user?.deposit_wallet_address, viemRpcUrls])
+  }, [user, viemRpcUrls])
 
   const handleModalOpenChange = useCallback(
     (modal: Exclude<OnboardingModal, null>, open: boolean) => {
@@ -908,9 +1029,9 @@ function TradingOnboardingProviderContent({ children, user }: TradingOnboardingP
       // deposit wallet is stuck deploying on-chain (relayer can stall for minutes).
       // In that case honor the close so the user isn't trapped behind a spinner.
       if (
-        (modal === 'enable' || modal === 'enable-status')
-        && !enableTradingError
-        && !status.isDepositWalletDeploying
+        (modal === 'enable' || modal === 'enable-status') &&
+        !enableTradingError &&
+        !status.isDepositWalletDeploying
       ) {
         setDismissedModal(null)
         setActiveModal(modal)
@@ -1050,8 +1171,7 @@ function TradingOnboardingProviderContent({ children, user }: TradingOnboardingP
       status,
       handleWalletActionError,
       t,
-      user?.address,
-      user?.deposit_wallet_address,
+      user,
       allowsRouteTradingAuthPrompt,
       needsSumsubForFlow,
       runPendingTradingReadyAction,
@@ -1211,7 +1331,7 @@ function TradingOnboardingProviderContent({ children, user }: TradingOnboardingP
     await refreshSessionUserState()
     setRequiresTradingAuthRefresh(false)
     setDismissedModal(null)
-  }, [refreshSessionUserState, runWithSignaturePrompt, signTypedDataAsync, user?.address])
+  }, [refreshSessionUserState, runWithSignaturePrompt, signTypedDataAsync, user])
 
   const handleCreateDepositWallet = useCallback(async () => {
     if (!user?.address || enableTradingStep === 'enabling') {
@@ -1230,7 +1350,7 @@ function TradingOnboardingProviderContent({ children, user }: TradingOnboardingP
       }
 
       if (result.error || !result.data) {
-        setEnableTradingError(result.error ?? DEFAULT_ERROR_MESSAGE)
+        setEnableTradingError(mapDepositWalletCreateError(result.error))
         setEnableTradingStep('idle')
         return
       }
@@ -1255,7 +1375,7 @@ function TradingOnboardingProviderContent({ children, user }: TradingOnboardingP
         setEnableTradingStep('deploying')
       }
     } catch (error) {
-      handleWalletActionError(error, setEnableTradingError)
+      handleWalletActionError(error, setEnableTradingError, mapDepositWalletCreateError)
       setEnableTradingStep('idle')
     }
   }, [
@@ -1287,7 +1407,7 @@ function TradingOnboardingProviderContent({ children, user }: TradingOnboardingP
         setActiveModal('enable')
       }
     } catch (error) {
-      handleWalletActionError(error, setEnableTradingError)
+      handleWalletActionError(error, setEnableTradingError, mapTradingAuthError)
       setEnableTradingStep('idle')
     }
   }, [
@@ -1304,15 +1424,16 @@ function TradingOnboardingProviderContent({ children, user }: TradingOnboardingP
   ])
 
   const resolveReferralExchanges = useCallback(
-    async (depositWallet: `0x${string}`) => {
+    async (depositWallet: `0x${string}`): Promise<ReferralExchangeReadResult<`0x${string}`>> => {
       const exchanges = [CTF_EXCHANGE_ADDRESS as `0x${string}`, NEG_RISK_CTF_EXCHANGE_ADDRESS as `0x${string}`]
       const results = await Promise.all(
         exchanges.map((exchange) => fetchReferralLocked(exchange, depositWallet, viemRpcUrls)),
       )
-      if (results.includes(null)) {
-        console.warn('Failed to read referral status; skipping locked/unknown exchanges.')
+      const resolution = resolveReferralExchangeReads(exchanges, results)
+      if (!resolution.fullyChecked) {
+        console.warn('Failed to read referral status; skipping unknown exchanges until the next approval attempt.')
       }
-      return exchanges.filter((_, index) => results[index] === false)
+      return resolution
     },
     [viemRpcUrls],
   )
@@ -1432,7 +1553,16 @@ function TradingOnboardingProviderContent({ children, user }: TradingOnboardingP
     setTokenApprovalError(null)
 
     try {
-      const referralExchanges = await resolveReferralExchanges(user.deposit_wallet_address as `0x${string}`)
+      const needsReferralSetup = Boolean(user.referred_by_user_id)
+      const hasAffiliateMetadata =
+        !affiliateMetadata.isLoading &&
+        affiliateMetadata.referrerAddress !== ZERO_ADDRESS &&
+        affiliateMetadata.affiliateAddress !== ZERO_ADDRESS
+      const referralResolution =
+        needsReferralSetup && hasAffiliateMetadata
+          ? await resolveReferralExchanges(user.deposit_wallet_address as `0x${string}`)
+          : { exchangesToConfigure: [], fullyChecked: !needsReferralSetup }
+      const referralSetupComplete = !needsReferralSetup || (hasAffiliateMetadata && referralResolution.fullyChecked)
       const missingApprovalCalls = await resolveMissingApprovalCalls(user.deposit_wallet_address as `0x${string}`)
       const calls = [
         ...missingApprovalCalls,
@@ -1440,7 +1570,7 @@ function TradingOnboardingProviderContent({ children, user }: TradingOnboardingP
           referrer: affiliateMetadata.referrerAddress,
           affiliate: affiliateMetadata.affiliateAddress,
           affiliateSharePercent: affiliateMetadata.affiliateSharePercent,
-          exchanges: referralExchanges,
+          exchanges: referralResolution.exchangesToConfigure,
         }),
       ]
       const result =
@@ -1475,7 +1605,7 @@ function TradingOnboardingProviderContent({ children, user }: TradingOnboardingP
           setTokenApprovalError(walletConnectorReconnectMessage)
           void openAppKit({ view: 'Connect' })
         } else {
-          setTokenApprovalError(result.error)
+          setTokenApprovalError(mapApproveTokensError(result.error))
         }
         setApprovalsStep('idle')
         return
@@ -1498,7 +1628,16 @@ function TradingOnboardingProviderContent({ children, user }: TradingOnboardingP
         void refreshSessionUserState()
       }
 
+      if (needsReferralSetup && referralSetupVerificationKey) {
+        referralSetupVerificationVersionRef.current += 1
+        setReferralSetupVerification({
+          key: referralSetupVerificationKey,
+          status: referralSetupComplete ? 'configured' : 'required',
+        })
+      }
+
       if (
+        referralSetupComplete &&
         status.hasDeployedDepositWallet &&
         status.hasTradingAuth &&
         sumsubLoaded &&
@@ -1521,7 +1660,7 @@ function TradingOnboardingProviderContent({ children, user }: TradingOnboardingP
         setShouldShowFundAfterTradingReady(false)
       }
     } catch (error) {
-      handleWalletActionError(error, setTokenApprovalError)
+      handleWalletActionError(error, setTokenApprovalError, mapApproveTokensError)
       setApprovalsStep('idle')
     }
   }, [
@@ -1532,6 +1671,7 @@ function TradingOnboardingProviderContent({ children, user }: TradingOnboardingP
     openNextRequirement,
     openAppKit,
     refreshSessionUserState,
+    referralSetupVerificationKey,
     resolveMissingApprovalCalls,
     resolveReferralExchanges,
     runPendingTradingReadyAction,
@@ -1588,7 +1728,7 @@ function TradingOnboardingProviderContent({ children, user }: TradingOnboardingP
           setAutoRedeemError(walletConnectorReconnectMessage)
           void openAppKit({ view: 'Connect' })
         } else {
-          setAutoRedeemError(result.error)
+          setAutoRedeemError(mapAutoRedeemError(result.error))
         }
         setAutoRedeemStep('idle')
         return
@@ -1617,7 +1757,7 @@ function TradingOnboardingProviderContent({ children, user }: TradingOnboardingP
       setShouldShowFundAfterTradingReady(false)
       await openFundModalIfBalanceEmpty()
     } catch (error) {
-      handleWalletActionError(error, setAutoRedeemError)
+      handleWalletActionError(error, setAutoRedeemError, mapAutoRedeemError)
       setAutoRedeemStep('idle')
     }
   }, [
@@ -1710,6 +1850,13 @@ function TradingOnboardingProviderContent({ children, user }: TradingOnboardingP
     user,
   ])
 
+  const handleDepositModalOpenChange = useCallback((open: boolean) => {
+    setDepositModalOpen(open)
+    if (open) {
+      window.dispatchEvent(new Event(DEPOSIT_MODAL_OPEN_EVENT))
+    }
+  }, [])
+
   const openWalletModal = useCallback(() => {
     if (!user) {
       void openAppKit()
@@ -1719,8 +1866,9 @@ function TradingOnboardingProviderContent({ children, user }: TradingOnboardingP
       openNextRequirement()
       return
     }
-    setDepositModalOpen(true)
-  }, [openAppKit, openNextRequirement, status.hasDeployedDepositWallet, user])
+    paymentsEnabledRefreshRef.current?.()
+    handleDepositModalOpenChange(true)
+  }, [handleDepositModalOpenChange, openAppKit, openNextRequirement, status.hasDeployedDepositWallet, user])
 
   const startDepositFlow = useCallback(() => {
     if (!user) {
@@ -1729,13 +1877,14 @@ function TradingOnboardingProviderContent({ children, user }: TradingOnboardingP
     }
 
     if (status.hasDeployedDepositWallet) {
-      setDepositModalOpen(true)
+      paymentsEnabledRefreshRef.current?.()
+      handleDepositModalOpenChange(true)
       return
     }
 
     setShouldShowFundAfterTradingReady(true)
     openNextRequirement()
-  }, [openAppKit, openNextRequirement, status.hasDeployedDepositWallet, user])
+  }, [handleDepositModalOpenChange, openAppKit, openNextRequirement, status.hasDeployedDepositWallet, user])
 
   const startWithdrawFlow = useCallback(() => {
     if (!user) {
@@ -1781,16 +1930,75 @@ function TradingOnboardingProviderContent({ children, user }: TradingOnboardingP
     ],
   )
 
-  const meldUrl = useMemo(() => {
-    if (!status.hasDeployedDepositWallet || !user?.deposit_wallet_address) {
-      return null
+  useEffect(() => {
+    if (!userId) {
+      return
     }
-    const params = new URLSearchParams({
-      destinationCurrencyCodeLocked: 'USDC_POLYGON',
-      walletAddressLocked: user.deposit_wallet_address,
-    })
-    return `https://meldcrypto.com/?${params.toString()}`
-  }, [status.hasDeployedDepositWallet, user?.deposit_wallet_address])
+
+    let isActive = true
+    let requestController: AbortController | null = null
+
+    async function refreshPaymentsEnabled() {
+      requestController?.abort()
+      const controller = new AbortController()
+      requestController = controller
+      setPaymentsEnabled(false)
+      setPaymentsEnabledUserId(null)
+
+      try {
+        const response = await fetch('/api/payments/meld/enabled', {
+          cache: 'no-store',
+          signal: controller.signal,
+        })
+        const payload: unknown = response.ok ? await response.json().catch(() => null) : null
+        if (isActive && !controller.signal.aborted) {
+          setPaymentsEnabled(isPaymentsEnabledResponse(payload) && payload.enabled)
+          setPaymentsEnabledUserId(userId ?? null)
+        }
+      } catch {
+        if (isActive && !controller.signal.aborted) {
+          setPaymentsEnabled(false)
+          setPaymentsEnabledUserId(null)
+        }
+      }
+    }
+
+    function onWindowFocus() {
+      void refreshPaymentsEnabled()
+    }
+
+    function refreshPaymentsEnabledForWalletOpen() {
+      void refreshPaymentsEnabled()
+    }
+
+    function onVisibilityChange() {
+      if (document.visibilityState === 'visible') {
+        void refreshPaymentsEnabled()
+      }
+    }
+
+    paymentsEnabledRefreshRef.current = refreshPaymentsEnabledForWalletOpen
+    void refreshPaymentsEnabled()
+    window.addEventListener('focus', onWindowFocus)
+    document.addEventListener('visibilitychange', onVisibilityChange)
+
+    return () => {
+      isActive = false
+      requestController?.abort()
+      window.removeEventListener('focus', onWindowFocus)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+      if (paymentsEnabledRefreshRef.current === refreshPaymentsEnabledForWalletOpen) {
+        paymentsEnabledRefreshRef.current = null
+      }
+    }
+  }, [userId])
+
+  const canBuyMeld = Boolean(
+    paymentsEnabled &&
+    paymentsEnabledUserId === userId &&
+    status.hasDeployedDepositWallet &&
+    user?.deposit_wallet_address,
+  )
 
   return (
     <TradingOnboardingContext value={contextValue}>
@@ -1807,7 +2015,7 @@ function TradingOnboardingProviderContent({ children, user }: TradingOnboardingP
         usernameError={usernameError}
         isUsernameSubmitting={isUsernameSubmitting}
         onUsernameSubmit={handleUsernameSubmit}
-        emailDefaultValue={hasUsableUserEmail(user?.email) ? (user?.email ?? '') : ''}
+        emailDefaultValue={emailDefaultValue}
         emailError={emailError}
         isEmailSubmitting={isEmailSubmitting}
         onEmailSubmit={handleEmailSubmit}
@@ -1820,7 +2028,7 @@ function TradingOnboardingProviderContent({ children, user }: TradingOnboardingP
         onEnableTradingAuth={handleEnableTradingAuth}
         hasDeployedDepositWallet={status.hasDeployedDepositWallet}
         hasTradingAuth={status.hasTradingAuth}
-        hasTokenApprovals={status.hasTokenApprovals}
+        hasTokenApprovals={status.hasTokenApprovals && !status.needsReferralSetup}
         approvalsStep={approvalsStep}
         tokenApprovalError={tokenApprovalError}
         onApproveTokens={handleApproveTokens}
@@ -1834,11 +2042,11 @@ function TradingOnboardingProviderContent({ children, user }: TradingOnboardingP
           openWalletModal()
         }}
         depositModalOpen={depositModalOpen}
-        onDepositOpenChange={setDepositModalOpen}
+        onDepositOpenChange={handleDepositModalOpenChange}
         withdrawModalOpen={withdrawModalOpen}
         onWithdrawOpenChange={setWithdrawModalOpen}
         user={user}
-        meldUrl={meldUrl}
+        canBuyMeld={canBuyMeld}
       />
     </TradingOnboardingContext>
   )

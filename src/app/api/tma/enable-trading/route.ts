@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server'
+
 import { enableTradingAuthAction } from '@/app/[locale]/(platform)/_actions/deposit-wallet'
+
 import { badRequest } from '../_lib'
 
 /**
@@ -11,11 +13,10 @@ import { badRequest } from '../_lib'
  * and binds the L2 auth context cookie to this response.
  */
 export async function POST(request: Request) {
-  let body: { signature?: string, timestamp?: string, nonce?: string }
+  let body: { signature?: string; timestamp?: string; nonce?: string }
   try {
     body = await request.json()
-  }
-  catch {
+  } catch {
     return badRequest('Invalid JSON body.')
   }
 

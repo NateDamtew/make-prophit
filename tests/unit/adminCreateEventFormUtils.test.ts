@@ -1,5 +1,3 @@
-import { describe, expect, it } from 'vitest'
-
 import type {
   FormState,
   PendingRequestItem,
@@ -23,6 +21,8 @@ import {
   createInitialForm,
   isBigIntSerializationError,
   mapSignatureFlowErrorForUser,
+  resolveMarketConfigUsdcToken,
+  resolveCustomSportsSlugMode,
 } from '@/app/[locale]/admin/events/calendar/_components/admin-create-event-form-utils'
 import { buildStepErrors } from '@/app/[locale]/admin/events/calendar/_components/admin-create-event-form-validation'
 import { createInitialAdminSportsForm } from '@/lib/admin-sports-create'
@@ -78,12 +78,61 @@ function buildValidationArgs(
     allowPastResolutionDate: false,
     hasCreatorSelection: true,
     hasRecurringCadence: true,
+    hasRecurringSeries: true,
     recurringPreviewErrors: [],
     ...overrides,
   }
 }
 
 describe('admin create event form utils', () => {
+  describe('resolveMarketConfigUsdcToken', () => {
+    it('uses the USDC address from the matching chain configuration', () => {
+      expect(
+        resolveMarketConfigUsdcToken(
+          {
+            chains: [
+              { chainId: 80002, usdcToken: '0x1111111111111111111111111111111111111111' },
+              { chainId: 137, usdcToken: '0x2222222222222222222222222222222222222222' },
+            ],
+          },
+          137,
+        ),
+      ).toBe('0x2222222222222222222222222222222222222222')
+    })
+
+    it('fails closed when the matching chain configuration is absent', () => {
+      expect(
+        resolveMarketConfigUsdcToken(
+          {
+            chains: [{ chainId: 80002, usdcToken: '0x1111111111111111111111111111111111111111' }],
+          },
+          137,
+        ),
+      ).toBeNull()
+    })
+  })
+
+  describe('resolveCustomSportsSlugMode', () => {
+    it('restores custom mode for a saved slug missing from the catalog', () => {
+      expect(
+        resolveCustomSportsSlugMode({
+          explicitlyCustom: false,
+          isKnownSlug: false,
+          normalizedSlug: 'custom-sport',
+        }),
+      ).toBe(true)
+    })
+
+    it('keeps empty and catalog slugs in select mode', () => {
+      expect(resolveCustomSportsSlugMode({ explicitlyCustom: false, isKnownSlug: false, normalizedSlug: '' })).toBe(
+        false,
+      )
+      expect(
+        resolveCustomSportsSlugMode({ explicitlyCustom: false, isKnownSlug: true, normalizedSlug: 'soccer' }),
+      ).toBe(false)
+    })
+  })
+
   describe('isBigIntSerializationError', () => {
     it('detects provider bigint serialization failures', () => {
       expect(isBigIntSerializationError('Do not know how to serialize a BigInt')).toBe(true)
@@ -286,6 +335,18 @@ describe('admin create event form utils', () => {
           'Select at least 4 sub categories.',
         ]),
       )
+    })
+
+    it('requires a recurrence group for recurring events', () => {
+      expect(
+        buildStepErrors(
+          1,
+          buildValidationArgs({
+            creationMode: 'recurring',
+            hasRecurringSeries: false,
+          }),
+        ),
+      ).toContain('Select or name the recurrence group.')
     })
 
     it('preserves resolution source and rules validation on step three', () => {

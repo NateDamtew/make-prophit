@@ -9,8 +9,9 @@
  * jurors don't vote.
  */
 
-import { and, eq, isNotNull, lte, sql } from 'drizzle-orm'
+import { and, eq, isNotNull, lte } from 'drizzle-orm'
 import { NextResponse } from 'next/server'
+
 import { isCronAuthorized } from '@/lib/auth-cron'
 import { CommunityRepository } from '@/lib/db/queries/community'
 import { communities, community_markets } from '@/lib/db/schema/communities/tables'
@@ -35,11 +36,13 @@ async function runSync() {
     })
     .from(community_markets)
     .innerJoin(communities, eq(community_markets.community_id, communities.id))
-    .where(and(
-      eq(community_markets.status, 'active'),
-      isNotNull(community_markets.resolution_date),
-      lte(community_markets.resolution_date, now),
-    ))
+    .where(
+      and(
+        eq(community_markets.status, 'active'),
+        isNotNull(community_markets.resolution_date),
+        lte(community_markets.resolution_date, now),
+      ),
+    )
 
   let resolved = 0
   let cancelled = 0
@@ -68,8 +71,7 @@ async function runSync() {
           .where(eq(community_markets.id, market.id))
         cancelled += 1
       }
-    }
-    catch (err) {
+    } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       errors.push(`Market ${market.id}: ${msg}`)
     }
@@ -92,14 +94,20 @@ async function handle(request: Request) {
   try {
     const result = await runSync()
     return NextResponse.json(result)
-  }
-  catch (err) {
+  } catch (err) {
     console.error('[sync/community-resolutions] Failed:', err)
-    return NextResponse.json({
-      error: err instanceof Error ? err.message : 'Unknown error',
-    }, { status: 500 })
+    return NextResponse.json(
+      {
+        error: err instanceof Error ? err.message : 'Unknown error',
+      },
+      { status: 500 },
+    )
   }
 }
 
-export async function GET(request: Request) { return handle(request) }
-export async function POST(request: Request) { return handle(request) }
+export async function GET(request: Request) {
+  return handle(request)
+}
+export async function POST(request: Request) {
+  return handle(request)
+}

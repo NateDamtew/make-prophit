@@ -2,6 +2,7 @@
 
 import type { SetStateAction } from 'react'
 
+import { useLocale } from 'next-intl'
 import { memo, useCallback, useMemo, useState, useSyncExternalStore } from 'react'
 
 import type { TimeRange } from '@/app/[locale]/(platform)/event/[slug]/_hooks/useEventPriceHistory'
@@ -39,6 +40,7 @@ import {
 import { isTweetMarketsEvent } from '@/app/[locale]/(platform)/event/[slug]/_utils/eventTweetMarkets'
 import SiteLogoIcon from '@/components/SiteLogoIcon'
 import { useCurrentTimestamp } from '@/hooks/useCurrentTimestamp'
+import { useOutcomeLabel } from '@/hooks/useOutcomeLabel'
 import { useSiteIdentity } from '@/hooks/useSiteIdentity'
 import { useWindowSize } from '@/hooks/useWindowSize'
 import { OUTCOME_INDEX } from '@/lib/constants'
@@ -77,6 +79,8 @@ function EventChartComponent({
   showSeriesNavigation = true,
   showWatermark = true,
 }: EventChartProps) {
+  const locale = useLocale()
+  const normalizeOutcomeLabel = useOutcomeLabel()
   const site = useSiteIdentity()
   const user = useUser()
   const userAddress = getUserPublicAddress(user)
@@ -172,6 +176,9 @@ function EventChartComponent({
   })
 
   const chartHistory = isSingleMarket && activeOutcomeIndex === OUTCOME_INDEX.NO ? noPriceHistory : yesPriceHistory
+  const isChartRangeLoading = showBothOutcomes
+    ? yesPriceHistory.isRangeTransitioning || noPriceHistory.isRangeTransitioning
+    : chartHistory.isRangeTransitioning
   const marketSnapshot = showBothOutcomes ? yesPriceHistory.latestSnapshot : chartHistory.latestSnapshot
 
   const allMarketIds = useMemo(
@@ -239,10 +246,38 @@ function EventChartComponent({
     [allMarketIds, defaultMarketIds, event.id, isSingleMarket, maxSeriesCount],
   )
 
-  const chartSeries = useMemo(() => buildChartSeries(event, topMarketIds), [event, topMarketIds])
-  const fallbackChartSeries = useMemo(() => buildChartSeries(event, fallbackMarketIds), [event, fallbackMarketIds])
-  const allSeries = useMemo(() => buildChartSeries(event, allMarketIds), [event, allMarketIds])
-  const selectedSeries = useMemo(() => buildChartSeries(event, selectedMarketIds), [event, selectedMarketIds])
+  const chartSeries = useMemo(
+    () =>
+      buildChartSeries(event, topMarketIds).map((series) => ({
+        ...series,
+        name: normalizeOutcomeLabel(series.name),
+      })),
+    [event, normalizeOutcomeLabel, topMarketIds],
+  )
+  const fallbackChartSeries = useMemo(
+    () =>
+      buildChartSeries(event, fallbackMarketIds).map((series) => ({
+        ...series,
+        name: normalizeOutcomeLabel(series.name),
+      })),
+    [event, fallbackMarketIds, normalizeOutcomeLabel],
+  )
+  const allSeries = useMemo(
+    () =>
+      buildChartSeries(event, allMarketIds).map((series) => ({
+        ...series,
+        name: normalizeOutcomeLabel(series.name),
+      })),
+    [allMarketIds, event, normalizeOutcomeLabel],
+  )
+  const selectedSeries = useMemo(
+    () =>
+      buildChartSeries(event, selectedMarketIds).map((series) => ({
+        ...series,
+        name: normalizeOutcomeLabel(series.name),
+      })),
+    [event, normalizeOutcomeLabel, selectedMarketIds],
+  )
   const selectedColors = useMemo(
     () => Object.fromEntries(selectedSeries.map((series) => [series.key, series.color])),
     [selectedSeries],
@@ -277,8 +312,8 @@ function EventChartComponent({
   const primaryConditionId = primaryMarket?.condition_id ?? ''
   const yesSeriesKey = showBothOutcomes && primaryConditionId ? `${primaryConditionId}-yes` : primaryConditionId
   const noSeriesKey = showBothOutcomes && primaryConditionId ? `${primaryConditionId}-no` : primaryConditionId
-  const yesOutcomeLabel = getOutcomeLabelForMarket(primaryMarket, OUTCOME_INDEX.YES)
-  const noOutcomeLabel = getOutcomeLabelForMarket(primaryMarket, OUTCOME_INDEX.NO)
+  const yesOutcomeLabel = normalizeOutcomeLabel(getOutcomeLabelForMarket(primaryMarket, OUTCOME_INDEX.YES))
+  const noOutcomeLabel = normalizeOutcomeLabel(getOutcomeLabelForMarket(primaryMarket, OUTCOME_INDEX.NO))
   const bothOutcomeSeries = useMemo(() => {
     if (!showBothOutcomes || !primaryConditionId) {
       return []
@@ -329,8 +364,8 @@ function EventChartComponent({
   const legendSeries = effectiveSeries
   const hasLegendSeries = legendSeries.length > 0
   const oppositeOutcomeIndex = activeOutcomeIndex === OUTCOME_INDEX.YES ? OUTCOME_INDEX.NO : OUTCOME_INDEX.YES
-  const oppositeOutcomeLabel = getOutcomeLabelForMarket(primaryMarket, oppositeOutcomeIndex)
-  const activeOutcomeLabel = getOutcomeLabelForMarket(primaryMarket, activeOutcomeIndex)
+  const oppositeOutcomeLabel = normalizeOutcomeLabel(getOutcomeLabelForMarket(primaryMarket, oppositeOutcomeIndex))
+  const activeOutcomeLabel = normalizeOutcomeLabel(getOutcomeLabelForMarket(primaryMarket, activeOutcomeIndex))
   const markerConditionIds = useMemo(() => {
     if (!userAddress) {
       return []
@@ -607,6 +642,8 @@ function EventChartComponent({
         chart={
           <EventChartCanvas
             chartData={chartData}
+            isLoading={isChartRangeLoading}
+            locale={locale}
             legendSeries={legendSeries}
             chartWidth={chartWidth}
             chartHeight={chartHeight}
@@ -681,7 +718,7 @@ function areChartPropsEqual(prev: EventChartProps, next: EventChartProps) {
   if ((prev.chartWidth ?? null) !== (next.chartWidth ?? null)) {
     return false
   }
-  if ((prev.chartHeight ?? 332) !== (next.chartHeight ?? 332)) {
+  if ((prev.chartHeight ?? 272) !== (next.chartHeight ?? 272)) {
     return false
   }
   if ((prev.isSingleMarketOverride ?? null) !== (next.isSingleMarketOverride ?? null)) {

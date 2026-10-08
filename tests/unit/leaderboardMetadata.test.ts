@@ -1,39 +1,43 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, mock } from 'bun:test'
 
-const mocks = vi.hoisted(() => ({
+import { hoisted } from '../bun-test-helpers'
+
+const mocks = hoisted(() => ({
   calls: [] as string[],
-  deferPublicShellPrerenderIfNeeded: vi.fn(),
-  getExtracted: vi.fn(),
-  loadRuntimeThemeState: vi.fn(),
-  resolveSiteUrl: vi.fn(),
-  setRequestLocale: vi.fn(),
+  deferPublicShellPrerenderIfNeeded: mock(),
+  getExtracted: mock(),
+  loadRuntimeThemeState: mock(),
+  resolveSiteUrl: mock(),
 }))
 
-vi.mock('next-intl/server', () => ({
+void mock.module('next-intl/server', () => ({
   getExtracted: (...args: any[]) => mocks.getExtracted(...args),
-  setRequestLocale: (...args: any[]) => mocks.setRequestLocale(...args),
 }))
 
-vi.mock('@/app/[locale]/(platform)/leaderboard/_components/LeaderboardClient', () => ({
+void mock.module('@/app/[locale]/(platform)/leaderboard/_components/LeaderboardClient', () => ({
   default: () => null,
 }))
 
 // The fork's page renders LeaderboardViews (not upstream's LeaderboardClient);
 // mock it so the component subtree (which pulls next-intl client navigation)
 // doesn't load in the test environment.
-vi.mock('@/app/[locale]/(platform)/leaderboard/_components/LeaderboardViews', () => ({
+void mock.module('@/app/[locale]/(platform)/leaderboard/_components/LeaderboardViews', () => ({
   default: () => null,
 }))
 
-vi.mock('@/lib/public-shell-rendering', () => ({
+void mock.module('@/app/[locale]/(platform)/leaderboard/_components/LeaderboardPageSkeleton', () => ({
+  default: () => null,
+}))
+
+void mock.module('@/lib/public-shell-rendering', () => ({
   deferPublicShellPrerenderIfNeeded: (...args: any[]) => mocks.deferPublicShellPrerenderIfNeeded(...args),
 }))
 
-vi.mock('@/lib/site-url', () => ({
+void mock.module('@/lib/site-url', () => ({
   default: (...args: any[]) => mocks.resolveSiteUrl(...args),
 }))
 
-vi.mock('@/lib/theme-settings', () => ({
+void mock.module('@/lib/theme-settings', () => ({
   loadRuntimeThemeState: (...args: any[]) => mocks.loadRuntimeThemeState(...args),
 }))
 
@@ -44,7 +48,6 @@ describe('leaderboard metadata', () => {
     mocks.getExtracted.mockReset()
     mocks.loadRuntimeThemeState.mockReset()
     mocks.resolveSiteUrl.mockReset()
-    mocks.setRequestLocale.mockReset()
 
     mocks.deferPublicShellPrerenderIfNeeded.mockImplementation(async () => {
       mocks.calls.push('defer')

@@ -3,7 +3,8 @@ import type { Metadata } from 'next'
 
 import { DocsBody, DocsDescription, DocsPage, DocsTitle } from 'fumadocs-ui/layouts/docs/page'
 import defaultMdxComponents from 'fumadocs-ui/mdx'
-import { setRequestLocale } from 'next-intl/server'
+import { getExtracted } from 'next-intl/server'
+import { cacheLife, cacheTag } from 'next/cache'
 import { notFound, redirect } from 'next/navigation'
 
 import type { SupportedLocale } from '@/i18n/locales'
@@ -17,9 +18,11 @@ import {
   PublicRuntimeServiceUrl,
   PublicRuntimeWebSocketPlayground,
 } from '@/app/[locale]/docs/_components/PublicRuntimeServiceUrl'
+import { SecurityReserveBalance } from '@/app/[locale]/docs/_components/SecurityReserveBalance'
 import { SiteName } from '@/app/[locale]/docs/_components/SiteName'
-import { TradingFeeLookup } from '@/app/[locale]/docs/_components/TradingFeeLookup'
+import { TradingFeeChart } from '@/app/[locale]/docs/_components/TradingFeeChart'
 import { WebSocketPlayground } from '@/app/[locale]/docs/_components/WebSocketPlayground'
+import { cacheTags } from '@/lib/cache-tags'
 import { getEnglishDocsStaticParams } from '@/lib/docs-static-params'
 import { withLocalePrefix } from '@/lib/locale-path'
 import { source } from '@/lib/source'
@@ -34,10 +37,11 @@ function getMDXComponents(components?: MDXComponents): MDXComponents {
     APIPage,
     GammaAPIPage,
     AffiliateShareDisplay,
-    TradingFeeLookup,
+    TradingFeeChart,
     WebSocketPlayground,
     PublicRuntimeServiceUrl,
     PublicRuntimeWebSocketPlayground,
+    SecurityReserveBalance,
     DiscordLink,
     SiteName,
     ...components,
@@ -48,10 +52,11 @@ export async function generateStaticParams() {
   return getEnglishDocsStaticParams()
 }
 
-async function generateCachedDocsMetadata({ locale, slug }: { locale: string; slug?: string[] }): Promise<Metadata> {
+async function generateCachedDocsMetadata({ slug }: { slug?: string[] }): Promise<Metadata> {
   'use cache'
+  cacheLife('max')
+  cacheTag(cacheTags.settings)
 
-  setRequestLocale(locale)
   const runtimeTheme = await loadRuntimeThemeState()
   const siteDocumentationTitle = `${runtimeTheme.site.name} Documentation`
 
@@ -70,13 +75,16 @@ async function generateCachedDocsMetadata({ locale, slug }: { locale: string; sl
 }
 
 export async function generateMetadata(props: PageProps<'/[locale]/docs/[[...slug]]'>): Promise<Metadata> {
-  return generateCachedDocsMetadata(await props.params)
+  const { slug } = await props.params
+  return generateCachedDocsMetadata({ slug })
 }
 
 async function renderCachedDocsPage({ locale, slug }: { locale: string; slug?: string[] }) {
   'use cache'
+  cacheLife('max')
+  cacheTag(cacheTags.settings)
 
-  setRequestLocale(locale)
+  const t = await getExtracted()
 
   const page = source.getPage(slug)
   if (!page) {
@@ -104,12 +112,12 @@ async function renderCachedDocsPage({ locale, slug }: { locale: string; slug?: s
           </div>
           <div className="hidden shrink-0 items-center gap-2 lg:flex">
             <ViewOptions markdownUrl={markdownUrl} />
-            <DiscordLink className="h-8.5">Get Help</DiscordLink>
+            <DiscordLink className="h-8.5">{t('Get Help')}</DiscordLink>
           </div>
         </div>
         <div className="-mt-4 flex flex-wrap items-center gap-2 lg:hidden">
           <ViewOptions markdownUrl={markdownUrl} />
-          <DiscordLink className="h-8.5">Get Help</DiscordLink>
+          <DiscordLink className="h-8.5">{t('Get Help')}</DiscordLink>
         </div>
       </div>
       <DocsBody className={cn({ 'max-w-none': useFullLayout })}>

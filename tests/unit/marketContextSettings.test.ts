@@ -1,10 +1,12 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, mock } from 'bun:test'
 
-const mocks = vi.hoisted(() => ({
-  decryptSecret: vi.fn(),
+import { hoisted } from '../bun-test-helpers'
+
+const mocks = hoisted(() => ({
+  decryptSecret: mock(),
 }))
 
-vi.mock('@/lib/encryption', () => ({
+void mock.module('@/lib/encryption', () => ({
   decryptSecret: (...args: any[]) => mocks.decryptSecret(...args),
 }))
 
@@ -17,7 +19,6 @@ function setting(value: string) {
 
 describe('market context settings parser', () => {
   beforeEach(() => {
-    vi.resetModules()
     mocks.decryptSecret.mockReset()
     mocks.decryptSecret.mockImplementation((value: string) => value.replace(/^enc\.v1\./, ''))
   })
@@ -47,17 +48,21 @@ describe('market context settings parser', () => {
     expect(parsed.enabled).toBe(true)
   })
 
-  it('hydrates admin-visible OpenRouter fields from ai settings', async () => {
-    const { parseMarketContextSettings } = await import('@/lib/ai/market-context-config')
+  it('hydrates OpenRouter provider fields from ai settings', async () => {
+    const { parseOpenRouterProviderSettings } = await import('@/lib/ai/market-context-config')
 
-    const parsed = parseMarketContextSettings({
+    const parsed = parseOpenRouterProviderSettings({
       ai: {
         openrouter_api_key: setting('enc.v1.openrouter-key'),
         openrouter_model: setting('openai/gpt-4o-mini'),
+        openrouter_translation_model: setting('openai/gpt-4o-mini'),
+        openrouter_decision_model: setting('typesafe/jev-1.13'),
       },
     })
 
     expect(parsed.model).toBe('openai/gpt-4o-mini')
+    expect(parsed.translationModel).toBe('openai/gpt-4o-mini')
+    expect(parsed.decisionModel).toBe('typesafe/jev-1.13')
     expect(parsed.apiKey).toBe('openrouter-key')
   })
 

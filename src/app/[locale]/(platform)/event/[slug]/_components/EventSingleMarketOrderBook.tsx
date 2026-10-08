@@ -11,8 +11,10 @@ import { useMarketChannelStatus } from '@/app/[locale]/(platform)/event/[slug]/_
 import EventOrderBook, {
   useOrderBookSummaries,
 } from '@/app/[locale]/(platform)/event/[slug]/_components/EventOrderBook'
+import EventRewardsBadge from '@/app/[locale]/(platform)/event/[slug]/_components/EventRewardsBadge'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useIsMobile } from '@/hooks/useIsMobile'
+import { useMarketRewards } from '@/hooks/useMarketRewards'
 import { useOutcomeLabel } from '@/hooks/useOutcomeLabel'
 import { OUTCOME_INDEX } from '@/lib/constants'
 import { cn } from '@/lib/utils'
@@ -67,6 +69,7 @@ export default function EventSingleMarketOrderBook({
   const normalizeOutcomeLabel = useOutcomeLabel()
   const isMobile = useIsMobile()
   const marketChannelStatus = useMarketChannelStatus()
+  const [showRewardHighlight, setShowRewardHighlight] = useState(false)
   const setOrderMarket = useOrder((state) => state.setMarket)
   const setOrderOutcome = useOrder((state) => state.setOutcome)
   const {
@@ -91,6 +94,8 @@ export default function EventSingleMarketOrderBook({
   const noOutcomeLabel = (noOutcomeText ? normalizeOutcomeLabel(noOutcomeText) : '') || noOutcomeText || t('No')
   const isLoadingSummaries = isExpanded && isOrderBookLoading && !orderBookSummaries
   const compactVolumeLabel = showCompactVolume ? rawCompactVolumeLabel : null
+  const rewardsQuery = useMarketRewards([market.condition_id])
+  const rewardConfig = rewardsQuery.data?.[0] ?? null
 
   function handleOutcomeSelection(outcomeIndex: OutcomeToggleIndex) {
     const outcome = market.outcomes[outcomeIndex]
@@ -106,7 +111,7 @@ export default function EventSingleMarketOrderBook({
   }
 
   return (
-    <section className="overflow-hidden rounded-xl border transition-all duration-500 ease-in-out">
+    <section className="overflow-hidden rounded-xl border bg-card transition-all duration-500 ease-in-out">
       <button
         type="button"
         onClick={() => setIsExpanded((current) => !current)}
@@ -122,7 +127,7 @@ export default function EventSingleMarketOrderBook({
               render={
                 <span
                   className="inline-flex size-4 items-center justify-center text-muted-foreground hover:text-foreground"
-                  aria-label="Order book information"
+                  aria-label={t('Order book information')}
                   onClick={(event) => {
                     event.stopPropagation()
                   }}
@@ -135,8 +140,9 @@ export default function EventSingleMarketOrderBook({
               }
             />
             <TooltipContent side="top" className="max-w-68 text-left">
-              The order book shows all open buy and sell orders for this market. Use it to place limit orders at your
-              preferred price.
+              {t(
+                'The order book shows all open buy and sell orders for this market. Use it to place limit orders at your preferred price.',
+              )}
             </TooltipContent>
           </Tooltip>
         </div>
@@ -175,7 +181,7 @@ export default function EventSingleMarketOrderBook({
         aria-hidden={!isExpanded}
       >
         <div className={cn('overflow-hidden', { 'border-t border-border/30': isExpanded })}>
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b p-3 pb-0 text-sm font-semibold">
+          <div className="flex flex-wrap items-center justify-between gap-3 p-3 pb-0 text-sm font-semibold">
             <div className="flex flex-wrap gap-4">
               <OutcomeToggle
                 label={t('Trade {outcome}', { outcome: yesOutcomeLabel })}
@@ -189,7 +195,14 @@ export default function EventSingleMarketOrderBook({
               />
             </div>
             <div className="flex items-center gap-2">
-              <ConnectionStatusIndicator className="flex items-center justify-end py-2" status={marketChannelStatus} />
+              {rewardConfig && (
+                <EventRewardsBadge
+                  rewards={[rewardConfig]}
+                  compact
+                  active={showRewardHighlight}
+                  onHighlightChange={setShowRewardHighlight}
+                />
+              )}
               <button
                 type="button"
                 onClick={() => {
@@ -208,6 +221,7 @@ export default function EventSingleMarketOrderBook({
                   className={cn('size-3', { 'animate-spin': isOrderBookLoading || isOrderBookRefetching })}
                 />
               </button>
+              <ConnectionStatusIndicator className="flex items-center justify-end py-2" status={marketChannelStatus} />
             </div>
           </div>
           <EventOrderBook
@@ -217,6 +231,7 @@ export default function EventSingleMarketOrderBook({
             isLoadingSummaries={isLoadingSummaries}
             eventSlug={eventSlug}
             openMobileOrderPanelOnLevelSelect={isMobile}
+            rewardHighlight={showRewardHighlight}
           />
         </div>
       </div>
@@ -236,8 +251,8 @@ function OutcomeToggle({ label, selected, onClick }: OutcomeToggleProps) {
       type="button"
       onClick={onClick}
       className={cn(
-        `-mb-0.5 border-b-3 border-transparent pt-1 pb-2 text-sm font-semibold transition-colors`,
-        selected ? 'border-primary text-foreground' : 'text-muted-foreground hover:text-foreground',
+        `pt-1 pb-2 text-sm font-semibold transition-colors`,
+        selected ? 'text-foreground' : 'text-muted-foreground hover:text-foreground',
       )}
     >
       {label}

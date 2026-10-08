@@ -1,54 +1,56 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { beforeEach, describe, expect, it, mock } from 'bun:test'
 import * as React from 'react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import AdminAffiliateSettingsForm from '@/app/[locale]/admin/affiliate/_components/AdminAffiliateSettingsForm'
 
-const mocks = vi.hoisted(() => ({
-  refresh: vi.fn(),
-  updateAction: vi.fn(),
+import { hoisted } from '../bun-test-helpers'
+
+const mocks = hoisted(() => ({
+  refresh: mock(),
+  updateAction: mock(),
   user: {
     deposit_wallet_address: '0x1111111111111111111111111111111111111111',
   },
 }))
 
-vi.mock('next-intl', () => ({
-  useExtracted: () => (value: string) => value,
+void mock.module('next-intl', () => ({
+  useExtracted: () => (value: string | { message: string }) => (typeof value === 'string' ? value : value.message),
 }))
 
-vi.mock('next/navigation', () => ({
+void mock.module('next/navigation', () => ({
   useRouter: () => ({ refresh: mocks.refresh }),
 }))
 
-vi.mock('next/form', () => ({
+void mock.module('next/form', () => ({
   __esModule: true,
   default: ({ children, ...props }: any) => React.createElement('form', props, children),
 }))
 
-vi.mock('@/components/ui/toast', () => ({
+void mock.module('@/components/ui/toast', () => ({
   toast: {
-    success: vi.fn(),
-    error: vi.fn(),
+    success: mock(),
+    error: mock(),
   },
 }))
 
-vi.mock('@/app/[locale]/admin/affiliate/_actions/update-affiliate-settings', () => ({
+void mock.module('@/app/[locale]/admin/affiliate/_actions/update-affiliate-settings', () => ({
   updateForkSettingsAction: (...args: any[]) => mocks.updateAction(...args),
 }))
 
-vi.mock('@/stores/useUser', () => ({
+void mock.module('@/stores/useUser', () => ({
   useUser: () => mocks.user,
 }))
 
 function renderForm(initialWallet = '') {
   return render(
     <AdminAffiliateSettingsForm
-      builderTakerFeeBps={250}
-      builderMakerFeeBps={125}
+      builderTakerFeeShareBps={3000}
+      builderMakerFlatFeeBps={0}
       affiliateShareBps={1500}
+      hasSavedBuilderTakerShare={false}
       initialFeeRecipientWallet={initialWallet}
-      kuestFeeSettings={null}
     />,
   )
 }
@@ -62,7 +64,7 @@ describe('adminAffiliateSettingsForm', () => {
   it('shows the saved fee wallet and offers a shortcut to use the current deposit wallet', async () => {
     renderForm('0x2222222222222222222222222222222222222222')
 
-    const input = screen.getByLabelText(/Fee Wallet Address \(Polygon\)/i) as HTMLInputElement
+    const input = screen.getByLabelText(/Fee Wallet Address \(Polygon(?: Amoy)?\)/i) as HTMLInputElement
     const button = screen.getByRole('button', { name: /Use my deposit wallet/i })
     const user = userEvent.setup()
 
@@ -78,7 +80,7 @@ describe('adminAffiliateSettingsForm', () => {
   it('shows the shortcut when the fee wallet field is empty', async () => {
     renderForm()
 
-    const input = screen.getByLabelText(/Fee Wallet Address \(Polygon\)/i) as HTMLInputElement
+    const input = screen.getByLabelText(/Fee Wallet Address \(Polygon(?: Amoy)?\)/i) as HTMLInputElement
     const button = screen.getByRole('button', { name: /Use my deposit wallet/i })
     const user = userEvent.setup()
 
@@ -94,7 +96,7 @@ describe('adminAffiliateSettingsForm', () => {
   it('hides the shortcut when the fee wallet already matches the deposit wallet', () => {
     renderForm(mocks.user.deposit_wallet_address)
 
-    const input = screen.getByLabelText(/Fee Wallet Address \(Polygon\)/i) as HTMLInputElement
+    const input = screen.getByLabelText(/Fee Wallet Address \(Polygon(?: Amoy)?\)/i) as HTMLInputElement
 
     expect(input.value).toBe(mocks.user.deposit_wallet_address)
     expect(screen.queryByRole('button', { name: /Use my deposit wallet/i })).toBeNull()

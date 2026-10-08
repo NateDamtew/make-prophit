@@ -2,6 +2,7 @@
 
 import { useQueryClient } from '@tanstack/react-query'
 import { BookmarkIcon } from 'lucide-react'
+import { useExtracted } from 'next-intl'
 import { useEffect, useRef, useState } from 'react'
 
 import type { Event } from '@/types'
@@ -123,8 +124,6 @@ function updateEventsQueryData(
       pageHasChanges = true
       hasChanges = true
 
-      // Home feed offsets derive from cached page lengths. Its render path
-      // filters this updated flag without changing the pagination boundary.
       if (shouldRemoveFromPage) {
         return []
       }
@@ -166,7 +165,7 @@ function createBookmarkOverrideState(eventId: Event['id'], propValue: boolean, v
 }
 
 function useBookmarkState({ event, refreshStatusOnMount }: { event: Event; refreshStatusOnMount: boolean }) {
-  const { open } = useAppKit()
+  const { open: openAppKit } = useAppKit()
   const user = useUser()
   const queryClient = useQueryClient()
   const [bookmarkOverride, setBookmarkOverride] = useState<BookmarkOverrideState | null>(null)
@@ -200,7 +199,7 @@ function useBookmarkState({ event, refreshStatusOnMount }: { event: Event; refre
       if (response.error) {
         setBookmarkOverride(createBookmarkOverrideState(event.id, event.is_bookmarked, previousState))
         if (response.error === 'Unauthenticated.') {
-          void open()
+          void openAppKit()
         }
         return
       }
@@ -272,6 +271,7 @@ function useBookmarkState({ event, refreshStatusOnMount }: { event: Event; refre
 }
 
 export default function EventBookmark({ event, refreshStatusOnMount = true }: EventBookmarkProps) {
+  const t = useExtracted()
   const { isBookmarked, isSubmitting, handleBookmark } = useBookmarkState({
     event,
     refreshStatusOnMount,
@@ -292,7 +292,7 @@ export default function EventBookmark({ event, refreshStatusOnMount = true }: Ev
         void handleBookmark()
       }}
       aria-disabled={isSubmitting}
-      title={isBookmarked ? 'Remove Bookmark' : 'Bookmark'}
+      title={isBookmarked ? t('Remove Bookmark') : t('Bookmark')}
       className={cn(
         `size-auto rounded-sm border border-transparent bg-transparent p-0 text-foreground transition-colors hover:bg-muted/80 focus-visible:ring-1 focus-visible:ring-ring md:size-9`,
         { 'opacity-50': isSubmitting },

@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 
-import { setRequestLocale } from 'next-intl/server'
+import { getExtracted } from 'next-intl/server'
 
 import PortfolioMarketsWonCard from '@/app/[locale]/(platform)/portfolio/_components/PortfolioMarketsWonCard'
 import PortfolioTabs from '@/app/[locale]/(platform)/portfolio/_components/PortfolioTabs'
@@ -9,17 +9,18 @@ import PublicProfileHeroCards from '@/app/[locale]/(platform)/profile/_component
 import { UserRepository } from '@/lib/db/queries/user'
 import { fetchPortfolioSnapshot } from '@/lib/portfolio'
 
-export const metadata: Metadata = {
-  title: 'Portfolio',
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getExtracted()
+
+  return { title: t('Portfolio') }
 }
 
 function getFallbackChartEndDate() {
   return new Date().toISOString()
 }
 
-export default async function PortfolioPage({ params }: PageProps<'/[locale]/portfolio'>) {
-  const { locale } = await params
-  setRequestLocale(locale)
+export default async function PortfolioPage() {
+  const t = await getExtracted()
 
   const user = await UserRepository.getCurrentUser()
   const fallbackChartEndDate = getFallbackChartEndDate()
@@ -32,7 +33,7 @@ export default async function PortfolioPage({ params }: PageProps<'/[locale]/por
     <>
       <PublicProfileHeroCards
         profile={{
-          username: user?.username ?? 'Your portfolio',
+          username: user?.username ?? t('Your portfolio'),
           avatarUrl: user?.image ?? '',
           joinedAt: (user as any)?.created_at?.toString?.() ?? (user as any)?.createdAt?.toString?.(),
           portfolioAddress: publicAddress ?? undefined,

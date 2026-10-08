@@ -3,7 +3,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { RefreshCwIcon } from 'lucide-react'
 import { useExtracted } from 'next-intl'
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import type { MarketDetailTab } from '@/app/[locale]/(platform)/event/[slug]/_hooks/useMarketDetailController'
 import type { SharesByCondition } from '@/app/[locale]/(platform)/event/[slug]/_hooks/useUserShareBalances'
@@ -12,12 +12,12 @@ import type { DataApiActivity } from '@/lib/data-api/user'
 import type { Event } from '@/types'
 
 import ConnectionStatusIndicator from '@/app/[locale]/(platform)/event/[slug]/_components/ConnectionStatusIndicator'
-import DirectResolutionButton from '@/app/[locale]/(platform)/event/[slug]/_components/DirectResolutionButton'
 import { useMarketChannelStatus } from '@/app/[locale]/(platform)/event/[slug]/_components/EventMarketChannelProvider'
 import EventMarketHistory from '@/app/[locale]/(platform)/event/[slug]/_components/EventMarketHistory'
 import EventMarketOpenOrders from '@/app/[locale]/(platform)/event/[slug]/_components/EventMarketOpenOrders'
 import EventMarketPositions from '@/app/[locale]/(platform)/event/[slug]/_components/EventMarketPositions'
 import EventOrderBook from '@/app/[locale]/(platform)/event/[slug]/_components/EventOrderBook'
+import EventRewardsBadge from '@/app/[locale]/(platform)/event/[slug]/_components/EventRewardsBadge'
 import MarketOutcomeGraph from '@/app/[locale]/(platform)/event/[slug]/_components/MarketOutcomeGraph'
 import ResolutionTimelinePanel from '@/app/[locale]/(platform)/event/[slug]/_components/ResolutionTimelinePanel'
 import { useUserOpenOrdersQuery } from '@/app/[locale]/(platform)/event/[slug]/_hooks/useUserOpenOrdersQuery'
@@ -29,6 +29,7 @@ import {
 import { toResolutionTimelineOutcome } from '@/app/[locale]/(platform)/event/[slug]/_utils/eventResolvedOutcome'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useMarketRewards } from '@/hooks/useMarketRewards'
 import { useSiteIdentity } from '@/hooks/useSiteIdentity'
 import { OUTCOME_INDEX } from '@/lib/constants'
 import { fetchUserActivityData } from '@/lib/data-api/user'
@@ -92,6 +93,9 @@ export default function MarketDetailTabs({
   const { name: siteName } = useSiteIdentity()
   const user = useUser()
   const marketChannelStatus = useMarketChannelStatus()
+  const rewardsQuery = useMarketRewards([market.condition_id])
+  const rewardConfig = rewardsQuery.data?.[0] ?? null
+  const [showRewardHighlight, setShowRewardHighlight] = useState(false)
   const { selected: controlledTab, select } = tabController
   const positionSizeThreshold = POSITION_VISIBILITY_THRESHOLD
   const isResolvedView = variant === 'resolved'
@@ -200,7 +204,11 @@ export default function MarketDetailTabs({
   )
 
   return (
-    <Tabs value={selectedTab} onValueChange={(value) => select(value as MarketDetailTab)} className="pt-0">
+    <Tabs
+      value={selectedTab}
+      onValueChange={(value) => select(value as MarketDetailTab)}
+      className="pt-0 pr-2 pl-4 lg:px-0"
+    >
       <div className="px-0">
         <div className="flex items-center gap-2 border-b">
           <TabsList className="flex h-auto w-0 flex-1 justify-start gap-4 overflow-x-auto rounded-none bg-transparent p-0">
@@ -222,7 +230,14 @@ export default function MarketDetailTabs({
             })}
           </TabsList>
 
-          {!shouldHideOrderBook && <ConnectionStatusIndicator className="-mt-2" status={marketChannelStatus} />}
+          {!shouldHideOrderBook && rewardConfig && (
+            <EventRewardsBadge
+              rewards={[rewardConfig]}
+              compact
+              active={showRewardHighlight}
+              onHighlightChange={setShowRewardHighlight}
+            />
+          )}
 
           {!shouldHideOrderBook && (
             <button
@@ -244,6 +259,8 @@ export default function MarketDetailTabs({
               />
             </button>
           )}
+
+          {!shouldHideOrderBook && <ConnectionStatusIndicator className="-mt-2" status={marketChannelStatus} />}
         </div>
       </div>
 
@@ -256,7 +273,9 @@ export default function MarketDetailTabs({
               summaries={orderBookData.summaries}
               isLoadingSummaries={orderBookData.isLoading}
               eventSlug={event.slug}
+              surfaceVariant="transparent"
               openMobileOrderPanelOnLevelSelect={isMobile}
+              rewardHighlight={showRewardHighlight}
             />
           </TabsContent>
         )}
@@ -294,6 +313,22 @@ export default function MarketDetailTabs({
         </TabsContent>
 
         <TabsContent value="resolution" className="mt-0">
+          {isNegRiskEnabled && !isMarketResolved(market) && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="mb-3 self-start rounded-md border-border bg-background text-foreground hover:bg-muted"
+              onClick={() => {
+                window.dispatchEvent(
+                  new CustomEvent('open-resolution-proposal', {
+                    detail: { targetId: `propose-resolution-${market.condition_id}` },
+                  }),
+                )
+              }}
+            >
+              {t('Propose resolution')}
+            </Button>
+          )}
           <div className="flex items-center justify-between gap-3">
             <ResolutionTimelinePanel
               market={market}
@@ -303,10 +338,10 @@ export default function MarketDetailTabs({
               )}
               className="min-w-0 flex-1"
             />
-            {!isMarketResolved(market) &&
-              (isDirectResolutionMarket(market) ? (
-                <DirectResolutionButton market={market} event={event} onClick={(event) => event.stopPropagation()} />
-              ) : proposeUrl ? (
+            {!isNegRiskEnabled &&
+              !isMarketResolved(market) &&
+              !isDirectResolutionMarket(market) &&
+              (proposeUrl ? (
                 <Button
                   variant="outline"
                   size="sm"

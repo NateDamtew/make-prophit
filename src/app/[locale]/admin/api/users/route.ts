@@ -64,13 +64,19 @@ export async function GET(request: NextRequest) {
       Boolean(ref.username),
     )
 
-    const referredMap = new Map<string, { username: string, address: string | null, deposit_wallet_address?: string | null, image?: string | null }>(
-      referredEntries.map(referred => [referred.id, {
-        username: referred.username,
-        address: referred.address,
-        deposit_wallet_address: referred.deposit_wallet_address,
-        image: referred.image,
-      }]),
+    const referredMap = new Map<
+      string,
+      { username: string; address: string | null; deposit_wallet_address?: string | null; image?: string | null }
+    >(
+      referredEntries.map((referred) => [
+        referred.id,
+        {
+          username: referred.username,
+          address: referred.address,
+          deposit_wallet_address: referred.deposit_wallet_address,
+          image: referred.image,
+        },
+      ]),
     )
 
     const baseProfileUrl = resolveSiteUrl(process.env)

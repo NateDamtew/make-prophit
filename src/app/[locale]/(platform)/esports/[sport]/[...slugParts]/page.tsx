@@ -1,9 +1,7 @@
 import type { Metadata } from 'next'
 
-import { setRequestLocale } from 'next-intl/server'
 import { notFound } from 'next/navigation'
 
-import type { SupportedLocale } from '@/i18n/locales'
 import type { SportsMenuEntry, SportsMenuLinkEntry } from '@/lib/sports-menu-types'
 import type { Event } from '@/types'
 
@@ -15,6 +13,7 @@ import {
   renderSportsVerticalEventPage,
 } from '@/app/[locale]/(platform)/sports/_utils/sports-event-page'
 import { buildSportsGamesCards } from '@/app/[locale]/(platform)/sports/_utils/sports-games-data'
+import { getRootLocale } from '@/i18n/root-locale'
 import { EventRepository } from '@/lib/db/queries/event'
 import { SportsMenuRepository } from '@/lib/db/queries/sports-menu'
 import { resolveCanonicalEventSlugFromSportsPath } from '@/lib/event-page-data'
@@ -174,16 +173,16 @@ async function generateEsportsSubcategoryMetadata(
 
 async function renderEsportsSubcategoryGamesPage(params: {
   context: NonNullable<Awaited<ReturnType<typeof resolveEsportsSubcategoryContext>>>
-  locale: string
 }) {
-  const { context, locale } = params
+  const { context } = params
+  const locale = await getRootLocale()
   const { data: activeEvents } = await EventRepository.listEvents({
     tag: 'esports',
     sportsVertical: 'esports',
     search: '',
     userId: '',
     bookmarked: false,
-    locale: locale as SupportedLocale,
+    locale,
     sportsSportSlug: context.canonicalSportSlug,
     sportsSection: 'games',
     excludeSportsAuxiliary: true,
@@ -208,17 +207,13 @@ async function renderEsportsSubcategoryGamesPage(params: {
 }
 
 async function generateCachedEsportsSlugMetadata({
-  locale,
   sport,
   slugParts,
 }: {
-  locale: string
   sport: string
   slugParts: string[]
 }): Promise<Metadata> {
   'use cache'
-
-  setRequestLocale(locale)
 
   if (sport === STATIC_PARAMS_PLACEHOLDER || slugParts.includes(STATIC_PARAMS_PLACEHOLDER)) {
     if (shouldBypassPublicShellPlaceholder(sport, slugParts)) {
@@ -234,7 +229,6 @@ async function generateCachedEsportsSlugMetadata({
     }
 
     return await generateSportsVerticalEventMetadata({
-      locale,
       sport,
       event: slugParts[0]!,
     })
@@ -244,7 +238,6 @@ async function generateCachedEsportsSlugMetadata({
     const leagueEventPath = await resolveLeagueEventPath(sport, slugParts)
     if (leagueEventPath) {
       return await generateSportsVerticalEventMetadata({
-        locale,
         sport,
         league: leagueEventPath.league,
         event: leagueEventPath.event,
@@ -252,7 +245,6 @@ async function generateCachedEsportsSlugMetadata({
     }
 
     return await generateSportsVerticalEventMarketMetadata({
-      locale,
       sport,
       event: slugParts[0]!,
       market: slugParts[1]!,
@@ -261,7 +253,6 @@ async function generateCachedEsportsSlugMetadata({
 
   if (slugParts.length === 3) {
     return await generateSportsVerticalEventMarketMetadata({
-      locale,
       sport,
       league: slugParts[0]!,
       event: slugParts[1]!,
@@ -275,21 +266,12 @@ async function generateCachedEsportsSlugMetadata({
 export async function generateMetadata({
   params,
 }: PageProps<'/[locale]/esports/[sport]/[...slugParts]'>): Promise<Metadata> {
-  return generateCachedEsportsSlugMetadata(await params)
+  const { sport, slugParts } = await params
+  return generateCachedEsportsSlugMetadata({ sport, slugParts })
 }
 
-async function renderCachedEsportsSlugPage({
-  locale,
-  sport,
-  slugParts,
-}: {
-  locale: string
-  sport: string
-  slugParts: string[]
-}) {
+async function renderCachedEsportsSlugPage({ sport, slugParts }: { sport: string; slugParts: string[] }) {
   'use cache'
-
-  setRequestLocale(locale)
 
   if (sport === STATIC_PARAMS_PLACEHOLDER || slugParts.includes(STATIC_PARAMS_PLACEHOLDER)) {
     if (shouldBypassPublicShellPlaceholder(sport, slugParts)) {
@@ -303,12 +285,10 @@ async function renderCachedEsportsSlugPage({
     if (subcategoryContext) {
       return await renderEsportsSubcategoryGamesPage({
         context: subcategoryContext,
-        locale,
       })
     }
 
     return await renderSportsVerticalEventPage({
-      locale,
       sport,
       event: slugParts[0]!,
       vertical: 'esports',
@@ -319,7 +299,6 @@ async function renderCachedEsportsSlugPage({
     const leagueEventPath = await resolveLeagueEventPath(sport, slugParts)
     if (leagueEventPath) {
       return await renderSportsVerticalEventPage({
-        locale,
         sport,
         league: leagueEventPath.league,
         event: leagueEventPath.event,
@@ -328,7 +307,6 @@ async function renderCachedEsportsSlugPage({
     }
 
     return await renderSportsVerticalEventMarketPage({
-      locale,
       sport,
       event: slugParts[0]!,
       market: slugParts[1]!,
@@ -338,7 +316,6 @@ async function renderCachedEsportsSlugPage({
 
   if (slugParts.length === 3) {
     return await renderSportsVerticalEventMarketPage({
-      locale,
       sport,
       league: slugParts[0]!,
       event: slugParts[1]!,
@@ -351,5 +328,6 @@ async function renderCachedEsportsSlugPage({
 }
 
 export default async function EsportsSlugPartsPage({ params }: PageProps<'/[locale]/esports/[sport]/[...slugParts]'>) {
-  return renderCachedEsportsSlugPage(await params)
+  const { sport, slugParts } = await params
+  return renderCachedEsportsSlugPage({ sport, slugParts })
 }

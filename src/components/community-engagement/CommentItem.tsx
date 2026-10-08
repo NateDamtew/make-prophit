@@ -1,19 +1,18 @@
 'use client'
 
-import type { useMarketComments } from './useComments'
-import type { CommentTree } from '@/lib/db/queries/community-comments'
 import { MessageSquareIcon, MoreHorizontalIcon, PencilIcon, Trash2Icon } from 'lucide-react'
 import { useState } from 'react'
-import { toast } from '@/components/ui/toast'
+
+import type { CommentTree } from '@/lib/db/queries/community-comments'
+
 import { formatAbsolute, formatRelativeTime } from '@/components/admin-ui/format'
 import { Button } from '@/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { toast } from '@/components/ui/toast'
 import { cn } from '@/lib/utils'
+
+import type { useMarketComments } from './useComments'
+
 import { CommentComposer } from './CommentComposer'
 import { ReactionBar } from './ReactionBar'
 
@@ -27,12 +26,14 @@ interface CommentItemProps {
   canReply: boolean
 }
 
-function Avatar({ name, image }: { name: string | null, image: string | null }) {
+function Avatar({ name, image }: { name: string | null; image: string | null }) {
   return (
     <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">
-      {image
-        ? <img src={image} alt="" className="size-8 rounded-full object-cover" />
-        : (name?.[0] ?? '?').toUpperCase()}
+      {image ? (
+        <img src={image} alt="" className="size-8 rounded-full object-cover" />
+      ) : (
+        (name?.[0] ?? '?').toUpperCase()
+      )}
     </div>
   )
 }
@@ -56,10 +57,10 @@ export function CommentItem({ comment, controller, currentUserId, isModerator, c
   }
 
   function handleDelete() {
-    toast.promise(controller.remove.mutateAsync(comment.id), {
+    void toast.promise(controller.remove.mutateAsync(comment.id), {
       loading: 'Deleting…',
       success: 'Comment deleted',
-      error: err => (err as Error).message,
+      error: (err) => (err as Error).message,
     })
   }
 
@@ -71,9 +72,7 @@ export function CommentItem({ comment, controller, currentUserId, isModerator, c
 
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 text-xs">
-          <span className="font-medium text-foreground">
-            {comment.deleted_at ? 'Deleted' : username}
-          </span>
+          <span className="font-medium text-foreground">{comment.deleted_at ? 'Deleted' : username}</span>
           <time
             dateTime={comment.created_at}
             title={formatAbsolute(comment.created_at)}
@@ -88,35 +87,34 @@ export function CommentItem({ comment, controller, currentUserId, isModerator, c
           )}
         </div>
 
-        {editing
-          ? (
-              <div className="mt-1.5">
-                <CommentComposer
-                  placeholder="Edit comment…"
-                  submitLabel="Save"
-                  autoFocus
-                  compact
-                  onSubmit={submitEdit}
-                  onCancel={() => setEditing(false)}
-                />
-              </div>
-            )
-          : (
-              <p className={cn(
-                'mt-0.5 text-sm whitespace-pre-wrap',
-                comment.deleted_at ? 'text-muted-foreground italic' : 'text-foreground',
-              )}
-              >
-                {comment.body}
-              </p>
+        {editing ? (
+          <div className="mt-1.5">
+            <CommentComposer
+              placeholder="Edit comment…"
+              submitLabel="Save"
+              autoFocus
+              compact
+              onSubmit={submitEdit}
+              onCancel={() => setEditing(false)}
+            />
+          </div>
+        ) : (
+          <p
+            className={cn(
+              'mt-0.5 text-sm whitespace-pre-wrap',
+              comment.deleted_at ? 'text-muted-foreground italic' : 'text-foreground',
             )}
+          >
+            {comment.body}
+          </p>
+        )}
 
         {!editing && !comment.deleted_at && (
           <div className="mt-1.5 flex flex-wrap items-center gap-2">
             <ReactionBar
               targetType="comment"
               targetId={comment.id}
-              initial={comment.reactions as Record<string, { count: number, mine: boolean }>}
+              initial={comment.reactions as Record<string, { count: number; mine: boolean }>}
               onChange={controller.refetch}
               size="sm"
             />
@@ -125,7 +123,7 @@ export function CommentItem({ comment, controller, currentUserId, isModerator, c
                 size="sm"
                 variant="ghost"
                 className="h-7 px-2 text-xs text-muted-foreground"
-                onClick={() => setReplying(v => !v)}
+                onClick={() => setReplying((v) => !v)}
               >
                 <MessageSquareIcon className="size-3" />
                 Reply
@@ -134,9 +132,11 @@ export function CommentItem({ comment, controller, currentUserId, isModerator, c
 
             {(canEdit || canDelete) && (
               <DropdownMenu>
-                <DropdownMenuTrigger render={<Button size="sm" variant="ghost" className="h-7 px-2 text-xs text-muted-foreground" />}>
-                    <MoreHorizontalIcon className="size-3.5" />
-                  </DropdownMenuTrigger>
+                <DropdownMenuTrigger
+                  render={<Button size="sm" variant="ghost" className="h-7 px-2 text-xs text-muted-foreground" />}
+                >
+                  <MoreHorizontalIcon className="size-3.5" />
+                </DropdownMenuTrigger>
                 <DropdownMenuContent align="start">
                   {canEdit && (
                     <DropdownMenuItem onClick={() => setEditing(true)}>
@@ -172,7 +172,7 @@ export function CommentItem({ comment, controller, currentUserId, isModerator, c
         {/* Replies (depth 2) */}
         {comment.replies.length > 0 && (
           <div className="mt-3 space-y-3 border-l-2 border-border/50 pl-3">
-            {comment.replies.map(reply => (
+            {comment.replies.map((reply) => (
               <CommentItem
                 key={reply.id}
                 comment={reply}

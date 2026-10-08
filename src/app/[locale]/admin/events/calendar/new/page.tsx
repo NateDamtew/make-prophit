@@ -1,5 +1,5 @@
 import { ArrowLeftIcon } from 'lucide-react'
-import { getExtracted, setRequestLocale } from 'next-intl/server'
+import { getExtracted } from 'next-intl/server'
 import { Suspense } from 'react'
 
 import { AdminPanelSkeleton } from '@/app/[locale]/admin/_components/AdminPageSkeleton'
@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Link } from '@/i18n/navigation'
 import { buildAdminSportsSlugCatalog, EMPTY_ADMIN_SPORTS_SLUG_CATALOG } from '@/lib/admin-sports-create'
 import { normalizeDateTimeLocalValue } from '@/lib/datetime-local'
+import { EventRepository } from '@/lib/db/queries/event'
 import { EventCreationRepository } from '@/lib/db/queries/event-creations'
 import { SportsMenuRepository } from '@/lib/db/queries/sports-menu'
 import { UserRepository } from '@/lib/db/queries/user'
@@ -47,11 +48,13 @@ async function AdminCreateEventNewContent({ searchParams }: Pick<AdminCreateEven
   const draftId = resolveSearchParam(resolvedSearchParams?.draftId) ?? ''
   const startAtValue = resolveSearchParam(resolvedSearchParams?.startAt) ?? ''
   const isEditingExistingDraft = resolveBooleanSearchParam(resolvedSearchParams?.edit)
+  const configuredSigners = loadEventCreationSignersFromEnv()
 
-  const [sportsMenuResult, sportsSourceSettings, currentUser] = await Promise.all([
+  const [sportsMenuResult, sportsSourceSettings, currentUser, seriesResult] = await Promise.all([
     SportsMenuRepository.getMenuEntries(),
     loadSportsSourceProviderSettings(),
     UserRepository.getCurrentUser({ minimal: true }),
+    EventRepository.listAdminSeriesSlugs(configuredSigners.map((signer) => signer.address)),
   ])
   const sportsSlugCatalog = sportsMenuResult.data
     ? buildAdminSportsSlugCatalog(sportsMenuResult.data)
@@ -64,7 +67,7 @@ async function AdminCreateEventNewContent({ searchParams }: Pick<AdminCreateEven
           userId: currentUser.id,
         })
       : { data: null, error: null }
-  const hasConfiguredServerSigners = loadEventCreationSignersFromEnv().length > 0
+  const hasConfiguredServerSigners = configuredSigners.length > 0
   const effectiveMode = draftResult.data?.creationMode ?? mode
   const initialTitle = draftResult.data?.title ?? ''
   const initialSlug = draftResult.data?.slug ?? ''
@@ -104,6 +107,7 @@ async function AdminCreateEventNewContent({ searchParams }: Pick<AdminCreateEven
         <AdminCreateEventForm
           key={formKey}
           sportsSlugCatalog={sportsSlugCatalog}
+          seriesOptions={seriesResult.data ?? []}
           creationMode={effectiveMode}
           hasConfiguredServerSigners={hasConfiguredServerSigners}
           initialDraftRecord={draftResult.data ?? null}
@@ -121,9 +125,7 @@ async function AdminCreateEventNewContent({ searchParams }: Pick<AdminCreateEven
   )
 }
 
-export default async function AdminCreateEventNewPage({ params, searchParams }: AdminCreateEventNewPageProps) {
-  const { locale } = await params
-  setRequestLocale(locale)
+export default async function AdminCreateEventNewPage({ searchParams }: AdminCreateEventNewPageProps) {
   const t = await getExtracted()
 
   return (

@@ -1,12 +1,13 @@
 'use client'
 
 import type { ReactNode } from 'react'
-import type { FilterSettings } from '@/app/[locale]/(platform)/(home)/_components/filter-toolbar-settings'
-import type { FilterState } from '@/app/[locale]/(platform)/_providers/FilterProvider'
+
 import { BookmarkIcon, Settings2Icon } from 'lucide-react'
 import { useExtracted } from 'next-intl'
 import { useCallback, useMemo, useState } from 'react'
 
+import type { FilterSettings } from '@/app/[locale]/(platform)/(home)/_components/filter-toolbar-settings'
+import type { FilterState } from '@/app/[locale]/(platform)/_providers/FilterProvider'
 
 import {
   BASE_FILTER_SETTINGS,
@@ -22,6 +23,7 @@ import { useAppKitAccount } from '@/hooks/useAppKitAccount'
 import { cn } from '@/lib/utils'
 
 interface FilterToolbarProps {
+  collapsibleSearch?: boolean
   filters: FilterState
   onFiltersChange: (filters: Partial<FilterState>) => void
   hideDesktopSecondaryNavigation?: boolean
@@ -37,7 +39,7 @@ interface BookmarkToggleProps {
   onConnect: () => void
 }
 
-interface SettingsToggleProps {
+interface FilterSettingsTriggerProps {
   isActive: boolean
   isOpen: boolean
   onToggle: () => void
@@ -50,7 +52,7 @@ function useFilterToolbarState({
   filters: FilterState
   onFiltersChange: (filters: Partial<FilterState>) => void
 }) {
-  const { open } = useAppKit()
+  const { open: openAppKit } = useAppKit()
   const { isConnected } = useAppKitAccount()
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
 
@@ -95,8 +97,8 @@ function useFilterToolbarState({
   }, [filters.bookmarked, onFiltersChange])
 
   const handleConnect = useCallback(() => {
-    void open()
-  }, [open])
+    void openAppKit()
+  }, [openAppKit])
 
   const handleSettingsToggle = useCallback(() => {
     setIsSettingsOpen((prev) => !prev)
@@ -183,6 +185,7 @@ function useFilterToolbarState({
 }
 
 export default function FilterToolbar({
+  collapsibleSearch = false,
   filters,
   onFiltersChange,
   hideDesktopSecondaryNavigation = false,
@@ -217,12 +220,16 @@ export default function FilterToolbar({
         )}
 
         <div className="order-1 flex w-full min-w-0 items-center gap-3 md:order-3 md:ml-auto md:w-auto md:min-w-0">
-          <div className="min-w-0 flex-1">
-            <FilterToolbarSearchInput search={filters.search} onSearchChange={handleSearchChange} />
+          <div className={cn('min-w-0', collapsibleSearch ? 'flex-1 lg:w-auto lg:flex-none' : 'flex-1')}>
+            <FilterToolbarSearchInput
+              collapsible={collapsibleSearch}
+              search={filters.search}
+              onSearchChange={handleSearchChange}
+            />
           </div>
 
           <div className="flex items-center gap-2 md:gap-3">
-            <SettingsToggle
+            <FilterSettingsTrigger
               isActive={isSettingsOpen || hasActiveSettingsFilters}
               isOpen={isSettingsOpen}
               onToggle={handleSettingsToggle}
@@ -308,7 +315,7 @@ function BookmarkToggle({ isBookmarked, isConnected, onToggle, onConnect }: Book
       pressed={isBookmarked}
       onClick={isConnected ? onToggle : onConnect}
     >
-      <BookmarkIcon className={cn(`size-6 md:size-5`, { 'fill-primary text-primary': isBookmarked })} />
+      <BookmarkIcon className={cn({ 'fill-primary text-primary': isBookmarked })} />
     </Toggle>
   )
 }
@@ -318,7 +325,7 @@ function useSettingsToggleLabel() {
   return t('Open filters')
 }
 
-function SettingsToggle({ isActive, isOpen, onToggle }: SettingsToggleProps) {
+function FilterSettingsTrigger({ isActive, isOpen, onToggle }: FilterSettingsTriggerProps) {
   const openFiltersLabel = useSettingsToggleLabel()
 
   return (
@@ -329,11 +336,10 @@ function SettingsToggle({ isActive, isOpen, onToggle }: SettingsToggleProps) {
       className={cn({ 'bg-accent': isOpen || isActive })}
       title={openFiltersLabel}
       aria-label={openFiltersLabel}
-      aria-pressed={isActive}
       aria-expanded={isOpen}
       onClick={onToggle}
     >
-      <Settings2Icon className="size-6 md:size-5" />
+      <Settings2Icon />
     </Button>
   )
 }

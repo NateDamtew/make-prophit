@@ -1,6 +1,8 @@
 import type { NextRequest } from 'next/server'
+
 import { NextResponse } from 'next/server'
 import { Resend } from 'resend'
+
 import { recordAuditEvent } from '@/lib/admin-ui/audit'
 import { getAdminActor } from '@/lib/admin-ui/guard'
 import { WaitlistAdminRepository } from '@/lib/db/queries/waitlist-admin'
@@ -69,8 +71,7 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
           }
         : null,
     })
-  }
-  catch (error) {
+  } catch (error) {
     console.error('Admin waitlist invite error', error)
     return NextResponse.json({ error: 'Failed to send invite.' }, { status: 500 })
   }

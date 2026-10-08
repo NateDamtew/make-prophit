@@ -27,13 +27,9 @@ export async function updateThemeSettingsAction(
   const lightJsonValue = formData.get('light_json')
   const lightJson = typeof lightJsonValue === 'string' ? lightJsonValue : '{}'
   const darkJsonValue = formData.get('dark_json')
-  const darkJson = typeof darkJsonValue === 'string'
-    ? darkJsonValue
-    : '{}'
+  const darkJson = typeof darkJsonValue === 'string' ? darkJsonValue : '{}'
   const themeModeValue = formData.get('theme_mode')
-  const themeMode = validateThemeMode(
-    typeof themeModeValue === 'string' ? themeModeValue : null,
-  )
+  const themeMode = validateThemeMode(typeof themeModeValue === 'string' ? themeModeValue : null)
 
   const validatedTheme = validateThemeSettingsInput({
     preset,

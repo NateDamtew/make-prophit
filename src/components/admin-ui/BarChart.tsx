@@ -10,16 +10,27 @@ export interface BarChartPoint {
  * spaced bars with a hover tooltip via the native title attribute and sparse
  * date axis labels.
  */
-export function BarChart({ data, className, height = 180 }: { data: BarChartPoint[], className?: string, height?: number }) {
+export function BarChart({
+  data,
+  className,
+  height = 180,
+}: {
+  data: BarChartPoint[]
+  className?: string
+  height?: number
+}) {
   if (!data || data.length === 0) {
     return (
-      <div className={cn('flex items-center justify-center text-sm text-muted-foreground', className)} style={{ height }}>
+      <div
+        className={cn('flex items-center justify-center text-sm text-muted-foreground', className)}
+        style={{ height }}
+      >
         No data yet
       </div>
     )
   }
 
-  const max = Math.max(...data.map(d => d.count), 1)
+  const max = Math.max(...data.map((d) => d.count), 1)
   const labelEvery = Math.ceil(data.length / 6)
 
   return (

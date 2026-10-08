@@ -1,10 +1,12 @@
 'use client'
 
-import { useState, useTransition } from 'react'
 import { ChevronDown, Crown, Gavel, User, Check } from 'lucide-react'
-import { setMemberRoleAction } from '../_actions/community-actions'
-import { cn } from '@/lib/utils'
+import { useState, useTransition } from 'react'
+
 import { toast } from '@/components/ui/toast'
+import { cn } from '@/lib/utils'
+
+import { setMemberRoleAction } from '../_actions/community-actions'
 
 interface Props {
   communityId: string
@@ -59,22 +61,21 @@ export default function MemberRoleManager({
       const result = await setMemberRoleAction(communityId, targetUserId, newRole, communitySlug)
       if (result.error) {
         toast.error(result.error)
-      }
-      else {
+      } else {
         toast.success('Role updated')
         setIsOpen(false)
       }
     })
   }
 
-  const currentOption = ROLE_OPTIONS.find(o => o.id === currentRole) ?? ROLE_OPTIONS[2]
+  const currentOption = ROLE_OPTIONS.find((o) => o.id === currentRole) ?? ROLE_OPTIONS[2]
   const CurrentIcon = currentOption.icon
 
   return (
     <div className="relative">
       <button
         type="button"
-        onClick={() => setIsOpen(o => !o)}
+        onClick={() => setIsOpen((o) => !o)}
         disabled={isPending}
         className={cn(
           'flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium transition-colors',
@@ -90,22 +91,15 @@ export default function MemberRoleManager({
 
       {isOpen && (
         <>
-          <div
-            className="fixed inset-0 z-40"
-            onClick={() => setIsOpen(false)}
-          />
-          <div className="absolute right-0 top-full z-50 mt-1 w-48 overflow-hidden rounded-lg border bg-background shadow-lg">
+          <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
+          <div className="absolute top-full right-0 z-50 mt-1 w-48 overflow-hidden rounded-lg border bg-background shadow-lg">
             <div className="border-b p-2">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Change role
-              </p>
+              <p className="text-[10px] font-semibold tracking-wide text-muted-foreground uppercase">Change role</p>
             </div>
             {ROLE_OPTIONS.map((opt) => {
               const Icon = opt.icon
               const isCurrent = opt.id === currentRole
-              const wouldExceedCapacity = opt.id === 'juror'
-                && currentRole !== 'admin'
-                && currentJurorCount >= jurySize
+              const wouldExceedCapacity = opt.id === 'juror' && currentRole !== 'admin' && currentJurorCount >= jurySize
               return (
                 <button
                   key={opt.id}
@@ -122,9 +116,7 @@ export default function MemberRoleManager({
                   <Icon className={cn('size-3.5', opt.color)} />
                   <span className="flex-1">{opt.label}</span>
                   {isCurrent && <Check className="size-3.5 text-muted-foreground" />}
-                  {wouldExceedCapacity && (
-                    <span className="text-[10px] text-muted-foreground">Full</span>
-                  )}
+                  {wouldExceedCapacity && <span className="text-[10px] text-muted-foreground">Full</span>}
                 </button>
               )
             })}

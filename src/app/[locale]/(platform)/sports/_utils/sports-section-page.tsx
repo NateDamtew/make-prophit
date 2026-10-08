@@ -1,15 +1,17 @@
 import type { Metadata } from 'next'
 
-import { getExtracted, setRequestLocale } from 'next-intl/server'
+import { getExtracted } from 'next-intl/server'
 import { notFound } from 'next/navigation'
 
-import type { SupportedLocale } from '@/i18n/locales'
 import type { SportsVertical } from '@/lib/sports-vertical'
+import type { Event } from '@/types'
 
-import SportsContent from '@/app/[locale]/(platform)/sports/_components/SportsContent'
+import SportsClient from '@/app/[locale]/(platform)/sports/_components/SportsClient'
+import { loadSportsContentData } from '@/app/[locale]/(platform)/sports/_components/SportsContent'
 import SportsGamesCenter from '@/app/[locale]/(platform)/sports/_components/SportsGamesCenter'
 import { buildSportsGamesCards } from '@/app/[locale]/(platform)/sports/_utils/sports-games-data'
 import { findSportsHrefBySlug } from '@/app/[locale]/(platform)/sports/_utils/sports-menu-routing'
+import { getRootLocale } from '@/i18n/root-locale'
 import { EventRepository } from '@/lib/db/queries/event'
 import { SportsMenuRepository } from '@/lib/db/queries/sports-menu'
 import { shouldBypassPublicShellPlaceholder, STATIC_PARAMS_PLACEHOLDER } from '@/lib/static-params'
@@ -18,7 +20,6 @@ import { loadRuntimeThemeState } from '@/lib/theme-settings'
 type SportsSection = 'games' | 'props'
 
 export interface SportsVerticalSectionPageParams {
-  locale: string
   sport: string
   vertical: SportsVertical
   section: SportsSection
@@ -73,14 +74,11 @@ function assertValidSportsSectionParams({ sport, week }: Pick<SportsVerticalSect
 }
 
 export async function generateSportsVerticalSectionMetadata({
-  locale,
   sport,
   vertical,
   section,
   week,
 }: SportsVerticalSectionPageParams): Promise<Metadata> {
-  setRequestLocale(locale)
-
   if (!assertValidSportsSectionParams({ sport, week })) {
     return {}
   }
@@ -140,17 +138,16 @@ export async function generateSportsVerticalSectionMetadata({
   }
 }
 
-export async function renderSportsVerticalSectionPage({
-  locale,
+export async function renderSportsVerticalSectionPageWithState({
   sport,
   vertical,
   section,
   week,
 }: SportsVerticalSectionPageParams) {
-  setRequestLocale(locale)
+  const locale = await getRootLocale()
 
   if (!assertValidSportsSectionParams({ sport, week })) {
-    return null
+    return { content: null, hasEvents: null }
   }
 
   const parsedWeek = week ? parseWeekParam(week) : null
@@ -165,48 +162,75 @@ export async function renderSportsVerticalSectionPage({
 
   const { canonicalSportSlug, sportTitle } = sportContext
   if (section === 'props') {
-    return (
-      <div className="grid gap-4">
-        <SportsContent
-          locale={locale}
-          initialTag={vertical}
-          mainTag={vertical}
-          initialMode="all"
-          sportsSportSlug={canonicalSportSlug}
-          sportsSection="props"
-        />
-      </div>
-    )
+    const { initialEvents, hasQueryError } = await loadSportsContentData({
+      initialTag: vertical,
+      locale,
+      sportsSportSlug: canonicalSportSlug,
+      sportsSection: 'props',
+    })
+
+    return {
+      content: (
+        <div className="grid gap-4">
+          <SportsClient
+            initialEvents={initialEvents}
+            initialTag={vertical}
+            mainTag={vertical}
+            initialMode="all"
+            sportsVertical={vertical}
+            sportsSportSlug={canonicalSportSlug}
+            sportsSection="props"
+          />
+        </div>
+      ),
+      hasEvents: hasQueryError ? null : initialEvents.length > 0,
+    }
   }
 
-  const { data: activeEvents } = await EventRepository.listEvents({
-    tag: vertical,
-    sportsVertical: vertical,
-    search: '',
-    userId: '',
-    bookmarked: false,
-    locale: locale as SupportedLocale,
-    sportsSportSlug: canonicalSportSlug,
-    sportsSection: 'games',
-    excludeSportsAuxiliary: true,
-    status: 'active',
-  })
+  let activeEvents: Event[] = []
+  let hasQueryError = false
+  try {
+    const { data: events, error } = await EventRepository.listEvents({
+      tag: vertical,
+      sportsVertical: vertical,
+      search: '',
+      userId: '',
+      bookmarked: false,
+      locale,
+      sportsSportSlug: canonicalSportSlug,
+      sportsSection: 'games',
+      excludeSportsAuxiliary: true,
+      status: 'active',
+    })
+
+    hasQueryError = Boolean(error)
+    if (!hasQueryError) {
+      activeEvents = events ?? []
+    }
+  } catch {
+    hasQueryError = true
+  }
 
   const cards = buildSportsGamesCards(activeEvents ?? [])
+  const hasWeekOptions = cards.some((card) => Number.isFinite(card.week))
+  const visibleCards = parsedWeek != null && hasWeekOptions ? cards.filter((card) => card.week === parsedWeek) : cards
   const pageKey =
     parsedWeek == null
       ? `${vertical}-games-page-${canonicalSportSlug}`
       : `${vertical}-games-week-page-${canonicalSportSlug}-${parsedWeek}`
 
-  return (
-    <div key={pageKey} className="contents">
-      <SportsGamesCenter
-        cards={cards}
-        sportSlug={canonicalSportSlug}
-        sportTitle={sportTitle}
-        initialWeek={parsedWeek}
-        vertical={vertical}
-      />
-    </div>
-  )
+  return {
+    content: (
+      <div key={pageKey} className="contents">
+        <SportsGamesCenter
+          cards={cards}
+          sportSlug={canonicalSportSlug}
+          sportTitle={sportTitle}
+          initialWeek={parsedWeek}
+          vertical={vertical}
+        />
+      </div>
+    ),
+    hasEvents: hasQueryError ? null : visibleCards.length > 0,
+  }
 }

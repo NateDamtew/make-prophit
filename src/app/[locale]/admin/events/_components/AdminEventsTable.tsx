@@ -5,20 +5,27 @@ import { ChevronDownIcon, FilterIcon, SearchIcon, SettingsIcon, XIcon } from 'lu
 import { useExtracted } from 'next-intl'
 import { useCallback, useRef, useState, useSyncExternalStore } from 'react'
 
+import type { EventRulesTranslationsInput } from '@/app/[locale]/admin/events/_actions/update-event-rules-translations'
+import type { EventTranslationsInput } from '@/app/[locale]/admin/events/_actions/update-event-translations'
 import type { AdminEventRow } from '@/app/[locale]/admin/events/_hooks/useAdminEvents'
 import type {
   AdminEventsTableState,
   AdminEventsTableStatePatch,
 } from '@/app/[locale]/admin/events/_lib/admin-events-table-state'
+import type { NonDefaultLocale } from '@/i18n/locales'
 import type { AdminEventAttentionFilter } from '@/lib/admin-event-attention'
 import type { SportsSourceProvider } from '@/lib/sports-source/providers'
+import type { SportsSegmentScore } from '@/types'
 
 import { DataTable } from '@/app/[locale]/admin/_components/DataTable'
 import { updateEventAdditionalContextAction } from '@/app/[locale]/admin/events/_actions/update-event-additional-context'
 import { updateEventLivestreamUrlAction } from '@/app/[locale]/admin/events/_actions/update-event-livestream-url'
+import { updateEventRulesTranslationsAction } from '@/app/[locale]/admin/events/_actions/update-event-rules-translations'
 import { updateEventSportsFinalStateAction } from '@/app/[locale]/admin/events/_actions/update-event-sports-final-state'
 import { updateEventSyncSettingsAction } from '@/app/[locale]/admin/events/_actions/update-event-sync-settings'
+import { updateEventTranslationsAction } from '@/app/[locale]/admin/events/_actions/update-event-translations'
 import { updateEventVisibilityAction } from '@/app/[locale]/admin/events/_actions/update-event-visibility'
+import AdminResolutionReportsDialog from '@/app/[locale]/admin/events/_components/AdminResolutionReportsDialog'
 import { useAdminEventsColumns } from '@/app/[locale]/admin/events/_components/columns'
 import { useAdminEventsTable } from '@/app/[locale]/admin/events/_hooks/useAdminEvents'
 import {
@@ -29,6 +36,8 @@ import {
 } from '@/app/[locale]/admin/events/_lib/admin-events-hide-crypto-preference'
 import { DEFAULT_ADMIN_EVENTS_TABLE_STATE } from '@/app/[locale]/admin/events/_lib/admin-events-table-state'
 import EventIconImage from '@/components/EventIconImage'
+import LocaleFlag from '@/components/LocaleFlag'
+import SportsMatchScoreboard from '@/components/SportsMatchScoreboard'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -56,7 +65,9 @@ import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/components/ui/toast'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useIsMobile } from '@/hooks/useIsMobile'
+import { LOCALE_LABELS, NON_DEFAULT_LOCALES } from '@/i18n/locales'
 import { Link } from '@/i18n/navigation'
+import { resolveSportsSegmentNumbers } from '@/lib/sports-segment-score'
 import { resolveAutomaticSportsSourceCardCandidate } from '@/lib/sports-source/auto-selection'
 import { normalizeSingleSportsSourceProvider } from '@/lib/sports-source/providers'
 import { buildSportsSourceMatchupSearchQuery } from '@/lib/sports-source/search-query'
@@ -67,6 +78,8 @@ export interface AdminEventsTableProps {
   tableState: AdminEventsTableState
   onTableStateChange: (patch: AdminEventsTableStatePatch) => void
   mainCategoryOptions: { slug: string; name: string }[]
+  enabledTranslationLocales?: NonDefaultLocale[]
+  rulesTranslationsEnabled?: boolean
 }
 
 interface SportsSourceCandidate {
@@ -82,6 +95,8 @@ interface SportsSourceCandidate {
   homeTeam: { name: string; abbreviation?: string | null } | null
   awayTeam: { name: string; abbreviation?: string | null } | null
   score: string | null
+  segmentScores?: SportsSegmentScore[] | null
+  segmentCount?: number | null
   live: boolean | null
   ended: boolean | null
   livestreamUrl: string | null
@@ -123,6 +138,39 @@ function parseSportsScoreParts(score: string | null | undefined) {
     home: match[1] ?? '',
     away: match[2] ?? '',
   }
+}
+
+interface SportsSegmentScoreInput {
+  segment: number
+  homeScore: string
+  awayScore: string
+}
+
+interface SportsSegmentScoreInputSource {
+  scores?: SportsSegmentScore[] | null
+  title?: string | null
+  segmentCount?: number | null
+}
+
+function createSportsSegmentScoreInputs({
+  scores,
+  title,
+  segmentCount,
+}: SportsSegmentScoreInputSource): SportsSegmentScoreInput[] {
+  return resolveSportsSegmentNumbers({
+    scores,
+    title: title ?? undefined,
+    segmentCount,
+  }).map((score) => ({
+    segment: score.segment,
+    homeScore: score.homeScore?.toString() ?? '',
+    awayScore: score.awayScore?.toString() ?? '',
+  }))
+}
+
+function parseSportsSegmentScoreInput(value: string) {
+  const normalizedValue = value.trim()
+  return /^\d+$/.test(normalizedValue) ? Number.parseInt(normalizedValue, 10) : null
 }
 
 function formatSportsSourceDate(value: Date | null) {
@@ -324,6 +372,7 @@ function useAdminEventsTableState(
   initialAutoDeployNewEventsEnabled: boolean,
   tableState: AdminEventsTableState,
   onTableStateChange: (patch: AdminEventsTableStatePatch) => void,
+  rulesTranslationsEnabled: boolean,
 ) {
   const t = useExtracted()
   const queryClient = useQueryClient()
@@ -367,6 +416,13 @@ function useAdminEventsTableState(
   } = useAdminEventsTable(tableState, onTableStateChange, hideCrypto)
 
   const [pendingHiddenId, setPendingHiddenId] = useState<string | null>(null)
+  const [translationEvent, setTranslationEvent] = useState<AdminEventRow | null>(null)
+  const [translationValues, setTranslationValues] = useState<EventTranslationsInput>({} as EventTranslationsInput)
+  const [rulesTranslationValues, setRulesTranslationValues] = useState<EventRulesTranslationsInput>(
+    {} as EventRulesTranslationsInput,
+  )
+  const [translationError, setTranslationError] = useState<string | null>(null)
+  const [isSavingTranslations, setIsSavingTranslations] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [savedAutoDeployEnabled, setSavedAutoDeployEnabled] = useState(initialAutoDeployNewEventsEnabled)
   const [draftAutoDeployEnabled, setDraftAutoDeployEnabled] = useState(initialAutoDeployNewEventsEnabled)
@@ -376,6 +432,7 @@ function useAdminEventsTableState(
   const [livestreamError, setLivestreamError] = useState<string | null>(null)
   const [isSavingLivestream, setIsSavingLivestream] = useState(false)
   const [additionalContextEvent, setAdditionalContextEvent] = useState<AdminEventRow | null>(null)
+  const [resolutionReportsEvent, setResolutionReportsEvent] = useState<AdminEventRow | null>(null)
   const [additionalContextValue, setAdditionalContextValue] = useState('')
   const [additionalContextError, setAdditionalContextError] = useState<string | null>(null)
   const [isSavingAdditionalContext, setIsSavingAdditionalContext] = useState(false)
@@ -383,6 +440,7 @@ function useAdminEventsTableState(
   const [sportsEndedValue, setSportsEndedValue] = useState(false)
   const [sportsScoreHomeValue, setSportsScoreHomeValue] = useState('')
   const [sportsScoreAwayValue, setSportsScoreAwayValue] = useState('')
+  const [sportsSegmentScoreValues, setSportsSegmentScoreValues] = useState<SportsSegmentScoreInput[]>([])
   const [sportsSourceSearchQuery, setSportsSourceSearchQuery] = useState('')
   const [sportsSourceCandidates, setSportsSourceCandidates] = useState<SportsSourceCandidate[]>([])
   const [hasSearchedSportsSource, setHasSearchedSportsSource] = useState(false)
@@ -437,6 +495,151 @@ function useAdminEventsTableState(
     },
     [queryClient, t],
   )
+
+  const handleOpenTranslations = useCallback(
+    (event: AdminEventRow) => {
+      if (isSavingTranslations) {
+        return
+      }
+
+      setTranslationEvent(event)
+      setTranslationError(null)
+      setIsSavingTranslations(false)
+      setTranslationValues(
+        NON_DEFAULT_LOCALES.reduce<EventTranslationsInput>((acc, locale) => {
+          acc[locale] = event.translations?.[locale] ?? ''
+          return acc
+        }, {} as EventTranslationsInput),
+      )
+      setRulesTranslationValues(
+        NON_DEFAULT_LOCALES.reduce<EventRulesTranslationsInput>((acc, locale) => {
+          acc[locale] = event.rules_translations?.[locale] ?? ''
+          return acc
+        }, {} as EventRulesTranslationsInput),
+      )
+    },
+    [isSavingTranslations],
+  )
+
+  const resetTranslationsDialog = useCallback(() => {
+    setTranslationEvent(null)
+    setTranslationValues({} as EventTranslationsInput)
+    setRulesTranslationValues({} as EventRulesTranslationsInput)
+    setTranslationError(null)
+    setIsSavingTranslations(false)
+  }, [])
+
+  const closeTranslationsDialog = useCallback(() => {
+    if (isSavingTranslations) {
+      return
+    }
+
+    resetTranslationsDialog()
+  }, [isSavingTranslations, resetTranslationsDialog])
+
+  const handleTranslationChange = useCallback((locale: NonDefaultLocale, value: string) => {
+    setTranslationValues((previous) => ({
+      ...previous,
+      [locale]: value,
+    }))
+  }, [])
+
+  const handleRulesTranslationChange = useCallback((locale: NonDefaultLocale, value: string) => {
+    setRulesTranslationValues((previous) => ({
+      ...previous,
+      [locale]: value,
+    }))
+  }, [])
+
+  const handleSaveTranslations = useCallback(async () => {
+    if (!translationEvent) {
+      return
+    }
+
+    setIsSavingTranslations(true)
+    setTranslationError(null)
+
+    const eventId = translationEvent.id
+    let result: Awaited<ReturnType<typeof updateEventTranslationsAction>>
+    try {
+      result = await updateEventTranslationsAction(eventId, translationValues)
+    } catch (error) {
+      console.error('Failed to update event translations', error)
+      setTranslationError(t('Failed to update event translations'))
+      setIsSavingTranslations(false)
+      return
+    }
+
+    if (result.success) {
+      function reconcileTranslationCache(rulesTranslations?: AdminEventRow['rules_translations']) {
+        queryClient.setQueriesData<{
+          data: AdminEventRow[]
+          totalCount: number
+          creatorOptions: string[]
+          seriesOptions: string[]
+        }>({ queryKey: ['admin-events'] }, (previous) => {
+          if (!previous) {
+            return previous
+          }
+
+          return {
+            ...previous,
+            data: previous.data.map((event) =>
+              event.id === eventId
+                ? {
+                    ...event,
+                    translations: result.data ?? {},
+                    ...(rulesTranslations ? { rules_translations: rulesTranslations } : {}),
+                  }
+                : event,
+            ),
+          }
+        })
+      }
+
+      // The title action commits independently, so reflect it immediately if the
+      // optional Rules action fails after the title has already been persisted.
+      reconcileTranslationCache()
+
+      let rulesResult: Awaited<ReturnType<typeof updateEventRulesTranslationsAction>> | null = null
+      if (rulesTranslationsEnabled) {
+        try {
+          rulesResult = await updateEventRulesTranslationsAction(eventId, rulesTranslationValues)
+        } catch (error) {
+          console.error('Failed to update event Rules translations', error)
+          setTranslationError(t('Failed to update event Rules translations'))
+          setIsSavingTranslations(false)
+          void queryClient.invalidateQueries({ queryKey: ['admin-events'] })
+          return
+        }
+
+        if (!rulesResult.success) {
+          setTranslationError(rulesResult.error ?? t('Failed to update event Rules translations'))
+          setIsSavingTranslations(false)
+          void queryClient.invalidateQueries({ queryKey: ['admin-events'] })
+          return
+        }
+      }
+
+      reconcileTranslationCache(rulesResult ? (rulesResult.data ?? {}) : undefined)
+
+      toast.success(t('Translations updated for {name}.', { name: translationEvent.title }))
+      void queryClient.invalidateQueries({ queryKey: ['admin-events'] })
+      resetTranslationsDialog()
+      return
+    }
+
+    setTranslationError(result.error ?? t('Failed to update event translations'))
+    setIsSavingTranslations(false)
+  }, [
+    queryClient,
+    resetTranslationsDialog,
+    rulesTranslationValues,
+    rulesTranslationsEnabled,
+    t,
+    translationEvent,
+    translationValues,
+  ])
 
   const handleOpenSettings = useCallback(() => {
     setDraftAutoDeployEnabled(savedAutoDeployEnabled)
@@ -513,6 +716,10 @@ function useAdminEventsTableState(
     setAdditionalContextEvent(event)
     setAdditionalContextValue(event.additional_context ?? '')
     setAdditionalContextError(null)
+  }, [])
+
+  const handleOpenResolutionReportsModal = useCallback((event: AdminEventRow) => {
+    setResolutionReportsEvent(event)
   }, [])
 
   const handleCloseAdditionalContextModal = useCallback(() => {
@@ -603,6 +810,13 @@ function useAdminEventsTableState(
     setSportsEndedValue(event.sports_ended === true)
     setSportsScoreHomeValue(parsedScore.home)
     setSportsScoreAwayValue(parsedScore.away)
+    setSportsSegmentScoreValues(
+      createSportsSegmentScoreInputs({
+        scores: event.sports_segment_scores,
+        title: event.title,
+        segmentCount: event.sports_segment_count,
+      }),
+    )
     setSportsSourceSearchQuery(buildSportsSourceModalSearchQuery(event))
     setSportsSourceCandidates([])
     setHasSearchedSportsSource(false)
@@ -634,6 +848,13 @@ function useAdminEventsTableState(
         setSportsScoreHomeValue(parsedScore.home)
         setSportsScoreAwayValue(parsedScore.away)
       }
+    }
+    const segmentScores = createSportsSegmentScoreInputs({
+      scores: candidate.segmentScores,
+      segmentCount: candidate.segmentCount,
+    })
+    if (segmentScores.length > 0) {
+      setSportsSegmentScoreValues(segmentScores)
     }
     if (candidate.ended === true) {
       setSportsEndedValue(true)
@@ -740,6 +961,7 @@ function useAdminEventsTableState(
     setSportsEndedValue(false)
     setSportsScoreHomeValue('')
     setSportsScoreAwayValue('')
+    setSportsSegmentScoreValues([])
     setSportsSourceSearchQuery('')
     setSportsSourceCandidates([])
     setHasSearchedSportsSource(false)
@@ -785,6 +1007,27 @@ function useAdminEventsTableState(
       hasHomeScore && hasAwayScore
         ? `${Number.parseInt(normalizedHomeScore, 10)} - ${Number.parseInt(normalizedAwayScore, 10)}`
         : ''
+    const sportsSegmentScores: SportsSegmentScore[] = []
+    for (const segmentScore of sportsSegmentScoreValues) {
+      const homeScore = segmentScore.homeScore.trim()
+      const awayScore = segmentScore.awayScore.trim()
+      if (Boolean(homeScore) !== Boolean(awayScore)) {
+        setSportsFinalError(t('Fill both team scores or leave both empty.'))
+        setIsSavingSportsFinal(false)
+        return
+      }
+      if ((homeScore && !/^\d+$/.test(homeScore)) || (awayScore && !/^\d+$/.test(awayScore))) {
+        setSportsFinalError(t('Scores must contain numbers only.'))
+        setIsSavingSportsFinal(false)
+        return
+      }
+
+      sportsSegmentScores.push({
+        segment: segmentScore.segment,
+        homeScore: homeScore ? Number.parseInt(homeScore, 10) : null,
+        awayScore: awayScore ? Number.parseInt(awayScore, 10) : null,
+      })
+    }
     const sourceMatchConfidence = parseSportsSourceConfidence(sportsSourceConfidenceValue)
     const normalizedSportsSourceLivestreamUrl = sportsSourceLivestreamUrlValue.trim()
     const hasUnrecognizedExistingSportsSourceProvider = Boolean(
@@ -804,6 +1047,7 @@ function useAdminEventsTableState(
     const result = await updateEventSportsFinalStateAction(sportsFinalEvent.id, {
       sportsEnded: sportsEndedValue,
       sportsScore,
+      sportsSegmentScores: sportsSegmentScores.length > 0 ? sportsSegmentScores : null,
       ...(!shouldSkipAutoClearedSportsSource
         ? {
             sportsSource: {
@@ -830,6 +1074,7 @@ function useAdminEventsTableState(
       setSportsEndedValue(false)
       setSportsScoreHomeValue('')
       setSportsScoreAwayValue('')
+      setSportsSegmentScoreValues([])
       setSportsSourceSearchQuery('')
       setSportsSourceCandidates([])
       setHasSearchedSportsSource(false)
@@ -855,6 +1100,7 @@ function useAdminEventsTableState(
     sportsEndedValue,
     sportsScoreHomeValue,
     sportsScoreAwayValue,
+    sportsSegmentScoreValues,
     sportsSourceConfidenceValue,
     sportsSourceEventIdValue,
     sportsSourceGameIdValue,
@@ -869,8 +1115,10 @@ function useAdminEventsTableState(
 
   const columns = useAdminEventsColumns({
     onToggleHidden: handleToggleHidden,
+    onOpenTranslations: handleOpenTranslations,
     onOpenAdditionalContextModal: handleOpenAdditionalContextModal,
     onOpenLivestreamModal: handleOpenLivestreamModal,
+    onOpenResolutionReportsModal: handleOpenResolutionReportsModal,
     onOpenSportsFinalModal: handleOpenSportsFinalModal,
     isUpdatingHidden: (eventId) => pendingHiddenId === eventId,
   })
@@ -900,6 +1148,16 @@ function useAdminEventsTableState(
     handleActiveOnlyChange,
     handlePageChange,
     handlePageSizeChange,
+    translationEvent,
+    translationValues,
+    translationError,
+    isSavingTranslations,
+    handleOpenTranslations,
+    closeTranslationsDialog,
+    handleTranslationChange,
+    handleRulesTranslationChange,
+    rulesTranslationValues,
+    handleSaveTranslations,
     settingsOpen,
     setSettingsOpen,
     draftAutoDeployEnabled,
@@ -921,6 +1179,8 @@ function useAdminEventsTableState(
     handleOpenFilters,
     handleApplyFilters,
     handleClearFilters,
+    resolutionReportsEvent,
+    setResolutionReportsEvent,
     additionalContextEvent,
     additionalContextValue,
     setAdditionalContextValue,
@@ -942,6 +1202,8 @@ function useAdminEventsTableState(
     setSportsScoreHomeValue,
     sportsScoreAwayValue,
     setSportsScoreAwayValue,
+    sportsSegmentScoreValues,
+    setSportsSegmentScoreValues,
     sportsSourceSearchQuery,
     setSportsSourceSearchQuery,
     sportsSourceCandidates,
@@ -972,6 +1234,8 @@ export default function AdminEventsTable({
   tableState,
   onTableStateChange,
   mainCategoryOptions,
+  enabledTranslationLocales = NON_DEFAULT_LOCALES,
+  rulesTranslationsEnabled = false,
 }: AdminEventsTableProps) {
   const t = useExtracted()
   const isMobile = useIsMobile()
@@ -1000,6 +1264,15 @@ export default function AdminEventsTable({
     handleActiveOnlyChange,
     handlePageChange,
     handlePageSizeChange,
+    translationEvent,
+    translationValues,
+    translationError,
+    isSavingTranslations,
+    closeTranslationsDialog,
+    handleTranslationChange,
+    handleRulesTranslationChange,
+    rulesTranslationValues,
+    handleSaveTranslations,
     settingsOpen,
     setSettingsOpen,
     draftAutoDeployEnabled,
@@ -1021,6 +1294,8 @@ export default function AdminEventsTable({
     handleOpenFilters,
     handleApplyFilters,
     handleClearFilters,
+    resolutionReportsEvent,
+    setResolutionReportsEvent,
     additionalContextEvent,
     additionalContextValue,
     setAdditionalContextValue,
@@ -1042,6 +1317,8 @@ export default function AdminEventsTable({
     setSportsScoreHomeValue,
     sportsScoreAwayValue,
     setSportsScoreAwayValue,
+    sportsSegmentScoreValues,
+    setSportsSegmentScoreValues,
     sportsSourceSearchQuery,
     setSportsSourceSearchQuery,
     sportsSourceCandidates,
@@ -1064,7 +1341,12 @@ export default function AdminEventsTable({
     handleCloseSportsFinalModal,
     handleSaveSportsFinalState,
     columns,
-  } = useAdminEventsTableState(initialAutoDeployNewEventsEnabled, tableState, onTableStateChange)
+  } = useAdminEventsTableState(
+    initialAutoDeployNewEventsEnabled,
+    tableState,
+    onTableStateChange,
+    rulesTranslationsEnabled,
+  )
 
   const settingsButton = (
     <Tooltip>
@@ -1128,7 +1410,7 @@ export default function AdminEventsTable({
     <div className="flex items-center gap-2">
       <Switch id="admin-events-active-only" checked={activeOnly} onCheckedChange={handleActiveOnlyChange} />
       <Label htmlFor="admin-events-active-only" className="text-sm font-normal text-muted-foreground">
-        {t('Only active')}
+        {t('Active only')}
       </Label>
     </div>
   )
@@ -1150,6 +1432,12 @@ export default function AdminEventsTable({
 
   const sportsFinalGameDateLabel = formatDayMonthLabel(resolveGameDateFromAdminEvent(sportsFinalEvent))
   const sportsFinalTeams = resolveSportsFinalTeams(sportsFinalEvent)
+  const sportsFinalSegmentScores = sportsSegmentScoreValues.map((score) => ({
+    segment: score.segment,
+    homeScore: parseSportsSegmentScoreInput(score.homeScore),
+    awayScore: parseSportsSegmentScoreInput(score.awayScore),
+  }))
+  const usesEsportsScoreLayout = sportsFinalEvent?.sports_vertical === 'esports'
   const hasSportsSourceIdentity = Boolean(
     sportsSourceProviderValue.trim() && (sportsSourceEventIdValue.trim() || sportsSourceGameIdValue.trim()),
   )
@@ -1175,7 +1463,7 @@ export default function AdminEventsTable({
         )}
       </div>
       <div className="min-w-0 flex-1 overflow-hidden">
-        <p className="max-w-full text-sm leading-snug font-medium break-words whitespace-normal text-foreground">
+        <p className="max-w-full text-sm leading-snug font-medium wrap-break-word whitespace-normal text-foreground">
           {sportsFinalEvent.title}
         </p>
         {sportsFinalGameDateLabel ? <p className="text-xs text-muted-foreground">{sportsFinalGameDateLabel}</p> : null}
@@ -1192,6 +1480,7 @@ export default function AdminEventsTable({
             all: t('All events'),
             'missing-sports-id': t('Events without a sports ID'),
             'past-due-unresolved': t('Events awaiting resolution'),
+            'resolution-reports': t('Events with resolution reports'),
           }}
           value={draftAttention}
           onValueChange={(value) => value !== null && setDraftAttention(value as AdminEventAttentionFilter | 'all')}
@@ -1208,6 +1497,9 @@ export default function AdminEventsTable({
             </SelectItem>
             <SelectItem value="past-due-unresolved" className="mx-1 my-0.5 cursor-pointer rounded-md">
               {t('Events awaiting resolution')}
+            </SelectItem>
+            <SelectItem value="resolution-reports" className="mx-1 my-0.5 cursor-pointer rounded-md">
+              {t('Events with resolution reports')}
             </SelectItem>
           </SelectContent>
         </Select>
@@ -1360,85 +1652,233 @@ export default function AdminEventsTable({
     </div>
   )
 
+  const translationFormFields = (
+    <div className="grid gap-4 py-2">
+      <div className="grid gap-2">
+        <Label htmlFor="event-translation-en" className="flex items-center gap-2">
+          <LocaleFlag locale="en" />
+          {t('English (source)')}
+        </Label>
+        <Input id="event-translation-en" value={translationEvent?.title ?? ''} readOnly disabled />
+      </div>
+
+      {rulesTranslationsEnabled && translationEvent?.rules ? (
+        <div className="grid gap-2">
+          <Label htmlFor="event-rules-translation-en" className="flex items-center gap-2">
+            <LocaleFlag locale="en" />
+            {t('English Rules (source)') || 'English Rules (source)'}
+          </Label>
+          <Textarea id="event-rules-translation-en" value={translationEvent.rules} readOnly disabled />
+        </div>
+      ) : null}
+
+      {enabledTranslationLocales.map((locale) => {
+        const fieldId = `event-translation-${locale}`
+        return (
+          <div key={locale} className="grid gap-3 rounded-md border p-3">
+            <div className="grid gap-2">
+              <Label htmlFor={fieldId} className="flex items-center gap-2">
+                <LocaleFlag locale={locale} />
+                {LOCALE_LABELS[locale]}
+              </Label>
+              <Input
+                id={fieldId}
+                value={translationValues[locale] ?? ''}
+                onChange={(event) => handleTranslationChange(locale, event.target.value)}
+                placeholder={t('Translation for {locale}', { locale: LOCALE_LABELS[locale] })}
+                disabled={isSavingTranslations}
+              />
+            </div>
+            {rulesTranslationsEnabled && translationEvent?.rules ? (
+              <div className="grid gap-2">
+                <Label htmlFor={`event-rules-translation-${locale}`}>{t('Rules')}</Label>
+                <Textarea
+                  id={`event-rules-translation-${locale}`}
+                  value={rulesTranslationValues[locale] ?? ''}
+                  onChange={(event) => handleRulesTranslationChange(locale, event.target.value)}
+                  placeholder={t('Translation for {locale}', { locale: LOCALE_LABELS[locale] })}
+                  disabled={isSavingTranslations}
+                  className="min-h-28"
+                />
+              </div>
+            ) : null}
+          </div>
+        )
+      })}
+
+      {translationError && <InputError message={translationError} />}
+    </div>
+  )
+
   const sportsFinalFormFields = (
     <div className="grid gap-4 py-2">
       {sportsFinalTeams ? (
         <div className="rounded-xl border bg-muted/10 px-3 py-4 sm:px-4">
-          <div className="grid grid-cols-[minmax(0,1fr)_3.5rem_auto_3.5rem_minmax(0,1fr)] items-center gap-2 sm:grid-cols-[minmax(0,1fr)_4rem_auto_4rem_minmax(0,1fr)] sm:gap-3">
-            <div className="flex min-w-0 flex-col items-center gap-2 text-center">
-              <div className="flex size-12 items-center justify-center sm:size-14">
-                {sportsFinalTeams.home.logoUrl ? (
-                  <EventIconImage
-                    src={sportsFinalTeams.home.logoUrl}
-                    alt={sportsFinalTeams.home.name}
-                    sizes="56px"
-                    containerClassName="size-full rounded-md"
-                    imageClassName="object-contain"
+          {usesEsportsScoreLayout ? (
+            <>
+              {sportsFinalSegmentScores.length > 0 ? (
+                <SportsMatchScoreboard
+                  homeTeam={sportsFinalTeams.home}
+                  awayTeam={sportsFinalTeams.away}
+                  scores={sportsFinalSegmentScores}
+                  renderScore={({ score, team }) => {
+                    const value = team === 'home' ? (score.homeScore ?? '') : (score.awayScore ?? '')
+
+                    return (
+                      <Input
+                        id={`event-sports-segment-${score.segment}-${team}`}
+                        type="number"
+                        min={0}
+                        step={1}
+                        inputMode="numeric"
+                        placeholder="-"
+                        aria-label={`${sportsFinalTeams[team].name} M${score.segment} ${t('Score')}`}
+                        value={value}
+                        onChange={(event) => {
+                          const nextValue = event.target.value
+                          setSportsSegmentScoreValues((current) =>
+                            current.map((item) =>
+                              item.segment === score.segment
+                                ? { ...item, [team === 'home' ? 'homeScore' : 'awayScore']: nextValue }
+                                : item,
+                            ),
+                          )
+                        }}
+                        disabled={isSavingSportsFinal}
+                        className="h-8 w-9 [appearance:textfield] border-0 bg-transparent px-0 text-center text-sm font-semibold shadow-none focus-visible:ring-1 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                      />
+                    )
+                  }}
+                />
+              ) : null}
+
+              <div
+                className={cn('grid items-center gap-2', sportsFinalSegmentScores.length > 0 && 'mt-4 border-t pt-4')}
+              >
+                <Label className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                  {t('Series score')}
+                </Label>
+                <div className="grid grid-cols-[3.5rem_auto_3.5rem] items-center justify-end gap-2">
+                  {sportsFinalSegmentScores.length === 0 ? (
+                    <>
+                      <Label htmlFor="event-sports-score-home" className="truncate text-center text-xs">
+                        {sportsFinalTeams.home.name}
+                      </Label>
+                      <span aria-hidden="true" />
+                      <Label htmlFor="event-sports-score-away" className="truncate text-center text-xs">
+                        {sportsFinalTeams.away.name}
+                      </Label>
+                    </>
+                  ) : null}
+                  <Input
+                    id="event-sports-score-home"
+                    type="number"
+                    min={0}
+                    step={1}
+                    inputMode="numeric"
+                    placeholder="0"
+                    aria-label={`${sportsFinalTeams.home.name} ${t('Score')}`}
+                    value={sportsScoreHomeValue}
+                    onChange={(event) => setSportsScoreHomeValue(event.target.value)}
+                    disabled={isSavingSportsFinal}
+                    className="h-10 [appearance:textfield] px-1 text-center text-base font-semibold [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                   />
-                ) : (
-                  <div className="flex size-full items-center justify-center text-sm font-semibold text-muted-foreground">
-                    {sportsFinalTeams.home.name.slice(0, 2).toUpperCase()}
-                  </div>
-                )}
-              </div>
-              <span className="line-clamp-2 w-full text-xs leading-tight font-medium break-words sm:text-sm">
-                {sportsFinalTeams.home.name}
-              </span>
-            </div>
-
-            <Input
-              id="event-sports-score-home"
-              type="number"
-              min={0}
-              step={1}
-              inputMode="numeric"
-              placeholder="0"
-              aria-label={`${sportsFinalTeams.home.name} ${t('Score')}`}
-              value={sportsScoreHomeValue}
-              onChange={(event) => setSportsScoreHomeValue(event.target.value)}
-              disabled={isSavingSportsFinal}
-              className="h-12 [appearance:textfield] px-1 text-center text-lg font-semibold [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-            />
-
-            <span className="text-base font-semibold text-muted-foreground" aria-hidden="true">
-              ×
-            </span>
-
-            <Input
-              id="event-sports-score-away"
-              type="number"
-              min={0}
-              step={1}
-              inputMode="numeric"
-              placeholder="0"
-              aria-label={`${sportsFinalTeams.away.name} ${t('Score')}`}
-              value={sportsScoreAwayValue}
-              onChange={(event) => setSportsScoreAwayValue(event.target.value)}
-              disabled={isSavingSportsFinal}
-              className="h-12 [appearance:textfield] px-1 text-center text-lg font-semibold [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-            />
-
-            <div className="flex min-w-0 flex-col items-center gap-2 text-center">
-              <div className="flex size-12 items-center justify-center sm:size-14">
-                {sportsFinalTeams.away.logoUrl ? (
-                  <EventIconImage
-                    src={sportsFinalTeams.away.logoUrl}
-                    alt={sportsFinalTeams.away.name}
-                    sizes="56px"
-                    containerClassName="size-full rounded-md"
-                    imageClassName="object-contain"
+                  <span className="text-base font-semibold text-muted-foreground" aria-hidden="true">
+                    ×
+                  </span>
+                  <Input
+                    id="event-sports-score-away"
+                    type="number"
+                    min={0}
+                    step={1}
+                    inputMode="numeric"
+                    placeholder="0"
+                    aria-label={`${sportsFinalTeams.away.name} ${t('Score')}`}
+                    value={sportsScoreAwayValue}
+                    onChange={(event) => setSportsScoreAwayValue(event.target.value)}
+                    disabled={isSavingSportsFinal}
+                    className="h-10 [appearance:textfield] px-1 text-center text-base font-semibold [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                   />
-                ) : (
-                  <div className="flex size-full items-center justify-center text-sm font-semibold text-muted-foreground">
-                    {sportsFinalTeams.away.name.slice(0, 2).toUpperCase()}
-                  </div>
-                )}
+                </div>
               </div>
-              <span className="line-clamp-2 w-full text-xs leading-tight font-medium break-words sm:text-sm">
-                {sportsFinalTeams.away.name}
+            </>
+          ) : (
+            <div className="grid grid-cols-[minmax(0,1fr)_3.5rem_auto_3.5rem_minmax(0,1fr)] items-center gap-2 sm:grid-cols-[minmax(0,1fr)_4rem_auto_4rem_minmax(0,1fr)] sm:gap-3">
+              <div className="flex min-w-0 flex-col items-center gap-2 text-center">
+                <div className="flex size-12 items-center justify-center sm:size-14">
+                  {sportsFinalTeams.home.logoUrl ? (
+                    <EventIconImage
+                      src={sportsFinalTeams.home.logoUrl}
+                      alt={sportsFinalTeams.home.name}
+                      sizes="56px"
+                      containerClassName="size-full rounded-md"
+                      imageClassName="object-contain"
+                    />
+                  ) : (
+                    <div className="flex size-full items-center justify-center text-sm font-semibold text-muted-foreground">
+                      {sportsFinalTeams.home.name.slice(0, 2).toUpperCase()}
+                    </div>
+                  )}
+                </div>
+                <span className="line-clamp-2 w-full text-xs leading-tight font-medium wrap-break-word sm:text-sm">
+                  {sportsFinalTeams.home.name}
+                </span>
+              </div>
+
+              <Input
+                id="event-sports-score-home"
+                type="number"
+                min={0}
+                step={1}
+                inputMode="numeric"
+                placeholder="0"
+                aria-label={`${sportsFinalTeams.home.name} ${t('Score')}`}
+                value={sportsScoreHomeValue}
+                onChange={(event) => setSportsScoreHomeValue(event.target.value)}
+                disabled={isSavingSportsFinal}
+                className="h-12 [appearance:textfield] px-1 text-center text-lg font-semibold [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              />
+
+              <span className="text-base font-semibold text-muted-foreground" aria-hidden="true">
+                ×
               </span>
+
+              <Input
+                id="event-sports-score-away"
+                type="number"
+                min={0}
+                step={1}
+                inputMode="numeric"
+                placeholder="0"
+                aria-label={`${sportsFinalTeams.away.name} ${t('Score')}`}
+                value={sportsScoreAwayValue}
+                onChange={(event) => setSportsScoreAwayValue(event.target.value)}
+                disabled={isSavingSportsFinal}
+                className="h-12 [appearance:textfield] px-1 text-center text-lg font-semibold [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              />
+
+              <div className="flex min-w-0 flex-col items-center gap-2 text-center">
+                <div className="flex size-12 items-center justify-center sm:size-14">
+                  {sportsFinalTeams.away.logoUrl ? (
+                    <EventIconImage
+                      src={sportsFinalTeams.away.logoUrl}
+                      alt={sportsFinalTeams.away.name}
+                      sizes="56px"
+                      containerClassName="size-full rounded-md"
+                      imageClassName="object-contain"
+                    />
+                  ) : (
+                    <div className="flex size-full items-center justify-center text-sm font-semibold text-muted-foreground">
+                      {sportsFinalTeams.away.name.slice(0, 2).toUpperCase()}
+                    </div>
+                  )}
+                </div>
+                <span className="line-clamp-2 w-full text-xs leading-tight font-medium wrap-break-word sm:text-sm">
+                  {sportsFinalTeams.away.name}
+                </span>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       ) : null}
 
@@ -1609,7 +2049,6 @@ export default function AdminEventsTable({
         columns={columns}
         data={events}
         totalCount={totalCount}
-        searchPlaceholder={t('Search')}
         enableSelection={false}
         enablePagination
         enableColumnVisibility={false}
@@ -1618,6 +2057,16 @@ export default function AdminEventsTable({
         onRetry={retry}
         emptyMessage={t('No events found')}
         emptyDescription={t('Events created from sync will show up here.')}
+        emptyAction={
+          tableState.attention !== 'all' ? (
+            <Button
+              nativeButton={false}
+              variant="outline"
+              size="sm"
+              render={<Link href="/admin/events">{t('Clear filters')}</Link>}
+            />
+          ) : null
+        }
         search={search}
         onSearchChange={handleSearchChange}
         sortBy={sortBy}
@@ -1640,9 +2089,97 @@ export default function AdminEventsTable({
             {settingsButton}
           </div>
         }
-        searchInputClassName="h-9 sm:w-37.5 lg:w-62.5"
-        searchLeadingIcon={<SearchIcon className="size-4" />}
       />
+
+      <AdminResolutionReportsDialog event={resolutionReportsEvent} onClose={() => setResolutionReportsEvent(null)} />
+
+      {isMobile ? (
+        <Drawer
+          open={Boolean(translationEvent)}
+          onOpenChange={(open) => {
+            if (!open && !isSavingTranslations) {
+              closeTranslationsDialog()
+            }
+          }}
+        >
+          <DrawerContent className="max-h-[90dvh] w-full overflow-hidden bg-background px-4 pt-4 pb-6">
+            <form
+              className="grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden"
+              onSubmit={(event) => {
+                event.preventDefault()
+                void handleSaveTranslations()
+              }}
+            >
+              <DrawerHeader className="mt-4 shrink-0 space-y-2 p-0 text-left">
+                <DrawerTitle>{t('Event translations')}</DrawerTitle>
+                <DrawerDescription>
+                  {t('Update non-English titles and Rules for this event. English remains the source text.') ||
+                    'Update non-English titles and Rules for this event. English remains the source text.'}
+                </DrawerDescription>
+              </DrawerHeader>
+
+              <div className="min-h-0 overflow-y-auto overscroll-contain pr-1">{translationFormFields}</div>
+
+              <DrawerFooter className="shrink-0 border-t p-0 pt-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={closeTranslationsDialog}
+                  disabled={isSavingTranslations}
+                >
+                  {t('Cancel')}
+                </Button>
+                <Button type="submit" disabled={isSavingTranslations}>
+                  {isSavingTranslations ? t('Saving...') : t('Save')}
+                </Button>
+              </DrawerFooter>
+            </form>
+          </DrawerContent>
+        </Drawer>
+      ) : (
+        <Dialog
+          open={Boolean(translationEvent)}
+          onOpenChange={(open) => {
+            if (!open && !isSavingTranslations) {
+              closeTranslationsDialog()
+            }
+          }}
+        >
+          <DialogContent className="max-h-[90dvh] overflow-hidden p-0 sm:max-w-xl">
+            <form
+              className="grid max-h-[90dvh] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden"
+              onSubmit={(event) => {
+                event.preventDefault()
+                void handleSaveTranslations()
+              }}
+            >
+              <DialogHeader className="px-6 pt-6">
+                <DialogTitle>{t('Event translations')}</DialogTitle>
+                <DialogDescription>
+                  {t('Update non-English titles and Rules for this event. English remains the source text.') ||
+                    'Update non-English titles and Rules for this event. English remains the source text.'}
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="min-h-0 overflow-y-auto overscroll-contain px-6">{translationFormFields}</div>
+
+              <DialogFooter className="border-t px-6 py-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={closeTranslationsDialog}
+                  disabled={isSavingTranslations}
+                >
+                  {t('Cancel')}
+                </Button>
+                <Button type="submit" disabled={isSavingTranslations}>
+                  {isSavingTranslations ? t('Saving...') : t('Save')}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {isMobile ? (
         <Drawer

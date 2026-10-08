@@ -1,7 +1,9 @@
 import type { NextRequest } from 'next/server'
+
 import { eq } from 'drizzle-orm'
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
+
 import { recordCommunityEvent } from '@/lib/communities/events'
 import { consumeRateLimit, RATE_LIMITS } from '@/lib/communities/rate-limit'
 import { CommunityRepository } from '@/lib/db/queries/community'
@@ -35,8 +37,7 @@ export async function POST(request: NextRequest) {
   let body: unknown
   try {
     body = await request.json()
-  }
-  catch {
+  } catch {
     return NextResponse.json({ error: 'Invalid JSON.' }, { status: 400 })
   }
 
@@ -54,8 +55,7 @@ export async function POST(request: NextRequest) {
       .where(eq(community_markets.id, parsed.data.target_id))
       .limit(1)
     communityId = row?.community_id ?? null
-  }
-  else {
+  } else {
     const comment = await CommunityCommentRepository.getById(parsed.data.target_id)
     communityId = comment?.community_id ?? null
     if (comment?.deleted_at) {
@@ -101,8 +101,7 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({ active: result.active })
-  }
-  catch (error) {
+  } catch (error) {
     console.error('Toggle community reaction error', error)
     return NextResponse.json({ error: 'Failed to update reaction.' }, { status: 500 })
   }

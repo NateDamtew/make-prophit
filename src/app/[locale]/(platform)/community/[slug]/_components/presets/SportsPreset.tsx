@@ -1,9 +1,11 @@
 'use client'
 
-import type { PresetMarket, PresetProps } from './types'
 import { CalendarIcon, FlameIcon, TrophyIcon } from 'lucide-react'
 import Link from 'next/link'
 import { useMemo } from 'react'
+
+import type { PresetMarket, PresetProps } from './types'
+
 import CommunityMarketCard from '../CommunityMarketCard'
 
 const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000
@@ -33,14 +35,14 @@ export default function SportsPreset({ community, markets, memberRole }: PresetP
       {buckets.live.length > 0 && (
         <section className="rounded-sm border bg-card p-4">
           <header className="mb-3 flex items-center gap-2">
-            <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-(--no)">
+            <span className="flex items-center gap-1.5 text-xs font-semibold tracking-wide text-(--no) uppercase">
               <FlameIcon className="size-3.5" />
               Live
             </span>
             <span className="text-xs text-muted-foreground">resolving within 24h</span>
           </header>
           <ul className="grid gap-2">
-            {buckets.live.map(market => (
+            {buckets.live.map((market) => (
               <li key={market.id}>
                 <Link
                   href={`/community/${community.slug}/market/${market.id}` as any}
@@ -51,7 +53,9 @@ export default function SportsPreset({ community, markets, memberRole }: PresetP
                     <span className="relative inline-flex size-2 rounded-full bg-(--no)" />
                   </span>
                   <span className="line-clamp-1 flex-1 text-sm font-medium">{market.title}</span>
-                  <span className="shrink-0 text-2xs text-muted-foreground">{relativeWhen(market.resolution_date)}</span>
+                  <span className="shrink-0 text-2xs text-muted-foreground">
+                    {relativeWhen(market.resolution_date)}
+                  </span>
                 </Link>
               </li>
             ))}
@@ -63,11 +67,11 @@ export default function SportsPreset({ community, markets, memberRole }: PresetP
       {buckets.thisWeek.length > 0 && (
         <section>
           <header className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">This week</h2>
+            <h2 className="text-sm font-semibold tracking-wide text-muted-foreground uppercase">This week</h2>
             <CalendarIcon className="size-4 text-muted-foreground" />
           </header>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {buckets.thisWeek.map(market => (
+            {buckets.thisWeek.map((market) => (
               <CommunityMarketCard
                 key={market.id}
                 communitySlug={community.slug}
@@ -86,10 +90,10 @@ export default function SportsPreset({ community, markets, memberRole }: PresetP
       {buckets.later.length > 0 && (
         <section>
           <header className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Later this season</h2>
+            <h2 className="text-sm font-semibold tracking-wide text-muted-foreground uppercase">Later this season</h2>
           </header>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {buckets.later.map(market => (
+            {buckets.later.map((market) => (
               <CommunityMarketCard
                 key={market.id}
                 communitySlug={community.slug}
@@ -108,11 +112,11 @@ export default function SportsPreset({ community, markets, memberRole }: PresetP
       {buckets.resolved.length > 0 && (
         <section>
           <header className="mb-3 flex items-center gap-2">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Results</h2>
+            <h2 className="text-sm font-semibold tracking-wide text-muted-foreground uppercase">Results</h2>
             <TrophyIcon className="size-4 text-amber-500" />
           </header>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {buckets.resolved.map(market => (
+            {buckets.resolved.map((market) => (
               <CommunityMarketCard
                 key={market.id}
                 communitySlug={community.slug}
@@ -162,17 +166,15 @@ function buildBuckets(markets: PresetMarket[]) {
     const ms = new Date(market.resolution_date).getTime() - now
     if (ms <= 24 * 60 * 60 * 1000) {
       live.push(market)
-    }
-    else if (ms <= ONE_WEEK_MS) {
+    } else if (ms <= ONE_WEEK_MS) {
       thisWeek.push(market)
-    }
-    else {
+    } else {
       later.push(market)
     }
   }
 
   // Stable sort by date ascending for upcoming, descending for resolved.
-  const ascByDate = (a: PresetMarket, b: PresetMarket) => {
+  function ascByDate(a: PresetMarket, b: PresetMarket) {
     const da = a.resolution_date ? new Date(a.resolution_date).getTime() : Infinity
     const db = b.resolution_date ? new Date(b.resolution_date).getTime() : Infinity
     return da - db

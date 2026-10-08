@@ -1,9 +1,7 @@
 import type { Metadata } from 'next'
 
-import { setRequestLocale } from 'next-intl/server'
+import { cacheTag } from 'next/cache'
 import { notFound } from 'next/navigation'
-
-import type { SupportedLocale } from '@/i18n/locales'
 
 import {
   buildDynamicHomeCategoryMetadata,
@@ -14,20 +12,18 @@ import {
   buildPublicProfileMetadata,
   PublicProfilePageContent,
 } from '@/app/[locale]/(platform)/_lib/public-profile-page'
+import { getRootLocale } from '@/i18n/root-locale'
+import { cacheTags } from '@/lib/cache-tags'
+import { hasDatabaseEnv } from '@/lib/db/env'
 import { isPlatformReservedRootSlug, normalizePublicProfileSlug } from '@/lib/platform-routing'
+import { deferPublicShellPrerenderIfNeeded, shouldPrerenderPublicShell } from '@/lib/public-shell-rendering'
 import { shouldBypassPublicShellPlaceholder, STATIC_PARAMS_PLACEHOLDER } from '@/lib/static-params'
 
 export const instant = false
 
 export const generateStaticParams = generateDynamicHomeCategoryStaticParams
 
-async function generatePlatformSlugMetadata({
-  locale,
-  slug,
-}: {
-  locale: SupportedLocale
-  slug: string
-}): Promise<Metadata> {
+async function generatePlatformSlugMetadata({ slug }: { slug: string }): Promise<Metadata> {
   if (slug === STATIC_PARAMS_PLACEHOLDER) {
     if (shouldBypassPublicShellPlaceholder(slug)) {
       return {}
@@ -35,6 +31,7 @@ async function generatePlatformSlugMetadata({
     notFound()
   }
 
+  const locale = await getRootLocale()
   const profileSlug = normalizePublicProfileSlug(slug)
   if (profileSlug.type !== 'invalid') {
     return await buildPublicProfileMetadata({
@@ -47,10 +44,16 @@ async function generatePlatformSlugMetadata({
     notFound()
   }
 
-  return buildDynamicHomeCategoryMetadata(locale, slug)
+  return buildDynamicHomeCategoryMetadata(slug)
 }
 
-async function renderPlatformSlugPage({ locale, slug }: { locale: SupportedLocale; slug: string }) {
+async function renderPlatformSlugPage({
+  deferHomeRuntimePrerender = true,
+  slug,
+}: {
+  deferHomeRuntimePrerender?: boolean
+  slug: string
+}) {
   if (slug === STATIC_PARAMS_PLACEHOLDER) {
     if (shouldBypassPublicShellPlaceholder(slug)) {
       return null
@@ -73,27 +76,50 @@ async function renderPlatformSlugPage({ locale, slug }: { locale: SupportedLocal
     notFound()
   }
 
-  return <DynamicHomeCategoryPageContent locale={locale} slug={slug} />
+  return <DynamicHomeCategoryPageContent deferHomeRuntimePrerender={deferHomeRuntimePrerender} slug={slug} />
+}
+
+async function renderCachedPlatformCategoryPage({ slug }: { slug: string }) {
+  'use cache'
+
+  const locale = await getRootLocale()
+  cacheTag(cacheTags.eventsList, cacheTags.mainTags(locale), cacheTags.settings)
+
+  return renderPlatformSlugPage({
+    deferHomeRuntimePrerender: false,
+    slug,
+  })
+}
+
+async function renderRuntimePlatformCategoryPage({ slug }: { slug: string }) {
+  await deferPublicShellPrerenderIfNeeded()
+
+  if (!hasDatabaseEnv()) {
+    return renderPlatformSlugPage({
+      deferHomeRuntimePrerender: false,
+      slug,
+    })
+  }
+
+  return renderCachedPlatformCategoryPage({ slug })
 }
 
 export async function generateMetadata({ params }: PageProps<'/[locale]/[slug]'>): Promise<Metadata> {
-  const { locale, slug } = await params
-  const resolvedLocale = locale as SupportedLocale
-  setRequestLocale(resolvedLocale)
-
+  const { slug } = await params
   return await generatePlatformSlugMetadata({
-    locale: resolvedLocale,
     slug,
   })
 }
 
 export default async function PlatformSlugPage({ params }: PageProps<'/[locale]/[slug]'>) {
-  const { locale, slug } = await params
-  const resolvedLocale = locale as SupportedLocale
-  setRequestLocale(resolvedLocale)
+  const { slug } = await params
+  const profileSlug = normalizePublicProfileSlug(slug)
 
-  return await renderPlatformSlugPage({
-    locale: resolvedLocale,
-    slug,
-  })
+  if (profileSlug.type !== 'invalid') {
+    return await renderPlatformSlugPage({ slug })
+  }
+
+  const renderPage = shouldPrerenderPublicShell() ? renderCachedPlatformCategoryPage : renderRuntimePlatformCategoryPage
+
+  return await renderPage({ slug })
 }

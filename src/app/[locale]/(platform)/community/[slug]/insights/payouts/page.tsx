@@ -1,9 +1,11 @@
-import type { SupportedLocale } from '@/i18n/locales'
 import { ChevronLeftIcon, ClockIcon } from 'lucide-react'
+import { setRequestLocale } from 'next-intl/server'
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
-import { setRequestLocale } from 'next-intl/server'
 import { Suspense } from 'react'
+
+import type { SupportedLocale } from '@/i18n/locales'
+
 import { formatAbsolute } from '@/components/admin-ui/format'
 import { Card } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -72,7 +74,7 @@ async function PayoutsContent({ slug }: { slug: string }) {
           <div>
             <p className="text-xs text-muted-foreground">Payout address</p>
             <p className="mt-1 truncate font-mono text-sm">
-              {monetization?.fee_payout_address || <span className="italic text-muted-foreground">Not set</span>}
+              {monetization?.fee_payout_address || <span className="text-muted-foreground italic">Not set</span>}
             </p>
           </div>
           <div>
@@ -89,54 +91,46 @@ async function PayoutsContent({ slug }: { slug: string }) {
             {payouts.length === 0 ? 'no payouts yet' : `${payouts.length} entries`}
           </span>
         </div>
-        {payouts.length === 0
-          ? (
-              <div className="p-8 text-center text-sm text-muted-foreground">
-                Payouts launch once trading goes live and the first settlement cycle closes.
-              </div>
-            )
-          : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="text-left text-xs text-muted-foreground">
-                    <tr className="border-b border-border/60">
-                      <th className="px-5 py-3 font-medium">Period</th>
-                      <th className="px-5 py-3 font-medium">Volume</th>
-                      <th className="px-5 py-3 font-medium">Fee</th>
-                      <th className="px-5 py-3 font-medium">Status</th>
-                      <th className="px-5 py-3 font-medium">Paid at</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {payouts.map(p => (
-                      <tr key={p.id} className="border-b border-border/30 last:border-0">
-                        <td className="px-5 py-3">
-                          {p.period_start.toLocaleDateString()}
-                          {' – '}
-                          {p.period_end.toLocaleDateString()}
-                        </td>
-                        <td className="px-5 py-3 tabular-nums">${Number(p.gross_volume_usd).toLocaleString()}</td>
-                        <td className="px-5 py-3 tabular-nums">${Number(p.community_fee_usd).toLocaleString()}</td>
-                        <td className="px-5 py-3">{p.status}</td>
-                        <td className="px-5 py-3 text-muted-foreground">
-                          {p.paid_at ? formatAbsolute(p.paid_at) : '—'}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+        {payouts.length === 0 ? (
+          <div className="p-8 text-center text-sm text-muted-foreground">
+            Payouts launch once trading goes live and the first settlement cycle closes.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="text-left text-xs text-muted-foreground">
+                <tr className="border-b border-border/60">
+                  <th className="px-5 py-3 font-medium">Period</th>
+                  <th className="px-5 py-3 font-medium">Volume</th>
+                  <th className="px-5 py-3 font-medium">Fee</th>
+                  <th className="px-5 py-3 font-medium">Status</th>
+                  <th className="px-5 py-3 font-medium">Paid at</th>
+                </tr>
+              </thead>
+              <tbody>
+                {payouts.map((p) => (
+                  <tr key={p.id} className="border-b border-border/30 last:border-0">
+                    <td className="px-5 py-3">
+                      {p.period_start.toLocaleDateString()}
+                      {' – '}
+                      {p.period_end.toLocaleDateString()}
+                    </td>
+                    <td className="px-5 py-3 tabular-nums">${Number(p.gross_volume_usd).toLocaleString()}</td>
+                    <td className="px-5 py-3 tabular-nums">${Number(p.community_fee_usd).toLocaleString()}</td>
+                    <td className="px-5 py-3">{p.status}</td>
+                    <td className="px-5 py-3 text-muted-foreground">{p.paid_at ? formatAbsolute(p.paid_at) : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </Card>
     </div>
   )
 }
 
-export default async function PayoutsPage({
-  params,
-}: {
-  params: Promise<{ locale: string, slug: string }>
-}) {
+export default async function PayoutsPage({ params }: { params: Promise<{ locale: string; slug: string }> }) {
   const { locale, slug } = await params
   setRequestLocale(locale as SupportedLocale)
   if (slug === STATIC_PARAMS_PLACEHOLDER) {

@@ -1,6 +1,8 @@
 import type { NextRequest } from 'next/server'
+
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
+
 import { AGENT_STATUSES } from '@/lib/admin-ui/agent-status'
 import { recordAuditEvent } from '@/lib/admin-ui/audit'
 import { getAdminActor } from '@/lib/admin-ui/guard'
@@ -23,8 +25,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   let body: unknown
   try {
     body = await request.json()
-  }
-  catch {
+  } catch {
     return NextResponse.json({ error: 'Invalid JSON.' }, { status: 400 })
   }
 
@@ -43,8 +44,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       summary: `Set agent "${name}" to "${parsed.data.status}"`,
     })
     return NextResponse.json({ success: true })
-  }
-  catch (error) {
+  } catch (error) {
     console.error('Admin agent status error', error)
     return NextResponse.json({ error: 'Failed to update agent.' }, { status: 500 })
   }

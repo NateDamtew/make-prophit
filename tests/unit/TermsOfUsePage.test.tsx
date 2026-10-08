@@ -1,29 +1,32 @@
 import { render, screen } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, mock } from 'bun:test'
 
-const mocks = vi.hoisted(() => ({
-  getSettings: vi.fn(),
-  getTermsOfServicePdfUrl: vi.fn(),
-  getThemeSiteSettingsFormState: vi.fn(),
-  loadRuntimeThemeState: vi.fn(),
-  setRequestLocale: vi.fn(),
+import { hoisted } from '../bun-test-helpers'
+
+const mocks = hoisted(() => ({
+  getSettings: mock(),
+  getTranslations: mock(),
+  getThemeSiteSettingsFormState: mock(),
+  loadRuntimeThemeState: mock(),
 }))
 
-vi.mock('next-intl/server', () => ({
-  setRequestLocale: (...args: any[]) => mocks.setRequestLocale(...args),
+void mock.module('next-intl/server', () => ({
+  getExtracted: () => (value: string) => value,
 }))
 
-vi.mock('@/lib/db/queries/settings', () => ({
+void mock.module('@/lib/db/queries/settings', () => ({
   SettingsRepository: {
     getSettings: (...args: any[]) => mocks.getSettings(...args),
   },
 }))
 
-vi.mock('@/lib/terms-of-service', () => ({
-  getTermsOfServicePdfUrl: (...args: any[]) => mocks.getTermsOfServicePdfUrl(...args),
+void mock.module('@/lib/db/queries/terms-of-service', () => ({
+  TermsOfServiceRepository: {
+    getTranslations: (...args: any[]) => mocks.getTranslations(...args),
+  },
 }))
 
-vi.mock('@/lib/theme-settings', () => ({
+void mock.module('@/lib/theme-settings', () => ({
   getThemeSiteSettingsFormState: (...args: any[]) => mocks.getThemeSiteSettingsFormState(...args),
   loadRuntimeThemeState: (...args: any[]) => mocks.loadRuntimeThemeState(...args),
 }))
@@ -31,36 +34,54 @@ vi.mock('@/lib/theme-settings', () => ({
 describe('termsOfUsePage', () => {
   beforeEach(() => {
     mocks.getSettings.mockReset()
-    mocks.getTermsOfServicePdfUrl.mockReset()
+    mocks.getTranslations.mockReset()
     mocks.getThemeSiteSettingsFormState.mockReset()
     mocks.loadRuntimeThemeState.mockReset()
-    mocks.setRequestLocale.mockReset()
 
     mocks.getSettings.mockResolvedValue({ data: {}, error: null })
+    mocks.getTranslations.mockResolvedValue({
+      data: {
+        en: '# Kuest Terms of Use\n\nEnglish content.',
+        de: '',
+        es: '',
+        pt: '# Termos de Uso da Kuest\n\nConteúdo em português.',
+        fr: '',
+        zh: '',
+        ja: '',
+        ar: '',
+        ru: '',
+        it: '',
+        pl: '',
+        ko: '',
+      },
+      error: null,
+    })
     mocks.getThemeSiteSettingsFormState.mockReturnValue({ siteName: 'Kuest' })
     mocks.loadRuntimeThemeState.mockResolvedValue({ site: { name: 'Kuest' } })
   })
 
-  it('renders the uploaded PDF instead of the built-in content when configured', async () => {
-    mocks.getTermsOfServicePdfUrl.mockReturnValue('https://cdn.example.com/legal/tos.pdf')
-
+  it('renders the saved Terms of Use content for the requested locale', async () => {
     const { default: TermsOfUsePage } = await import('@/app/[locale]/(platform)/tos/page')
     render(await TermsOfUsePage({ params: Promise.resolve({ locale: 'en' }) } as any))
 
-    expect(screen.getByTitle('Terms of Use PDF')).toHaveAttribute(
-      'src',
-      'https://cdn.example.com/legal/tos.pdf#view=FitH&zoom=page-width&pagemode=none',
-    )
-    expect(screen.queryByText(/These Terms of Use \("Terms"\) govern your access/i)).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Kuest Terms of Use' })).toBeInTheDocument()
+    expect(screen.getByText('English content.')).toBeInTheDocument()
   })
 
-  it('falls back to the built-in Terms of Use content when no PDF is configured', async () => {
-    mocks.getTermsOfServicePdfUrl.mockReturnValue('')
+  it('renders the translated Terms of Use content for a non-English locale', async () => {
+    const { default: TermsOfUsePage } = await import('@/app/[locale]/(platform)/tos/page')
+    render(await TermsOfUsePage({ params: Promise.resolve({ locale: 'pt' }) } as any))
+
+    expect(screen.getByRole('heading', { name: 'Termos de Uso da Kuest' })).toBeInTheDocument()
+    expect(screen.getByText('Conteúdo em português.')).toBeInTheDocument()
+  })
+
+  it('renders an explicit unavailable state when Terms of Use content cannot be loaded', async () => {
+    mocks.getTranslations.mockResolvedValueOnce({ data: null, error: 'Failed to fetch Terms of Use translations.' })
 
     const { default: TermsOfUsePage } = await import('@/app/[locale]/(platform)/tos/page')
     render(await TermsOfUsePage({ params: Promise.resolve({ locale: 'en' }) } as any))
 
-    expect(screen.getByText(/These Terms of Use \("Terms"\) govern your access/i)).toBeInTheDocument()
-    expect(screen.queryByTitle('Terms of Use PDF')).not.toBeInTheDocument()
+    expect(screen.getByRole('alert')).toHaveTextContent('Terms of Use content is temporarily unavailable.')
   })
 })

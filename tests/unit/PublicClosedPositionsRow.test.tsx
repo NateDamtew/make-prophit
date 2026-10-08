@@ -1,16 +1,17 @@
 import type { AnchorHTMLAttributes } from 'react'
 
 import { render, screen } from '@testing-library/react'
+import { describe, expect, it, mock } from 'bun:test'
 
 import type { PublicPosition } from '@/app/[locale]/(platform)/profile/_components/PublicPositionItem'
 
 import PublicClosedPositionsRow from '@/app/[locale]/(platform)/profile/_components/PublicClosedPositionsRow'
 
-vi.mock('next-intl', () => ({
+void mock.module('next-intl', () => ({
   useExtracted: () => (message: string) => message,
 }))
 
-vi.mock('@/i18n/navigation', () => ({
+void mock.module('@/i18n/navigation', () => ({
   Link: function MockLink({ children, href, ...props }: AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }) {
     return (
       <a href={href} {...props}>
@@ -20,7 +21,7 @@ vi.mock('@/i18n/navigation', () => ({
   },
 }))
 
-vi.mock('@/components/EventIconImage', () => ({
+void mock.module('@/components/EventIconImage', () => ({
   default: () => <span data-testid="event-icon" />,
 }))
 
@@ -48,6 +49,54 @@ function renderRow(outcomeIndex: number) {
   )
 }
 
+function renderCustomOutcomeRow(outcome: string, outcomeIndex: number) {
+  const position: PublicPosition = {
+    id: `position-${outcome}`,
+    title: 'Closed market',
+    slug: 'closed-market',
+    eventSlug: 'closed-event',
+    avgPrice: 0.5,
+    currentValue: -5,
+    initialValue: 5,
+    realizedPnl: -5,
+    timestamp: 1,
+    status: 'closed',
+    outcome,
+    outcomeIndex,
+  }
+
+  render(
+    <table>
+      <tbody>
+        <PublicClosedPositionsRow position={position} onShareClick={() => {}} />
+      </tbody>
+    </table>,
+  )
+}
+
+function renderFallbackOutcomeRow() {
+  const position: PublicPosition = {
+    id: 'position-fallback',
+    title: 'Closed market',
+    slug: 'closed-market',
+    eventSlug: 'closed-event',
+    avgPrice: 0.5,
+    currentValue: -5,
+    initialValue: 5,
+    realizedPnl: -5,
+    timestamp: 1,
+    status: 'closed',
+  }
+
+  render(
+    <table>
+      <tbody>
+        <PublicClosedPositionsRow position={position} onShareClick={() => {}} />
+      </tbody>
+    </table>,
+  )
+}
+
 describe('publicClosedPositionsRow', () => {
   it.each([
     { outcomeIndex: 0, label: 'Yes', colorClass: 'text-yes' },
@@ -56,5 +105,17 @@ describe('publicClosedPositionsRow', () => {
     renderRow(outcomeIndex)
 
     expect(screen.getByText(new RegExp(`^${label} 50`))).toHaveClass(colorClass)
+  })
+
+  it('uses the outcome index for custom outcome labels', () => {
+    renderCustomOutcomeRow('Up', 0)
+
+    expect(screen.getByText(/^Up 50/)).toHaveClass('text-yes')
+  })
+
+  it('keeps the fallback Yes label green when outcome data is missing', () => {
+    renderFallbackOutcomeRow()
+
+    expect(screen.getByText(/^Yes 50/)).toHaveClass('text-yes')
   })
 })

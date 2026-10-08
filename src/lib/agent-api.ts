@@ -1,5 +1,7 @@
-import type { AgentRecord } from '@/lib/db/queries/agents'
 import { NextResponse } from 'next/server'
+
+import type { AgentRecord } from '@/lib/db/queries/agents'
+
 import { AgentRepository } from '@/lib/db/queries/agents'
 
 /**
@@ -41,7 +43,5 @@ export async function resolveAgent(request: Request): Promise<AgentRecord | null
  * special-case HTML error pages from the framework.
  */
 export function agentApiError(message: string, status: number) {
-  return withAgentApiCors(
-    NextResponse.json({ error: message, status }, { status }),
-  )
+  return withAgentApiCors(NextResponse.json({ error: message, status }, { status }))
 }

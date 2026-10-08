@@ -1,8 +1,10 @@
-import { getExtracted, setRequestLocale } from 'next-intl/server'
+import { getExtracted } from 'next-intl/server'
 import { Suspense } from 'react'
 
 import AdminCategoriesTable from '@/app/[locale]/admin/categories/_components/AdminCategoriesTable'
 import { Skeleton } from '@/components/ui/skeleton'
+import { loadEnabledLocales } from '@/i18n/locale-settings'
+import { isNonDefaultLocale } from '@/lib/translations/jobs'
 
 export const instant = false
 
@@ -25,10 +27,9 @@ function AdminCategoriesTableFallback() {
   )
 }
 
-export default async function AdminCategoriesPage({ params }: PageProps<'/[locale]/admin/categories'>) {
-  const { locale } = await params
-  setRequestLocale(locale)
+export default async function AdminCategoriesPage() {
   const t = await getExtracted()
+  const enabledLocales = await loadEnabledLocales()
 
   return (
     <section className="grid gap-4">
@@ -40,7 +41,7 @@ export default async function AdminCategoriesPage({ params }: PageProps<'/[local
       </div>
       <div className="min-w-0">
         <Suspense fallback={<AdminCategoriesTableFallback />}>
-          <AdminCategoriesTable />
+          <AdminCategoriesTable enabledTranslationLocales={enabledLocales.filter(isNonDefaultLocale)} />
         </Suspense>
       </div>
     </section>

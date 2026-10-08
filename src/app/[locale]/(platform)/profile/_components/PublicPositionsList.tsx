@@ -1,10 +1,9 @@
 'use client'
 
 import type { InfiniteData, QueryClient } from '@tanstack/react-query'
-import type { PublicPosition } from './PublicPositionItem'
-import type { NormalizedBookLevel } from '@/lib/order-panel-utils'
-import type { User } from '@/types'
+
 import { useQueryClient } from '@tanstack/react-query'
+import { useExtracted, useLocale } from 'next-intl'
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSignTypedData } from 'wagmi'
@@ -14,6 +13,8 @@ import type {
   SortDirection,
   SortOption,
 } from '@/app/[locale]/(platform)/profile/_types/PublicPositionsTypes'
+import type { NormalizedBookLevel } from '@/lib/order-panel-utils'
+import type { User } from '@/types'
 
 import { PositionShareDialog } from '@/app/[locale]/(platform)/_components/PositionShareDialog'
 import SellPositionModal from '@/app/[locale]/(platform)/_components/SellPositionModal'
@@ -23,6 +24,7 @@ import {
   handleOrderErrorFeedback,
   handleOrderSuccessFeedback,
   handleValidationError,
+  useOrderFeedbackTranslate,
 } from '@/app/[locale]/(platform)/event/[slug]/_components/feedback'
 import { useMergePositionsAction } from '@/app/[locale]/(platform)/profile/_hooks/useMergePositionsAction'
 import { usePublicPositionsQuery } from '@/app/[locale]/(platform)/profile/_hooks/usePublicPositionsQuery'
@@ -52,6 +54,7 @@ import { resolveViemRpcUrls } from '@/lib/viem-network'
 import { isUserRejectedRequestError, normalizeAddress } from '@/lib/wallet'
 import { useUser } from '@/stores/useUser'
 
+import type { PublicPosition } from './PublicPositionItem'
 
 import { MergePositionsDialog } from './MergePositionsDialog'
 import PublicPositionsFilters from './PublicPositionsFilters'
@@ -368,6 +371,8 @@ function useSellPositionFlow({
   runWithSignaturePrompt,
   signTypedDataAsync,
   resolveOutcomeIndex,
+  translate,
+  locale,
 }: {
   clobUrl: string
   userAddress: string
@@ -382,6 +387,8 @@ function useSellPositionFlow({
   runWithSignaturePrompt: ReturnType<typeof useSignaturePromptRunner>['runWithSignaturePrompt']
   signTypedDataAsync: ReturnType<typeof useSignTypedData>['signTypedDataAsync']
   resolveOutcomeIndex: (position: PublicPosition) => number
+  translate: (message: string, values?: Record<string, string | number | Date>) => string
+  locale: string
 }) {
   const [sellModalPayload, setSellModalPayload] = useState<SellModalPayload | null>(null)
   const [isCashOutSubmitting, setIsCashOutSubmitting] = useState(false)
@@ -445,7 +452,7 @@ function useSellPositionFlow({
       if (!tokenId) {
         if (sellRequestIdRef.current === requestId) {
           setSellModalPayload(null)
-          handleOrderErrorFeedback('Sell unavailable', 'Market data is unavailable.')
+          handleOrderErrorFeedback(translate('Sell unavailable'), translate('Market data is unavailable.'))
         }
         return
       }
@@ -475,11 +482,11 @@ function useSellPositionFlow({
       } catch (error) {
         console.error('Failed to load order book for sell preview.', error)
         if (sellRequestIdRef.current === requestId) {
-          handleOrderErrorFeedback('Order book unavailable', 'Please try again in a moment.')
+          handleOrderErrorFeedback(translate('Order book unavailable'), translate('Please try again in a moment.'))
         }
       }
     },
-    [clobUrl, resolveOutcomeIndex],
+    [clobUrl, resolveOutcomeIndex, translate],
   )
 
   const handleSellModalChange = useCallback((open: boolean) => {
@@ -537,7 +544,7 @@ function useSellPositionFlow({
           handleEditOrder(normalizedSharesToSell)
           return
         }
-        handleOrderErrorFeedback('Trade failed', 'No liquidity for this market order.')
+        handleOrderErrorFeedback(translate('Trade failed'), translate('No liquidity for this market order.'))
         return
       }
 
@@ -546,29 +553,29 @@ function useSellPositionFlow({
       }
 
       if (!isConnected) {
-        handleValidationError('NOT_CONNECTED', { openWalletModal })
+        handleValidationError('NOT_CONNECTED', { openWalletModal, translate })
         return
       }
 
       if (!user) {
-        handleValidationError('MISSING_USER', { openWalletModal })
+        handleValidationError('MISSING_USER', { openWalletModal, translate })
         return
       }
 
       if (!makerAddress) {
-        handleOrderErrorFeedback('Trade failed', 'Wallet not ready for trading.')
+        handleOrderErrorFeedback(translate('Trade failed'), translate('Wallet not ready for trading.'))
         return
       }
 
       const conditionId = position.conditionId ?? null
       if (!tokenId || !conditionId || !eventSlug) {
-        handleOrderErrorFeedback('Trade failed', 'Market data is unavailable.')
+        handleOrderErrorFeedback(translate('Trade failed'), translate('Market data is unavailable.'))
         return
       }
 
       const effectiveShares = formatAmountInputValue(normalizedSharesToSell, { roundingMode: 'floor' })
       if (!effectiveShares) {
-        handleOrderErrorFeedback('Trade failed', 'Invalid share amount.')
+        handleOrderErrorFeedback(translate('Trade failed'), translate('Invalid share amount.'))
         return
       }
 
@@ -614,10 +621,13 @@ function useSellPositionFlow({
         )
       } catch (error) {
         if (isUserRejectedRequestError(error)) {
-          handleOrderCancelledFeedback()
+          handleOrderCancelledFeedback(translate)
           return
         }
-        handleOrderErrorFeedback('Trade failed', 'We could not sign your order. Please try again.')
+        handleOrderErrorFeedback(
+          translate('Trade failed'),
+          translate('We could not sign your order. Please try again.'),
+        )
         return
       }
 
@@ -629,6 +639,7 @@ function useSellPositionFlow({
           orderType: ORDER_TYPE.MARKET,
           conditionId,
           slug: eventSlug,
+          locale,
         })
 
         if (result?.error) {
@@ -636,7 +647,7 @@ function useSellPositionFlow({
             openTradeRequirements({ forceTradingAuth: true })
             return
           } else {
-            handleOrderErrorFeedback('Trade failed', result.error)
+            handleOrderErrorFeedback(translate('Trade failed'), result.error)
           }
           return
         }
@@ -656,6 +667,7 @@ function useSellPositionFlow({
           queryClient,
           outcomeIndex,
           lastMouseEvent: null,
+          translate,
         })
 
         updateQueryDataWhere<InfiniteData<PublicPosition[]>>(
@@ -692,7 +704,10 @@ function useSellPositionFlow({
 
         setSellModalPayload(null)
       } catch {
-        handleOrderErrorFeedback('Trade failed', 'An unexpected error occurred. Please try again.')
+        handleOrderErrorFeedback(
+          translate('Trade failed'),
+          translate('An unexpected error occurred. Please try again.'),
+        )
       } finally {
         setIsCashOutSubmitting(false)
       }
@@ -710,6 +725,8 @@ function useSellPositionFlow({
       runWithSignaturePrompt,
       sellModalPayload,
       signTypedDataAsync,
+      translate,
+      locale,
       user,
       userAddress,
     ],
@@ -725,9 +742,12 @@ function useSellPositionFlow({
 }
 
 export default function PublicPositionsList({ userAddress }: PublicPositionsListProps) {
+  const t = useExtracted()
+  const locale = useLocale()
+  const translateFeedback = useOrderFeedbackTranslate()
   const queryClient = useQueryClient()
   const router = useRouter()
-  const { open } = useAppKit()
+  const { open: openAppKit } = useAppKit()
   const { isConnected } = useAppKitAccount()
   const { signTypedDataAsync } = useSignTypedData()
   const { runWithSignaturePrompt } = useSignaturePromptRunner()
@@ -800,7 +820,7 @@ export default function PublicPositionsList({ userAddress }: PublicPositionsList
       makerAddress,
       user,
       isConnected,
-      openWalletModal: open,
+      openWalletModal: openAppKit,
       queryClient,
       router,
       ensureTradingReady,
@@ -808,6 +828,8 @@ export default function PublicPositionsList({ userAddress }: PublicPositionsList
       runWithSignaturePrompt,
       signTypedDataAsync,
       resolveOutcomeIndex,
+      translate: translateFeedback,
+      locale,
     })
 
   useScrollToTopOnFilterChange({
@@ -827,7 +849,7 @@ export default function PublicPositionsList({ userAddress }: PublicPositionsList
     hasNextPage,
     isFetchingNextPage,
     fetchNextPage,
-    errorMessage: 'Failed to load more positions',
+    errorMessage: t('Failed to load more positions'),
     onSuccess: handleLoadMoreSuccess,
   })
 
@@ -887,14 +909,14 @@ export default function PublicPositionsList({ userAddress }: PublicPositionsList
       />
 
       {(isFetchingNextPage || isLoadingMore) && (
-        <div className="py-4 text-center text-xs text-muted-foreground">Loading more...</div>
+        <div className="py-4 text-center text-xs text-muted-foreground">{t('Loading more...')}</div>
       )}
 
       {infiniteScrollError && (
         <div className="py-4 text-center text-xs text-no">
           {infiniteScrollError}{' '}
           <button type="button" onClick={loadMore} className="underline underline-offset-2">
-            Retry
+            {t('Retry')}
           </button>
         </div>
       )}

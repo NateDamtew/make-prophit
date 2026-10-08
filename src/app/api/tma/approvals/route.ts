@@ -1,10 +1,9 @@
 import { NextResponse } from 'next/server'
+
 import { submitDepositWalletTransactionAction } from '@/app/[locale]/(platform)/_actions/approve-tokens'
 import { DEFAULT_CHAIN_ID } from '@/lib/network'
-import {
-  buildWalletTransactionRequestPayload,
-  getDepositWalletBatchTypedData,
-} from '@/lib/wallet/transactions'
+import { buildWalletTransactionRequestPayload, getDepositWalletBatchTypedData } from '@/lib/wallet/transactions'
+
 import { badRequest, buildStandardApprovalCalls, requireTmaUser } from '../_lib'
 
 /**
@@ -20,7 +19,8 @@ export async function POST(request: Request) {
   if (guard.unauthorized) {
     return guard.unauthorized
   }
-  const user = guard.user as typeof guard.user & {
+  const user = guard.user as {
+    address?: string | null
     deposit_wallet_address?: string | null
     deposit_wallet_status?: string | null
   }
@@ -32,11 +32,10 @@ export async function POST(request: Request) {
     )
   }
 
-  let body: { nonce?: string, deadline?: string, signature?: string }
+  let body: { nonce?: string; deadline?: string; signature?: string }
   try {
     body = await request.json()
-  }
-  catch {
+  } catch {
     return badRequest('Invalid JSON body.')
   }
   if (!body.nonce || !body.deadline || !body.signature) {

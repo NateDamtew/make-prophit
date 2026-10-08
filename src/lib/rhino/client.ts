@@ -6,10 +6,8 @@ import type {
   RhinoUserQuote,
   UserQuoteParams,
 } from '@/lib/rhino/types'
-import {
-  RHINO_AUTH_URL,
-  RHINO_BRIDGE_BASE,
-} from '@/lib/rhino/constants'
+
+import { RHINO_AUTH_URL, RHINO_BRIDGE_BASE } from '@/lib/rhino/constants'
 
 /**
  * Server-side rhino.fi bridge client.
@@ -44,7 +42,7 @@ async function rhinoFetch(url: string, init?: RequestInit): Promise<unknown> {
     headers: {
       Accept: 'application/json',
       ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
-      ...init?.headers,
+      ...Object.fromEntries(new Headers(init?.headers)),
     },
   })
 
@@ -58,7 +56,7 @@ async function rhinoFetch(url: string, init?: RequestInit): Promise<unknown> {
 // ── Public (no auth) ────────────────────────────────────────────────────────
 
 export async function getRhinoConfig(): Promise<RhinoConfig> {
-  return await rhinoFetch(`${RHINO_BRIDGE_BASE}/configs`) as RhinoConfig
+  return (await rhinoFetch(`${RHINO_BRIDGE_BASE}/configs`)) as RhinoConfig
 }
 
 export async function getPublicQuote(params: PublicQuoteParams): Promise<RhinoPublicQuote> {
@@ -70,12 +68,12 @@ export async function getPublicQuote(params: PublicQuoteParams): Promise<RhinoPu
     amount: params.amount,
     mode: params.mode,
   })
-  return await rhinoFetch(`${RHINO_BRIDGE_BASE}/quote/bridge-swap/public?${query}`) as RhinoPublicQuote
+  return (await rhinoFetch(`${RHINO_BRIDGE_BASE}/quote/bridge-swap/public?${query}`)) as RhinoPublicQuote
 }
 
 // ── Authenticated (JWT from RHINO_API_KEY) ──────────────────────────────────
 
-let cachedJwt: { token: string, expiresAt: number } | null = null
+let cachedJwt: { token: string; expiresAt: number } | null = null
 
 async function getJwt(): Promise<string> {
   const apiKey = process.env.RHINO_API_KEY
@@ -87,10 +85,10 @@ async function getJwt(): Promise<string> {
     return cachedJwt.token
   }
 
-  const result = await rhinoFetch(RHINO_AUTH_URL, {
+  const result = (await rhinoFetch(RHINO_AUTH_URL, {
     method: 'POST',
     body: JSON.stringify({ apiKey }),
-  }) as { jwt?: string }
+  })) as { jwt?: string }
 
   if (!result?.jwt) {
     throw new RhinoApiError('rhino auth returned no jwt', 0, JSON.stringify(result))
@@ -105,15 +103,15 @@ async function authedFetch(url: string, init?: RequestInit): Promise<unknown> {
   const jwt = await getJwt()
   return await rhinoFetch(url, {
     ...init,
-    headers: { ...init?.headers, Authorization: jwt },
+    headers: { ...Object.fromEntries(new Headers(init?.headers)), Authorization: jwt },
   })
 }
 
 export async function getUserQuote(params: UserQuoteParams): Promise<RhinoUserQuote> {
-  return await authedFetch(`${RHINO_BRIDGE_BASE}/quote/bridge-swap/user`, {
+  return (await authedFetch(`${RHINO_BRIDGE_BASE}/quote/bridge-swap/user`, {
     method: 'POST',
     body: JSON.stringify({ ...params, amountNative: '0' }),
-  }) as RhinoUserQuote
+  })) as RhinoUserQuote
 }
 
 export async function commitQuote(quoteId: string): Promise<unknown> {
@@ -129,5 +127,5 @@ export async function commitQuote(quoteId: string): Promise<unknown> {
  * for when/if a secret key is configured.
  */
 export async function getBridgeStatus(bridgeId: string): Promise<RhinoBridgeStatus> {
-  return await authedFetch(`${RHINO_BRIDGE_BASE}/history/bridge/${encodeURIComponent(bridgeId)}`) as RhinoBridgeStatus
+  return (await authedFetch(`${RHINO_BRIDGE_BASE}/history/bridge/${encodeURIComponent(bridgeId)}`)) as RhinoBridgeStatus
 }

@@ -1,9 +1,10 @@
 'use client'
 
-import type { ColumnDef, SortingState, VisibilityState } from '@tanstack/react-table'
+import type { ColumnVisibilityState, RowData, SortingState, Updater } from '@tanstack/react-table'
 import type { ReactNode } from 'react'
 
-import { flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-table'
+import { flexRender, useTable } from '@tanstack/react-table'
+import { SearchIcon } from 'lucide-react'
 import { useExtracted } from 'next-intl'
 import { useCallback, useMemo, useState } from 'react'
 
@@ -11,12 +12,13 @@ import { DataTableToolbar } from '@/app/[locale]/admin/_components/DataTableTool
 import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { tableHeaderClass } from '@/lib/constants'
+import { type DataTableColumnDef, dataTableFeatures } from '@/lib/data-table'
 import { cn } from '@/lib/utils'
 
 import { DataTablePagination } from './DataTablePagination'
 
-interface DataTableProps<TData, TValue> {
-  columns: ColumnDef<TData, TValue>[]
+interface DataTableProps<TData extends RowData> {
+  columns: DataTableColumnDef<TData>[]
   data: TData[]
   totalCount: number
   searchPlaceholder?: string
@@ -27,6 +29,7 @@ interface DataTableProps<TData, TValue> {
   error?: string | null
   emptyMessage?: string
   emptyDescription?: string
+  emptyAction?: ReactNode
   onRetry?: () => void
   // Server-side state handlers
   search: string
@@ -45,7 +48,7 @@ interface DataTableProps<TData, TValue> {
   searchLeadingIcon?: ReactNode
 }
 
-function useDataTableState<TData, TValue>({
+function useDataTableState<TData extends RowData>({
   columns,
   data,
   totalCount,
@@ -55,7 +58,7 @@ function useDataTableState<TData, TValue>({
   pageIndex,
   pageSize,
 }: {
-  columns: ColumnDef<TData, TValue>[]
+  columns: DataTableColumnDef<TData>[]
   data: TData[]
   totalCount: number
   sortBy: string | null
@@ -65,7 +68,7 @@ function useDataTableState<TData, TValue>({
   pageSize: number
 }) {
   const [rowSelection, setRowSelection] = useState({})
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({})
+  const [columnVisibility, setColumnVisibility] = useState<ColumnVisibilityState>({})
 
   const sorting: SortingState = useMemo(() => {
     const dbToColumnMapping: Record<string, string> = {
@@ -90,7 +93,7 @@ function useDataTableState<TData, TValue>({
   }, [columns, sortBy, sortOrder])
 
   const handleSortingChange = useCallback(
-    (updaterOrValue: any) => {
+    (updaterOrValue: Updater<SortingState>) => {
       const newSorting = typeof updaterOrValue === 'function' ? updaterOrValue(sorting) : updaterOrValue
 
       if (newSorting.length === 0) {
@@ -103,19 +106,19 @@ function useDataTableState<TData, TValue>({
     [sorting, onSortChange],
   )
 
-  const table = useReactTable({
+  const table = useTable({
+    features: dataTableFeatures,
     data,
     columns,
     pageCount: Math.ceil(totalCount / pageSize),
     manualPagination: true,
     manualSorting: true,
     onSortingChange: handleSortingChange,
-    getCoreRowModel: getCoreRowModel(),
-    onColumnVisibilityChange: Array.isArray(columnVisibility) ? columnVisibility[1] : setColumnVisibility,
+    onColumnVisibilityChange: setColumnVisibility,
     onRowSelectionChange: setRowSelection,
     state: {
       sorting,
-      columnVisibility: Array.isArray(columnVisibility) ? columnVisibility[0] : columnVisibility,
+      columnVisibility,
       rowSelection,
       pagination: {
         pageIndex,
@@ -127,7 +130,7 @@ function useDataTableState<TData, TValue>({
   return { table }
 }
 
-export function DataTable<TData, TValue>({
+export function DataTable<TData extends RowData>({
   columns,
   data,
   totalCount,
@@ -139,6 +142,7 @@ export function DataTable<TData, TValue>({
   error = null,
   emptyMessage,
   emptyDescription,
+  emptyAction,
   onRetry,
   search,
   onSearchChange,
@@ -152,11 +156,11 @@ export function DataTable<TData, TValue>({
   toolbarLeftContent,
   toolbarRightContent,
   aboveTableContent,
-  searchInputClassName,
-  searchLeadingIcon,
-}: DataTableProps<TData, TValue>) {
+  searchInputClassName = 'h-9 sm:w-37.5 lg:w-62.5',
+  searchLeadingIcon = <SearchIcon className="size-4" />,
+}: DataTableProps<TData>) {
   const t = useExtracted()
-  const resolvedSearchPlaceholder = searchPlaceholder ?? t('Search...')
+  const resolvedSearchPlaceholder = searchPlaceholder ?? t('Search')
   const resolvedEmptyMessage = emptyMessage ?? t('No entries found')
   const resolvedEmptyDescription = emptyDescription ?? t('There are no entries to display yet.')
 
@@ -302,6 +306,7 @@ export function DataTable<TData, TValue>({
                       </div>
                       <h3 className="mb-1 text-sm font-medium text-foreground">{resolvedEmptyMessage}</h3>
                       <p className="text-xs text-muted-foreground">{resolvedEmptyDescription}</p>
+                      {emptyAction && <div className="mt-4">{emptyAction}</div>}
                     </div>
                   ) : (
                     <div className="flex flex-col items-center justify-center py-8">

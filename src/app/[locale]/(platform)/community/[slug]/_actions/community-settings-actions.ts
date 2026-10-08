@@ -1,13 +1,15 @@
 'use server'
 
-import { Buffer } from 'node:buffer'
 import { revalidatePath } from 'next/cache'
+import { Buffer } from 'node:buffer'
 import sharp from 'sharp'
 import { z } from 'zod'
+
 import { DEFAULT_ERROR_MESSAGE } from '@/lib/constants'
 import { CommunityRepository } from '@/lib/db/queries/community'
 import { UserRepository } from '@/lib/db/queries/user'
-import { getPublicAssetUrl, uploadPublicAsset } from '@/lib/storage'
+import { getPublicAssetUrl } from '@/lib/storage'
+import { uploadPublicAsset } from '@/lib/storage-upload'
 
 const MAX_FILE_SIZE = 4 * 1024 * 1024
 const ACCEPTED_IMAGE_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp']
@@ -22,10 +24,10 @@ function imageFileSchema(label: string) {
   return z
     .instanceof(File)
     .optional()
-    .refine(file => !file || file.size === 0 || file.size <= MAX_FILE_SIZE, {
+    .refine((file) => !file || file.size === 0 || file.size <= MAX_FILE_SIZE, {
       error: `${label} must be less than 4MB`,
     })
-    .refine(file => !file || file.size === 0 || ACCEPTED_IMAGE_TYPES.includes(file.type), {
+    .refine((file) => !file || file.size === 0 || ACCEPTED_IMAGE_TYPES.includes(file.type), {
       error: `${label} must be a JPG, PNG, or WebP image`,
     })
 }
@@ -41,15 +43,12 @@ const UpdateCommunitySchema = z.object({
   banner: imageFileSchema('Banner'),
 })
 
-async function uploadResized(
-  communityId: string,
-  kind: 'icon' | 'banner',
-  file: File,
-): Promise<string | null> {
+async function uploadResized(communityId: string, kind: 'icon' | 'banner', file: File): Promise<string | null> {
   const buffer = Buffer.from(await file.arrayBuffer())
-  const pipeline = kind === 'icon'
-    ? sharp(buffer).resize(256, 256, { fit: 'cover' })
-    : sharp(buffer).resize(1600, 420, { fit: 'cover' })
+  const pipeline =
+    kind === 'icon'
+      ? sharp(buffer).resize(256, 256, { fit: 'cover' })
+      : sharp(buffer).resize(1600, 420, { fit: 'cover' })
 
   const resized = await pipeline.jpeg({ quality: 88 }).toBuffer()
   const fileName = `communities/${kind}s/${communityId}-${Date.now()}.jpg`
@@ -141,8 +140,7 @@ export async function updateCommunitySettingsAction(formData: FormData): Promise
     revalidatePath(`/community/${slug}`, 'layout')
     revalidatePath(`/community/${slug}/settings`)
     return { success: true }
-  }
-  catch {
+  } catch {
     return { error: DEFAULT_ERROR_MESSAGE }
   }
 }

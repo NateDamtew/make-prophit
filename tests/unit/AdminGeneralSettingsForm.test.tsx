@@ -1,20 +1,21 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { beforeEach, describe, expect, it, mock } from 'bun:test'
 import * as React from 'react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import AdminGeneralSettingsForm from '@/app/[locale]/admin/(general)/_components/AdminGeneralSettingsForm'
 import { DEFAULT_HOME_FEATURED_SETTINGS } from '@/lib/home-featured-settings'
 
-const mocks = vi.hoisted(() => ({
-  removeTermsOfServicePdfAction: vi.fn(),
-  updateGeneralSettingsAction: vi.fn(),
-  optimizeSideCardImage: vi.fn(),
-  createObjectURL: vi.fn(),
-  revokeObjectURL: vi.fn(),
-  toastSuccess: vi.fn(),
-  toastError: vi.fn(),
-  useIsMobile: vi.fn(() => false),
+import { hoisted } from '../bun-test-helpers'
+
+const mocks = hoisted(() => ({
+  updateGeneralSettingsAction: mock(),
+  optimizeSideCardImage: mock(),
+  createObjectURL: mock(),
+  revokeObjectURL: mock(),
+  toastSuccess: mock(),
+  toastError: mock(),
+  useIsMobile: mock(() => false),
 }))
 
 const marketContextProps = {
@@ -31,7 +32,22 @@ const marketContextProps = {
   ],
 }
 
-vi.mock('next-intl', () => ({
+const termsOfServiceTranslations = {
+  en: '# Kuest Terms of Use\n\nEnglish content.',
+  de: '# Kuest Nutzungsbedingungen\n\nDeutscher Inhalt.',
+  es: '# Términos de uso de Kuest\n\nContenido en español.',
+  pt: '# Termos de Uso da Kuest\n\nConteúdo em português.',
+  fr: '# Conditions d’utilisation de Kuest\n\nContenu français.',
+  zh: '# Kuest 使用条款\n\n中文内容。',
+  ja: '# Kuest 利用規約\n\n日本語の内容。',
+  ar: '# شروط استخدام Kuest\n\nمحتوى عربي.',
+  ru: '# Условия использования Kuest\n\nСодержимое на русском языке.',
+  it: '# Termini di utilizzo di Kuest\n\nContenuto in italiano.',
+  pl: '# Warunki korzystania z Kuest\n\nTreść po polsku.',
+  ko: '# Kuest 이용약관\n\n한국어 콘텐츠.',
+}
+
+void mock.module('next-intl', () => ({
   useExtracted: () => (value: string, variables?: Record<string, string>) =>
     Object.entries(variables ?? {}).reduce(
       (message, [key, replacement]) => message.replaceAll(`{${key}}`, replacement),
@@ -39,11 +55,11 @@ vi.mock('next-intl', () => ({
     ),
 }))
 
-vi.mock('next/navigation', () => ({
-  useRouter: () => ({ refresh: vi.fn() }),
+void mock.module('next/navigation', () => ({
+  useRouter: () => ({ refresh: mock() }),
 }))
 
-vi.mock('@/i18n/navigation', () => ({
+void mock.module('@/i18n/navigation', () => ({
   Link: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }) => (
     <a href={href} {...props}>
       {children}
@@ -51,32 +67,31 @@ vi.mock('@/i18n/navigation', () => ({
   ),
 }))
 
-vi.mock('@/hooks/useIsMobile', () => ({
+void mock.module('@/hooks/useIsMobile', () => ({
   useIsMobile: mocks.useIsMobile,
 }))
 
-vi.mock('next/image', () => ({
+void mock.module('next/image', () => ({
   __esModule: true,
   default: ({ fill: _fill, unoptimized: _unoptimized, ...props }: any) => React.createElement('img', props),
 }))
 
-vi.mock('@/components/ui/toast', () => ({
+void mock.module('@/components/ui/toast', () => ({
   toast: {
     success: (...args: any[]) => mocks.toastSuccess(...args),
     error: (...args: any[]) => mocks.toastError(...args),
   },
 }))
 
-vi.mock('@/app/[locale]/admin/(general)/_actions/update-general-settings', () => ({
+void mock.module('@/app/[locale]/admin/(general)/_actions/update-general-settings', () => ({
   updateGeneralSettingsAction: (...args: any[]) => mocks.updateGeneralSettingsAction(...args),
-  removeTermsOfServicePdfAction: (...args: any[]) => mocks.removeTermsOfServicePdfAction(...args),
 }))
 
-vi.mock('@/lib/side-card-image-client', () => ({
+void mock.module('@/lib/side-card-image-client', () => ({
   optimizeSideCardImage: (...args: any[]) => mocks.optimizeSideCardImage(...args),
 }))
 
-vi.mock('@/app/[locale]/admin/(general)/_components/AllowedMarketCreatorsManager', () => ({
+void mock.module('@/app/[locale]/admin/(general)/_components/AllowedMarketCreatorsManager', () => ({
   __esModule: true,
   default: () => React.createElement('div', { 'data-testid': 'allowed-market-creators-manager' }),
 }))
@@ -84,7 +99,6 @@ vi.mock('@/app/[locale]/admin/(general)/_components/AllowedMarketCreatorsManager
 describe('adminGeneralSettingsForm', () => {
   beforeEach(() => {
     window.history.replaceState(window.history.state, '', window.location.pathname)
-    mocks.removeTermsOfServicePdfAction.mockReset()
     mocks.updateGeneralSettingsAction.mockReset()
     mocks.optimizeSideCardImage.mockReset()
     mocks.createObjectURL.mockReset()
@@ -104,24 +118,24 @@ describe('adminGeneralSettingsForm', () => {
     })
     Object.defineProperty(window, 'matchMedia', {
       writable: true,
-      value: vi.fn().mockImplementation((query: string) => ({
+      value: mock().mockImplementation((query: string) => ({
         matches: false,
         media: query,
         onchange: null,
-        addListener: vi.fn(),
-        removeListener: vi.fn(),
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-        dispatchEvent: vi.fn(),
+        addListener: mock(),
+        removeListener: mock(),
+        addEventListener: mock(),
+        removeEventListener: mock(),
+        dispatchEvent: mock(),
       })),
     })
     Object.defineProperty(HTMLElement.prototype, 'setPointerCapture', {
       configurable: true,
-      value: vi.fn(),
+      value: mock(),
     })
     Object.defineProperty(HTMLElement.prototype, 'releasePointerCapture', {
       configurable: true,
-      value: vi.fn(),
+      value: mock(),
     })
   })
 
@@ -165,8 +179,8 @@ describe('adminGeneralSettingsForm', () => {
           disableFaucetBanner: false,
         }}
         initialBlockedCountries={[]}
-        initialTermsOfServicePdfPath=""
-        initialTermsOfServicePdfUrl={null}
+        enabledLocales={['en', 'pt']}
+        initialTermsOfServiceTranslations={termsOfServiceTranslations}
       />,
     )
     const trigger = screen.getByRole('button', { name: /Brand identity/i })
@@ -178,11 +192,10 @@ describe('adminGeneralSettingsForm', () => {
     expect(window.location.hash).toBe('')
   })
 
-  it('invokes the remove PDF action from the legal section', async () => {
+  it('edits and submits the Terms of Use translation selected in the language select', async () => {
     const user = userEvent.setup()
-    mocks.removeTermsOfServicePdfAction.mockResolvedValueOnce({ error: null })
 
-    const { container } = render(
+    render(
       <AdminGeneralSettingsForm
         {...marketContextProps}
         locale="en"
@@ -219,21 +232,28 @@ describe('adminGeneralSettingsForm', () => {
           disableFaucetBanner: false,
         }}
         initialBlockedCountries={[]}
-        initialTermsOfServicePdfPath="legal/current-terms.pdf"
-        initialTermsOfServicePdfUrl="https://cdn.example.com/legal/current-terms.pdf"
+        enabledLocales={['en', 'pt']}
+        initialTermsOfServiceTranslations={termsOfServiceTranslations}
       />,
     )
 
-    await user.click(screen.getByRole('button', { name: /Legal/i }))
-    expect((container.querySelector('input[name="tos_pdf_path"]') as HTMLInputElement).value).toBe(
-      'legal/current-terms.pdf',
-    )
-    await user.click(screen.getByRole('button', { name: /Remove uploaded PDF/i }))
+    await user.click(screen.getByRole('button', { name: /Terms of Service/i }))
+    const languageSelect = screen.getByRole('combobox', { name: 'Choose the language' })
+    expect(languageSelect).toBeInTheDocument()
+    await user.click(languageSelect)
+    await user.click(await screen.findByRole('option', { name: /Português/i }))
+    const portugueseContent = screen.getByRole('textbox', { name: /Português terms of service content/i })
+    await user.clear(portugueseContent)
+    await user.type(portugueseContent, '# Termos atualizados\n\nConteúdo atualizado.')
+    await user.click(screen.getByRole('button', { name: 'Save settings' }))
 
     await waitFor(() => {
-      expect(mocks.removeTermsOfServicePdfAction).toHaveBeenCalledTimes(1)
-      expect((container.querySelector('input[name="tos_pdf_path"]') as HTMLInputElement).value).toBe('')
+      expect(mocks.updateGeneralSettingsAction).toHaveBeenCalledTimes(1)
     })
+    const formData = mocks.updateGeneralSettingsAction.mock.calls[0]?.[1] as FormData
+    expect(JSON.parse(formData.get('terms_of_service_translations_json') as string).pt).toBe(
+      '# Termos atualizados\n\nConteúdo atualizado.',
+    )
   })
 
   it('places featured markets above Market Context and submits it through the global form', async () => {
@@ -275,8 +295,8 @@ describe('adminGeneralSettingsForm', () => {
           disableFaucetBanner: false,
         }}
         initialBlockedCountries={[]}
-        initialTermsOfServicePdfPath=""
-        initialTermsOfServicePdfUrl={null}
+        enabledLocales={['en', 'pt']}
+        initialTermsOfServiceTranslations={termsOfServiceTranslations}
       />,
     )
 
@@ -289,7 +309,7 @@ describe('adminGeneralSettingsForm', () => {
     ).toBeTruthy()
     expect(container.querySelector('input[name="site_name"]')).toBeTruthy()
     expect(container.querySelector('input[name="google_analytics_id"]')).toBeNull()
-    expect(container.querySelector('input[name="tos_pdf_path"]')).toBeTruthy()
+    expect(container.querySelector('input[name="terms_of_service_translations_json"]')).toBeNull()
 
     await user.click(screen.getByRole('button', { name: /Brand identity/i }))
     expect(screen.getByRole('button', { name: /Brand identity/i })).toHaveAttribute('aria-expanded', 'true')
@@ -360,8 +380,8 @@ describe('adminGeneralSettingsForm', () => {
           disableFaucetBanner: false,
         }}
         initialBlockedCountries={[]}
-        initialTermsOfServicePdfPath=""
-        initialTermsOfServicePdfUrl={null}
+        enabledLocales={['en', 'pt']}
+        initialTermsOfServiceTranslations={termsOfServiceTranslations}
         initialHomeFeaturedEvents={[
           {
             targetType: 'event',
@@ -464,8 +484,8 @@ describe('adminGeneralSettingsForm', () => {
           disableFaucetBanner: false,
         }}
         initialBlockedCountries={[]}
-        initialTermsOfServicePdfPath=""
-        initialTermsOfServicePdfUrl={null}
+        enabledLocales={['en', 'pt']}
+        initialTermsOfServiceTranslations={termsOfServiceTranslations}
         initialHomeFeaturedSettings={{
           ...DEFAULT_HOME_FEATURED_SETTINGS,
           sideCard: {
@@ -534,8 +554,8 @@ describe('adminGeneralSettingsForm', () => {
           disableFaucetBanner: false,
         }}
         initialBlockedCountries={[]}
-        initialTermsOfServicePdfPath=""
-        initialTermsOfServicePdfUrl={null}
+        enabledLocales={['en', 'pt']}
+        initialTermsOfServiceTranslations={termsOfServiceTranslations}
         initialHomeFeaturedSettings={{
           ...DEFAULT_HOME_FEATURED_SETTINGS,
           sideCard: {

@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm'
 import { char, index, jsonb, pgTable, text, timestamp } from 'drizzle-orm/pg-core'
+
 import { users } from '@/lib/db/schema/auth/tables'
 
 /**
@@ -21,11 +22,9 @@ export const adminAuditLog = pgTable(
     target_id: text(),
     summary: text(),
     diff: jsonb().$type<Record<string, unknown>>(),
-    created_at: timestamp({ withTimezone: true })
-      .notNull()
-      .defaultNow(),
+    created_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
-  table => [
+  (table) => [
     index('admin_audit_log_created_at_idx').on(table.created_at.desc()),
     index('admin_audit_log_target_idx').on(table.target_type, table.target_id),
   ],

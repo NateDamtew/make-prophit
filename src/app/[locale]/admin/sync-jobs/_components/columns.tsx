@@ -1,16 +1,18 @@
 'use client'
 
-import type { ColumnDef } from '@tanstack/react-table'
-import type { SyncJobRow, useSyncJobsTable } from '@/app/[locale]/admin/sync-jobs/_hooks/useSyncJobs'
 import { RotateCwIcon } from 'lucide-react'
-import { toast } from '@/components/ui/toast'
+
+import type { SyncJobRow, useSyncJobsTable } from '@/app/[locale]/admin/sync-jobs/_hooks/useSyncJobs'
+import type { DataTableColumnDef } from '@/lib/data-table'
+
 import { formatAbsolute, formatRelativeTime } from '@/components/admin-ui/format'
 import { StatusBadge } from '@/components/admin-ui/StatusBadge'
 import { Button } from '@/components/ui/button'
+import { toast } from '@/components/ui/toast'
 
 type RetryMutation = ReturnType<typeof useSyncJobsTable>['retry']
 
-export function useSyncJobsColumns(retry: RetryMutation): ColumnDef<SyncJobRow>[] {
+export function useSyncJobsColumns(retry: RetryMutation): DataTableColumnDef<SyncJobRow>[] {
   return [
     {
       accessorKey: 'job_type',
@@ -35,9 +37,7 @@ export function useSyncJobsColumns(retry: RetryMutation): ColumnDef<SyncJobRow>[
       header: () => <span className="text-muted-foreground">Attempts</span>,
       cell: ({ row }) => (
         <span className="text-sm text-muted-foreground tabular-nums">
-          {row.original.attempts}
-          /
-          {row.original.max_attempts}
+          {row.original.attempts}/{row.original.max_attempts}
         </span>
       ),
     },
@@ -46,10 +46,7 @@ export function useSyncJobsColumns(retry: RetryMutation): ColumnDef<SyncJobRow>[
       id: 'last_error',
       header: () => <span className="text-muted-foreground">Last error</span>,
       cell: ({ row }) => (
-        <span
-          className="line-clamp-2 max-w-xs text-xs text-(--no)"
-          title={row.original.last_error ?? undefined}
-        >
+        <span className="line-clamp-2 max-w-xs text-xs text-(--no)" title={row.original.last_error ?? undefined}>
           {row.original.last_error || '—'}
         </span>
       ),
@@ -84,10 +81,10 @@ export function useSyncJobsColumns(retry: RetryMutation): ColumnDef<SyncJobRow>[
               variant="outline"
               size="sm"
               onClick={() => {
-                toast.promise(retry.mutateAsync(job.id), {
+                void toast.promise(retry.mutateAsync(job.id), {
                   loading: 'Re-queuing…',
                   success: 'Job re-queued',
-                  error: err => (err as Error).message,
+                  error: (err) => (err as Error).message,
                 })
               }}
             >

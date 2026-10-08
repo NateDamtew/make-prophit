@@ -1,4 +1,5 @@
 import { and, desc, eq, ilike, or, sql } from 'drizzle-orm'
+
 import { getConsensusThreshold, getMaxMembersForJurySize } from '@/lib/community-config'
 import { users } from '@/lib/db/schema/auth/tables'
 import {
@@ -23,10 +24,7 @@ const RESOLUTION_PRICE_INVALID = '500000000000000000' // 5e17
  * to the linked event's conditions so on-chain settlement pays out.
  * Only applies if the community market has an event_id (was deployed).
  */
-async function writeJuryResolutionToConditions(
-  communityMarketId: string,
-  outcome: 'yes' | 'no' | 'cancelled',
-) {
+async function writeJuryResolutionToConditions(communityMarketId: string, outcome: 'yes' | 'no' | 'cancelled') {
   try {
     const [link] = await db
       .select({ event_id: community_markets.event_id })
@@ -47,11 +45,8 @@ async function writeJuryResolutionToConditions(
       return
     }
 
-    const price = outcome === 'yes'
-      ? RESOLUTION_PRICE_YES
-      : outcome === 'no'
-        ? RESOLUTION_PRICE_NO
-        : RESOLUTION_PRICE_INVALID
+    const price =
+      outcome === 'yes' ? RESOLUTION_PRICE_YES : outcome === 'no' ? RESOLUTION_PRICE_NO : RESOLUTION_PRICE_INVALID
 
     for (const { condition_id } of conditionIds) {
       await db
@@ -70,8 +65,7 @@ async function writeJuryResolutionToConditions(
         })
         .where(eq(conditions.id, condition_id))
     }
-  }
-  catch (err) {
+  } catch (err) {
     console.error('[writeJuryResolutionToConditions] Failed:', err)
   }
 }
@@ -123,8 +117,7 @@ export const CommunityRepository = {
       })
 
       return { data: community, error: null }
-    }
-    catch (err) {
+    } catch (err) {
       console.error('[Community.create] Failed:', err)
       const message = err instanceof Error ? err.message : 'Unknown error'
       return { data: null, error: `Failed to create community: ${message}` }
@@ -145,34 +138,33 @@ export const CommunityRepository = {
 
   async getById(id: string) {
     return await runQuery(async () => {
-      const [community] = await db
-        .select()
-        .from(communities)
-        .where(eq(communities.id, id))
-        .limit(1)
+      const [community] = await db.select().from(communities).where(eq(communities.id, id)).limit(1)
 
       return { data: community ?? null, error: null }
     })
   },
 
-  async listPublic(options: {
-    limit?: number
-    offset?: number
-    search?: string
-    sort?: 'popular' | 'newest' | 'top-rated' | 'most-active'
-  } = {}) {
+  async listPublic(
+    options: {
+      limit?: number
+      offset?: number
+      search?: string
+      sort?: 'popular' | 'newest' | 'top-rated' | 'most-active'
+    } = {},
+  ) {
     return await runQuery(async () => {
       const limit = options.limit ?? 20
       const offset = options.offset ?? 0
       const sort = options.sort ?? 'popular'
 
-      const orderBy = sort === 'newest'
-        ? desc(communities.created_at)
-        : sort === 'top-rated'
-          ? desc(communities.average_rating)
-          : sort === 'most-active'
-            ? desc(communities.market_count)
-            : desc(communities.member_count)
+      const orderBy =
+        sort === 'newest'
+          ? desc(communities.created_at)
+          : sort === 'top-rated'
+            ? desc(communities.average_rating)
+            : sort === 'most-active'
+              ? desc(communities.market_count)
+              : desc(communities.member_count)
 
       const data = await db
         .select({
@@ -240,16 +232,19 @@ export const CommunityRepository = {
     })
   },
 
-  async update(communityId: string, input: {
-    name?: string
-    description?: string
-    rules?: string
-    terms?: string
-    icon_url?: string
-    banner_url?: string
-    type?: 'public' | 'private'
-    jury_size?: number
-  }) {
+  async update(
+    communityId: string,
+    input: {
+      name?: string
+      description?: string
+      rules?: string
+      terms?: string
+      icon_url?: string
+      banner_url?: string
+      type?: 'public' | 'private'
+      jury_size?: number
+    },
+  ) {
     return await runQuery(async () => {
       const [updated] = await db
         .update(communities)
@@ -311,12 +306,7 @@ export const CommunityRepository = {
     return await runQuery(async () => {
       const [removed] = await db
         .delete(community_members)
-        .where(
-          and(
-            eq(community_members.community_id, communityId),
-            eq(community_members.user_id, userId),
-          ),
-        )
+        .where(and(eq(community_members.community_id, communityId), eq(community_members.user_id, userId)))
         .returning()
 
       if (removed) {
@@ -335,12 +325,7 @@ export const CommunityRepository = {
       const [member] = await db
         .select({ role: community_members.role })
         .from(community_members)
-        .where(
-          and(
-            eq(community_members.community_id, communityId),
-            eq(community_members.user_id, userId),
-          ),
-        )
+        .where(and(eq(community_members.community_id, communityId), eq(community_members.user_id, userId)))
         .limit(1)
 
       return { data: member?.role ?? null, error: null }
@@ -352,12 +337,7 @@ export const CommunityRepository = {
       const [updated] = await db
         .update(community_members)
         .set({ role })
-        .where(
-          and(
-            eq(community_members.community_id, communityId),
-            eq(community_members.user_id, userId),
-          ),
-        )
+        .where(and(eq(community_members.community_id, communityId), eq(community_members.user_id, userId)))
         .returning()
 
       return { data: updated ?? null, error: null }
@@ -400,10 +380,7 @@ export const CommunityRepository = {
         .where(
           and(
             eq(community_members.community_id, communityId),
-            or(
-              eq(community_members.role, 'juror'),
-              eq(community_members.role, 'admin'),
-            ),
+            or(eq(community_members.role, 'juror'), eq(community_members.role, 'admin')),
           ),
         )
 
@@ -490,7 +467,7 @@ export const CommunityRepository = {
     binary_question?: string
     binary_outcome_yes?: string
     binary_outcome_no?: string
-    options?: Array<{ id: string, question: string, title: string, shortName: string, slug: string }>
+    options?: Array<{ id: string; question: string; title: string; shortName: string; slug: string }>
     main_category_slug?: string
     category_slugs?: string[]
     created_by: string
@@ -534,13 +511,16 @@ export const CommunityRepository = {
     })
   },
 
-  async updateMarket(marketId: string, input: {
-    title?: string
-    description?: string
-    resolution_source?: string
-    resolution_rules?: string
-    resolution_date?: Date
-  }) {
+  async updateMarket(
+    marketId: string,
+    input: {
+      title?: string
+      description?: string
+      resolution_source?: string
+      resolution_rules?: string
+      resolution_date?: Date
+    },
+  ) {
     return await runQuery(async () => {
       const [updated] = await db
         .update(community_markets)
@@ -553,11 +533,7 @@ export const CommunityRepository = {
 
   async publishMarket(marketId: string) {
     return await runQuery(async () => {
-      const [market] = await db
-        .select()
-        .from(community_markets)
-        .where(eq(community_markets.id, marketId))
-        .limit(1)
+      const [market] = await db.select().from(community_markets).where(eq(community_markets.id, marketId)).limit(1)
 
       if (!market) {
         return { data: null, error: 'Market not found.' }
@@ -583,11 +559,7 @@ export const CommunityRepository = {
 
   async deleteMarket(marketId: string) {
     return await runQuery(async () => {
-      const [market] = await db
-        .select()
-        .from(community_markets)
-        .where(eq(community_markets.id, marketId))
-        .limit(1)
+      const [market] = await db.select().from(community_markets).where(eq(community_markets.id, marketId)).limit(1)
 
       if (!market) {
         return { data: null, error: 'Market not found.' }
@@ -614,15 +586,17 @@ export const CommunityRepository = {
       const data = await db
         .select()
         .from(community_markets)
-        .where(and(
-          eq(community_markets.community_id, communityId),
-          or(
-            eq(community_markets.status, 'draft'),
-            // include any non-draft markets that haven't been deployed yet
-            sql`${community_markets.review_status} IS NOT NULL
+        .where(
+          and(
+            eq(community_markets.community_id, communityId),
+            or(
+              eq(community_markets.status, 'draft'),
+              // include any non-draft markets that haven't been deployed yet
+              sql`${community_markets.review_status} IS NOT NULL
               AND ${community_markets.event_id} IS NULL`,
+            ),
           ),
-        ))
+        )
         .orderBy(desc(community_markets.created_at))
       return { data, error: null }
     })
@@ -635,11 +609,7 @@ export const CommunityRepository = {
    * Requires main_category_slug + at least 4 category_slugs (needed for
    * platform event deployment).
    */
-  async submitForReview(input: {
-    marketId: string
-    mainCategorySlug?: string
-    categorySlugs?: string[]
-  }) {
+  async submitForReview(input: { marketId: string; mainCategorySlug?: string; categorySlugs?: string[] }) {
     return await runQuery(async () => {
       const [market] = await db
         .select()
@@ -717,11 +687,7 @@ export const CommunityRepository = {
    * Super admin rejects with feedback. Market goes back to draft so the
    * community admin can revise.
    */
-  async setReviewRejected(input: {
-    marketId: string
-    reviewerId: string
-    feedback: string
-  }) {
+  async setReviewRejected(input: { marketId: string; reviewerId: string; feedback: string }) {
     return await runQuery(async () => {
       if (!input.feedback.trim()) {
         return { data: null, error: 'Feedback is required for rejection.' }
@@ -790,7 +756,7 @@ export const CommunityRepository = {
     })
   },
 
-  async listPendingReviews(options: { limit?: number, offset?: number } = {}) {
+  async listPendingReviews(options: { limit?: number; offset?: number } = {}) {
     return await runQuery(async () => {
       const limit = options.limit ?? 50
       const offset = options.offset ?? 0
@@ -823,10 +789,12 @@ export const CommunityRepository = {
         })
         .from(community_markets)
         .innerJoin(communities, eq(community_markets.community_id, communities.id))
-        .where(or(
-          eq(community_markets.review_status, 'deploy_failed'),
-          eq(community_markets.review_status, 'deploy_blocked'),
-        ))
+        .where(
+          or(
+            eq(community_markets.review_status, 'deploy_failed'),
+            eq(community_markets.review_status, 'deploy_blocked'),
+          ),
+        )
         .orderBy(desc(community_markets.updated_at))
       return { data, error: null }
     })
@@ -849,11 +817,9 @@ export const CommunityRepository = {
         })
         .from(community_markets)
         .innerJoin(communities, eq(community_markets.community_id, communities.id))
-        .where(and(
-          eq(community_markets.status, 'active'),
-          eq(communities.status, 'active'),
-          eq(communities.type, 'public'),
-        ))
+        .where(
+          and(eq(community_markets.status, 'active'), eq(communities.status, 'active'), eq(communities.type, 'public')),
+        )
         .orderBy(desc(community_markets.created_at))
         .limit(limit)
       return { data, error: null }
@@ -877,18 +843,20 @@ export const CommunityRepository = {
       const markets = await db
         .select()
         .from(community_markets)
-        .where(and(
-          eq(community_markets.community_id, communityId),
-          // Exclude drafts from public listing
-          sql`${community_markets.status} <> 'draft'`,
-        ))
+        .where(
+          and(
+            eq(community_markets.community_id, communityId),
+            // Exclude drafts from public listing
+            sql`${community_markets.status} <> 'draft'`,
+          ),
+        )
         .orderBy(desc(community_markets.created_at))
 
       if (markets.length === 0) {
         return { data: [], error: null }
       }
 
-      const marketIds = markets.map(m => m.id)
+      const marketIds = markets.map((m) => m.id)
       const tallies = await db
         .select({
           market_id: jury_votes.community_market_id,
@@ -899,7 +867,7 @@ export const CommunityRepository = {
         .where(sql`${jury_votes.community_market_id} = ANY(${marketIds})`)
         .groupBy(jury_votes.community_market_id, jury_votes.vote)
 
-      const talliesByMarket = new Map<string, { yes: number, no: number, disputed: number }>()
+      const talliesByMarket = new Map<string, { yes: number; no: number; disputed: number }>()
       for (const t of tallies) {
         const entry = talliesByMarket.get(t.market_id) ?? { yes: 0, no: 0, disputed: 0 }
         if (t.vote === 'yes') {
@@ -914,7 +882,7 @@ export const CommunityRepository = {
         talliesByMarket.set(t.market_id, entry)
       }
 
-      const enriched = markets.map(market => ({
+      const enriched = markets.map((market) => ({
         ...market,
         votes: talliesByMarket.get(market.id) ?? { yes: 0, no: 0, disputed: 0 },
       }))
@@ -925,11 +893,7 @@ export const CommunityRepository = {
 
   async getMarket(marketId: string) {
     return await runQuery(async () => {
-      const [market] = await db
-        .select()
-        .from(community_markets)
-        .where(eq(community_markets.id, marketId))
-        .limit(1)
+      const [market] = await db.select().from(community_markets).where(eq(community_markets.id, marketId)).limit(1)
 
       return { data: market ?? null, error: null }
     })
@@ -1012,9 +976,9 @@ export const CommunityRepository = {
       .from(jury_votes)
       .where(eq(jury_votes.community_market_id, communityMarketId))
 
-    const yesCount = votes.filter(v => v.vote === 'yes').length
-    const noCount = votes.filter(v => v.vote === 'no').length
-    const disputedCount = votes.filter(v => v.vote === 'disputed').length
+    const yesCount = votes.filter((v) => v.vote === 'yes').length
+    const noCount = votes.filter((v) => v.vote === 'no').length
+    const disputedCount = votes.filter((v) => v.vote === 'disputed').length
     const threshold = getConsensusThreshold(jurySize)
 
     let outcome: 'yes' | 'no' | 'cancelled' | null = null
@@ -1023,12 +987,10 @@ export const CommunityRepository = {
     if (yesCount >= threshold) {
       outcome = 'yes'
       resolvedStatus = 'resolved'
-    }
-    else if (noCount >= threshold) {
+    } else if (noCount >= threshold) {
       outcome = 'no'
       resolvedStatus = 'resolved'
-    }
-    else if (disputedCount >= threshold || votes.length >= jurySize) {
+    } else if (disputedCount >= threshold || votes.length >= jurySize) {
       outcome = 'cancelled'
       resolvedStatus = 'disputed'
     }
@@ -1070,8 +1032,7 @@ export const CommunityRepository = {
             outcome,
           })
         }
-      }
-      catch (err) {
+      } catch (err) {
         console.error('[resolveMarket notification] Failed:', err)
       }
     }
@@ -1081,10 +1042,14 @@ export const CommunityRepository = {
 
   // ─── Invites ────────────────────────────────────────────────────────────
 
-  async createInvite(communityId: string, createdBy: string, options?: {
-    maxUses?: number
-    expiresAt?: Date
-  }) {
+  async createInvite(
+    communityId: string,
+    createdBy: string,
+    options?: {
+      maxUses?: number
+      expiresAt?: Date
+    },
+  ) {
     return await runQuery(async () => {
       const code = Math.random().toString(36).slice(2, 10).toUpperCase()
 
@@ -1108,12 +1073,7 @@ export const CommunityRepository = {
       const [invite] = await db
         .select()
         .from(community_invites)
-        .where(
-          and(
-            eq(community_invites.code, code.toUpperCase()),
-            eq(community_invites.is_active, true),
-          ),
-        )
+        .where(and(eq(community_invites.code, code.toUpperCase()), eq(community_invites.is_active, true)))
         .limit(1)
 
       if (!invite) {

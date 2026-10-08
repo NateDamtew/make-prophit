@@ -3,6 +3,7 @@
 import AppLink from '@/components/AppLink'
 import { usePathname } from '@/i18n/navigation'
 import { cn } from '@/lib/utils'
+
 import { ADMIN_NAV, resolveActiveNavItem } from '../nav'
 
 interface AdminNavListProps {
@@ -17,7 +18,7 @@ export function AdminNavList({ collapsed = false, onNavigate }: AdminNavListProp
 
   return (
     <nav className="grid gap-4">
-      {ADMIN_NAV.map(group => (
+      {ADMIN_NAV.map((group) => (
         <div key={group.id} className="grid gap-1">
           {group.label && !collapsed && (
             <p className="px-3 pb-0.5 text-[11px] font-medium tracking-wide text-muted-foreground/70 uppercase">
@@ -32,12 +33,7 @@ export function AdminNavList({ collapsed = false, onNavigate }: AdminNavListProp
 
             const inner = (
               <>
-                <Icon
-                  className={cn(
-                    'size-4.5 shrink-0',
-                    isActive ? 'text-primary' : 'text-muted-foreground',
-                  )}
-                />
+                <Icon className={cn('size-4.5 shrink-0', isActive ? 'text-primary' : 'text-muted-foreground')} />
                 {!collapsed && <span className="flex-1 truncate">{item.label}</span>}
                 {!collapsed && item.comingSoon && (
                   <span className="rounded-sm bg-muted px-1.5 py-0.5 text-2xs font-medium text-muted-foreground">

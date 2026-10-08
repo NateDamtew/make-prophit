@@ -1,5 +1,4 @@
-import { createHmac } from 'node:crypto'
-import { drizzleAdapter } from '@better-auth/drizzle-adapter'
+import { drizzleAdapter } from '@better-auth/drizzle-adapter/relations-v2'
 import { betterAuth } from 'better-auth'
 import { APIError, createAuthEndpoint, createAuthMiddleware } from 'better-auth/api'
 import { deleteSessionCookie, setSessionCookie } from 'better-auth/cookies'
@@ -7,9 +6,11 @@ import { generateRandomString } from 'better-auth/crypto'
 import { nextCookies } from 'better-auth/next-js'
 import { customSession, siwe, twoFactor } from 'better-auth/plugins'
 import { eq, sql } from 'drizzle-orm'
+import { createHmac } from 'node:crypto'
 import { createPublicClient, http, verifyMessage as viemVerifyMessage } from 'viem'
 import { generateSiweNonce } from 'viem/siwe'
 import { z } from 'zod'
+
 import { isAdminWallet } from '@/lib/admin'
 import { AffiliateRepository } from '@/lib/db/queries/affiliate'
 import { db } from '@/lib/drizzle'
@@ -138,7 +139,6 @@ export const auth = betterAuth({
     provider: 'pg',
     schema,
   }),
-  experimental: { joins: true },
   appName: DEFAULT_THEME_SITE_NAME,
   secret: resolveBetterAuthSecret(),
   baseURL: SITE_URL,
@@ -151,7 +151,9 @@ export const auth = betterAuth({
     `https://tma.${siteUrlObject.hostname}`,
     ...(process.env.TMA_DOMAIN ? [`https://${process.env.TMA_DOMAIN}`] : []),
     ...(process.env.ADDITIONAL_TRUSTED_ORIGINS
-      ? process.env.ADDITIONAL_TRUSTED_ORIGINS.split(',').map(o => o.trim()).filter(Boolean)
+      ? process.env.ADDITIONAL_TRUSTED_ORIGINS.split(',')
+          .map((o) => o.trim())
+          .filter(Boolean)
       : []),
     ...(process.env.VERCEL_URL ? [`https://${process.env.VERCEL_URL}`] : []),
     ...(process.env.VERCEL_BRANCH_URL ? [`https://${process.env.VERCEL_BRANCH_URL}`] : []),
@@ -159,6 +161,7 @@ export const auth = betterAuth({
   advanced: {
     database: {
       generateId: false,
+      joins: true,
     },
   },
   databaseHooks: {
@@ -235,7 +238,7 @@ export const auth = betterAuth({
 
             params.delete('hash')
             const keys = Array.from(params.keys()).sort()
-            const checkString = keys.map(key => `${key}=${params.get(key)}`).join('\n')
+            const checkString = keys.map((key) => `${key}=${params.get(key)}`).join('\n')
 
             const secretKey = createHmac('sha256', 'WebAppData').update(botToken).digest()
             const computedHash = createHmac('sha256', secretKey).update(checkString).digest('hex')
@@ -262,8 +265,7 @@ export const auth = betterAuth({
             let tgUser: any
             try {
               tgUser = JSON.parse(userStr)
-            }
-            catch {
+            } catch {
               throw new APIError('BAD_REQUEST', { message: 'Invalid user object in initData.' })
             }
 
@@ -274,15 +276,14 @@ export const auth = betterAuth({
             // Find existing user by telegram account link
             let user: any = null
             try {
-              const account = await ctx.context.internalAdapter.findAccountByProviderId(
-                String(tgUser.id),
-                'telegram',
-              )
+              const account = await ctx.context.internalAdapter.findAccountByKey({
+                providerId: 'telegram',
+                accountId: String(tgUser.id),
+              })
               if (account) {
                 user = await ctx.context.internalAdapter.findUserById(account.userId)
               }
-            }
-            catch (findErr) {
+            } catch (findErr) {
               console.error('[TMA Auth] Error finding existing account:', findErr)
             }
 
@@ -302,13 +303,11 @@ export const auth = betterAuth({
                       createdAt: new Date(),
                       updatedAt: new Date(),
                     })
-                  }
-                  catch {
+                  } catch {
                     // Account link may already exist — ignore
                   }
                 }
-              }
-              catch (emailErr) {
+              } catch (emailErr) {
                 console.error('[TMA Auth] Error finding user by email:', emailErr)
               }
             }
@@ -316,9 +315,10 @@ export const auth = betterAuth({
             // Create new user if not found
             if (!user) {
               const userEmail = `telegram_${tgUser.id}@${SIWE_EMAIL_DOMAIN}`
-              const name = tgUser.username
-                || [tgUser.first_name, tgUser.last_name].filter(Boolean).join(' ')
-                || `Telegram User ${tgUser.id}`
+              const name =
+                tgUser.username ||
+                [tgUser.first_name, tgUser.last_name].filter(Boolean).join(' ') ||
+                `Telegram User ${tgUser.id}`
 
               let username = tgUser.username || ''
               if (username) {
@@ -331,21 +331,22 @@ export const auth = betterAuth({
                   if (existing.length > 0) {
                     username = ''
                   }
-                }
-                catch {
+                } catch {
                   username = ''
                 }
               }
 
               try {
-                user = await ctx.context.internalAdapter.createUser({
-                  name,
-                  email: userEmail,
-                  image: tgUser.photo_url || '',
-                  emailVerified: true,
-                })
-              }
-              catch (createErr) {
+                user = await ctx.context.internalAdapter.createUser(
+                  {
+                    name,
+                    email: userEmail,
+                    image: tgUser.photo_url || '',
+                    emailVerified: true,
+                  },
+                  { method: 'telegram' },
+                )
+              } catch (createErr) {
                 console.error('[TMA Auth] Failed to create user:', createErr)
                 throw new APIError('INTERNAL_SERVER_ERROR', {
                   message: `Failed to create user: ${createErr instanceof Error ? createErr.message : 'Unknown error'}`,
@@ -358,10 +359,7 @@ export const auth = betterAuth({
 
               // Set username — better-auth's adapter doesn't handle custom fields
               if (username) {
-                await db
-                  .update(schema.users)
-                  .set({ username })
-                  .where(eq(schema.users.id, user.id))
+                await db.update(schema.users).set({ username }).where(eq(schema.users.id, user.id))
               }
 
               try {
@@ -372,8 +370,7 @@ export const auth = betterAuth({
                   createdAt: new Date(),
                   updatedAt: new Date(),
                 })
-              }
-              catch (accountErr) {
+              } catch (accountErr) {
                 console.error('[TMA Auth] Failed to create account link:', accountErr)
               }
             }
@@ -414,9 +411,9 @@ export const auth = betterAuth({
           settings,
           image: user.image ? getPublicAssetUrl(user.image) : '',
           is_admin:
-            isAdminWallet(user.name)
-            || isAdminWallet(user.email)
-            || (typeof (user as any).username === 'string' && isAdminWallet((user as any).username)),
+            isAdminWallet(user.name) ||
+            isAdminWallet(user.email) ||
+            (typeof (user as any).username === 'string' && isAdminWallet((user as any).username)),
         },
         session,
       }
@@ -452,15 +449,12 @@ export const auth = betterAuth({
             address: address as `0x${string}`,
             signature: signature as `0x${string}`,
           })
-        }
-        catch {
+        } catch {
           // Fallback: RPC-based EIP-1271 check for smart contract wallets
           const chainId = getChainIdFromMessage(message)
           const { reownAppKitProjectId } = resolvePublicRuntimeEnv(process.env)
           const publicClient = createPublicClient({
-            transport: http(
-              `https://rpc.walletconnect.org/v1/?chainId=${chainId}&projectId=${reownAppKitProjectId}`,
-            ),
+            transport: http(`https://rpc.walletconnect.org/v1/?chainId=${chainId}&projectId=${reownAppKitProjectId}`),
           })
           return await publicClient.verifyMessage({
             message,

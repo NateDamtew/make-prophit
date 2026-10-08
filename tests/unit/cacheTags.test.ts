@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'bun:test'
 
 import { cacheTags } from '@/lib/cache-tags'
 
@@ -10,6 +10,7 @@ describe('cacheTags', () => {
     expect(cacheTags.events('u1')).toBe('events:u1')
     expect(cacheTags.eventsList).toBe('events:list')
     expect(cacheTags.event('e1:u1')).toBe('event:e1:u1')
+    expect(cacheTags.seriesEvents(' btc-updown-4h ')).toBe('series-events:btc-updown-4h')
     expect(cacheTags.settings).toBe('settings')
   })
 })

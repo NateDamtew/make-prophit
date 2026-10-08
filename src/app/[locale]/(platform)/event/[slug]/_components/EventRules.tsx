@@ -2,10 +2,10 @@
 
 import type { ReactNode } from 'react'
 
-import { BadgeInfoIcon, LinkIcon } from 'lucide-react'
+import { BadgeInfoIcon, GiftIcon, LinkIcon } from 'lucide-react'
 import { useExtracted, useLocale } from 'next-intl'
 import Image from 'next/image'
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 import type { Event } from '@/types'
 
@@ -27,6 +27,7 @@ import { getMirrorResolutionType } from '@/lib/mirror-resolution'
 import { resolveUmaProposeTarget } from '@/lib/uma'
 import { cn } from '@/lib/utils'
 import { normalizeAddress } from '@/lib/wallet'
+import { useOrder } from '@/stores/useOrder'
 
 import DirectResolutionButton from './DirectResolutionButton'
 
@@ -87,15 +88,32 @@ function AccordionRulesPanel({
   children,
   initialExpanded,
   title,
+  titleAdornment,
 }: {
   children: ReactNode
   initialExpanded: boolean
   title: string
+  titleAdornment?: ReactNode
 }) {
   const { isExpanded, setIsExpanded } = useExpandedState(initialExpanded)
 
+  useEffect(() => {
+    function openResolutionProposal(event: globalThis.Event) {
+      const targetId = (event as CustomEvent<{ targetId?: string }>).detail?.targetId
+      setIsExpanded(true)
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          document.getElementById(targetId ?? '')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        })
+      })
+    }
+
+    window.addEventListener('open-resolution-proposal', openResolutionProposal)
+    return () => window.removeEventListener('open-resolution-proposal', openResolutionProposal)
+  }, [setIsExpanded])
+
   return (
-    <section className="overflow-hidden rounded-xl border transition-all duration-500 ease-in-out">
+    <section className="overflow-hidden rounded-xl border bg-card transition-all duration-500 ease-in-out">
       <button
         type="button"
         onClick={() => setIsExpanded(!isExpanded)}
@@ -104,25 +122,30 @@ function AccordionRulesPanel({
         )}
         aria-expanded={isExpanded}
       >
-        <h3 className="text-base font-medium">{title}</h3>
-        <span aria-hidden="true" className="pointer-events-none flex size-8 items-center justify-center">
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 16 16"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-            className={cn('size-6 text-muted-foreground transition-transform', { 'rotate-180': isExpanded })}
-          >
-            <path
-              d="M4 6L8 10L12 6"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </span>
+        <div className="flex min-w-0 items-center gap-2">
+          <h3 className="text-base font-medium">{title}</h3>
+          {titleAdornment}
+        </div>
+        <div className="flex shrink-0 items-center">
+          <span aria-hidden="true" className="pointer-events-none flex size-8 items-center justify-center">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 16 16"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              className={cn('size-6 text-muted-foreground transition-transform', { 'rotate-180': isExpanded })}
+            >
+              <path
+                d="M4 6L8 10L12 6"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </span>
+        </div>
       </button>
 
       <div
@@ -141,6 +164,23 @@ function AccordionRulesPanel({
   )
 }
 
+function ResolutionRewardsIcon({ amount, label }: { amount: string; label: string }) {
+  return (
+    <span
+      aria-label={`${label}: ${amount}`}
+      className="group inline-flex min-h-7 shrink-0 items-center justify-center gap-1 rounded-md border border-violet-500/20 bg-violet-500/5 px-1.5 text-xs font-semibold text-violet-500"
+    >
+      <GiftIcon className="size-3.5" aria-hidden="true" />
+      <span className="inline-flex min-w-0 items-center">
+        <span className="max-w-0 overflow-hidden whitespace-nowrap opacity-0 transition-[max-width,opacity,margin] duration-200 group-hover:mr-1 group-hover:max-w-40 group-hover:opacity-100 [@media(hover:none)]:mr-1 [@media(hover:none)]:max-w-40 [@media(hover:none)]:opacity-100">
+          {label}:
+        </span>
+        <span className="tabular-nums">{amount}</span>
+      </span>
+    </span>
+  )
+}
+
 export default function EventRules({ event, mode = 'accordion', showEndDate = false }: EventRulesProps) {
   const t = useExtracted()
   const locale = useLocale()
@@ -148,6 +188,30 @@ export default function EventRules({ event, mode = 'accordion', showEndDate = fa
   const hasAdditionalContext =
     typeof event.additional_context === 'string' && event.additional_context.trim().length > 0
   const isInline = mode === 'inline'
+  const selectedMarketConditionId = useOrder((state) => state.market?.condition_id)
+  const isNegRiskEvent = Boolean(
+    event.enable_neg_risk || event.neg_risk || event.neg_risk_augmented || event.neg_risk_market_id,
+  )
+  const selectedNegRiskMarket = isNegRiskEvent
+    ? event.markets.find((market) => market.condition_id === selectedMarketConditionId)
+    : null
+  const primaryMarket = selectedNegRiskMarket ?? event.markets[0]
+  const resolutionRewardMarketKey = [
+    event.id,
+    primaryMarket?.condition_id,
+    primaryMarket?.question_id,
+    primaryMarket?.neg_risk_request_id,
+  ].join(':')
+  const [resolutionReward, setResolutionReward] = useState<{ marketKey: string; amount: string | null }>(() => ({
+    marketKey: resolutionRewardMarketKey,
+    amount: null,
+  }))
+  const resolutionRewardAmount =
+    resolutionReward.marketKey === resolutionRewardMarketKey ? resolutionReward.amount : null
+  const handleResolutionRewardAmountChange = useCallback(
+    (amount: string | null) => setResolutionReward({ marketKey: resolutionRewardMarketKey, amount }),
+    [resolutionRewardMarketKey],
+  )
 
   function formatRules(rules: string): string {
     if (!rules) {
@@ -266,11 +330,11 @@ export default function EventRules({ event, mode = 'accordion', showEndDate = fa
     })
   }
 
-  const primaryMarket = event.markets[0]
   const mirrorResolutionType = primaryMarket ? getMirrorResolutionType(primaryMarket) : null
   const mirrorResolutionLabel =
     mirrorResolutionType === 'chainlink' ? 'Chainlink' : mirrorResolutionType === 'uma' ? 'UMA' : null
   const isDirectResolver = primaryMarket ? isDirectResolutionMarket(primaryMarket) : false
+  const isPrimaryMarketResolved = Boolean(primaryMarket?.is_resolved || primaryMarket?.condition?.resolved)
   const proposeTarget = isDirectResolver ? null : resolveUmaProposeTarget(primaryMarket?.condition, siteIdentity.name)
   const resolverAddress = proposeTarget?.isMirror
     ? primaryMarket?.resolver
@@ -292,7 +356,7 @@ export default function EventRules({ event, mode = 'accordion', showEndDate = fa
       return ''
     }
   })()
-  const formattedRules = formatRules(event.rules ?? '')
+  const formattedRules = formatRules(primaryMarket?.market_rules?.trim() || event.rules || '')
   const createdAtLabel = formatCreatedAt(event.created_at)
   const endDateLabel = formatEndDate(event.end_date)
   const normalizedResolverAddress = normalizeAddress(resolverAddress)?.toLowerCase()
@@ -334,8 +398,8 @@ export default function EventRules({ event, mode = 'accordion', showEndDate = fa
   )
 
   const resolverAction = (() => {
-    if (isDirectResolver && primaryMarket) {
-      return <DirectResolutionButton market={primaryMarket} event={event} />
+    if (isDirectResolver) {
+      return null
     }
 
     if (hasResolutionSourceUrl) {
@@ -363,9 +427,16 @@ export default function EventRules({ event, mode = 'accordion', showEndDate = fa
       </Button>
     )
   })()
+  const resolutionRewardAdornment =
+    isDirectResolver && !isPrimaryMarketResolved && resolutionRewardAmount ? (
+      <ResolutionRewardsIcon amount={resolutionRewardAmount} label={t('Resolution reward')} />
+    ) : null
+  const resolutionProposalTargetId = primaryMarket
+    ? `propose-resolution-${primaryMarket.condition_id}`
+    : 'propose-resolution'
 
   const resolverBlock = (
-    <div className="rounded-lg border p-3">
+    <div id={!isDirectResolver ? resolutionProposalTargetId : undefined} className="rounded-lg border p-3">
       <div className={cn('flex items-center', resolverAction && 'justify-between gap-3')}>
         {resolverDetails}
         {resolverAction}
@@ -459,13 +530,27 @@ export default function EventRules({ event, mode = 'accordion', showEndDate = fa
       ) : (
         <div className={cn('mt-3', { 'mb-3': isInline })}>{resolverBlock}</div>
       )}
+
+      {isDirectResolver && primaryMarket && (
+        <div id={resolutionProposalTargetId}>
+          <DirectResolutionButton
+            market={primaryMarket}
+            event={event}
+            resolutionSourceLabel={mirrorResolutionLabel}
+            onResolutionRewardAmountChange={handleResolutionRewardAmountChange}
+          />
+        </div>
+      )}
     </div>
   )
 
   if (isInline) {
     return (
       <section className="grid gap-2">
-        <h4 className="text-base font-medium text-foreground">{t('Rules')}</h4>
+        <div className="flex items-center gap-2">
+          <h4 className="text-base font-medium text-foreground">{t('Rules & Resolution')}</h4>
+          {resolutionRewardAdornment}
+        </div>
         {content}
       </section>
     )
@@ -475,7 +560,8 @@ export default function EventRules({ event, mode = 'accordion', showEndDate = fa
     <AccordionRulesPanel
       key={`${event.id}:${hasAdditionalContext ? 'with-context' : 'without-context'}`}
       initialExpanded={hasAdditionalContext}
-      title={t('Rules')}
+      title={t('Rules & Resolution')}
+      titleAdornment={resolutionRewardAdornment}
     >
       {content}
     </AccordionRulesPanel>

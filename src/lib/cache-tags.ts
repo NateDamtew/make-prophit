@@ -21,14 +21,20 @@ export const cacheTags = {
   homeFeaturedEvents: 'home:featured-events',
   /** Per-event content surfaces (page data, title, route resolution). */
   event: (key: string) => `event:${key}`,
+  /** Series event navigation and live-series pill data. */
+  seriesEvents: (key: string) => `series-events:${key.trim()}`,
   /** Admin categories table. */
   adminCategories: 'admin:categories',
   /** Per-locale main navigation tags. */
   mainTags: (locale: string) => `main-tags:${locale}`,
   /** Site settings (admin-edited identity, branding, integrations). */
   settings: 'settings',
-  /** Sports sidebar menu structure and counts (independent of homepage list). */
+  /** Localized Terms of Use content. */
+  termsOfService: 'terms-of-service',
+  /** Sports pages whose output includes menu and event-derived data. */
   sportsMenu: 'sports:menu',
+  /** Stable sports menu structure: labels, aliases, titles and routing. */
+  sportsMenuStructure: 'sports:menu:structure',
   /** Public sitemap entries (event/market URL lists). */
   sitemap: 'sitemap',
 }

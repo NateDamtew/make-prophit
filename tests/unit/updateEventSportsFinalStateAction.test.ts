@@ -1,24 +1,26 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, mock } from 'bun:test'
 
-const mocks = vi.hoisted(() => ({
-  revalidatePath: vi.fn(),
-  updateTag: vi.fn(),
-  getCurrentUser: vi.fn(),
-  setEventSportsFinalState: vi.fn(),
+import { hoisted } from '../bun-test-helpers'
+
+const mocks = hoisted(() => ({
+  revalidatePath: mock(),
+  updateTag: mock(),
+  getCurrentUser: mock(),
+  setEventSportsFinalState: mock(),
 }))
 
-vi.mock('next/cache', () => ({
+void mock.module('next/cache', () => ({
   revalidatePath: (...args: any[]) => mocks.revalidatePath(...args),
   updateTag: (...args: any[]) => mocks.updateTag(...args),
 }))
 
-vi.mock('@/lib/db/queries/user', () => ({
+void mock.module('@/lib/db/queries/user', () => ({
   UserRepository: {
     getCurrentUser: (...args: any[]) => mocks.getCurrentUser(...args),
   },
 }))
 
-vi.mock('@/lib/db/queries/event', () => ({
+void mock.module('@/lib/db/queries/event', () => ({
   EventRepository: {
     setEventSportsFinalState: (...args: any[]) => mocks.setEventSportsFinalState(...args),
   },
@@ -45,7 +47,6 @@ function mockSavedSportsFinalState() {
 
 describe('updateEventSportsFinalStateAction', () => {
   beforeEach(() => {
-    vi.resetModules()
     mocks.revalidatePath.mockReset()
     mocks.updateTag.mockReset()
     mocks.getCurrentUser.mockReset()
@@ -100,5 +101,40 @@ describe('updateEventSportsFinalStateAction', () => {
     })
 
     expect(mocks.updateTag).toHaveBeenCalledWith('home:featured-events')
+  })
+
+  it('persists manual map scores', async () => {
+    const { updateEventSportsFinalStateAction } =
+      await import('@/app/[locale]/admin/events/_actions/update-event-sports-final-state')
+
+    await updateEventSportsFinalStateAction('event-1', {
+      sportsEnded: false,
+      sportsScore: '1-0',
+      sportsSegmentScores: [{ segment: 1, homeScore: 13, awayScore: 9 }],
+    })
+
+    expect(mocks.setEventSportsFinalState).toHaveBeenCalledWith(
+      'event-1',
+      expect.objectContaining({
+        sportsSegmentScores: [{ segment: 1, homeScore: 13, awayScore: 9 }],
+      }),
+    )
+  })
+
+  it('rejects duplicate map scores', async () => {
+    const { updateEventSportsFinalStateAction } =
+      await import('@/app/[locale]/admin/events/_actions/update-event-sports-final-state')
+
+    const result = await updateEventSportsFinalStateAction('event-1', {
+      sportsEnded: false,
+      sportsScore: '',
+      sportsSegmentScores: [
+        { segment: 1, homeScore: 13, awayScore: 9 },
+        { segment: 1, homeScore: 13, awayScore: 11 },
+      ],
+    })
+
+    expect(result).toEqual({ success: false, error: 'Each map must have a unique number.' })
+    expect(mocks.setEventSportsFinalState).not.toHaveBeenCalled()
   })
 })

@@ -1,5 +1,6 @@
 import { and, eq, sql } from 'drizzle-orm'
 import { updateTag } from 'next/cache'
+
 import { cacheTags } from '@/lib/cache-tags'
 import { community_notification_prefs } from '@/lib/db/schema/communities/engagement'
 import { notifications } from '@/lib/db/schema/notifications/tables'
@@ -21,7 +22,10 @@ const _COMMUNITY_NOTIFICATION_CATEGORIES = [
 type CommunityNotificationCategory = (typeof _COMMUNITY_NOTIFICATION_CATEGORIES)[number]
 
 /** Which mute toggle in `community_notification_prefs` gates a given category. */
-const MUTE_FIELD_BY_CATEGORY: Record<CommunityNotificationCategory, keyof typeof community_notification_prefs.$inferSelect> = {
+const MUTE_FIELD_BY_CATEGORY: Record<
+  CommunityNotificationCategory,
+  keyof typeof community_notification_prefs.$inferSelect
+> = {
   'community.market_added': 'mute_markets',
   'community.comment_reply': 'mute_comments',
   'community.market_resolved': 'mute_resolutions',
@@ -36,7 +40,7 @@ interface DispatchInput {
   title: string
   description: string
   /** Optional deep-link to the relevant page. */
-  link: { type: 'external' | 'internal', url: string, label?: string } | null
+  link: { type: 'external' | 'internal'; url: string; label?: string } | null
   /**
    * Targeting:
    * - `recipientUserId`: send to exactly this one user (e.g. reply notification).
@@ -87,9 +91,7 @@ export async function dispatchCommunityNotification(input: DispatchInput): Promi
       // Fan out to all members except the actor, honoring mute toggles in
       // a single INSERT…SELECT round-trip.
       const muteField = MUTE_FIELD_BY_CATEGORY[input.category]
-      const excludeClause = input.excludeUserId
-        ? sql`AND m.user_id <> ${input.excludeUserId}`
-        : sql``
+      const excludeClause = input.excludeUserId ? sql`AND m.user_id <> ${input.excludeUserId}` : sql``
       await db.execute(sql`
         INSERT INTO notifications (user_id, category, title, description, link_type, link_url, link_label, metadata)
         SELECT
@@ -100,7 +102,7 @@ export async function dispatchCommunityNotification(input: DispatchInput): Promi
           ${link_type},
           ${link_url},
           ${link_label},
-          ${sql.raw(`'${JSON.stringify(metadata).replace(/'/g, '\'\'')}'::jsonb`)}
+          ${sql.raw(`'${JSON.stringify(metadata).replace(/'/g, "''")}'::jsonb`)}
         FROM community_members m
         LEFT JOIN community_notification_prefs p
           ON p.user_id = m.user_id AND p.community_id = m.community_id
@@ -109,25 +111,19 @@ export async function dispatchCommunityNotification(input: DispatchInput): Promi
           AND COALESCE(p.${sql.raw(muteField)}, FALSE) = FALSE
       `)
     }
-  }
-  catch (error) {
+  } catch (error) {
     console.error('Failed to dispatch community notification', { category: input.category, error })
   }
 }
 
-async function isMuted(
-  communityId: string,
-  userId: string,
-  category: CommunityNotificationCategory,
-): Promise<boolean> {
+async function isMuted(communityId: string, userId: string, category: CommunityNotificationCategory): Promise<boolean> {
   const muteField = MUTE_FIELD_BY_CATEGORY[category]
   const [row] = await db
     .select()
     .from(community_notification_prefs)
-    .where(and(
-      eq(community_notification_prefs.user_id, userId),
-      eq(community_notification_prefs.community_id, communityId),
-    ))
+    .where(
+      and(eq(community_notification_prefs.user_id, userId), eq(community_notification_prefs.community_id, communityId)),
+    )
     .limit(1)
   if (!row) {
     return false

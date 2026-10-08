@@ -20,7 +20,7 @@ These are new files/directories upstream doesn't have. Merges leave them untouch
 - **Communities** — full feature: community-created markets, jury voting, invites,
   reviews. ~100 files under `src/app/[locale]/(platform)/community/**`,
   `src/lib/db/queries/community.ts`, `community-*` actions, `community-visibility.ts`.
-  (Upstream only has hooks to an *external* community-profile service:
+  (Upstream only has hooks to an _external_ community-profile service:
   `community-auth.ts`, `community-profile.ts`, `community-url.ts`.)
 - **TON deposit rail** (TMA-gated) — `src/lib/rhino/**` (rhino.fi bridge),
   `wallet-modal/TonRailPanel.tsx`. Fund the DepositWallet from a TON wallet.
@@ -40,18 +40,18 @@ These are new files/directories upstream doesn't have. Merges leave them untouch
 
 Most of these trace back to the **Reown → Dynamic** auth migration.
 
-| Area | Files | Why it conflicts | Resolution policy |
-|---|---|---|---|
-| **Auth / SIWE** | `src/lib/auth.ts` | Pure-ECDSA-first verify + local `getChainIdFromMessage` (no `@reown/appkit-siwe`) | Keep OURS; re-apply upstream's non-SIWE hunks by hand |
-| **Wallet provider** | `src/providers/AppKitProvider.tsx` | Full Dynamic rewrite (upstream is Reown) | Take OURS entirely |
-| **Deps** | `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml` | `@dynamic-labs/*` vs upstream `@reown/*` | Drop reown, keep upstream's non-wallet bumps, regenerate lock |
-| **Dynamic import shims** | product files (e.g. `DirectResolutionButton`, `AdminCreateEventForm`, `PredictionResultsClient`, `WalletSendForm`) | We import `@/hooks/useAppKitAccount` where upstream imports `@reown/appkit/react` | Keep our shim import; take upstream's other changes |
-| **Runtime config** | `usePublicRuntimeConfig.ts`, `public-runtime-config.shared.ts`, `network.ts` | We add `dynamicEnvId`; adopted upstream's `resolvePublicRuntimeEnv` | Take upstream's module, graft `dynamicEnvId` back |
-| **Root layout** | `src/app/[locale]/layout.tsx` | We inject the Telegram WebApp `<Script>` | Union — keep both our script + upstream's |
-| **Onboarding** | `TradingOnboardingProvider.tsx` | Our "deposit wallet stalled deploying" escape-hatch | Keep our escape-hatch; adopt upstream message/helpers |
-| **Wallet modal** | `WalletModal.tsx`, `WalletFlow.tsx`, `wallet-modal/utils.ts`, `WalletSendForm.tsx` | TON rail integration + retained `pendingWithdrawals` (upstream removed it) | Keep our versions; re-weave upstream additions (e.g. wallet reconnect) |
-| **SDK page** | `settings/sdks/page.tsx` | We deliberately stripped SDK API-keys + downloads (white-label) | Take OURS |
-| **i18n** | `src/i18n/messages/*.json` | Our branding + custom hashed keys | Union-merge (keep all fork keys, append upstream's) |
+| Area                     | Files                                                                                                              | Why it conflicts                                                                  | Resolution policy                                                      |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| **Auth / SIWE**          | `src/lib/auth.ts`                                                                                                  | Pure-ECDSA-first verify + local `getChainIdFromMessage` (no `@reown/appkit-siwe`) | Keep OURS; re-apply upstream's non-SIWE hunks by hand                  |
+| **Wallet provider**      | `src/providers/AppKitProvider.tsx`                                                                                 | Full Dynamic rewrite (upstream is Reown)                                          | Take OURS entirely                                                     |
+| **Deps**                 | `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`                                                            | `@dynamic-labs/*` vs upstream `@reown/*`                                          | Drop reown, keep upstream's non-wallet bumps, regenerate lock          |
+| **Dynamic import shims** | product files (e.g. `DirectResolutionButton`, `AdminCreateEventForm`, `PredictionResultsClient`, `WalletSendForm`) | We import `@/hooks/useAppKitAccount` where upstream imports `@reown/appkit/react` | Keep our shim import; take upstream's other changes                    |
+| **Runtime config**       | `usePublicRuntimeConfig.ts`, `public-runtime-config.shared.ts`, `network.ts`                                       | We add `dynamicEnvId`; adopted upstream's `resolvePublicRuntimeEnv`               | Take upstream's module, graft `dynamicEnvId` back                      |
+| **Root layout**          | `src/app/[locale]/layout.tsx`                                                                                      | We inject the Telegram WebApp `<Script>`                                          | Union — keep both our script + upstream's                              |
+| **Onboarding**           | `TradingOnboardingProvider.tsx`                                                                                    | Our "deposit wallet stalled deploying" escape-hatch                               | Keep our escape-hatch; adopt upstream message/helpers                  |
+| **Wallet modal**         | `WalletModal.tsx`, `WalletFlow.tsx`, `wallet-modal/utils.ts`, `WalletSendForm.tsx`                                 | TON rail integration + retained `pendingWithdrawals` (upstream removed it)        | Keep our versions; re-weave upstream additions (e.g. wallet reconnect) |
+| **SDK page**             | `settings/sdks/page.tsx`                                                                                           | We deliberately stripped SDK API-keys + downloads (white-label)                   | Take OURS                                                              |
+| **i18n**                 | `src/i18n/messages/*.json`                                                                                         | Our branding + custom hashed keys                                                 | Union-merge (keep all fork keys, append upstream's)                    |
 
 ## 3. Inherited from upstream (NOT ours — sync, don't rebuild)
 

@@ -1,5 +1,6 @@
+import { describe, expect, it } from 'bun:test'
 import { decodeFunctionData, erc20Abi } from 'viem'
-import { describe, expect, it } from 'vitest'
+
 import { buildRhinoWithdrawCalls } from '@/lib/wallet/transactions'
 
 const USDC = '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359'
@@ -47,11 +48,13 @@ describe('buildRhinoWithdrawCalls', () => {
   })
 
   it('rejects an invalid commitment id', () => {
-    expect(() => buildRhinoWithdrawCalls({
-      token: USDC,
-      bridgeContract: BRIDGE,
-      amount: 1n,
-      commitmentId: 'nope',
-    })).toThrow()
+    expect(() =>
+      buildRhinoWithdrawCalls({
+        token: USDC,
+        bridgeContract: BRIDGE,
+        amount: 1n,
+        commitmentId: 'nope',
+      }),
+    ).toThrow()
   })
 })

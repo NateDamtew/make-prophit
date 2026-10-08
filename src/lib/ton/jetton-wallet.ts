@@ -45,11 +45,7 @@ function extractCellBytes(stack: StackItem[] | undefined): string | undefined {
 }
 
 export async function resolveJettonWalletAddress(params: ResolveJettonWalletParams): Promise<string> {
-  const ownerSlice = beginCell()
-    .storeAddress(Address.parse(params.owner))
-    .endCell()
-    .toBoc()
-    .toString('base64')
+  const ownerSlice = beginCell().storeAddress(Address.parse(params.owner)).endCell().toBoc().toString('base64')
 
   const response = await fetch(params.endpoint ?? TONCENTER_RUN_GET_METHOD, {
     method: 'POST',
@@ -68,7 +64,7 @@ export async function resolveJettonWalletAddress(params: ResolveJettonWalletPara
     throw new Error(`toncenter get_wallet_address failed: HTTP ${response.status}`)
   }
 
-  const json = await response.json() as RunGetMethodResponse
+  const json = (await response.json()) as RunGetMethodResponse
   if (!json.ok || json.result?.exit_code !== 0) {
     throw new Error(`get_wallet_address exit_code ${json.result?.exit_code ?? 'unknown'}`)
   }

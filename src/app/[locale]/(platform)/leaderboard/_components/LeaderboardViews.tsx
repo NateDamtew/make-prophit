@@ -1,7 +1,9 @@
 'use client'
 
-import type { LeaderboardFilters } from '@/app/[locale]/(platform)/leaderboard/_utils/leaderboardFilters'
 import { useSearchParams } from 'next/navigation'
+
+import type { LeaderboardFilters } from '@/app/[locale]/(platform)/leaderboard/_utils/leaderboardFilters'
+
 import AgentLeaderboardPanel from '@/app/[locale]/(platform)/leaderboard/_components/AgentLeaderboardPanel'
 import LeaderboardClient from '@/app/[locale]/(platform)/leaderboard/_components/LeaderboardClient'
 import LeaderboardViewToggle from '@/app/[locale]/(platform)/leaderboard/_components/LeaderboardViewToggle'
@@ -22,9 +24,7 @@ export default function LeaderboardViews({ initialFilters }: LeaderboardViewsPro
   return (
     <>
       <LeaderboardViewToggle view={view} />
-      {view === 'agents'
-        ? <AgentLeaderboardPanel />
-        : <LeaderboardClient initialFilters={initialFilters} />}
+      {view === 'agents' ? <AgentLeaderboardPanel /> : <LeaderboardClient initialFilters={initialFilters} />}
     </>
   )
 }

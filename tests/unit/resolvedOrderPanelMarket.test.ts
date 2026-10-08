@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'bun:test'
 
 import type { Event } from '@/types'
 
@@ -623,7 +623,7 @@ describe('resolveResolvedOrderPanelDisplay', () => {
     })
 
     expect(result.resolvedOutcomeIndex).toBeNull()
-    expect(result.outcomeLabel).toBe('Unknown 50/50')
+    expect(result.outcomeLabel).toBe('Inconclusive result')
     expect(result.marketTitle).toBe('Will it rain tomorrow?')
   })
 
