@@ -5,6 +5,7 @@ import { drizzle } from 'drizzle-orm/bun-sql/postgres'
 import { bunSqlPgCodecs } from 'drizzle-orm/bun-sql/postgres/codecs'
 
 import { relations } from './db/relations'
+import { normalizePostgresSslMode } from './postgres-url'
 
 type DrizzleDb = BunSQLDatabase<typeof relations>
 const MISSING_DATABASE_URL = 'postgres://127.0.0.1:1/kuest-no-database'
@@ -56,10 +57,11 @@ function createMetadataDb(): DrizzleDb {
 }
 
 function createDb(): DrizzleDb {
-  const url = process.env.POSTGRES_URL
-  if (!url) {
+  const rawUrl = process.env.POSTGRES_URL
+  if (!rawUrl) {
     throw new Error(MISSING_DATABASE_ERROR)
   }
+  const url = normalizePostgresSslMode(rawUrl)
 
   const client =
     globalForDb.client ??

@@ -2,6 +2,8 @@
 
 import { SQL } from 'bun'
 
+import { normalizePostgresSslMode } from '../src/lib/postgres-url'
+
 const MIGRATION_LOCK_NAMESPACE = 20817
 const MIGRATION_LOCK_KEY = 1
 
@@ -695,7 +697,8 @@ async function configureSupabaseScheduler(sql: ReservedSql, siteUrl: string, cro
 }
 
 function resolveMigrationConnectionString(): string | null {
-  return process.env.POSTGRES_URL_NON_POOLING || process.env.POSTGRES_URL || null
+  const connectionString = process.env.POSTGRES_URL_NON_POOLING || process.env.POSTGRES_URL || null
+  return connectionString ? normalizePostgresSslMode(connectionString) : null
 }
 
 /**
