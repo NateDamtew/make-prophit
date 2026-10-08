@@ -35,6 +35,11 @@ export async function generateMetadata({
   params: Promise<{ slug: string; marketId: string }>
 }): Promise<Metadata> {
   const { marketId } = await params
+  // Skip the DB for the build-time placeholder: Bun SQL reads `Date.now()` while
+  // connecting, which cacheComponents rejects during prerender.
+  if (marketId === '__placeholder__') {
+    return { title: 'Market' }
+  }
   const { data } = await CommunityRepository.getMarketWithCommunity(marketId)
   if (!data) {
     return { title: 'Market' }

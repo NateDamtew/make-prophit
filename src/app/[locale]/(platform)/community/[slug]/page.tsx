@@ -24,6 +24,10 @@ export async function generateStaticParams() {
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params
+  // Bun SQL reads `Date.now()` on connect, which cacheComponents rejects during prerender.
+  if (slug === STATIC_PARAMS_PLACEHOLDER) {
+    return { title: 'Community' }
+  }
   const { data: community } = await CommunityRepository.getBySlug(slug)
   if (!community) {
     return { title: 'Community Not Found' }
