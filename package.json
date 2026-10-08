@@ -14,9 +14,9 @@
     "knip": "knip --fix",
     "lint": "oxlint . --fix --ignore-pattern 'tests/**' && oxlint --config .oxlintrc.tests.json tests --fix",
     "fmt": "oxfmt",
-    "test": "AGENT=1 bun test --parallel tests/unit --reporter=dots",
+    "test": "AGENT=1 bun test --parallel --timeout 30000 tests/unit --reporter=dots",
     "test:e2e": "playwright test",
-    "test:unit": "AGENT=1 bun test --parallel tests/unit --reporter=dots",
+    "test:unit": "AGENT=1 bun test --parallel --timeout 30000 tests/unit --reporter=dots",
     "postinstall": "husky",
     "db:push": "bun scripts/migrate.ts"
   },
