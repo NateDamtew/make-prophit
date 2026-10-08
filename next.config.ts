@@ -44,8 +44,17 @@ const config: NextConfig = {
     },
     typedEnv: true,
     turbopackRustReactCompiler: true,
-    turbopackFileSystemCacheForBuild: true,
-    useTypeScriptCli: true,
+    // Upstream enables turbopackFileSystemCacheForBuild + useTypeScriptCli.
+    // Both are disabled here: together they SIGKILL'd the Vercel build with an
+    // OOM on 2026-08-02 (the fork generates 520+ static pages, and the build
+    // container has less headroom than upstream's).
+    //   - turbopackFileSystemCacheForBuild trades memory for rebuild speed,
+    //     which buys a cold Vercel container nothing.
+    //   - useTypeScriptCli spawns the TS CLI type-checker, which this fork
+    //     already opts out of via `typescript.ignoreBuildErrors` above —
+    //     type safety is enforced at the pre-push gate instead.
+    // Re-test both if the build container ever gets more memory.
+    turbopackFileSystemCacheForBuild: false,
     inlineCss: true,
   },
   images: {
