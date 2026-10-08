@@ -1,18 +1,15 @@
 'use client'
 
-import type { ColumnDef } from '@tanstack/react-table'
-import type { AdminAgentRow, useAgentsTable } from '@/app/[locale]/admin/agents/_hooks/useAgents'
 import { MoreHorizontalIcon, PauseIcon, PlayIcon, ShieldXIcon } from 'lucide-react'
-import { toast } from '@/components/ui/toast'
+
+import type { AdminAgentRow, useAgentsTable } from '@/app/[locale]/admin/agents/_hooks/useAgents'
+import type { DataTableColumnDef } from '@/lib/data-table'
+
 import { formatRelativeTime } from '@/components/admin-ui/format'
 import { StatusBadge } from '@/components/admin-ui/StatusBadge'
 import { Button } from '@/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { toast } from '@/components/ui/toast'
 
 type SetStatus = ReturnType<typeof useAgentsTable>['setStatusMutation']
 
@@ -21,15 +18,20 @@ function usdCompact(value: string): string {
   if (!Number.isFinite(n)) {
     return '$0'
   }
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', notation: 'compact', maximumFractionDigits: 1 }).format(n)
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    notation: 'compact',
+    maximumFractionDigits: 1,
+  }).format(n)
 }
 
-export function useAgentsColumns(setStatus: SetStatus): ColumnDef<AdminAgentRow>[] {
+export function useAgentsColumns(setStatus: SetStatus): DataTableColumnDef<AdminAgentRow>[] {
   function apply(id: string, status: 'active' | 'paused' | 'revoked', label: string) {
-    toast.promise(setStatus.mutateAsync({ id, status }), {
+    void toast.promise(setStatus.mutateAsync({ id, status }), {
       loading: 'Updating…',
       success: `Agent ${label}`,
-      error: err => (err as Error).message,
+      error: (err) => (err as Error).message,
     })
   }
 
@@ -61,15 +63,15 @@ export function useAgentsColumns(setStatus: SetStatus): ColumnDef<AdminAgentRow>
       accessorKey: 'total_volume_usd',
       id: 'volume',
       header: () => <span className="text-muted-foreground">Volume</span>,
-      cell: ({ row }) => (
-        <span className="text-sm tabular-nums">{usdCompact(row.original.total_volume_usd)}</span>
-      ),
+      cell: ({ row }) => <span className="text-sm tabular-nums">{usdCompact(row.original.total_volume_usd)}</span>,
     },
     {
       accessorKey: 'total_trades',
       id: 'trades',
       header: () => <span className="text-muted-foreground">Trades</span>,
-      cell: ({ row }) => <span className="text-sm text-muted-foreground tabular-nums">{row.original.total_trades}</span>,
+      cell: ({ row }) => (
+        <span className="text-sm text-muted-foreground tabular-nums">{row.original.total_trades}</span>
+      ),
     },
     {
       accessorKey: 'created_at',
@@ -88,9 +90,11 @@ export function useAgentsColumns(setStatus: SetStatus): ColumnDef<AdminAgentRow>
         return (
           <div className="flex justify-end">
             <DropdownMenu>
-              <DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="size-8" aria-label="Agent actions" />}>
-                  <MoreHorizontalIcon className="size-4" />
-                </DropdownMenuTrigger>
+              <DropdownMenuTrigger
+                render={<Button variant="ghost" size="icon" className="size-8" aria-label="Agent actions" />}
+              >
+                <MoreHorizontalIcon className="size-4" />
+              </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-40">
                 {agent.status !== 'active' && (
                   <DropdownMenuItem onClick={() => apply(agent.id, 'active', 'activated')}>

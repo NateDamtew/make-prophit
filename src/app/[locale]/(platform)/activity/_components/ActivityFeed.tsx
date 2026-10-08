@@ -2,6 +2,7 @@
 
 import type { Route } from 'next'
 
+import { useInfiniteQuery, type InfiniteData } from '@tanstack/react-query'
 import { SquareArrowOutUpRightIcon } from 'lucide-react'
 import { useExtracted } from 'next-intl'
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
@@ -10,23 +11,39 @@ import type { DataApiActivity } from '@/lib/data-api/user'
 import type { ActivityOrder } from '@/types'
 
 import { usePlatformNavigationData } from '@/app/[locale]/(platform)/_providers/PlatformNavigationProvider'
+import AlertBanner from '@/components/AlertBanner'
 import EventIconImage from '@/components/EventIconImage'
 import ProfileLink from '@/components/ProfileLink'
+import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
+import useLocalizedTimeAgo from '@/hooks/useLocalizedTimeAgo'
+import { useNowTimestamp } from '@/hooks/useNowTimestamp'
 import { useOutcomeLabel } from '@/hooks/useOutcomeLabel'
 import { usePublicRuntimeConfig } from '@/hooks/usePublicRuntimeConfig'
 import { Link, useRouter } from '@/i18n/navigation'
 import { filterActivitiesByMinAmount } from '@/lib/activity/filter'
+import {
+  GLOBAL_ACTIVITY_PAGE_SIZE,
+  getNextGlobalActivityPageParam,
+  mergeGlobalActivityItems,
+  type GlobalActivityItem,
+  type GlobalActivityPage,
+} from '@/lib/activity/global'
 import { PUBLIC_ALLOWED_MARKET_CREATORS_PATH } from '@/lib/allowed-market-creators'
 import { MICRO_UNIT } from '@/lib/constants'
 import { mapDataApiActivityToActivityOrder } from '@/lib/data-api/user'
-import { formatDollarValueLabel, formatSharePriceLabel, formatTimeAgo, toMicro } from '@/lib/formatters'
+import { formatDollarValueLabel, formatSharePriceLabel, toMicro } from '@/lib/formatters'
 import { POLYGON_SCAN_BASE } from '@/lib/network'
 import { buildPublicProfilePath, isPlatformMainCategorySlug } from '@/lib/platform-routing'
 import { cn } from '@/lib/utils'
-import { closeWebSocketWhenReady, createWebSocketReconnectController } from '@/lib/websocket-reconnect'
+import {
+  closeWebSocketWhenReady,
+  createWebSocketHeartbeatController,
+  createWebSocketReconnectController,
+  probeWebSocketWithPong,
+} from '@/lib/websocket-reconnect'
 
 type LiveActivityPayload = DataApiActivity & {
   category?: string
@@ -81,8 +98,54 @@ const ROW_HEIGHT_ESTIMATE = 64
 const MIN_VISIBLE_ITEMS = 12
 const MAX_VISIBLE_ITEMS = 28
 const DEFAULT_VIEWPORT_HEIGHT = 800
-const WEBSOCKET_PING_INTERVAL_MS = 25000
-const WEBSOCKET_STALE_TIMEOUT_MS = 70000
+
+function isGlobalActivityPage(payload: unknown): payload is GlobalActivityPage {
+  if (!payload || typeof payload !== 'object') {
+    return false
+  }
+
+  const candidate = payload as Partial<GlobalActivityPage>
+  return (
+    Array.isArray(candidate.items) &&
+    candidate.items.every((item) => {
+      if (!item || typeof item !== 'object') {
+        return false
+      }
+
+      const activityItem = item as Partial<GlobalActivityItem>
+      return (
+        typeof activityItem.id === 'string' &&
+        Array.isArray(activityItem.categoryTags) &&
+        activityItem.categoryTags.every((tag) => typeof tag === 'string') &&
+        Boolean(activityItem.order && typeof activityItem.order === 'object')
+      )
+    }) &&
+    typeof candidate.hasMore === 'boolean' &&
+    (typeof candidate.nextOffset === 'number' || candidate.nextOffset === null)
+  )
+}
+
+async function fetchGlobalActivityPage({ pageParam, signal }: { pageParam: number; signal: AbortSignal }) {
+  const params = new URLSearchParams({
+    limit: GLOBAL_ACTIVITY_PAGE_SIZE.toString(),
+    offset: pageParam.toString(),
+  })
+  const response = await fetch(`/api/activity?${params.toString()}`, {
+    signal,
+    cache: 'no-store',
+  })
+
+  if (!response.ok) {
+    throw new Error('Failed to load activity.')
+  }
+
+  const payload: unknown = await response.json().catch(() => null)
+  if (!isGlobalActivityPage(payload)) {
+    throw new Error('The activity response is invalid.')
+  }
+
+  return payload
+}
 
 function clampBaseVisibleCount(viewportHeight: number) {
   const estimate = Math.ceil(viewportHeight / ROW_HEIGHT_ESTIMATE) + 6
@@ -290,6 +353,18 @@ function useAllowedCreatorWallets() {
 function createLiveActivityStore() {
   let items = EMPTY_LIVE_ACTIVITY_ITEMS
   let seenIds = new Set<string>()
+  let activeInputKey = ''
+
+  function buildInputKey({ wsUrl, allowedCreatorWallets, categoryValues }: LiveActivityStoreInput) {
+    const allowedCreatorsKey = allowedCreatorWallets ? Array.from(allowedCreatorWallets).sort().join('\0') : ''
+    const categoryValuesKey = Array.from(categoryValues).sort().join('\0')
+    return `${wsUrl ?? ''}\u0001${allowedCreatorsKey}\u0001${categoryValuesKey}`
+  }
+
+  function reset() {
+    items = EMPTY_LIVE_ACTIVITY_ITEMS
+    seenIds = new Set<string>()
+  }
 
   function getSnapshot() {
     return items
@@ -300,6 +375,13 @@ function createLiveActivityStore() {
   }
 
   function subscribe(onStoreChange: () => void, input: LiveActivityStoreInput) {
+    const inputKey = buildInputKey(input)
+    if (activeInputKey !== inputKey) {
+      activeInputKey = inputKey
+      reset()
+      onStoreChange()
+    }
+
     const { wsUrl, allowedCreatorWallets, categoryValues } = input
     if (!wsUrl || !allowedCreatorWallets) {
       return () => {}
@@ -308,8 +390,6 @@ function createLiveActivityStore() {
 
     let isActive = true
     let ws: WebSocket | null = null
-    let lastMessageAt = Date.now()
-    let heartbeatHandle: number | null = null
 
     function buildSubscriptionPayload(action: 'subscribe' | 'unsubscribe') {
       return JSON.stringify({
@@ -323,47 +403,12 @@ function createLiveActivityStore() {
       })
     }
 
-    function clearHeartbeat() {
-      if (heartbeatHandle != null) {
-        window.clearInterval(heartbeatHandle)
-        heartbeatHandle = null
-      }
-    }
-
-    function startHeartbeat() {
-      clearHeartbeat()
-      heartbeatHandle = window.setInterval(() => {
-        if (!isActive || !ws) {
-          return
-        }
-        if (Date.now() - lastMessageAt > WEBSOCKET_STALE_TIMEOUT_MS) {
-          const staleSocket = ws
-          ws = null
-          clearHeartbeat()
-          closeWebSocketWhenReady(staleSocket)
-          scheduleReconnect()
-          return
-        }
-        if (ws.readyState === WebSocket.OPEN) {
-          try {
-            ws.send('PING')
-          } catch {
-            const staleSocket = ws
-            ws = null
-            clearHeartbeat()
-            closeWebSocketWhenReady(staleSocket)
-            scheduleReconnect()
-          }
-        }
-      }, WEBSOCKET_PING_INTERVAL_MS)
-    }
-
     function handleOpen(socket: WebSocket) {
       if (socket !== ws) {
         return
       }
-      lastMessageAt = Date.now()
-      startHeartbeat()
+      reconnectController?.markConnected()
+      heartbeatController?.markOpen(socket)
       socket.send(buildSubscriptionPayload('subscribe'))
     }
 
@@ -371,7 +416,7 @@ function createLiveActivityStore() {
       if (!isActive || socket !== ws) {
         return
       }
-      lastMessageAt = Date.now()
+      heartbeatController?.markActivity(socket)
 
       let payload: LiveActivityMessage | null = null
       try {
@@ -462,6 +507,7 @@ function createLiveActivityStore() {
     }
 
     let reconnectController: ReturnType<typeof createWebSocketReconnectController> | null = null
+    let heartbeatController: ReturnType<typeof createWebSocketHeartbeatController> | null = null
 
     function clearReconnect() {
       reconnectController?.clearReconnect()
@@ -479,7 +525,7 @@ function createLiveActivityStore() {
       if (socket !== ws) {
         return
       }
-      clearHeartbeat()
+      heartbeatController?.clear()
       if (!isActive) {
         return
       }
@@ -497,14 +543,26 @@ function createLiveActivityStore() {
       socket.onerror = handleError
       socket.onclose = () => handleClose(socket)
       ws = socket
+      heartbeatController?.markConnecting(socket)
     }
 
     reconnectController = createWebSocketReconnectController({
       connect,
       getWebSocket: () => ws,
       isActive: () => isActive,
+      probeWebSocket: probeWebSocketWithPong,
       resetWebSocket: () => {
+        heartbeatController?.clear()
         ws = null
+      },
+    })
+    heartbeatController = createWebSocketHeartbeatController({
+      getWebSocket: () => ws,
+      isActive: () => isActive,
+      onConnectionLost: (socket) => {
+        ws = null
+        closeWebSocketWhenReady(socket)
+        scheduleReconnect()
       },
     })
 
@@ -514,7 +572,7 @@ function createLiveActivityStore() {
     return function teardownLiveActivityStream() {
       isActive = false
       clearReconnect()
-      clearHeartbeat()
+      heartbeatController.clear()
       document.removeEventListener('visibilitychange', handleVisibilityChange)
       const socket = ws
       if (socket) {
@@ -542,11 +600,7 @@ function useLiveActivityStream({
   allowedCreatorWallets: ReadonlySet<string> | null
   categoryValues: ReadonlySet<string>
 }) {
-  const storeRef = useRef<ReturnType<typeof createLiveActivityStore> | null>(null)
-  if (!storeRef.current) {
-    storeRef.current = createLiveActivityStore()
-  }
-  const store = storeRef.current
+  const [store] = useState(createLiveActivityStore)
   const categoryValuesKey = Array.from(categoryValues).sort().join('\0')
   const stableCategoryValues = useMemo(
     () => new Set(categoryValuesKey ? categoryValuesKey.split('\0') : []),
@@ -563,6 +617,56 @@ function useLiveActivityStream({
   )
 
   return useSyncExternalStore(subscribe, store.getSnapshot, store.getServerSnapshot)
+}
+
+function useHistoricalActivity({ allowedCreatorWallets }: { allowedCreatorWallets: ReadonlySet<string> | null }) {
+  const allowedCreatorWalletsKey = useMemo(
+    () => (allowedCreatorWallets ? Array.from(allowedCreatorWallets).sort().join('\0') : ''),
+    [allowedCreatorWallets],
+  )
+  const canLoadActivity = allowedCreatorWallets !== null && allowedCreatorWallets.size > 0
+
+  return useInfiniteQuery<
+    GlobalActivityPage,
+    Error,
+    InfiniteData<GlobalActivityPage>,
+    ['global-activity', string],
+    number
+  >({
+    queryKey: ['global-activity', allowedCreatorWalletsKey],
+    queryFn: ({ pageParam, signal }) => fetchGlobalActivityPage({ pageParam, signal }),
+    enabled: canLoadActivity,
+    initialPageParam: 0,
+    getNextPageParam: getNextGlobalActivityPageParam,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
+    refetchOnWindowFocus: false,
+    staleTime: Infinity,
+  })
+}
+
+function useActivityItems({
+  categoryValues,
+  historicalPages,
+  liveItems,
+}: {
+  categoryValues: ReadonlySet<string>
+  historicalPages: GlobalActivityPage[] | undefined
+  liveItems: LiveActivityItem[]
+}) {
+  const historicalItems = useMemo(
+    () =>
+      historicalPages?.flatMap((page) =>
+        page.items.map((item) => ({
+          id: item.id,
+          categories: resolveCategoryMatches(item.categoryTags, categoryValues),
+          order: item.order,
+        })),
+      ) ?? [],
+    [categoryValues, historicalPages],
+  )
+
+  return useMemo(() => mergeGlobalActivityItems(liveItems, historicalItems), [historicalItems, liveItems])
 }
 
 function useFilteredActivityOrders({
@@ -631,24 +735,32 @@ function useActivityFilterLabels({
 function useActivityVisibleWindow({
   filteredOrdersLength,
   baseVisibleCount,
+  fetchNextPage,
+  hasNextPage,
+  isFetchingNextPage,
   visibleKey,
 }: {
   filteredOrdersLength: number
   baseVisibleCount: number
+  fetchNextPage: () => Promise<unknown>
+  hasNextPage: boolean
+  isFetchingNextPage: boolean
   visibleKey: string
 }) {
   const [visibleWindow, setVisibleWindow] = useState<{ key: string; extra: number }>({ key: '', extra: 0 })
   const loadMoreRef = useRef<HTMLDivElement | null>(null)
+  const fetchInFlightRef = useRef(false)
 
   const visibleExtra = visibleWindow.key === visibleKey ? visibleWindow.extra : 0
   const visibleCount = Math.min(filteredOrdersLength, baseVisibleCount + visibleExtra)
   const pageSize = Math.max(6, Math.round(baseVisibleCount * 0.6))
   const hasHiddenItems = visibleCount < filteredOrdersLength
+  const hasMoreItems = hasHiddenItems || hasNextPage
 
   useEffect(
     function observeActivityFeedSentinel() {
       const node = loadMoreRef.current
-      if (!node || !hasHiddenItems) {
+      if (!node || !hasMoreItems) {
         return
       }
 
@@ -658,10 +770,23 @@ function useActivityVisibleWindow({
           if (!entry?.isIntersecting) {
             return
           }
-          setVisibleWindow((current) => ({
-            key: visibleKey,
-            extra: (current.key === visibleKey ? current.extra : 0) + pageSize,
-          }))
+
+          if (hasHiddenItems) {
+            setVisibleWindow((current) => ({
+              key: visibleKey,
+              extra: (current.key === visibleKey ? current.extra : 0) + pageSize,
+            }))
+            return
+          }
+
+          if (!hasNextPage || isFetchingNextPage || fetchInFlightRef.current) {
+            return
+          }
+
+          fetchInFlightRef.current = true
+          void fetchNextPage().finally(() => {
+            fetchInFlightRef.current = false
+          })
         },
         { rootMargin: '200px 0px' },
       )
@@ -671,14 +796,15 @@ function useActivityVisibleWindow({
         observer.disconnect()
       }
     },
-    [hasHiddenItems, pageSize, visibleKey],
+    [fetchNextPage, hasHiddenItems, hasMoreItems, hasNextPage, isFetchingNextPage, pageSize, visibleKey],
   )
 
-  return { loadMoreRef, visibleCount, hasHiddenItems }
+  return { loadMoreRef, visibleCount, hasMoreItems, hasHiddenItems }
 }
 
 export default function ActivityFeed() {
   const t = useExtracted()
+  const { formatTimeAgo } = useLocalizedTimeAgo()
   const normalizeOutcomeLabel = useOutcomeLabel()
   const { tags } = usePlatformNavigationData()
   const { wsLiveDataUrl } = usePublicRuntimeConfig()
@@ -688,10 +814,17 @@ export default function ActivityFeed() {
   const { categoryFilter, setCategoryFilter, minAmountFilter, setMinAmountFilter } = useActivityFilters()
   const { categoryValues, categoryOptions } = useActivityCategoryOptions(tags, allLabel)
   const baseVisibleCount = useBaseVisibleCount()
+  const nowTimestamp = useNowTimestamp()
   const activeCategoryFilter = categoryValues.has(categoryFilter) ? categoryFilter : 'all'
 
   const allowedCreatorWallets = useAllowedCreatorWallets()
-  const items = useLiveActivityStream({ wsUrl, allowedCreatorWallets, categoryValues })
+  const liveItems = useLiveActivityStream({ wsUrl, allowedCreatorWallets, categoryValues })
+  const historicalActivityQuery = useHistoricalActivity({ allowedCreatorWallets })
+  const items = useActivityItems({
+    categoryValues,
+    historicalPages: historicalActivityQuery.data?.pages,
+    liveItems,
+  })
 
   const filteredOrders = useFilteredActivityOrders({ items, activeCategoryFilter, minAmountFilter })
 
@@ -706,11 +839,18 @@ export default function ActivityFeed() {
   const { loadMoreRef, visibleCount, hasHiddenItems } = useActivityVisibleWindow({
     filteredOrdersLength: filteredOrders.length,
     baseVisibleCount,
+    fetchNextPage: historicalActivityQuery.fetchNextPage,
+    hasNextPage: historicalActivityQuery.hasNextPage,
+    isFetchingNextPage: historicalActivityQuery.isFetchingNextPage,
     visibleKey,
   })
   const visibleOrders = filteredOrders.slice(0, visibleCount)
 
-  const isLoading = items.length === 0
+  const hasHistoricalActivityPages = (historicalActivityQuery.data?.pages.length ?? 0) > 0
+  const isLoading = allowedCreatorWallets === null || (historicalActivityQuery.isFetching && items.length === 0)
+  const hasActivityError = historicalActivityQuery.isError && !hasHistoricalActivityPages
+  const hasNoActivity =
+    !isLoading && !hasActivityError && filteredOrders.length === 0 && !historicalActivityQuery.hasNextPage
 
   const rowClassName = cn(
     `group relative z-0 flex w-full cursor-pointer flex-col gap-3 p-3 transition-all duration-200 ease-in-out before:pointer-events-none before:absolute before:-inset-x-3 before:inset-y-0 before:-z-10 before:rounded-lg before:bg-black/5 before:opacity-0 before:transition-opacity before:duration-200 before:content-[''] hover:before:opacity-100 sm:flex-row sm:items-center sm:gap-4 dark:before:bg-white/5`,
@@ -750,7 +890,8 @@ export default function ActivityFeed() {
       </div>
 
       <div className="divide-y divide-border/80">
-        {(isLoading || filteredOrders.length === 0) &&
+        {isLoading &&
+          !hasActivityError &&
           Array.from({ length: 10 }).map((_, index) => (
             <div key={`activity-skeleton-${index}`} className={rowClassName}>
               <div className="flex min-w-0 flex-1 items-start gap-3">
@@ -766,6 +907,21 @@ export default function ActivityFeed() {
               <Skeleton className="h-3 w-14 rounded-full" />
             </div>
           ))}
+
+        {hasNoActivity && (
+          <div className="py-8 text-center text-base text-muted-foreground">{t('No activity found.')}</div>
+        )}
+
+        {hasActivityError && (
+          <AlertBanner
+            title={t('Failed to load activity')}
+            description={
+              <Button type="button" onClick={() => void historicalActivityQuery.refetch()} size="sm" variant="link">
+                {t('Try again')}
+              </Button>
+            }
+          />
+        )}
 
         {!isLoading &&
           visibleOrders.length > 0 &&
@@ -783,7 +939,7 @@ export default function ActivityFeed() {
               totalValue > 0
                 ? formatDollarValueLabel(totalValue, { minimumFractionDigits: 0, maximumFractionDigits: 0 })
                 : null
-            const timeAgoLabel = formatTimeAgo(activity.created_at)
+            const timeAgoLabel = nowTimestamp === null ? '—' : formatTimeAgo(activity.created_at, nowTimestamp)
             const txUrl = activity.tx_hash ? `${POLYGON_SCAN_BASE}/tx/${activity.tx_hash}` : null
             const username = activity.user.username || activity.user.address || ''
 
@@ -852,10 +1008,10 @@ export default function ActivityFeed() {
                         inlineContent={
                           <>
                             <span className="text-muted-foreground">
-                              {activity.side === 'sell' ? 'sold' : 'bought'}
+                              {activity.side === 'sell' ? t('sold') : t('bought')}
                             </span>
                             <span className={cn('font-semibold', outcomeColorClass)}>{outcomeText}</span>
-                            <span className="text-muted-foreground">at</span>
+                            <span className="text-muted-foreground">{t('at')}</span>
                             <span className="text-muted-foreground">{priceLabel}</span>
                             {totalValueLabel && <span className="text-muted-foreground">({totalValueLabel})</span>}
                           </>
@@ -879,7 +1035,7 @@ export default function ActivityFeed() {
                         rel="noopener noreferrer"
                         onClick={(event) => event.stopPropagation()}
                         className="text-muted-foreground transition-colors hover:text-foreground"
-                        aria-label="View transaction on Polygonscan"
+                        aria-label={t('View transaction on Polygonscan')}
                       >
                         <SquareArrowOutUpRightIcon className="size-3" />
                       </a>
@@ -892,12 +1048,22 @@ export default function ActivityFeed() {
             )
           })}
 
-        {!isLoading && hasHiddenItems && (
+        {!isLoading && (hasHiddenItems || historicalActivityQuery.isFetchingNextPage) && (
           <div className="flex items-center justify-center gap-2 py-3 text-base text-muted-foreground">
             <Spinner className="size-6" />
             {t('Loading more...')}
           </div>
         )}
+
+        {!isLoading &&
+          !hasHiddenItems &&
+          historicalActivityQuery.hasNextPage &&
+          !historicalActivityQuery.isFetchingNextPage && (
+            <div className="flex items-center justify-center gap-2 py-3 text-base text-muted-foreground">
+              <Spinner className="size-6" />
+              {t('Loading more...')}
+            </div>
+          )}
 
         <div ref={loadMoreRef} className="h-1 w-full opacity-0" aria-hidden />
       </div>

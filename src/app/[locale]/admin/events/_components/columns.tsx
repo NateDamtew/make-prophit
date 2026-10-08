@@ -1,11 +1,20 @@
 'use client'
 
-import type { ColumnDef } from '@tanstack/react-table'
-
-import { ArrowUpDownIcon, BadgeInfoIcon, EyeIcon, EyeOffIcon, RadioIcon, RepeatIcon, TrophyIcon } from 'lucide-react'
+import {
+  ArrowUpDownIcon,
+  BadgeInfoIcon,
+  EyeIcon,
+  EyeOffIcon,
+  LanguagesIcon,
+  MessageSquareWarningIcon,
+  RadioIcon,
+  RepeatIcon,
+  TrophyIcon,
+} from 'lucide-react'
 import { useExtracted } from 'next-intl'
 
 import type { AdminEventRow } from '@/app/[locale]/admin/events/_hooks/useAdminEvents'
+import type { DataTableColumnDef } from '@/lib/data-table'
 
 import EventIconImage from '@/components/EventIconImage'
 import { Badge } from '@/components/ui/badge'
@@ -20,8 +29,10 @@ import { shouldHighlightSportsFinalAction } from './sports-final-action-state'
 
 interface EventColumnOptions {
   onToggleHidden: (event: AdminEventRow, nextValue: boolean) => void
+  onOpenTranslations: (event: AdminEventRow) => void
   onOpenAdditionalContextModal: (event: AdminEventRow) => void
   onOpenLivestreamModal: (event: AdminEventRow) => void
+  onOpenResolutionReportsModal: (event: AdminEventRow) => void
   onOpenSportsFinalModal: (event: AdminEventRow) => void
   isUpdatingHidden: (eventId: string) => boolean
 }
@@ -54,11 +65,13 @@ function formatSeriesRecurrenceLabel(value: string | null | undefined) {
 
 export function useAdminEventsColumns({
   onToggleHidden,
+  onOpenTranslations,
   onOpenAdditionalContextModal,
   onOpenLivestreamModal,
+  onOpenResolutionReportsModal,
   onOpenSportsFinalModal,
   isUpdatingHidden,
-}: EventColumnOptions): ColumnDef<AdminEventRow>[] {
+}: EventColumnOptions): DataTableColumnDef<AdminEventRow>[] {
   const t = useExtracted()
 
   return [
@@ -227,6 +240,26 @@ export function useAdminEventsColumns({
 
         return (
           <div className="flex w-full items-center justify-end gap-1">
+            {event.resolution_report_count > 0 && (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="size-8 text-primary hover:text-primary"
+                      onClick={() => onOpenResolutionReportsModal(event)}
+                      aria-label={t('View resolution reports')}
+                    >
+                      <MessageSquareWarningIcon className="size-4" />
+                    </Button>
+                  }
+                />
+                <TooltipContent>{t('View resolution reports')}</TooltipContent>
+              </Tooltip>
+            )}
+
             {event.is_sports_games_moneyline && !shouldHideSportsAdminControls && (
               <Tooltip>
                 <TooltipTrigger
@@ -298,6 +331,24 @@ export function useAdminEventsColumns({
                 <TooltipContent>{t('Add Additional Context')}</TooltipContent>
               </Tooltip>
             )}
+
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="size-8 text-muted-foreground hover:text-foreground"
+                    onClick={() => onOpenTranslations(event)}
+                    aria-label={t('Edit translations')}
+                  >
+                    <LanguagesIcon className="size-4" />
+                  </Button>
+                }
+              />
+              <TooltipContent>{t('Edit translations')}</TooltipContent>
+            </Tooltip>
 
             <Tooltip>
               <TooltipTrigger

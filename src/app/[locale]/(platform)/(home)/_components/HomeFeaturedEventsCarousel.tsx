@@ -1,24 +1,12 @@
 'use client'
 
-import type { IconName } from 'lucide-react/dynamic'
 import type { CSSProperties } from 'react'
 
 import { ChevronLeftIcon, ChevronRightIcon, FlameIcon } from 'lucide-react'
-import { DynamicIcon } from 'lucide-react/dynamic'
 import { useExtracted, useLocale } from 'next-intl'
 import dynamic from 'next/dynamic'
 import Image from 'next/image'
-import {
-  addTransitionType,
-  startTransition,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  useSyncExternalStore,
-  ViewTransition,
-} from 'react'
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 
 import type {
   LinePickerMarketType,
@@ -30,12 +18,12 @@ import type {
   HomeFeaturedEventCard,
   HomeFeaturedHotTopic,
   HomeFeaturedOutcomeSummary,
+  HomeFeaturedRolloverEvent,
   HomeFeaturedSideCardSettings,
   Market,
 } from '@/types'
 
 import EventBookmark from '@/app/[locale]/(platform)/event/[slug]/_components/EventBookmark'
-import EventChart from '@/app/[locale]/(platform)/event/[slug]/_components/EventChart'
 import EventMarketChannelProvider from '@/app/[locale]/(platform)/event/[slug]/_components/EventMarketChannelProvider'
 import EventShare from '@/app/[locale]/(platform)/event/[slug]/_components/EventShare'
 import { shouldUseLiveSeriesChart } from '@/app/[locale]/(platform)/event/[slug]/_utils/eventLiveSeriesChartEligibility'
@@ -49,10 +37,12 @@ import {
 } from '@/app/[locale]/(platform)/sports/_components/sports-event-center-utils'
 import { buildSportsGamesCards } from '@/app/[locale]/(platform)/sports/_utils/sports-games-data'
 import EventIconImage from '@/components/EventIconImage'
+import HomeFeaturedSideCardIcon from '@/components/HomeFeaturedSideCardIcon'
 import SiteLogoIcon from '@/components/SiteLogoIcon'
 import { Button } from '@/components/ui/button'
 import { useHasHydrated } from '@/hooks/useHasHydrated'
 import { useIsMobile } from '@/hooks/useIsMobile'
+import { useOutcomeLabel } from '@/hooks/useOutcomeLabel'
 import { useSiteIdentity } from '@/hooks/useSiteIdentity'
 import { Link } from '@/i18n/navigation'
 import { getAvatarPlaceholderStyle, shouldUseAvatarPlaceholder } from '@/lib/avatar'
@@ -60,6 +50,16 @@ import { ensureReadableTextColorOnDark } from '@/lib/color-contrast'
 import { resolveCryptoCadenceEventPresentation } from '@/lib/crypto-cadence-event'
 import { resolveEventOutcomePath, resolveEventPagePath } from '@/lib/events-routing'
 import { formatDollarValueLabel, formatVolume } from '@/lib/formatters'
+import {
+  localizeHomeEventCardTitle,
+  localizeHomeFeaturedMarketDates,
+  resolveHomeFeaturedFullLidTitleValues,
+} from '@/lib/home-featured-localization'
+import { isHomeFeaturedEventEnded, resolveHomeFeaturedEventEndTimestamp } from '@/lib/home-featured-rollover'
+import {
+  DEFAULT_HOME_FEATURED_SIDE_CARD_TEXT,
+  DEFAULT_HOME_FEATURED_SIDE_CARD_TITLE,
+} from '@/lib/home-featured-settings'
 import { resolveHomeFeaturedSportsScoreboardContent } from '@/lib/home-featured-sports-score'
 import { resolveSportsTeamFallbackClassName } from '@/lib/sports-team-colors'
 import {
@@ -79,29 +79,118 @@ interface HomeFeaturedEventsCarouselProps {
 const HOME_FEATURED_CHART_HEIGHT = 292
 const HOME_FEATURED_CHART_HEIGHT_OFFSET = 20
 const HOME_FEATURED_LIVE_CHART_WIDTH_OFFSET = 24
-const HOME_FEATURED_NAVIGATION_TYPE = 'home-featured-navigation'
-const HOME_FEATURED_NAVIGATION_UPDATE = {
-  [HOME_FEATURED_NAVIGATION_TYPE]: 'auto' as const,
-  default: 'none' as const,
-}
+const HOME_FEATURED_ROLLOVER_RETRY_MS = 5_000
+const HOME_FEATURED_ROLLOVER_MAX_RETRIES = 6
+const HOME_FEATURED_ROLLOVER_MAX_RETRY_DELAY_MS = 60_000
 const FEATURED_SPORTS_BUTTON_DARK_TEXT_VAR = '--featured-sports-button-dark-text'
 
-function skipHomeFeaturedNavigationTransition() {
-  const activeTransition = document.activeViewTransition
-  if (!activeTransition) {
-    return
+const HomeEventChart = dynamic(() => import('@/app/[locale]/(platform)/event/[slug]/_components/EventChart'), {
+  ssr: false,
+  loading: () => <div className="h-full min-h-60 w-full animate-pulse rounded-md bg-muted/20" aria-hidden="true" />,
+})
+
+interface FeaturedViewportStore {
+  getServerSnapshot: () => boolean
+  getSnapshot: () => boolean
+  setNode: (node: HTMLElement | null) => void
+  subscribe: (listener: () => void) => () => void
+}
+
+function createFeaturedViewportStore(): FeaturedViewportStore {
+  let node: HTMLElement | null = null
+  let snapshot = false
+  let observer: IntersectionObserver | null = null
+  let mediaQuery: MediaQueryList | null = null
+  const listeners = new Set<() => void>()
+
+  function notify() {
+    listeners.forEach((listener) => listener())
   }
 
-  let isHomeFeaturedNavigation = false
-  activeTransition.types?.forEach((type) => {
-    if (type === HOME_FEATURED_NAVIGATION_TYPE) {
-      isHomeFeaturedNavigation = true
+  function setSnapshot(nextSnapshot: boolean) {
+    if (snapshot === nextSnapshot) {
+      return
     }
-  })
 
-  if (isHomeFeaturedNavigation) {
-    activeTransition.skipTransition()
+    snapshot = nextSnapshot
+    notify()
   }
+
+  function disconnect() {
+    observer?.disconnect()
+    observer = null
+    mediaQuery?.removeEventListener('change', observe)
+    mediaQuery = null
+  }
+
+  function observe() {
+    disconnect()
+
+    if (!node || typeof window === 'undefined') {
+      setSnapshot(false)
+      return
+    }
+
+    mediaQuery = window.matchMedia?.('(min-width: 768px)') ?? null
+    if (mediaQuery && !mediaQuery.matches) {
+      setSnapshot(false)
+      mediaQuery.addEventListener('change', observe)
+      return
+    }
+
+    if (typeof IntersectionObserver === 'undefined') {
+      setSnapshot(true)
+      mediaQuery?.addEventListener('change', observe)
+      return
+    }
+
+    setSnapshot(false)
+    observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry?.isIntersecting) {
+          return
+        }
+
+        setSnapshot(true)
+        observer?.disconnect()
+        observer = null
+      },
+      { rootMargin: '480px 0px' },
+    )
+    observer.observe(node)
+    mediaQuery?.addEventListener('change', observe)
+  }
+
+  function subscribe(listener: () => void) {
+    listeners.add(listener)
+    if (listeners.size === 1) {
+      observe()
+    }
+
+    return function unsubscribe() {
+      listeners.delete(listener)
+      if (listeners.size === 0) {
+        disconnect()
+      }
+    }
+  }
+
+  function setNode(nextNode: HTMLElement | null) {
+    node = nextNode
+    if (listeners.size > 0) {
+      observe()
+    }
+  }
+
+  function getSnapshot() {
+    return snapshot
+  }
+
+  function getServerSnapshot() {
+    return false
+  }
+
+  return { getServerSnapshot, getSnapshot, setNode, subscribe }
 }
 
 type FeaturedSportsButtonTone = 'home' | 'away' | 'draw' | 'neutral'
@@ -122,6 +211,10 @@ const HomeEventLiveSeriesChart = dynamic(
   () => import('@/app/[locale]/(platform)/event/[slug]/_components/EventLiveSeriesChart'),
   { ssr: false, loading: () => <div className="min-h-60 w-full md:min-h-[260px] lg:min-h-[280px]" /> },
 )
+
+function preloadFeaturedChunk(loader: () => Promise<unknown>) {
+  void loader().catch(() => undefined)
+}
 
 function useElementWidth<T extends HTMLElement>(enabled = true) {
   const [element, setElement] = useState<T | null>(null)
@@ -202,6 +295,17 @@ function isNegativeOutcomeLabel(label: string) {
   return /\b(?:no|down|below|lower|under)\b/.test(normalized)
 }
 
+function shouldUseLiveFeaturedOutcomeColors(item: HomeFeaturedEventCard) {
+  if (!item.liveChartConfig || !shouldUseLiveSeriesChart(item.event, item.liveChartConfig)) {
+    return false
+  }
+
+  const [upOutcome, downOutcome] = item.topOutcomes
+  return Boolean(
+    upOutcome && downOutcome && !isNegativeOutcomeLabel(upOutcome.label) && isNegativeOutcomeLabel(downOutcome.label),
+  )
+}
+
 function resolveNeutralSportsButtonAppearance() {
   return {
     className: `
@@ -276,6 +380,43 @@ function resolveSportsButtonAppearance(market: FeaturedSportsButtonMarket) {
     backgroundClassName: resolveSportsTeamFallbackClassName(market.tone === 'home' ? 'team1' : 'team2'),
     backgroundStyle: undefined,
   }
+}
+
+function resolveLiveFeaturedOutcomeAppearance(item: HomeFeaturedEventCard, index: number) {
+  if (!shouldUseLiveFeaturedOutcomeColors(item)) {
+    return null
+  }
+
+  if (index === 0) {
+    const color = item.liveChartConfig?.line_color?.trim()
+    if (!color) {
+      return null
+    }
+
+    const appearance = resolveSportsButtonAppearance({
+      key: 'featured-live-up',
+      conditionId: '',
+      label: 'Up',
+      tone: 'home',
+      color,
+    })
+
+    return {
+      ...appearance,
+      className: `!border-0 ${appearance.className}`,
+    }
+  }
+
+  if (index === 1) {
+    return {
+      className: '!border-0 !bg-secondary/75 text-muted-foreground hover:!bg-[#7A828C] hover:!text-foreground',
+      style: undefined,
+      backgroundClassName: undefined,
+      backgroundStyle: undefined,
+    }
+  }
+
+  return null
 }
 
 function toTitleCase(value: string) {
@@ -417,7 +558,13 @@ function FeaturedHeader({ item, showActions = true }: { item: HomeFeaturedEventC
                 ? t('Esports')
                 : breadcrumbItem.label,
   }))
-  const displayTitle = cryptoCadencePresentation?.title ?? resolveFeaturedDisplayTitle(item)
+  const featuredTitle = localizeHomeEventCardTitle(resolveFeaturedDisplayTitle(item), locale)
+  const fullLidTitleValues = resolveHomeFeaturedFullLidTitleValues(featuredTitle, locale)
+  const displayTitle =
+    cryptoCadencePresentation?.title ??
+    (fullLidTitleValues
+      ? t('Will the White House call a full lid by {time}? ({startDate}–{endDate})', fullLidTitleValues)
+      : featuredTitle)
 
   return (
     <div className="flex min-w-0 items-start justify-between gap-3">
@@ -470,6 +617,7 @@ function resolveFeaturedOutcomeHref(
 }
 
 function OutcomeRows({ item, linkedHref }: { item: HomeFeaturedEventCard; linkedHref: string }) {
+  const normalizeOutcomeLabel = useOutcomeLabel()
   const outcomes = item.topOutcomes
   const shouldShowOutcomeImages = item.event.show_market_icons !== false
 
@@ -479,32 +627,36 @@ function OutcomeRows({ item, linkedHref }: { item: HomeFeaturedEventCard; linked
 
   return (
     <div className="grid gap-0">
-      {outcomes.map((outcome) => (
-        <Link
-          key={outcome.key}
-          href={resolveFeaturedOutcomeHref(item.event, outcome, linkedHref)}
-          className={cn(
-            `group/outcome grid min-h-14 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-border/50 py-2 last:border-b-0`,
-          )}
-        >
-          <span className="flex min-w-0 items-center gap-3">
-            {shouldShowOutcomeImages && outcome.imageUrl && (
-              <span className="size-9 shrink-0 overflow-hidden rounded-md bg-muted">
-                <EventIconImage
-                  src={outcome.imageUrl}
-                  alt={outcome.label}
-                  sizes="36px"
-                  containerClassName="size-full rounded-md"
-                />
-              </span>
+      {outcomes.map((outcome) => {
+        const label = normalizeOutcomeLabel(outcome.label)
+
+        return (
+          <Link
+            key={outcome.key}
+            href={resolveFeaturedOutcomeHref(item.event, outcome, linkedHref)}
+            className={cn(
+              `group/outcome grid min-h-14 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-border/50 py-2 last:border-b-0`,
             )}
-            <span className="truncate text-base font-medium underline-offset-2 group-hover/outcome:underline">
-              {outcome.label}
+          >
+            <span className="flex min-w-0 items-center gap-3">
+              {shouldShowOutcomeImages && outcome.imageUrl && (
+                <span className="size-9 shrink-0 overflow-hidden rounded-md bg-muted">
+                  <EventIconImage
+                    src={outcome.imageUrl}
+                    alt={label}
+                    sizes="36px"
+                    containerClassName="size-full rounded-md"
+                  />
+                </span>
+              )}
+              <span className="truncate text-base font-medium underline-offset-2 group-hover/outcome:underline">
+                {label}
+              </span>
             </span>
-          </span>
-          <span className="text-xl font-semibold tabular-nums">{formatChancePercent(outcome.chance)}</span>
-        </Link>
-      ))}
+            <span className="text-xl font-semibold tabular-nums">{formatChancePercent(outcome.chance)}</span>
+          </Link>
+        )
+      })}
     </div>
   )
 }
@@ -518,6 +670,7 @@ function StandardActions({
   linkedHref: string
   stacked?: boolean
 }) {
+  const normalizeOutcomeLabel = useOutcomeLabel()
   const primaryMarket = item.primaryMarkets[0]
   const outcomes = item.topOutcomes
 
@@ -525,22 +678,41 @@ function StandardActions({
     return null
   }
 
+  const shouldUseLiveOutcomeColors = shouldUseLiveFeaturedOutcomeColors(item)
+
   return (
     <div className={cn('grid gap-2', stacked ? 'grid-cols-1' : 'grid-cols-2')}>
       {outcomes.slice(0, 2).map((outcome, index) => {
         const isNegative = isNegativeOutcomeLabel(outcome.label) || index === 1
+        const liveOutcomeAppearance = resolveLiveFeaturedOutcomeAppearance(item, index)
 
         return (
           <Button
-            key={outcome.key}
-            variant={isNegative ? 'no' : 'yes'}
+            key={`featured-action-${index}`}
+            variant={liveOutcomeAppearance ? 'outline' : isNegative ? 'no' : 'yes'}
             className={cn(
               `inline-flex h-16 min-w-0 items-center justify-center rounded-lg px-4 text-center text-base font-semibold transition duration-150 active:scale-[98%] md:h-14 md:px-4 md:text-base`,
+              shouldUseLiveOutcomeColors && 'shadow-none',
+              shouldUseLiveOutcomeColors && 'uppercase',
+              liveOutcomeAppearance?.className,
             )}
+            style={liveOutcomeAppearance?.style}
             nativeButton={false}
             render={
-              <Link href={resolveFeaturedOutcomeHref(item.event, outcome, linkedHref)}>
-                <span className="truncate">{outcome.label}</span>
+              <Link
+                href={resolveFeaturedOutcomeHref(item.event, outcome, linkedHref)}
+                className="relative inline-flex size-full items-center justify-center"
+              >
+                {liveOutcomeAppearance?.backgroundClassName || liveOutcomeAppearance?.backgroundStyle ? (
+                  <span
+                    className={cn(
+                      'pointer-events-none absolute inset-0 z-0 rounded-lg opacity-[0.15] transition-opacity group-hover/team-button:opacity-100',
+                      liveOutcomeAppearance.backgroundClassName,
+                    )}
+                    style={liveOutcomeAppearance.backgroundStyle}
+                  />
+                ) : null}
+                <span className="relative z-1 truncate">{normalizeOutcomeLabel(outcome.label)}</span>
               </Link>
             }
           />
@@ -1403,6 +1575,9 @@ function FeaturedRightRailSingle({
   hideSideCard?: boolean
 }) {
   const t = useExtracted()
+  const sideCardTitle = sideCard.title === DEFAULT_HOME_FEATURED_SIDE_CARD_TITLE ? t('Market pulse') : sideCard.title
+  const sideCardText =
+    sideCard.text === DEFAULT_HOME_FEATURED_SIDE_CARD_TEXT ? t('Fast movers across active markets.') : sideCard.text
   const hasCta = Boolean(sideCard.ctaLabel.trim() && sideCard.ctaHref.trim())
   const sideCardHref = sideCard.ctaHref.trim()
   const shouldUseDocumentNavigation = requiresDocumentNavigation(sideCardHref)
@@ -1443,8 +1618,8 @@ function FeaturedRightRailSingle({
           `pointer-events-none absolute bottom-0 left-[30%] h-px w-[40%] bg-linear-to-r from-transparent via-primary/60 to-transparent`,
         )}
       />
-      <DynamicIcon
-        name={sideCard.icon as IconName}
+      <HomeFeaturedSideCardIcon
+        name={sideCard.icon}
         aria-hidden
         className={cn(
           `pointer-events-none absolute -top-6 -right-7 size-36 rotate-6 text-primary/8 transition-transform duration-300 group-hover/side-card:scale-105 motion-safe:animate-pulse`,
@@ -1457,9 +1632,9 @@ function FeaturedRightRailSingle({
             `mb-3 h-1 w-10 rounded-full bg-primary/70 shadow-[0_0_18px_color-mix(in_oklab,var(--primary)_32%,transparent)]`,
           )}
         />
-        <span className="line-clamp-2 max-w-[16rem] text-xl/tight font-semibold tracking-tight">{sideCard.title}</span>
+        <span className="line-clamp-2 max-w-[16rem] text-xl/tight font-semibold tracking-tight">{sideCardTitle}</span>
         <span className={cn('mt-5 text-sm/relaxed text-muted-foreground', hasCta ? 'line-clamp-4' : 'line-clamp-5')}>
-          {sideCard.text}
+          {sideCardText}
         </span>
 
         {hasCta && (
@@ -1503,7 +1678,10 @@ function FeaturedRightRailSingle({
         ))}
 
       <div className="min-h-0 overflow-hidden p-1">
-        <Link href="/predictions" className="group/hot-topics mb-3 inline-flex items-center gap-2 text-foreground">
+        <Link
+          href="/predictions?_sort=volume"
+          className="group/hot-topics mb-3 inline-flex items-center gap-2 text-foreground"
+        >
           <FlameIcon className="size-4 text-no/85" />
           <span className="text-lg font-semibold tracking-tight underline-offset-2 group-hover/hot-topics:underline">
             {t('Hot topics')}
@@ -1552,9 +1730,13 @@ function FeaturedSideCardSlide({
   slide: HomeFeaturedSideCardSettings['slides'][number]
   isActive: boolean
 }) {
+  const t = useExtracted()
   const href = slide.ctaHref.trim()
   const hasCta = Boolean(slide.ctaLabel.trim() && href)
   const isClickable = slide.type === 'image' ? Boolean(href) : slide.type === 'text' && hasCta
+  const title = slide.title === DEFAULT_HOME_FEATURED_SIDE_CARD_TITLE ? t('Market pulse') : slide.title
+  const text =
+    slide.text === DEFAULT_HOME_FEATURED_SIDE_CARD_TEXT ? t('Fast movers across active markets.') : slide.text
   const className = cn(
     `group/side-card relative flex h-full min-w-full flex-col overflow-hidden bg-card text-card-foreground focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-none`,
     slide.type === 'text' && 'p-5',
@@ -1597,16 +1779,16 @@ function FeaturedSideCardSlide({
     ) : (
       <>
         <span className="pointer-events-none absolute bottom-0 left-[30%] h-px w-[40%] bg-linear-to-r from-transparent via-primary/60 to-transparent" />
-        <DynamicIcon
-          name={slide.icon as IconName}
+        <HomeFeaturedSideCardIcon
+          name={slide.icon}
           aria-hidden
           className="pointer-events-none absolute -top-6 -right-7 size-36 rotate-6 text-primary/8 transition-transform duration-300 group-hover/side-card:scale-105 motion-safe:animate-pulse"
         />
         <div className="relative z-1 flex min-h-0 flex-1 flex-col py-7">
           <span className="mb-3 h-1 w-10 rounded-full bg-primary/70 shadow-[0_0_18px_color-mix(in_oklab,var(--primary)_32%,transparent)]" />
-          <span className="line-clamp-2 max-w-[16rem] text-xl/tight font-semibold tracking-tight">{slide.title}</span>
+          <span className="line-clamp-2 max-w-[16rem] text-xl/tight font-semibold tracking-tight">{title}</span>
           <span className={cn('mt-5 text-sm/relaxed text-muted-foreground', hasCta ? 'line-clamp-3' : 'line-clamp-4')}>
-            {slide.text}
+            {text}
           </span>
           {hasCta && (
             <span className="mt-auto ml-auto inline-flex h-9 max-w-full items-center gap-1.5 rounded-full border border-border/70 bg-background/70 px-3 text-sm font-medium shadow-sm">
@@ -1715,7 +1897,10 @@ function FeaturedRightRail({
       </div>
 
       <div className="min-h-0 overflow-hidden p-1">
-        <Link href="/predictions" className="group/hot-topics mb-3 inline-flex items-center gap-2 text-foreground">
+        <Link
+          href="/predictions?_sort=volume"
+          className="group/hot-topics mb-3 inline-flex items-center gap-2 text-foreground"
+        >
           <FlameIcon className="size-4 text-no/85" />
           <span className="text-lg font-semibold tracking-tight underline-offset-2 group-hover/hot-topics:underline">
             {t('Hot topics')}
@@ -1750,6 +1935,8 @@ function FeaturedRightRail({
 }
 
 function FeaturedRightRailAction() {
+  const t = useExtracted()
+
   return (
     <div className="hidden lg:block">
       <Button
@@ -1758,28 +1945,203 @@ function FeaturedRightRailAction() {
           `h-10 w-full rounded-full bg-transparent text-muted-foreground shadow-none transition-colors hover:bg-secondary/80 hover:text-foreground dark:bg-transparent dark:hover:bg-secondary/80`,
         )}
         nativeButton={false}
-        render={<Link href="/predictions">Expand all</Link>}
+        render={<Link href="/predictions">{t('Expand all')}</Link>}
       />
     </div>
   )
 }
 
+interface HomeFeaturedRolloverQueueState {
+  activeIndex: number
+  events: HomeFeaturedRolloverEvent[]
+}
+
+function buildHomeFeaturedRolloverQueueState(item: HomeFeaturedEventCard): HomeFeaturedRolloverQueueState {
+  return {
+    activeIndex: -1,
+    events: item.targetType === 'series' && item.nextSeriesEvent ? [item.nextSeriesEvent] : [],
+  }
+}
+
+function useHomeFeaturedRolloverItem(item: HomeFeaturedEventCard) {
+  const locale = useLocale()
+  const [queueState, setQueueState] = useState<HomeFeaturedRolloverQueueState>(() =>
+    buildHomeFeaturedRolloverQueueState(item),
+  )
+  const activeIndex = queueState.activeIndex
+  const rolloverEvents = queueState.events
+  const activeRolloverEvent = activeIndex >= 0 ? (rolloverEvents[activeIndex] ?? null) : null
+  const activeEvent = activeRolloverEvent?.event ?? item.event
+  const nextRolloverEvent = rolloverEvents[activeIndex + 1] ?? null
+
+  useEffect(
+    function preloadFutureFeaturedSeriesEvents() {
+      if (item.targetType !== 'series') {
+        return
+      }
+
+      const futureEventCount = rolloverEvents.length - (activeIndex + 1)
+      if (futureEventCount >= 2) {
+        return
+      }
+
+      const lastKnownEvent = rolloverEvents.at(-1)?.event ?? activeEvent
+      const controller = new AbortController()
+      let retryTimeoutId: number | null = null
+      let isActive = true
+      let retryAttempt = 0
+
+      function scheduleRolloverRetry() {
+        if (!isActive || retryAttempt >= HOME_FEATURED_ROLLOVER_MAX_RETRIES) {
+          return
+        }
+
+        const retryDelay = Math.min(
+          HOME_FEATURED_ROLLOVER_RETRY_MS * 2 ** retryAttempt,
+          HOME_FEATURED_ROLLOVER_MAX_RETRY_DELAY_MS,
+        )
+        retryAttempt += 1
+        retryTimeoutId = window.setTimeout(loadNextRolloverEvent, retryDelay)
+      }
+
+      async function loadNextRolloverEvent() {
+        try {
+          const query = new URLSearchParams({
+            currentEventSlug: lastKnownEvent.slug,
+            locale,
+          })
+          const response = await fetch(`/api/home-featured/series-rollover?${query.toString()}`, {
+            cache: 'no-store',
+            signal: controller.signal,
+          })
+          if (!response.ok) {
+            throw new Error(`Featured rollover request failed with ${response.status}`)
+          }
+
+          const payload = (await response.json()) as { nextEvent?: HomeFeaturedRolloverEvent | null }
+          const nextEvent = payload.nextEvent ?? null
+          if (!isActive) {
+            return
+          }
+
+          if (!nextEvent) {
+            scheduleRolloverRetry()
+            return
+          }
+
+          setQueueState((current) => {
+            if (current.events.some((event) => event.event.id === nextEvent.event.id)) {
+              return current
+            }
+
+            return {
+              ...current,
+              events: [...current.events, nextEvent],
+            }
+          })
+        } catch {
+          if (isActive && !controller.signal.aborted) {
+            scheduleRolloverRetry()
+          }
+        }
+      }
+
+      void loadNextRolloverEvent()
+
+      return function cancelFutureFeaturedSeriesEventPreload() {
+        isActive = false
+        controller.abort()
+        if (retryTimeoutId != null) {
+          window.clearTimeout(retryTimeoutId)
+        }
+      }
+    },
+    [activeEvent, activeIndex, item.targetType, locale, rolloverEvents],
+  )
+
+  useEffect(
+    function scheduleFeaturedSeriesRollover() {
+      if (!nextRolloverEvent) {
+        return
+      }
+
+      const endTimestamp = resolveHomeFeaturedEventEndTimestamp(activeEvent)
+      if (endTimestamp == null) {
+        return
+      }
+
+      let timeoutId: number | null = null
+      function activateNextEvent() {
+        if (!isHomeFeaturedEventEnded(activeEvent, Date.now())) {
+          return
+        }
+
+        setQueueState((current) => {
+          const currentNextEvent = current.events[current.activeIndex + 1]
+          if (!currentNextEvent || currentNextEvent.event.id !== nextRolloverEvent.event.id) {
+            return current
+          }
+
+          if (current.activeIndex < 0) {
+            return { ...current, activeIndex: 0 }
+          }
+
+          const promotedIndex = current.activeIndex + 1
+          return {
+            ...current,
+            activeIndex: 0,
+            events: current.events.slice(promotedIndex),
+          }
+        })
+      }
+
+      timeoutId = window.setTimeout(activateNextEvent, Math.max(0, endTimestamp - Date.now()))
+      document.addEventListener('visibilitychange', activateNextEvent)
+
+      return function cancelFeaturedSeriesRollover() {
+        if (timeoutId != null) {
+          window.clearTimeout(timeoutId)
+        }
+        document.removeEventListener('visibilitychange', activateNextEvent)
+      }
+    },
+    [activeEvent, nextRolloverEvent],
+  )
+
+  return useMemo<HomeFeaturedEventCard>(() => {
+    if (!activeRolloverEvent) {
+      return item
+    }
+
+    return {
+      ...item,
+      ...activeRolloverEvent,
+      nextSeriesEvent: nextRolloverEvent,
+    }
+  }, [activeRolloverEvent, item, nextRolloverEvent])
+}
+
 function FeaturedSlide({
-  item,
+  item: sourceItem,
   currentTimestamp,
   isActive,
+  isPrevious,
   isNext,
   isChartEnabled,
 }: {
   item: HomeFeaturedEventCard
   currentTimestamp: number | null
   isActive: boolean
+  isPrevious: boolean
   isNext: boolean
   isChartEnabled: boolean
 }) {
+  const rolloverItem = useHomeFeaturedRolloverItem(sourceItem)
+  const locale = useLocale()
+  const item = useMemo(() => localizeHomeFeaturedMarketDates(rolloverItem, locale), [locale, rolloverItem])
   const isMobile = useIsMobile()
   const linkedHref = resolveEventPagePath(item.event)
-  const shouldRenderChart = isChartEnabled && (isActive || isNext)
+  const shouldRenderChart = isChartEnabled && (isPrevious || isActive || isNext)
   const [chartContainerRef, chartContainerWidth] = useElementWidth<HTMLDivElement>(shouldRenderChart)
   const isSingleMarket = item.event.total_markets_count === 1 || item.event.markets.length === 1
   const shouldRenderLiveSeriesChart = Boolean(
@@ -1819,10 +2181,17 @@ function FeaturedSlide({
             <HomeEventLiveSeriesChart
               event={item.event}
               isMobile={isMobile}
+              seriesEvents={item.seriesEvents}
               config={item.liveChartConfig}
               chartWidth={liveChartWidth}
               chartHeightOffset={HOME_FEATURED_CHART_HEIGHT_OFFSET}
               showSeriesControls={false}
+              showAreaFill={false}
+              showCurrentPriceGuide={false}
+              compactBitcoinHeaderPrices
+              preserveSeriesContinuity
+              showLiveMarketLink={false}
+              featuredChartLayout
             />
           ) : item.kind === 'sports' && sportsGraphCard && sportsGraphSelection ? (
             <HomeSportsGameGraph
@@ -1835,7 +2204,7 @@ function FeaturedSlide({
               showControls={false}
             />
           ) : (
-            <EventChart
+            <HomeEventChart
               event={item.event}
               isMobile={isMobile}
               showControls={false}
@@ -1845,7 +2214,6 @@ function FeaturedSlide({
               chartWidth={chartContainerWidth}
               chartHeight={HOME_FEATURED_CHART_HEIGHT}
               isSingleMarketOverride={isSingleMarket}
-              disableResetAnimation
               forceVisible
             />
           )}
@@ -1953,47 +2321,59 @@ export default function HomeFeaturedEventsCarousel({
   sideCard,
 }: HomeFeaturedEventsCarouselProps) {
   const t = useExtracted()
-  const sectionRef = useRef<HTMLElement | null>(null)
+  const locale = useLocale()
+  const [featuredViewportStore] = useState(createFeaturedViewportStore)
+  const sectionRef = useCallback(
+    (node: HTMLElement | null) => featuredViewportStore.setNode(node),
+    [featuredViewportStore],
+  )
   const [activeIndex, setActiveIndex] = useState(0)
-  const [isChartNearViewport, setIsChartNearViewport] = useState(false)
+  const isChartNearViewport = useSyncExternalStore(
+    featuredViewportStore.subscribe,
+    featuredViewportStore.getSnapshot,
+    featuredViewportStore.getServerSnapshot,
+  )
   const [isAutoAdvancePaused, setIsAutoAdvancePaused] = useState(false)
   const hasMultipleItems = items.length > 1
   const activeItem = items[activeIndex]
+  const previousIndex = items.length === 0 ? 0 : (activeIndex - 1 + items.length) % items.length
   const nextIndex = items.length === 0 ? 0 : (activeIndex + 1) % items.length
 
-  useEffect(function observeFeaturedCarousel() {
-    const node = sectionRef.current
-    if (!node || typeof IntersectionObserver === 'undefined') {
-      return
-    }
+  useEffect(
+    function preloadFeaturedCharts() {
+      if (typeof window === 'undefined') {
+        return
+      }
 
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (!entry?.isIntersecting) {
+      const mediaQuery = window.matchMedia?.('(min-width: 768px)')
+
+      function preloadCharts() {
+        if (mediaQuery && !mediaQuery.matches) {
           return
         }
 
-        setIsChartNearViewport(true)
-        observer.disconnect()
-      },
-      { rootMargin: '480px 0px' },
-    )
+        if (items.some((item) => item.kind === 'sports')) {
+          preloadFeaturedChunk(
+            () => import('@/app/[locale]/(platform)/sports/_components/_sports-games-center/SportsGameGraph'),
+          )
+        }
 
-    observer.observe(node)
-    return () => observer.disconnect()
-  }, [])
+        if (items.some((item) => item.liveChartConfig && shouldUseLiveSeriesChart(item.event, item.liveChartConfig))) {
+          preloadFeaturedChunk(() => import('@/app/[locale]/(platform)/event/[slug]/_components/EventLiveSeriesChart'))
+        }
+      }
 
-  useEffect(function stopFeaturedNavigationTransitionOnScroll() {
-    window.addEventListener('scroll', skipHomeFeaturedNavigationTransition, { passive: true })
-    window.addEventListener('touchmove', skipHomeFeaturedNavigationTransition, { passive: true })
-    window.addEventListener('wheel', skipHomeFeaturedNavigationTransition, { passive: true })
+      preloadCharts()
 
-    return () => {
-      window.removeEventListener('scroll', skipHomeFeaturedNavigationTransition)
-      window.removeEventListener('touchmove', skipHomeFeaturedNavigationTransition)
-      window.removeEventListener('wheel', skipHomeFeaturedNavigationTransition)
-    }
-  }, [])
+      if (!mediaQuery) {
+        return
+      }
+
+      mediaQuery.addEventListener('change', preloadCharts)
+      return () => mediaQuery.removeEventListener('change', preloadCharts)
+    },
+    [items],
+  )
 
   if (!activeItem) {
     return null
@@ -2004,11 +2384,23 @@ export default function HomeFeaturedEventsCarousel({
       return
     }
 
-    startTransition(() => {
-      addTransitionType(HOME_FEATURED_NAVIGATION_TYPE)
-      setActiveIndex((nextIndex + items.length) % items.length)
-    })
+    setActiveIndex((nextIndex + items.length) % items.length)
   }
+
+  function resolveNavigationTitle(title: string | null) {
+    if (!title) {
+      return null
+    }
+
+    const localizedTitle = localizeHomeEventCardTitle(title, locale)
+    const fullLidTitleValues = resolveHomeFeaturedFullLidTitleValues(localizedTitle, locale)
+    return fullLidTitleValues
+      ? t('Will the White House call a full lid by {time}? ({startDate}–{endDate})', fullLidTitleValues)
+      : localizedTitle
+  }
+
+  const previousTitle = resolveNavigationTitle(activeItem.previousTitle)
+  const nextTitle = resolveNavigationTitle(activeItem.nextTitle)
 
   return (
     <section ref={sectionRef} className="hidden gap-3 md:grid [&_img]:pointer-events-none [&_img]:select-none">
@@ -2028,10 +2420,11 @@ export default function HomeFeaturedEventsCarousel({
           >
             {items.map((item, index) => (
               <FeaturedSlide
-                key={item.featuredId}
+                key={`${item.featuredId}:${item.event.id}`}
                 item={item}
                 currentTimestamp={currentTimestamp}
                 isActive={index === activeIndex}
+                isPrevious={index === previousIndex}
                 isNext={index === nextIndex}
                 isChartEnabled={isChartNearViewport}
               />
@@ -2092,13 +2485,7 @@ export default function HomeFeaturedEventsCarousel({
                 <span className="relative inline-flex h-10 max-w-60 min-w-10 items-center overflow-hidden rounded-full bg-secondary text-muted-foreground shadow-xs group-hover:bg-secondary/80">
                   <span className="inline-flex h-10 min-w-10 items-center gap-2 px-3 md:px-4">
                     <ChevronLeftIcon className="size-4" />
-                    <ViewTransition
-                      name="home-featured-navigation-previous-text"
-                      default="none"
-                      update={HOME_FEATURED_NAVIGATION_UPDATE}
-                    >
-                      <span className="hidden max-w-44 truncate text-xs md:block">{activeItem.previousTitle}</span>
-                    </ViewTransition>
+                    <span className="hidden max-w-44 truncate text-xs md:block">{previousTitle}</span>
                   </span>
                 </span>
               </Button>
@@ -2110,13 +2497,7 @@ export default function HomeFeaturedEventsCarousel({
               >
                 <span className="relative inline-flex h-10 max-w-60 min-w-10 items-center overflow-hidden rounded-full bg-secondary text-muted-foreground shadow-xs group-hover:bg-secondary/80">
                   <span className="inline-flex h-10 min-w-10 items-center gap-2 px-3 md:px-4">
-                    <ViewTransition
-                      name="home-featured-navigation-next-text"
-                      default="none"
-                      update={HOME_FEATURED_NAVIGATION_UPDATE}
-                    >
-                      <span className="hidden max-w-44 truncate text-xs md:block">{activeItem.nextTitle}</span>
-                    </ViewTransition>
+                    <span className="hidden max-w-44 truncate text-xs md:block">{nextTitle}</span>
                     <ChevronRightIcon className="size-4" />
                   </span>
                 </span>

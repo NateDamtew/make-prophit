@@ -7,8 +7,9 @@ import type {
   AdminEventsTableState,
   AdminEventsTableStatePatch,
 } from '@/app/[locale]/admin/events/_lib/admin-events-table-state'
+import type { NonDefaultLocale } from '@/i18n/locales'
 import type { AdminEventAttentionFilter } from '@/lib/admin-event-attention'
-import type { Event } from '@/types'
+import type { Event, SportsSegmentScore } from '@/types'
 
 import {
   DEFAULT_ADMIN_EVENTS_TABLE_STATE,
@@ -24,12 +25,18 @@ export interface AdminEventRow {
   livestream_url: string | null
   additional_context: string | null
   additional_context_updated_at: string | null
+  rules: string | null
   series_slug: string | null
   series_recurrence: string | null
+  start_date: string | null
   volume: number
   volume_24h: number
   is_hidden: boolean
+  translations: Partial<Record<NonDefaultLocale, string>>
+  rules_translations: Partial<Record<NonDefaultLocale, string>>
   sports_score: string | null
+  sports_segment_scores: SportsSegmentScore[] | null
+  sports_segment_count: number | null
   sports_live: boolean | null
   sports_ended: boolean | null
   sports_event_date: string | null
@@ -47,6 +54,7 @@ export interface AdminEventRow {
   sports_source_match_confidence: string | null
   sports_vertical: 'sports' | 'esports' | null
   is_sports_games_moneyline: boolean
+  resolution_report_count: number
   end_date: string | null
   created_at: string
   updated_at: string

@@ -3,7 +3,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { ChevronDownIcon } from 'lucide-react'
 import { useExtracted } from 'next-intl'
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 
 import type { MarketPositionTag } from '@/app/[locale]/(platform)/event/[slug]/_components/EventMarketCard'
 import type { EventMarketRow } from '@/app/[locale]/(platform)/event/[slug]/_hooks/useEventMarketRows'
@@ -21,6 +21,7 @@ import { useChanceRefresh } from '@/app/[locale]/(platform)/event/[slug]/_hooks/
 import { useEventMarketRows } from '@/app/[locale]/(platform)/event/[slug]/_hooks/useEventMarketRows'
 import { useEventMarketQuotes } from '@/app/[locale]/(platform)/event/[slug]/_hooks/useEventMidPrices'
 import { useEventPriceHistory } from '@/app/[locale]/(platform)/event/[slug]/_hooks/useEventPriceHistory'
+import { useEventVolumes } from '@/app/[locale]/(platform)/event/[slug]/_hooks/useEventVolumes'
 import { useMarketDetailController } from '@/app/[locale]/(platform)/event/[slug]/_hooks/useMarketDetailController'
 import { useUserOpenOrdersQuery } from '@/app/[locale]/(platform)/event/[slug]/_hooks/useUserOpenOrdersQuery'
 import { useUserShareBalances } from '@/app/[locale]/(platform)/event/[slug]/_hooks/useUserShareBalances'
@@ -63,6 +64,28 @@ function getMarketEndTime(market: Event['markets'][number]) {
   }
   const parsed = Date.parse(market.end_time)
   return Number.isNaN(parsed) ? null : parsed
+}
+
+function sortMarketRowsByEndTime(rows: EventMarketRow[]) {
+  return rows
+    .map((row, index) => ({
+      row,
+      index,
+      endTime: getMarketEndTime(row.market),
+    }))
+    .sort((a, b) => {
+      if (a.endTime == null && b.endTime == null) {
+        return a.index - b.index
+      }
+      if (a.endTime == null) {
+        return 1
+      }
+      if (b.endTime == null) {
+        return -1
+      }
+      return a.endTime - b.endTime
+    })
+    .map((item) => item.row)
 }
 
 function useTweetMarketResolution({ event, currentTimestamp }: { event: Event; currentTimestamp: number | null }) {
@@ -560,7 +583,7 @@ function useMarketRowsByResolution({
     }))
   }, [marketRows, orderBookSummaries])
 
-  const { activeDisplayRows, resolvedDisplayRows } = useMemo(() => {
+  const { activeDisplayRows, sortedResolvedDisplayRows } = useMemo(() => {
     const activeRows: EventMarketRow[] = []
     const resolvedRows: EventMarketRow[] = []
 
@@ -573,28 +596,11 @@ function useMarketRowsByResolution({
       activeRows.push(row)
     })
 
-    return { activeDisplayRows: activeRows, resolvedDisplayRows: resolvedRows }
-  }, [pricedMarketRows])
-
-  const sortedResolvedDisplayRows = useMemo(() => {
-    if (!resolvedDisplayRows.length) {
-      return resolvedDisplayRows
+    return {
+      activeDisplayRows: sortMarketRowsByEndTime(activeRows),
+      sortedResolvedDisplayRows: sortMarketRowsByEndTime(resolvedRows),
     }
-
-    return resolvedDisplayRows
-      .map((row, index) => ({
-        row,
-        index,
-        endTime: getMarketEndTime(row.market),
-      }))
-      .sort((a, b) => {
-        if (a.endTime != null && b.endTime != null) {
-          return a.endTime - b.endTime
-        }
-        return a.index - b.index
-      })
-      .map((item) => item.row)
-  }, [resolvedDisplayRows])
+  }, [pricedMarketRows])
 
   return { pricedMarketRows, activeDisplayRows, sortedResolvedDisplayRows }
 }
@@ -627,19 +633,10 @@ export default function EventMarkets({ event, isMobile }: EventMarketsProps) {
   const isSingleMarket = useIsSingleMarket()
   const isNegRiskEnabled = Boolean(event.enable_neg_risk || event.neg_risk)
   const isNegRiskAugmented = Boolean(event.neg_risk_augmented)
+  const { liveVolumeByCondition, volumeByCondition } = useEventVolumes(event)
   const { rows: marketRows, hasChanceData } = useEventMarketRows(event)
   const { expandedMarketId, toggleMarket, expandMarket, selectDetailTab, getSelectedDetailTab } =
     useMarketDetailController(event.id)
-  const rowChartDeltaCacheRef = useRef<{ eventId: string; values: Record<string, number> }>({
-    eventId: event.id,
-    values: {},
-  })
-  if (rowChartDeltaCacheRef.current.eventId !== event.id) {
-    rowChartDeltaCacheRef.current = {
-      eventId: event.id,
-      values: {},
-    }
-  }
   const rowChartDeltaTargets = useMemo(() => buildRowChartDeltaTargets(event.markets), [event.markets])
   const shouldHydrateChartDeltas = rowChartDeltaTargets.length > 0
   const rowChartDeltaPriceHistory = useEventPriceHistory({
@@ -727,25 +724,7 @@ export default function EventMarkets({ event, isMobile }: EventMarketsProps) {
     rowChartDeltaTargets,
     shouldHydrateChartDeltas,
   ])
-  const stableRowChartDeltaYesByMarket = useMemo(() => {
-    if (!shouldHydrateChartDeltas) {
-      return rowChartDeltaCacheRef.current.values
-    }
-
-    const mergedDeltas = { ...rowChartDeltaCacheRef.current.values }
-    rowChartDeltaTargets.forEach((target) => {
-      const delta = rowChartDeltaYesByMarket[target.conditionId]
-      if (typeof delta === 'number' && Number.isFinite(delta)) {
-        mergedDeltas[target.conditionId] = delta
-      }
-    })
-    rowChartDeltaCacheRef.current = {
-      eventId: event.id,
-      values: mergedDeltas,
-    }
-
-    return mergedDeltas
-  }, [event.id, rowChartDeltaTargets, rowChartDeltaYesByMarket, shouldHydrateChartDeltas])
+  const stableRowChartDeltaYesByMarket = rowChartDeltaYesByMarket
   const reviewConditionIds = useReviewConditionIds({ markets: event.markets, currentTimestamp })
   const { resolveResolvedOutcomeIndex } = useTweetMarketResolution({ event, currentTimestamp })
   const chanceRefreshQueryKeys = useMemo(
@@ -854,6 +833,8 @@ export default function EventMarkets({ event, isMobile }: EventMarketsProps) {
                   onToggle={() => handleToggle(market)}
                   onBuy={(cardMarket, outcomeIndex, source) => handleBuy(cardMarket, outcomeIndex, source)}
                   chanceHighlightKey={chanceHighlightKey}
+                  liveVolume={liveVolumeByCondition[market.condition_id]}
+                  volumeOverride={volumeByCondition[market.condition_id]}
                   positionTags={positionTags}
                   openOrdersCount={openOrdersCountByCondition[market.condition_id] ?? 0}
                   onCashOut={handleCashOut}
@@ -904,7 +885,13 @@ export default function EventMarkets({ event, isMobile }: EventMarketsProps) {
             <OtherOutcomeRow shares={otherShares} showMarketIcon={Boolean(event.show_market_icons)} />
           </div>
         )}
-        {shouldShowActiveSection && <div className="mr-2 mb-4 ml-4 border-b border-border lg:mx-0" />}
+        {shouldShowActiveSection && !shouldShowResolvedSection && (
+          <div className="mr-2 mb-4 ml-4 border-b border-border lg:mx-0" />
+        )}
+
+        {shouldShowActiveSection && shouldShowResolvedSection && (
+          <hr className="mr-2 mb-4 ml-4 border-0 border-t border-border lg:mx-0" />
+        )}
 
         {shouldShowResolvedSection && (
           <div className="pb-4">

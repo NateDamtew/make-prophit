@@ -23,6 +23,7 @@ import {
   createInitialForm,
   isBigIntSerializationError,
   mapSignatureFlowErrorForUser,
+  resolveCustomSportsSlugMode,
 } from '@/app/[locale]/admin/events/calendar/_components/admin-create-event-form-utils'
 import { buildStepErrors } from '@/app/[locale]/admin/events/calendar/_components/admin-create-event-form-validation'
 import { createInitialAdminSportsForm } from '@/lib/admin-sports-create'
@@ -78,12 +79,34 @@ function buildValidationArgs(
     allowPastResolutionDate: false,
     hasCreatorSelection: true,
     hasRecurringCadence: true,
+    hasRecurringSeries: true,
     recurringPreviewErrors: [],
     ...overrides,
   }
 }
 
 describe('admin create event form utils', () => {
+  describe('resolveCustomSportsSlugMode', () => {
+    it('restores custom mode for a saved slug missing from the catalog', () => {
+      expect(
+        resolveCustomSportsSlugMode({
+          explicitlyCustom: false,
+          isKnownSlug: false,
+          normalizedSlug: 'custom-sport',
+        }),
+      ).toBe(true)
+    })
+
+    it('keeps empty and catalog slugs in select mode', () => {
+      expect(resolveCustomSportsSlugMode({ explicitlyCustom: false, isKnownSlug: false, normalizedSlug: '' })).toBe(
+        false,
+      )
+      expect(
+        resolveCustomSportsSlugMode({ explicitlyCustom: false, isKnownSlug: true, normalizedSlug: 'soccer' }),
+      ).toBe(false)
+    })
+  })
+
   describe('isBigIntSerializationError', () => {
     it('detects provider bigint serialization failures', () => {
       expect(isBigIntSerializationError('Do not know how to serialize a BigInt')).toBe(true)
@@ -286,6 +309,18 @@ describe('admin create event form utils', () => {
           'Select at least 4 sub categories.',
         ]),
       )
+    })
+
+    it('requires a recurrence group for recurring events', () => {
+      expect(
+        buildStepErrors(
+          1,
+          buildValidationArgs({
+            creationMode: 'recurring',
+            hasRecurringSeries: false,
+          }),
+        ),
+      ).toContain('Select or name the recurrence group.')
     })
 
     it('preserves resolution source and rules validation on step three', () => {

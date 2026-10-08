@@ -1,11 +1,11 @@
 'use client'
 
 import {
-  BadgePercentIcon,
   ChevronDownIcon,
   DownloadIcon,
+  GiftIcon,
   SettingsIcon,
-  ShieldIcon,
+  ShieldKeyholeIcon,
   TrophyIcon,
   UnplugIcon,
   UsersIcon,
@@ -13,11 +13,11 @@ import {
 import { useExtracted } from 'next-intl'
 import Image from 'next/image'
 import { useEffect, useRef, useState } from 'react'
-import AppLink from '@/components/AppLink'
 
+import AppLink from '@/components/AppLink'
 import HeaderPortfolio from '@/components/HeaderPortfolio'
 import LocaleSwitcherMenuItem from '@/components/LocaleSwitcherMenuItem'
-import PwaInstallIosInstructions from '@/components/PwaInstallIosInstructions'
+import PwaInstallDialog from '@/components/PwaInstallDialog'
 import ThemeSelector from '@/components/ThemeSelector'
 import { Button } from '@/components/ui/button'
 import {
@@ -139,15 +139,13 @@ export default function HeaderDropdownUserMenuAuth() {
   const avatarSeed = user?.deposit_wallet_address || user?.address || user?.username || 'user'
   const showPlaceholder = shouldUseAvatarPlaceholder(avatarUrl)
   const placeholderStyle = showPlaceholder ? getAvatarPlaceholderStyle(avatarSeed) : undefined
+  const [isInstallDialogOpen, setIsInstallDialogOpen] = useState(false)
 
   async function handleInstallAction() {
     handleMenuClose()
 
     if (isIos) {
-      toast.info(t('Install app'), {
-        duration: 10_000,
-        description: <PwaInstallIosInstructions className="max-w-sm pt-1" />,
-      })
+      setIsInstallDialogOpen(true)
       return
     }
 
@@ -213,8 +211,7 @@ export default function HeaderDropdownUserMenuAuth() {
             <Button
               type="button"
               variant="ghost"
-              size="header"
-              aria-label="User menu"
+              aria-label={t('User menu')}
               className={cn(
                 `group flex cursor-pointer items-center gap-2 px-2 transition-colors hover:bg-accent/70 hover:text-accent-foreground data-popup-open:bg-accent/70 data-popup-open:text-accent-foreground`,
               )}
@@ -227,7 +224,7 @@ export default function HeaderDropdownUserMenuAuth() {
           ) : (
             <Image
               src={avatarUrl}
-              alt="User avatar"
+              alt={t('User avatar')}
               width={32}
               height={32}
               className="aspect-square shrink-0 rounded-full object-cover"
@@ -245,6 +242,7 @@ export default function HeaderDropdownUserMenuAuth() {
           sideOffset={0}
           collisionPadding={16}
           portalled={isMobile}
+          positionMethod="fixed"
         >
           <DropdownMenuItem render={<UserInfoSection />} />
 
@@ -290,11 +288,11 @@ export default function HeaderDropdownUserMenuAuth() {
           </DropdownMenuLinkItem>
 
           <DropdownMenuLinkItem
-            render={<Link href="/settings/affiliate" className="flex w-full items-center gap-1.5" />}
+            render={<Link href="/settings/rewards" className="flex w-full items-center gap-1.5" />}
             className="py-2 text-sm font-semibold"
           >
-            <BadgePercentIcon className="size-4 text-emerald-600" />
-            {t('Affiliate')}
+            <GiftIcon className="size-4 text-violet-500" />
+            {t('Rewards')}
           </DropdownMenuLinkItem>
 
           <DropdownMenuLinkItem
@@ -318,13 +316,13 @@ export default function HeaderDropdownUserMenuAuth() {
               render={<Link href="/admin" className="flex w-full items-center gap-1.5" />}
               className="py-2 text-sm font-semibold"
             >
-              <ShieldIcon className="size-4 text-current" />
+              <ShieldKeyholeIcon className="size-4 text-current" />
               {t('Admin')}
             </DropdownMenuLinkItem>
           )}
 
           {themeMode === 'both' && (
-            <div className="flex items-center justify-between gap-2 px-2 py-1 text-sm font-semibold">
+            <div className="flex items-center justify-between gap-2 rounded-sm px-2 py-1.5 text-sm font-semibold transition-colors hover:bg-accent hover:text-accent-foreground">
               <span>{t('Dark Mode')}</span>
               <ThemeSelector />
             </div>
@@ -367,6 +365,7 @@ export default function HeaderDropdownUserMenuAuth() {
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+      <PwaInstallDialog open={isInstallDialogOpen} onOpenChange={setIsInstallDialogOpen} />
     </div>
   )
 }

@@ -2,11 +2,7 @@
 
 import type { InfiniteData, UseInfiniteQueryResult } from '@tanstack/react-query'
 import type { Route } from 'next'
-import type {
-  PredictionResultsSortOption,
-  PredictionResultsStatusOption,
-} from '@/lib/prediction-results-filters'
-import type { Event, Market } from '@/types'
+
 import { useInfiniteQuery } from '@tanstack/react-query'
 import {
   BookmarkIcon,
@@ -31,6 +27,8 @@ import {
   useSyncExternalStore,
 } from 'react'
 
+import type { PredictionResultsSortOption, PredictionResultsStatusOption } from '@/lib/prediction-results-filters'
+import type { Event, Market } from '@/types'
 
 import { useCommentMetrics } from '@/app/[locale]/(platform)/event/[slug]/_hooks/useCommentMetrics'
 import { resolveResolvedOrderPanelDisplay } from '@/app/[locale]/(platform)/event/[slug]/_utils/resolved-order-panel-market'
@@ -355,6 +353,7 @@ function usePredictionResultsQuery({
   hasNextPage,
   infiniteScrollScopeKey,
   isFetchingNextPage,
+  fallbackErrorMessage,
   setCanRetryLoadMoreState,
   setInfiniteScrollErrorState,
 }: {
@@ -363,6 +362,7 @@ function usePredictionResultsQuery({
   hasNextPage: boolean
   infiniteScrollScopeKey: string
   isFetchingNextPage: boolean
+  fallbackErrorMessage: string
   setCanRetryLoadMoreState: React.Dispatch<React.SetStateAction<{ key: string; value: boolean }>>
   setInfiniteScrollErrorState: React.Dispatch<React.SetStateAction<{ key: string; value: string | null }>>
 }) {
@@ -381,11 +381,11 @@ function usePredictionResultsQuery({
             return
           }
 
-          void fetchNextPage().catch((fetchError: Error) => {
+          void fetchNextPage().catch(() => {
             setCanRetryLoadMoreState({ key: infiniteScrollScopeKey, value: false })
             setInfiniteScrollErrorState({
               key: infiniteScrollScopeKey,
-              value: fetchError.message || 'Failed to load more results.',
+              value: fallbackErrorMessage,
             })
           })
         },
@@ -404,6 +404,7 @@ function usePredictionResultsQuery({
       hasNextPage,
       isFetchingNextPage,
       infiniteScrollScopeKey,
+      fallbackErrorMessage,
       setCanRetryLoadMoreState,
       setInfiniteScrollErrorState,
     ],
@@ -498,7 +499,7 @@ export default function PredictionResultsClient({
 }: PredictionResultsClientProps) {
   const t = useExtracted()
   const locale = useLocale()
-  const { open } = useAppKit()
+  const { open: openAppKit } = useAppKit()
   const { isConnected } = useAppKitAccount()
   const pathname = usePathname()
   const router = useRouter()
@@ -569,6 +570,7 @@ export default function PredictionResultsClient({
     hasNextPage,
     infiniteScrollScopeKey,
     isFetchingNextPage,
+    fallbackErrorMessage: t('Failed to load more results.'),
     setCanRetryLoadMoreState,
     setInfiniteScrollErrorState,
   })
@@ -678,11 +680,11 @@ export default function PredictionResultsClient({
   function handleRetryLoadMore() {
     setCanRetryLoadMoreState({ key: infiniteScrollScopeKey, value: true })
     setInfiniteScrollErrorState({ key: infiniteScrollScopeKey, value: null })
-    void fetchNextPage().catch((fetchError: Error) => {
+    void fetchNextPage().catch(() => {
       setCanRetryLoadMoreState({ key: infiniteScrollScopeKey, value: false })
       setInfiniteScrollErrorState({
         key: infiniteScrollScopeKey,
-        value: fetchError.message || 'Failed to load more results.',
+        value: t('Failed to load more results.'),
       })
     })
   }
@@ -712,7 +714,7 @@ export default function PredictionResultsClient({
 
   function handleBookmarkToggle() {
     if (!isConnected) {
-      void open()
+      void openAppKit()
       return
     }
 

@@ -4,9 +4,10 @@ import { Suspense } from 'react'
 
 import { AdminAccordionSkeleton } from '@/app/[locale]/admin/_components/AdminPageSkeleton'
 import AdminIntegrationsForm from '@/app/[locale]/admin/integrations/_components/AdminIntegrationsForm'
+import { getRootLocale } from '@/i18n/root-locale'
 import { getKuestSupportSettings } from '@/lib/admin-support-settings'
-import { parseMarketContextSettings } from '@/lib/ai/market-context-config'
-import { fetchOpenRouterModels } from '@/lib/ai/openrouter'
+import { parseOpenRouterProviderSettings } from '@/lib/ai/market-context-config'
+import { fetchAllOpenRouterModels, fetchOpenRouterModels } from '@/lib/ai/openrouter'
 import { isArbitrageEnabled, isArbitrageMultiWalletEnabled } from '@/lib/arbitrage-settings'
 import { SettingsRepository } from '@/lib/db/queries/settings'
 import { parseSportsSourceProviderSettings } from '@/lib/sports-source/settings'
@@ -19,27 +20,44 @@ function AdminIntegrationsFallback() {
   return <AdminAccordionSkeleton itemCount={9} showDescription />
 }
 
-async function AdminIntegrationsContent({ locale }: { locale: string }) {
+async function AdminIntegrationsContent() {
   await io()
+  const locale = await getRootLocale()
   const t = await getExtracted()
   const { data: allSettings } = await SettingsRepository.getSettings()
   const themeSiteSettings = getThemeSiteSettingsFormState(allSettings ?? undefined)
-  const openRouterSettings = parseMarketContextSettings(allSettings ?? undefined)
+  const openRouterSettings = parseOpenRouterProviderSettings(allSettings ?? undefined)
   const sportsSourceSettings = parseSportsSourceProviderSettings(allSettings ?? undefined)
   const parsedSumsubSettings = parseSumsubSettings(allSettings ?? undefined)
 
   let modelOptions: Array<{ id: string; label: string; contextWindow?: number }> = []
+  let translationModelOptions: Array<{ id: string; label: string; contextWindow?: number }> = []
   let modelsError: string | undefined
+  let translationModelsError: string | undefined
   if (openRouterSettings.apiKey) {
-    try {
-      const models = await fetchOpenRouterModels(openRouterSettings.apiKey)
-      modelOptions = models.map((model) => ({
+    const [modelsResult, translationModelsResult] = await Promise.allSettled([
+      fetchOpenRouterModels(openRouterSettings.apiKey),
+      fetchAllOpenRouterModels(openRouterSettings.apiKey),
+    ])
+
+    if (modelsResult.status === 'fulfilled') {
+      modelOptions = modelsResult.value.map((model) => ({
         id: model.id,
         label: model.name,
         contextWindow: model.contextLength,
       }))
-    } catch {
+    } else {
       modelsError = t('Unable to load models from OpenRouter. Please try again later.')
+    }
+
+    if (translationModelsResult.status === 'fulfilled') {
+      translationModelOptions = translationModelsResult.value.map((model) => ({
+        id: model.id,
+        label: model.name,
+        contextWindow: model.contextLength,
+      }))
+    } else {
+      translationModelsError = t('Unable to load models from OpenRouter. Please try again later.')
     }
   }
 
@@ -53,9 +71,12 @@ async function AdminIntegrationsContent({ locale }: { locale: string }) {
       kuestSupportSettings={getKuestSupportSettings(allSettings)}
       openRouterSettings={{
         defaultModel: openRouterSettings.model,
+        translationModel: openRouterSettings.translationModel,
         isApiKeyConfigured: Boolean(openRouterSettings.apiKey),
         modelOptions,
+        translationModelOptions,
         modelsError,
+        translationModelsError,
       }}
       sportsSourceSettings={{
         isPandaScoreTokenConfigured: Boolean(sportsSourceSettings.pandascoreToken),
@@ -75,9 +96,8 @@ async function AdminIntegrationsContent({ locale }: { locale: string }) {
   )
 }
 
-export default async function AdminIntegrationsPage({ params }: PageProps<'/[locale]/admin/integrations'>) {
-  const { locale } = await params
-  setRequestLocale(locale)
+export default async function AdminIntegrationsPage() {
+  setRequestLocale(await getRootLocale())
   const t = await getExtracted()
 
   return (
@@ -89,7 +109,7 @@ export default async function AdminIntegrationsPage({ params }: PageProps<'/[loc
         </p>
       </div>
       <Suspense fallback={<AdminIntegrationsFallback />}>
-        <AdminIntegrationsContent locale={locale} />
+        <AdminIntegrationsContent />
       </Suspense>
     </section>
   )

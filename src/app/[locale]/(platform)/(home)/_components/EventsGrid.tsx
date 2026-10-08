@@ -428,6 +428,7 @@ interface UseInfiniteScrollLoadMoreParams {
   isFetching: boolean
   isFetchingNextPage: boolean
   loadMoreStateKey: string
+  fallbackErrorMessage: string
 }
 
 function useInfiniteScrollLoadMore({
@@ -437,10 +438,10 @@ function useInfiniteScrollLoadMore({
   isFetching,
   isFetchingNextPage,
   loadMoreStateKey,
+  fallbackErrorMessage,
 }: UseInfiniteScrollLoadMoreParams) {
   const loadMoreRef = useRef<HTMLDivElement | null>(null)
   const canRetryLoadMoreAfterErrorRef = useRef(true)
-  const previousLoadMoreStateKeyRef = useRef(loadMoreStateKey)
   const [infiniteScrollErrorState, setInfiniteScrollErrorState] = useState<{
     key: string
     value: string | null
@@ -450,13 +451,12 @@ function useInfiniteScrollLoadMore({
   })
   const infiniteScrollError = infiniteScrollErrorState.key === loadMoreStateKey ? infiniteScrollErrorState.value : null
 
-  if (previousLoadMoreStateKeyRef.current !== loadMoreStateKey) {
-    previousLoadMoreStateKeyRef.current = loadMoreStateKey
-    canRetryLoadMoreAfterErrorRef.current = true
-  }
-
   useEffect(
     function observeLoadMoreSentinelForFetch() {
+      if (infiniteScrollErrorState.key !== loadMoreStateKey) {
+        canRetryLoadMoreAfterErrorRef.current = true
+      }
+
       if (!enabled || !loadMoreRef.current || !hasNextPage || typeof IntersectionObserver === 'undefined') {
         return
       }
@@ -492,7 +492,7 @@ function useInfiniteScrollLoadMore({
             canRetryLoadMoreAfterErrorRef.current = false
             setInfiniteScrollErrorState({
               key: loadMoreStateKey,
-              value: error?.message || 'Failed to load more events.',
+              value: error?.message || fallbackErrorMessage,
             })
           })
         },
@@ -504,12 +504,21 @@ function useInfiniteScrollLoadMore({
         observer.disconnect()
       }
     },
-    [enabled, fetchNextPage, hasNextPage, infiniteScrollError, isFetching, isFetchingNextPage, loadMoreStateKey],
+    [
+      enabled,
+      fetchNextPage,
+      fallbackErrorMessage,
+      hasNextPage,
+      infiniteScrollError,
+      infiniteScrollErrorState.key,
+      isFetching,
+      isFetchingNextPage,
+      loadMoreStateKey,
+    ],
   )
 
   return { loadMoreRef, infiniteScrollError }
 }
-
 export default function EventsGrid({
   filters,
   initialEvents,
@@ -523,7 +532,7 @@ export default function EventsGrid({
   const t = useExtracted()
   const locale = useLocale()
   const user = useUser()
-  const { open: openLoginModal } = useAppKit()
+  const { open: openAppKit } = useAppKit()
   const queryUserScope = user?.id ?? 'guest'
   const currentTimestamp = useCurrentTimestamp({
     initialTimestamp: initialCurrentTimestamp,
@@ -631,7 +640,7 @@ export default function EventsGrid({
     queryFn: ({ pageParam }) =>
       fetchEvents({
         pageParam,
-        currentTimestamp: resolvedCurrentTimestamp,
+        currentTimestamp: shouldAutoRefreshEvents ? Date.now() : resolvedCurrentTimestamp,
         filters,
         locale,
       }),
@@ -642,9 +651,9 @@ export default function EventsGrid({
       ? { pages: [{ events: initialEvents, hasMore: initialHasMore }], pageParams: [0] }
       : undefined,
     enabled: shouldEnableEventsQuery,
-    refetchOnMount: false,
+    refetchOnMount: shouldAutoRefreshEvents ? 'always' : false,
     refetchOnWindowFocus: false,
-    staleTime: 'static',
+    staleTime: shouldAutoRefreshEvents ? HOME_FEED_REFRESH_INTERVAL_MS : 'static',
     refetchInterval: shouldAutoRefreshEvents ? HOME_FEED_REFRESH_INTERVAL_MS : false,
     refetchIntervalInBackground: true,
     initialDataUpdatedAt: 0,
@@ -686,6 +695,7 @@ export default function EventsGrid({
     isFetching,
     isFetchingNextPage,
     loadMoreStateKey,
+    fallbackErrorMessage: t('Failed to load more events.'),
   })
 
   async function handleLoadMore() {
@@ -694,7 +704,7 @@ export default function EventsGrid({
     }
 
     if (!user) {
-      await openLoginModal()
+      await openAppKit()
       return
     }
 
@@ -726,7 +736,7 @@ export default function EventsGrid({
   }
 
   if (status === 'error') {
-    return <p className="text-center text-sm text-muted-foreground">Could not load more events.</p>
+    return <p className="text-center text-sm text-muted-foreground">{t('Could not load more events.')}</p>
   }
 
   if (hydrationSafeEventsToRender.length === 0 && (!allEvents || allEvents.length === 0)) {
@@ -736,7 +746,7 @@ export default function EventsGrid({
   if (hydrationSafeEventsToRender.length === 0) {
     return (
       <div ref={parentRef} className="flex min-h-50 min-w-0 items-center justify-center text-sm text-muted-foreground">
-        No events match your filters.
+        {t('No events match your filters.')}
       </div>
     )
   }

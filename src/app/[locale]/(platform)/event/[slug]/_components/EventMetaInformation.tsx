@@ -1,15 +1,13 @@
 'use client'
 
-import { useQuery } from '@tanstack/react-query'
 import { CheckIcon, Clock3Icon, PlusIcon, SparkleIcon, TrophyIcon } from 'lucide-react'
-import { useExtracted } from 'next-intl'
-import { useMemo } from 'react'
+import { useExtracted, useLocale } from 'next-intl'
 
 import type { Event } from '@/types'
 
+import { useEventVolumes } from '@/app/[locale]/(platform)/event/[slug]/_hooks/useEventVolumes'
 import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from '@/components/ui/popover'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { usePublicRuntimeConfig } from '@/hooks/usePublicRuntimeConfig'
 import { formatCurrency, formatDate } from '@/lib/formatters'
 import { isMarketNew } from '@/lib/utils'
 
@@ -18,75 +16,11 @@ interface EventMetaInformationProps {
   event: Event
 }
 
-function useEventVolume(event: Event) {
-  const { clobUrl } = usePublicRuntimeConfig()
-  const volumeRequestPayload = useMemo(() => {
-    const conditions = event.markets
-      .map((market) => {
-        const tokenIds = (market.outcomes ?? [])
-          .map((outcome) => outcome.token_id)
-          .filter(Boolean)
-          .slice(0, 2)
-        if (!market.condition_id || tokenIds.length < 2) {
-          return null
-        }
-        return {
-          condition_id: market.condition_id,
-          token_ids: tokenIds as [string, string],
-        }
-      })
-      .filter((item): item is { condition_id: string; token_ids: [string, string] } => item !== null)
-
-    const signature = conditions
-      .map((condition) => `${condition.condition_id}:${condition.token_ids.join(':')}`)
-      .join('|')
-
-    return { conditions, signature }
-  }, [event.markets])
-
-  const { data: volumeFromApi } = useQuery({
-    queryKey: ['trade-volumes', clobUrl, event.id, volumeRequestPayload.signature],
-    enabled: volumeRequestPayload.conditions.length > 0 && Boolean(clobUrl),
-    staleTime: 60_000,
-    refetchInterval: 60_000,
-    queryFn: async () => {
-      const response = await fetch(`${clobUrl}/data/volumes`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          include_24h: false,
-          conditions: volumeRequestPayload.conditions,
-        }),
-      })
-
-      const payload = (await response.json()) as Array<{
-        condition_id: string
-        status: number
-        volume?: string
-      }>
-
-      return payload
-        .filter((entry) => entry?.status === 200)
-        .reduce((total, entry) => {
-          const numeric = Number(entry.volume ?? 0)
-          return Number.isFinite(numeric) ? total + numeric : total
-        }, 0)
-    },
-  })
-
-  return useMemo(() => {
-    if (typeof volumeFromApi === 'number' && Number.isFinite(volumeFromApi)) {
-      return volumeFromApi
-    }
-    return event.volume
-  }, [event.volume, volumeFromApi])
-}
-
 export default function EventMetaInformation({ event, currentTimestamp }: EventMetaInformationProps) {
   const t = useExtracted()
-  const resolvedVolume = useEventVolume(event)
+  const locale = useLocale()
+  const { totalVolume } = useEventVolumes(event)
+  const resolvedVolume = totalVolume ?? event.volume
 
   const isNegRiskEnabled = Boolean(event.enable_neg_risk || event.neg_risk)
   const isNegRiskAugmented = Boolean(event.neg_risk_augmented)
@@ -178,7 +112,7 @@ export default function EventMetaInformation({ event, currentTimestamp }: EventM
           <TooltipTrigger>
             <span className="flex items-center gap-1.5 text-sm/tight text-muted-foreground">
               <Clock3Icon className="size-4 text-muted-foreground" strokeWidth={2.5} />
-              <span>{formatDate(expiryTimestamp)}</span>
+              <span>{formatDate(expiryTimestamp, locale)}</span>
             </span>
           </TooltipTrigger>
           <TooltipContent side="bottom" collisionPadding={16} className="max-w-64 text-left">

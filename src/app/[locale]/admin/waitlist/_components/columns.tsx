@@ -1,18 +1,20 @@
 'use client'
 
-import type { ColumnDef } from '@tanstack/react-table'
-import type { useWaitlistTable, WaitlistEntry } from '@/app/[locale]/admin/waitlist/_hooks/useWaitlist'
-
 import { ArrowUpDownIcon } from 'lucide-react'
+
+import type { useWaitlistTable, WaitlistEntry } from '@/app/[locale]/admin/waitlist/_hooks/useWaitlist'
+import type { DataTableColumnDef } from '@/lib/data-table'
+
 import { formatAbsolute, formatRelativeTime } from '@/components/admin-ui/format'
 import { WaitlistStatusBadge } from '@/components/admin-ui/WaitlistStatusBadge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
+
 import { WaitlistRowActions } from './WaitlistRowActions'
 
 type WaitlistActions = Pick<ReturnType<typeof useWaitlistTable>, 'updateStatus' | 'sendInvite' | 'deleteEntry'>
 
-function SortHeader({ label, column }: { label: string, column: any }) {
+function SortHeader({ label, column }: { label: string; column: any }) {
   return (
     <Button
       variant="ghost"
@@ -25,7 +27,7 @@ function SortHeader({ label, column }: { label: string, column: any }) {
   )
 }
 
-export function useWaitlistColumns(actions: WaitlistActions): ColumnDef<WaitlistEntry>[] {
+export function useWaitlistColumns(actions: WaitlistActions): DataTableColumnDef<WaitlistEntry>[] {
   return [
     {
       id: 'select',
@@ -33,14 +35,14 @@ export function useWaitlistColumns(actions: WaitlistActions): ColumnDef<Waitlist
         <Checkbox
           checked={table.getIsAllPageRowsSelected()}
           indeterminate={table.getIsSomePageRowsSelected() && !table.getIsAllPageRowsSelected()}
-          onCheckedChange={value => table.toggleAllPageRowsSelected(!!value)}
+          onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
           aria-label="Select all"
         />
       ),
       cell: ({ row }) => (
         <Checkbox
           checked={row.getIsSelected()}
-          onCheckedChange={value => row.toggleSelected(!!value)}
+          onCheckedChange={(value) => row.toggleSelected(!!value)}
           aria-label="Select row"
         />
       ),
@@ -71,9 +73,7 @@ export function useWaitlistColumns(actions: WaitlistActions): ColumnDef<Waitlist
       accessorKey: 'country',
       id: 'country',
       header: () => <span className="text-muted-foreground">Country</span>,
-      cell: ({ row }) => (
-        <span className="text-sm text-muted-foreground">{row.original.country || '—'}</span>
-      ),
+      cell: ({ row }) => <span className="text-sm text-muted-foreground">{row.original.country || '—'}</span>,
     },
     {
       accessorKey: 'created_at',

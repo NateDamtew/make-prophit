@@ -9,28 +9,176 @@ export const SERIES_KEY = 'live_price'
 export const LIVE_WINDOW_MS = 40 * 1000
 const LIVE_HISTORY_BUFFER_MS = 8 * 1000
 export const LIVE_DATA_RETENTION_MS = LIVE_WINDOW_MS + LIVE_HISTORY_BUFFER_MS
+export const LIVE_IDLE_RECOVERY_DISPLAY_MS = 1_250
 export const LIVE_CLOCK_FRAME_MS = 1000 / 30
 export const LIVE_X_AXIS_STEP_MS = 10 * 1000
-export const LIVE_X_AXIS_LEFT_LABEL_GUARD_MS = 3600
-const LIVE_MAX_Y_AXIS_TICKS = 6
+export const LIVE_X_AXIS_RIGHT_INSET = 84
 export const MAX_POINTS = 4000
 export const LIVE_PRICE_TRANSITION_MS = 650
 const LIVE_PRICE_TRANSITION_MIN_MS = 120
 const LIVE_PRICE_TRANSITION_CADENCE_RATIO = 0.8
 export const LIVE_CHART_HEIGHT = 332
 export const LIVE_CHART_MARGIN_TOP = 22
-export const LIVE_CHART_MARGIN_BOTTOM = 52
-export const LIVE_CHART_MARGIN_RIGHT = 40
+export const LIVE_CHART_MARGIN_BOTTOM = 42
+export const LIVE_CHART_MARGIN_RIGHT = 52
 export const LIVE_CHART_MARGIN_LEFT = 0
 export const LIVE_CURSOR_GUIDE_TOP = 10
 export const LIVE_TARGET_MAX_BOTTOM_OFFSET = 10
-export const LIVE_CURRENT_MARKER_OFFSET_X = 0
+export const LIVE_CURRENT_MARKER_OFFSET_X = -34
 export const LIVE_PLOT_CLIP_RIGHT_PADDING = 22
+export const POLYMARKET_CHAINLINK_TWAP_CUTOVER_MS = Date.parse('2026-08-07T00:00:00Z')
 const LIVE_PRICE_STORAGE_PREFIX = 'kuest-live-last-price'
 
 export interface PersistedLivePrice {
   price: number
   timestamp: number
+}
+
+export interface LiveSeriesPriceHistoryPoint {
+  timestamp_ms: number
+  price: number
+}
+
+export function buildLiveSeriesFallbackData(
+  price: number | null,
+  chartEndTimestamp: number,
+  windowMs = LIVE_WINDOW_MS,
+) {
+  if (price == null || !Number.isFinite(price) || price <= 0 || !Number.isFinite(chartEndTimestamp)) {
+    return []
+  }
+
+  const domainEnd = Math.max(0, chartEndTimestamp)
+  const resolvedWindowMs = Number.isFinite(windowMs) && windowMs > 0 ? windowMs : LIVE_WINDOW_MS
+  const domainStart = Math.max(0, domainEnd - resolvedWindowMs)
+
+  return [
+    {
+      date: new Date(domainStart),
+      [SERIES_KEY]: price,
+    },
+    {
+      date: new Date(domainEnd),
+      [SERIES_KEY]: price,
+    },
+  ] satisfies DataPoint[]
+}
+
+export function buildLiveSeriesIdleResetData(price: number | null, chartEndTimestamp: number) {
+  return buildLiveSeriesFallbackData(price, chartEndTimestamp, LIVE_WINDOW_MS)
+}
+
+export function shouldResetLiveSeriesAfterIdle(
+  previousArrivalTimestamp: number | null,
+  currentArrivalTimestamp: number,
+  thresholdMs = LIVE_DATA_RETENTION_MS,
+) {
+  if (
+    previousArrivalTimestamp == null ||
+    !Number.isFinite(previousArrivalTimestamp) ||
+    !Number.isFinite(currentArrivalTimestamp) ||
+    !Number.isFinite(thresholdMs) ||
+    thresholdMs <= 0
+  ) {
+    return false
+  }
+
+  return currentArrivalTimestamp - previousArrivalTimestamp >= thresholdMs
+}
+
+export function resolveLiveSeriesIdleRecoverySpan(previousPrice: number | null, currentPrice: number | null) {
+  if (
+    previousPrice == null ||
+    currentPrice == null ||
+    !Number.isFinite(previousPrice) ||
+    !Number.isFinite(currentPrice) ||
+    previousPrice <= 0 ||
+    currentPrice <= 0
+  ) {
+    return null
+  }
+
+  const span = Math.abs(currentPrice - previousPrice)
+  return span > 0 ? span : null
+}
+
+export function resolveLiveChartPaddedDomainEnd({
+  startTimestamp,
+  endTimestamp,
+  chartWidth,
+  marginLeft,
+  marginRight,
+  rightInset,
+  dataEndRatio,
+}: {
+  startTimestamp: number
+  endTimestamp: number
+  chartWidth: number
+  marginLeft: number
+  marginRight: number
+  rightInset: number
+  dataEndRatio?: number
+}) {
+  const duration = Math.max(1, endTimestamp - startTimestamp)
+  const plotWidth = Math.max(1, chartWidth - marginLeft - marginRight)
+
+  if (dataEndRatio != null && Number.isFinite(dataEndRatio) && dataEndRatio > 0 && dataEndRatio <= 1) {
+    return startTimestamp + duration / dataEndRatio
+  }
+
+  const visibleWidth = Math.max(1, plotWidth - Math.max(0, rightInset))
+
+  return startTimestamp + (duration * plotWidth) / visibleWidth
+}
+
+export function buildClosedLiveSeriesData({
+  startTimestamp,
+  endTimestamp,
+  openingPrice,
+  closingPrice,
+  history,
+}: {
+  startTimestamp: number
+  endTimestamp: number
+  openingPrice: number | null
+  closingPrice: number | null
+  history: LiveSeriesPriceHistoryPoint[]
+}) {
+  if (!Number.isFinite(startTimestamp) || !Number.isFinite(endTimestamp) || startTimestamp >= endTimestamp) {
+    return []
+  }
+
+  const pointsByTimestamp = new Map<number, number>()
+
+  for (const point of history) {
+    if (
+      Number.isFinite(point.timestamp_ms) &&
+      point.timestamp_ms > startTimestamp &&
+      point.timestamp_ms < endTimestamp &&
+      Number.isFinite(point.price) &&
+      point.price > 0
+    ) {
+      pointsByTimestamp.set(point.timestamp_ms, point.price)
+    }
+  }
+
+  const resolvedOpeningPrice =
+    openingPrice != null && Number.isFinite(openingPrice) && openingPrice > 0 ? openingPrice : closingPrice
+  if (resolvedOpeningPrice != null && Number.isFinite(resolvedOpeningPrice) && resolvedOpeningPrice > 0) {
+    pointsByTimestamp.set(startTimestamp, resolvedOpeningPrice)
+  }
+
+  if (closingPrice != null && Number.isFinite(closingPrice) && closingPrice > 0) {
+    pointsByTimestamp.set(endTimestamp, closingPrice)
+  }
+
+  return Array.from(pointsByTimestamp.entries())
+    .sort(([leftTimestamp], [rightTimestamp]) => leftTimestamp - rightTimestamp)
+    .map(([timestamp, price]) => ({
+      date: new Date(timestamp),
+      [SERIES_KEY]: price,
+    }))
+    .slice(-MAX_POINTS) satisfies DataPoint[]
 }
 
 export interface LiveSeriesPriceSnapshot {
@@ -46,6 +194,7 @@ export interface LiveSeriesPriceSnapshot {
   latest_price: number | null
   latest_window_end_ms: number | null
   latest_source_timestamp_ms: number | null
+  price_history?: LiveSeriesPriceHistoryPoint[]
   is_event_closed: boolean
 }
 
@@ -300,98 +449,6 @@ export function isSnapshotMessage(payload: any) {
   return Array.isArray(payload?.payload?.data) || Array.isArray(payload?.data)
 }
 
-export function buildAxis(values: number[], fractionDigits = 2) {
-  const resolvedFractionDigits = Math.max(0, Math.min(6, Math.floor(fractionDigits)))
-  const visibleStep = 1 / 10 ** resolvedFractionDigits
-  function roundAxisValue(value: number) {
-    return Number(value.toFixed(resolvedFractionDigits))
-  }
-
-  if (!values.length) {
-    return { min: 0, max: 1, ticks: [0, 1] }
-  }
-
-  const minValue = Math.min(...values)
-  const maxValue = Math.max(...values)
-  const midpoint = (minValue + maxValue) / 2
-
-  if (maxValue - minValue < visibleStep / 2 && Math.abs(midpoint) >= 50) {
-    const center = roundAxisValue(midpoint)
-    const axisMin = roundAxisValue(center - visibleStep)
-    const axisMax = roundAxisValue(center + visibleStep)
-    return { min: axisMin, max: axisMax, ticks: [axisMin, center, axisMax] }
-  }
-
-  const minSpan = Math.max(Math.abs(midpoint) * 0.00002, Math.abs(midpoint) >= 1 ? 0.002 : 0.0002)
-  const span = Math.max(minSpan, maxValue - minValue)
-  const padding = Math.max(span * 0.08, minSpan * 0.08)
-  const rawMin = minValue - padding
-  const rawMax = maxValue + padding
-
-  const targetTicks = 4
-  const rawStep = (rawMax - rawMin) / Math.max(1, targetTicks - 1)
-  const magnitude = 10 ** Math.floor(Math.log10(rawStep))
-  const stepRatio = rawStep / magnitude
-  const stepMultiplier = stepRatio >= 5 ? 5 : stepRatio >= 2 ? 2 : 1
-  const initialStep = Math.max(stepMultiplier * magnitude, visibleStep)
-
-  function nextNiceStep(currentStep: number) {
-    const currentMagnitude = 10 ** Math.floor(Math.log10(currentStep))
-    const normalized = currentStep / currentMagnitude
-
-    if (normalized < 2) {
-      return 2 * currentMagnitude
-    }
-
-    if (normalized < 5) {
-      return 5 * currentMagnitude
-    }
-
-    return 10 * currentMagnitude
-  }
-
-  function buildTicksForStep(step: number) {
-    const axisMin = Math.floor(rawMin / step) * step
-    const axisMax = Math.ceil(rawMax / step) * step
-    const ticks: number[] = []
-
-    for (let value = axisMin; value <= axisMax + step * 1e-6; value += step) {
-      ticks.push(value)
-    }
-
-    return { axisMin, axisMax, ticks }
-  }
-
-  let step = initialStep
-  let axis = buildTicksForStep(step)
-  let attempts = 0
-
-  while (axis.ticks.length > LIVE_MAX_Y_AXIS_TICKS && attempts < 8) {
-    step = nextNiceStep(step)
-    axis = buildTicksForStep(step)
-    attempts += 1
-  }
-
-  const ticks: number[] = []
-  const seenTicks = new Set<number>()
-
-  for (const value of axis.ticks) {
-    const roundedValue = roundAxisValue(value)
-    if (seenTicks.has(roundedValue)) {
-      continue
-    }
-
-    seenTicks.add(roundedValue)
-    ticks.push(roundedValue)
-  }
-
-  return {
-    min: roundAxisValue(axis.axisMin),
-    max: roundAxisValue(axis.axisMax),
-    ticks,
-  }
-}
-
 export function keepWithinLiveWindow(points: DataPoint[], cutoffMs: number) {
   if (!points.length) {
     return points
@@ -610,6 +667,50 @@ export function normalizeSubscriptionSymbol(topic: string, symbol: string) {
   }
 
   return trimmed.toLowerCase()
+}
+
+export function resolveLiveSeriesRealtimeTopic({
+  configuredTopic,
+  activeWindowMinutes,
+  eventStartTimestamp,
+  eventEndTimestamp,
+}: {
+  configuredTopic: string
+  activeWindowMinutes: number
+  eventStartTimestamp?: number | null
+  eventEndTimestamp: number | null
+}) {
+  const normalizedTopic = configuredTopic.trim().toLowerCase()
+  const normalizedWindowMinutes = Number(activeWindowMinutes)
+  if (
+    normalizedTopic !== 'crypto_prices_chainlink' ||
+    !Number.isFinite(normalizedWindowMinutes) ||
+    normalizedWindowMinutes <= 0 ||
+    eventEndTimestamp == null ||
+    !Number.isFinite(eventEndTimestamp)
+  ) {
+    return configuredTopic
+  }
+
+  const eventWindowStartTimestamp =
+    eventStartTimestamp != null && Number.isFinite(eventStartTimestamp)
+      ? eventStartTimestamp
+      : eventEndTimestamp - normalizedWindowMinutes * 60 * 1000
+  if (eventWindowStartTimestamp < POLYMARKET_CHAINLINK_TWAP_CUTOVER_MS) {
+    return configuredTopic
+  }
+
+  // RTDS currently publishes only these two TWAP cadences. The supported
+  // market windows intentionally mirror the upstream Polymarket templates.
+  if (normalizedWindowMinutes === 5) {
+    return 'crypto_prices_twap_thirty'
+  }
+
+  if (normalizedWindowMinutes === 15 || normalizedWindowMinutes === 4 * 60) {
+    return 'crypto_prices_twap_sixty'
+  }
+
+  return configuredTopic
 }
 
 function normalizeComparableSymbol(symbol: string) {
@@ -842,6 +943,13 @@ export function getVisibleCountdownUnits(
     ]
   }
 
+  if (hours === 0) {
+    return [
+      { unit: 'min' as const, value: minutes },
+      { unit: 'sec' as const, value: seconds },
+    ]
+  }
+
   return [
     { unit: 'hr' as const, value: hours },
     { unit: 'min' as const, value: minutes },
@@ -849,8 +957,8 @@ export function getVisibleCountdownUnits(
   ]
 }
 
-export function formatDateAtTimezone(timestamp: number, timeZone: string) {
-  return new Intl.DateTimeFormat('en-US', {
+export function formatDateAtTimezone(timestamp: number, timeZone: string, locale = 'en-US') {
+  return new Intl.DateTimeFormat(locale, {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
@@ -858,11 +966,10 @@ export function formatDateAtTimezone(timestamp: number, timeZone: string) {
   }).format(new Date(timestamp))
 }
 
-export function formatTimeAtTimezone(timestamp: number, timeZone: string) {
-  return new Intl.DateTimeFormat('en-US', {
+export function formatTimeAtTimezone(timestamp: number, timeZone: string, locale = 'en-US') {
+  return new Intl.DateTimeFormat(locale, {
     hour: 'numeric',
     minute: '2-digit',
-    hour12: true,
     timeZone,
   }).format(new Date(timestamp))
 }

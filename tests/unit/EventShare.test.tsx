@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 import type { Event } from '@/types'
@@ -24,8 +24,12 @@ vi.mock('@/components/ui/button', () => ({
 }))
 
 vi.mock('@/components/ui/dropdown-menu', () => ({
-  DropdownMenu: function MockDropdownMenu({ children }: any) {
-    return <div>{children}</div>
+  DropdownMenu: function MockDropdownMenu({ children, open }: any) {
+    return (
+      <div data-testid="share-menu" data-state={open ? 'open' : 'closed'}>
+        {children}
+      </div>
+    )
   },
   DropdownMenuContent: function MockDropdownMenuContent({ children }: any) {
     return <div>{children}</div>
@@ -40,8 +44,8 @@ vi.mock('@/components/ui/dropdown-menu', () => ({
   DropdownMenuSeparator: function MockDropdownMenuSeparator() {
     return <hr />
   },
-  DropdownMenuTrigger: function MockDropdownMenuTrigger({ children }: any) {
-    return <>{children}</>
+  DropdownMenuTrigger: function MockDropdownMenuTrigger({ children, render }: any) {
+    return render ? <button {...render.props}>{children}</button> : <>{children}</>
   },
 }))
 
@@ -161,15 +165,16 @@ describe('eventShare', () => {
   })
 
   it('loads affiliate settings when a single-market share is clicked and shows the toast with fetched values', async () => {
+    mocks.useUser.mockReturnValue({ username: 'alice', affiliate_code: 'abc123' })
     mocks.fetchAffiliateSettingsFromAPI.mockResolvedValue({
       success: true,
       data: {
-        builderTakerFeePercent: '1.00',
-        builderMakerFeePercent: '0.00',
+        builderTakerSharePercent: '30.00',
+        builderMakerFlatFeePercent: '0.00',
         affiliateSharePercent: '40.00',
         operatorSharePercent: '60.00',
-        builderTakerFeeDecimal: 0.01,
-        builderMakerFeeDecimal: 0,
+        builderTakerShareDecimal: 0.3,
+        builderMakerFlatFeeDecimal: 0,
         affiliateShareDecimal: 0.4,
         operatorShareDecimal: 0.6,
       },
@@ -180,15 +185,15 @@ describe('eventShare', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Copy event link' }))
 
     await waitFor(() => {
-      expect(writeText).toHaveBeenCalledWith('http://localhost:3000/event/event-1?r=abc123')
+      expect(writeText).toHaveBeenCalledWith('http://localhost:3000/event/event-1?r=alice')
     })
 
     await waitFor(() => {
       expect(mocks.fetchAffiliateSettingsFromAPI).toHaveBeenCalledTimes(1)
       expect(mocks.maybeShowAffiliateToast).toHaveBeenCalledWith({
-        affiliateCode: 'abc123',
+        affiliateCode: 'alice',
         affiliateSharePercent: 40,
-        builderTakerFeePercent: 1,
+        builderTakerSharePercent: 30,
         siteName: 'Kuest',
         context: 'link',
       })
@@ -199,12 +204,12 @@ describe('eventShare', () => {
     mocks.fetchAffiliateSettingsFromAPI.mockResolvedValue({
       success: true,
       data: {
-        builderTakerFeePercent: '0.00',
-        builderMakerFeePercent: '0.00',
+        builderTakerSharePercent: '0.00',
+        builderMakerFlatFeePercent: '0.00',
         affiliateSharePercent: '0.00',
         operatorSharePercent: '100.00',
-        builderTakerFeeDecimal: 0,
-        builderMakerFeeDecimal: 0,
+        builderTakerShareDecimal: 0,
+        builderMakerFlatFeeDecimal: 0,
         affiliateShareDecimal: 0,
         operatorShareDecimal: 1,
       },
@@ -233,12 +238,12 @@ describe('eventShare', () => {
     mocks.fetchAffiliateSettingsFromAPI.mockReturnValueOnce(firstResponse.promise).mockResolvedValueOnce({
       success: true,
       data: {
-        builderTakerFeePercent: '1.00',
-        builderMakerFeePercent: '0.00',
+        builderTakerSharePercent: '30.00',
+        builderMakerFlatFeePercent: '0.00',
         affiliateSharePercent: '40.00',
         operatorSharePercent: '60.00',
-        builderTakerFeeDecimal: 0.01,
-        builderMakerFeeDecimal: 0,
+        builderTakerShareDecimal: 0.3,
+        builderMakerFlatFeeDecimal: 0,
         affiliateShareDecimal: 0.4,
         operatorShareDecimal: 0.6,
       },
@@ -265,7 +270,7 @@ describe('eventShare', () => {
       expect(mocks.maybeShowAffiliateToast).toHaveBeenNthCalledWith(1, {
         affiliateCode: 'abc123',
         affiliateSharePercent: null,
-        builderTakerFeePercent: null,
+        builderTakerSharePercent: null,
         siteName: 'Kuest',
         context: 'link',
       })
@@ -278,10 +283,50 @@ describe('eventShare', () => {
       expect(mocks.maybeShowAffiliateToast).toHaveBeenNthCalledWith(2, {
         affiliateCode: 'abc123',
         affiliateSharePercent: 40,
-        builderTakerFeePercent: 1,
+        builderTakerSharePercent: 30,
         siteName: 'Kuest',
         context: 'link',
       })
     })
+  })
+
+  it('does not open the hover menu for touch input', () => {
+    renderWithQueryClient(<EventShare event={createEvent({ total_markets_count: 2 })} />)
+
+    fireEvent.pointerEnter(screen.getByRole('button', { name: 'Copy event link' }), { pointerType: 'touch' })
+
+    expect(screen.getByTestId('share-menu')).toHaveAttribute('data-state', 'closed')
+  })
+
+  it('copies a multi-market link and closes the menu', async () => {
+    renderWithQueryClient(<EventShare event={createEvent({ total_markets_count: 2 })} />)
+
+    fireEvent.pointerEnter(screen.getByRole('button', { name: 'Copy event link' }), { pointerType: 'mouse' })
+    expect(screen.getByTestId('share-menu')).toHaveAttribute('data-state', 'open')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Copy link' }))
+
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith('http://localhost:3000/event/event-1?r=abc123')
+    })
+    expect(screen.getByTestId('share-menu')).toHaveAttribute('data-state', 'closed')
+  })
+
+  it('closes an open multi-market menu when the page scrolls', () => {
+    renderWithQueryClient(<EventShare event={createEvent({ total_markets_count: 2 })} />)
+
+    fireEvent.pointerEnter(screen.getByRole('button', { name: 'Copy event link' }), { pointerType: 'mouse' })
+    fireEvent.scroll(window)
+
+    expect(screen.getByTestId('share-menu')).toHaveAttribute('data-state', 'closed')
+  })
+
+  it('keeps an open multi-market menu open when its contents scroll', () => {
+    renderWithQueryClient(<EventShare event={createEvent({ total_markets_count: 2 })} />)
+
+    fireEvent.pointerEnter(screen.getByRole('button', { name: 'Copy event link' }), { pointerType: 'mouse' })
+    fireEvent.scroll(screen.getByRole('button', { name: 'Copy link' }))
+
+    expect(screen.getByTestId('share-menu')).toHaveAttribute('data-state', 'open')
   })
 })

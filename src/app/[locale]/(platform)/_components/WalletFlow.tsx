@@ -62,27 +62,34 @@ const PENDING_WITHDRAWAL_EXPIRY_MS = 2 * 60 * 1000
 
 function usePendingWithdrawals() {
   const [pendingWithdrawals, setPendingWithdrawals] = useState<PendingWithdrawal[]>([])
+  // The clock is read in the interval (not during render) to keep render pure.
+  const [now, setNow] = useState(() => Date.now())
 
   const visiblePendingWithdrawals = useMemo(
-    () => pendingWithdrawals.filter(withdrawal => Date.now() - withdrawal.createdAt < PENDING_WITHDRAWAL_EXPIRY_MS),
-    [pendingWithdrawals],
+    () => pendingWithdrawals.filter((withdrawal) => now - withdrawal.createdAt < PENDING_WITHDRAWAL_EXPIRY_MS),
+    [now, pendingWithdrawals],
   )
 
-  useEffect(function pruneExpiredPendingWithdrawals() {
-    if (pendingWithdrawals.length === 0) {
-      return undefined
-    }
+  useEffect(
+    function pruneExpiredPendingWithdrawals() {
+      if (pendingWithdrawals.length === 0) {
+        return undefined
+      }
 
-    const intervalId = window.setInterval(() => {
-      setPendingWithdrawals(current =>
-        current.filter(withdrawal => Date.now() - withdrawal.createdAt < PENDING_WITHDRAWAL_EXPIRY_MS),
-      )
-    }, 15_000)
+      const intervalId = window.setInterval(() => {
+        const tick = Date.now()
+        setNow(tick)
+        setPendingWithdrawals((current) =>
+          current.filter((withdrawal) => tick - withdrawal.createdAt < PENDING_WITHDRAWAL_EXPIRY_MS),
+        )
+      }, 15_000)
 
-    return function clearPendingWithdrawalInterval() {
-      window.clearInterval(intervalId)
-    }
-  }, [pendingWithdrawals.length])
+      return function clearPendingWithdrawalInterval() {
+        window.clearInterval(intervalId)
+      }
+    },
+    [pendingWithdrawals.length],
+  )
 
   return { pendingWithdrawals: visiblePendingWithdrawals, setPendingWithdrawals }
 }
@@ -205,12 +212,10 @@ function useWalletSendHandler({
           if (isTradingAuthRequiredError(result.error)) {
             handleWithdrawModalChange(false)
             openTradeRequirements({ forceTradingAuth: true })
-          }
-          else if (result.code === 'wallet_connector_not_connected') {
+          } else if (result.code === 'wallet_connector_not_connected') {
             toast.error(messages.reconnectWallet)
             void openWalletModal({ view: 'Connect' })
-          }
-          else {
+          } else {
             toast.error(result.error)
           }
           return
@@ -235,12 +240,10 @@ function useWalletSendHandler({
         setWalletSendTo('')
         setWalletSendAmount('')
         handleWithdrawModalChange(false)
-      }
-      catch (error) {
+      } catch (error) {
         const message = error instanceof Error ? error.message : DEFAULT_ERROR_MESSAGE
         toast.error(message)
-      }
-      finally {
+      } finally {
         setIsWalletSending(false)
       }
     },
@@ -335,7 +338,7 @@ export function WalletFlow({
   const t = useExtracted()
   const { signTypedDataAsync } = useSignTypedData()
   const { runWithSignaturePrompt } = useSignaturePromptRunner()
-  const { open } = useAppKit()
+  const { open: openAppKit } = useAppKit()
   const { depositView, setDepositView, handleDepositModalChange } = useDepositViewState(onDepositOpenChange)
   const {
     walletSendTo,
@@ -380,7 +383,7 @@ export function WalletFlow({
     setPendingWithdrawals,
     handleWithdrawModalChange,
     openTradeRequirements,
-    openWalletModal: open,
+    openWalletModal: openAppKit,
     runWithSignaturePrompt,
     signTypedDataAsync,
     messages: walletSendMessages,

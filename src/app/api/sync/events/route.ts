@@ -29,7 +29,7 @@ import { slugifyText } from '@/lib/slug'
 import { findSportsEvents } from '@/lib/sports-source'
 import { normalizeSingleSportsSourceProvider } from '@/lib/sports-source/providers'
 import { loadSportsSourceProviderSettings } from '@/lib/sports-source/settings'
-import { uploadPublicAsset } from '@/lib/storage'
+import { uploadPublicAsset } from '@/lib/storage-upload'
 import {
   buildCronErrorResponse,
   buildSyncAlreadyRunningResponse,
@@ -44,6 +44,10 @@ const PNL_SUBGRAPH_URL = 'https://subgraphs.kuest.com/pnl-subgraph'
 const IRYS_GATEWAY = process.env.IRYS_GATEWAY || 'https://gateway.irys.xyz'
 const SYNC_TIME_LIMIT_MS = 250_000
 const PNL_PAGE_SIZE = 200
+const INITIAL_MARKET_LOOKBACK_DAYS = 14
+const INITIAL_MARKET_LOOKBACK_SECONDS = INITIAL_MARKET_LOOKBACK_DAYS * 24 * 60 * 60
+const INITIAL_MARKET_CURSOR_PREFIX = 'initial-market-sync:'
+const EXPIRED_MARKET_GRACE_MS = 24 * 60 * 60 * 1000
 const MARKET_SYNC_STATE = {
   serviceName: 'market_sync',
   subgraphName: 'pnl',
@@ -73,6 +77,11 @@ const MAIN_CATEGORY_TAG_BY_SLUG = new Map<string, (typeof MAIN_CATEGORY_TAGS)[nu
 interface SyncCursor {
   conditionId: string
   updatedAt: number
+}
+
+interface PnLCursorState {
+  cursor: SyncCursor
+  initialCreationTimestamp: number | null
 }
 
 interface SubgraphCondition {
@@ -154,6 +163,7 @@ interface SyncStats {
   fetchedCount: number
   processedCount: number
   skippedCreatorCount: number
+  skippedExpiredCount: number
   errors: { conditionId: string; error: string }[]
   timeLimitReached: boolean
 }
@@ -179,6 +189,7 @@ interface ProcessMarketResult {
   changed: boolean
   listAffectingChange: boolean
   urlSetChanged: boolean
+  skippedExpired: boolean
 }
 
 interface ProcessEventResult {
@@ -232,12 +243,17 @@ export function resolveAdditionalContextUpdatedAtIso(params: {
 }
 
 const PNL_CONDITIONS_PAGE_QUERY = `
-  query PnlConditionsPage($creators: [String!]!, $pageSize: Int!) {
+  query PnlConditionsPage($creators: [String!]!, $pageSize: Int!, $minCreationTimestamp: BigInt!) {
     conditions(
       first: $pageSize
       orderBy: updatedAt
       orderDirection: asc
-      where: { creator_in: $creators }
+      where: {
+        and: [
+          { creator_in: $creators }
+          { creationTimestamp_gte: $minCreationTimestamp }
+        ]
+      }
     ) {
       id
       oracle
@@ -252,7 +268,12 @@ const PNL_CONDITIONS_PAGE_QUERY = `
 `
 
 const PNL_CONDITIONS_PAGE_SINCE_QUERY = `
-  query PnlConditionsPage($creators: [String!]!, $pageSize: Int!, $lastUpdatedAt: BigInt!, $lastConditionId: String!) {
+  query PnlConditionsPage(
+    $creators: [String!]!
+    $pageSize: Int!
+    $lastUpdatedAt: BigInt!
+    $lastConditionId: String!
+  ) {
     conditions(
       first: $pageSize
       orderBy: updatedAt
@@ -260,6 +281,48 @@ const PNL_CONDITIONS_PAGE_SINCE_QUERY = `
       where: {
         and: [
           { creator_in: $creators }
+          {
+            or: [
+              { updatedAt_gt: $lastUpdatedAt }
+              {
+                and: [
+                  { updatedAt: $lastUpdatedAt }
+                  { id_gt: $lastConditionId }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ) {
+      id
+      oracle
+      questionId
+      resolved
+      metadataHash
+      creator
+      creationTimestamp
+      updatedAt
+    }
+  }
+`
+
+const PNL_CONDITIONS_PAGE_SINCE_WITH_CUTOFF_QUERY = `
+  query PnlConditionsPage(
+    $creators: [String!]!
+    $pageSize: Int!
+    $lastUpdatedAt: BigInt!
+    $lastConditionId: String!
+    $minCreationTimestamp: BigInt!
+  ) {
+    conditions(
+      first: $pageSize
+      orderBy: updatedAt
+      orderDirection: asc
+      where: {
+        and: [
+          { creator_in: $creators }
+          { creationTimestamp_gte: $minCreationTimestamp }
           {
             or: [
               { updatedAt_gt: $lastUpdatedAt }
@@ -338,13 +401,27 @@ export async function GET(request: Request) {
       const forceCreatorSourceRefresh = shouldForceCreatorSourceRefresh(request)
       const creatorSourceRefreshPromise = refreshCreatorSourcesBeforeSync(forceCreatorSourceRefresh)
       const autoDeployNewEventsPromise = loadAutoDeployNewEventsEnabled()
-      const lastCursor = await getLastPnLCursor()
+      const cursorState = await getPnLCursorState()
+      const lastCursor = cursorState?.cursor ?? null
+      const initialCreationTimestamp =
+        cursorState?.initialCreationTimestamp ?? (lastCursor ? null : resolveMinCreationTimestamp())
+
       if (lastCursor) {
         console.log(
           `📊 Last PnL cursor: ${lastCursor.conditionId} @ ${new Date(lastCursor.updatedAt * 1000).toISOString()}`,
         )
+        if (initialCreationTimestamp != null) {
+          console.log(
+            `📅 Resuming initial PnL sync with creation cutoff ${new Date(initialCreationTimestamp * 1000).toISOString()}`,
+          )
+        }
       } else {
-        console.log('📊 Last PnL cursor: none (full scan from subgraph start)')
+        console.log('📊 Last PnL cursor: none (initial sync)')
+        if (initialCreationTimestamp != null) {
+          console.log(
+            `📅 Initial PnL creation cutoff: ${new Date(initialCreationTimestamp * 1000).toISOString()} (${INITIAL_MARKET_LOOKBACK_DAYS}-day lookback)`,
+          )
+        }
       }
 
       await creatorSourceRefreshPromise
@@ -352,7 +429,12 @@ export async function GET(request: Request) {
         getAllowedCreators(),
         autoDeployNewEventsPromise,
       ])
-      const syncResult = await syncMarkets(new Set(allowedCreators), { autoDeployNewEvents })
+      const syncResult = await syncMarkets(
+        new Set(allowedCreators),
+        { autoDeployNewEvents },
+        lastCursor,
+        initialCreationTimestamp,
+      )
 
       await updateSyncStatus({
         ...MARKET_SYNC_STATE,
@@ -376,6 +458,7 @@ export async function GET(request: Request) {
         processed: syncResult.processedCount,
         fetched: syncResult.fetchedCount,
         skippedCreators: syncResult.skippedCreatorCount,
+        skippedExpired: syncResult.skippedExpiredCount,
         errors: syncResult.errors.length,
         errorDetails: syncResult.errors,
         timeLimitReached: syncResult.timeLimitReached,
@@ -397,7 +480,12 @@ export async function GET(request: Request) {
   })
 }
 
-async function syncMarkets(allowedCreators: Set<string>, options: SyncOptions): Promise<SyncStats> {
+async function syncMarkets(
+  allowedCreators: Set<string>,
+  options: SyncOptions,
+  initialCursor: SyncCursor | null,
+  initialCreationTimestamp: number | null,
+): Promise<SyncStats> {
   const trackedCreators = Array.from(allowedCreators)
     .map((creator) => creator.trim().toLowerCase())
     .filter(Boolean)
@@ -407,24 +495,27 @@ async function syncMarkets(allowedCreators: Set<string>, options: SyncOptions): 
       fetchedCount: 0,
       processedCount: 0,
       skippedCreatorCount: 0,
+      skippedExpiredCount: 0,
       errors: [],
       timeLimitReached: false,
     }
   }
 
   const syncStartedAt = Date.now()
-  let cursor = await getLastPnLCursor()
+  let cursor = initialCursor
 
   if (cursor) {
     const cursorIso = new Date(cursor.updatedAt * 1000).toISOString()
     console.log(`⏱️ Resuming sync after condition ${cursor.conditionId} (updated at ${cursorIso})`)
   } else {
-    console.log('📥 No existing markets found, starting full sync')
+    console.log(`📥 No existing cursor found, starting ${INITIAL_MARKET_LOOKBACK_DAYS}-day initial sync`)
   }
 
   let fetchedCount = 0
   let processedCount = 0
   let skippedCreatorCount = 0
+  let skippedExpiredCount = 0
+  let initialScanExhausted = false
   const errors: { conditionId: string; error: string }[] = []
   let timeLimitReached = false
   const eventIdsNeedingStatusUpdate = new Set<string>()
@@ -436,10 +527,17 @@ async function syncMarkets(allowedCreators: Set<string>, options: SyncOptions): 
   }
 
   while (Date.now() - syncStartedAt < SYNC_TIME_LIMIT_MS) {
-    const page = await fetchPnLConditionsPage(trackedCreators, cursor)
+    const page = await fetchPnLConditionsPage(trackedCreators, cursor, initialCreationTimestamp)
 
     if (page.conditions.length === 0) {
       console.log('📦 PnL subgraph returned no additional conditions')
+      initialScanExhausted = true
+      if (initialCreationTimestamp != null && !cursor) {
+        cursor = {
+          updatedAt: initialCreationTimestamp,
+          conditionId: `0x${'0'.repeat(64)}`,
+        }
+      }
       break
     }
 
@@ -482,6 +580,12 @@ async function syncMarkets(allowedCreators: Set<string>, options: SyncOptions): 
 
       try {
         const processResult = await processMarket(condition, options, runtimeState)
+        if (processResult.skippedExpired) {
+          skippedExpiredCount++
+          lastPersistableCursor = conditionCursor
+          console.log(`⌛ Skipped expired market: ${condition.id}`)
+          continue
+        }
         if (processResult.eventIdForStatusUpdate && processResult.changed) {
           eventIdsNeedingStatusUpdate.add(processResult.eventIdForStatusUpdate)
         }
@@ -514,7 +618,7 @@ async function syncMarkets(allowedCreators: Set<string>, options: SyncOptions): 
     }
 
     if (lastPersistableCursor) {
-      await updatePnLCursor(lastPersistableCursor)
+      await updatePnLCursor(lastPersistableCursor, initialCreationTimestamp)
       cursor = lastPersistableCursor
     } else if (!timeLimitReached) {
       // Avoid stalling forever if an entire page cannot be processed.
@@ -527,7 +631,7 @@ async function syncMarkets(allowedCreators: Set<string>, options: SyncOptions): 
         updatedAt: pageEndTimestamp,
         conditionId: lastConditionInPage.id,
       }
-      await updatePnLCursor(pageEndCursor)
+      await updatePnLCursor(pageEndCursor, initialCreationTimestamp)
       cursor = pageEndCursor
     }
 
@@ -550,6 +654,7 @@ async function syncMarkets(allowedCreators: Set<string>, options: SyncOptions): 
 
     if (page.conditions.length < PNL_PAGE_SIZE) {
       console.log('📭 Last fetched page was smaller than the configured page size; stopping pagination')
+      initialScanExhausted = true
       break
     }
   }
@@ -575,16 +680,50 @@ async function syncMarkets(allowedCreators: Set<string>, options: SyncOptions): 
     console.log('🧹 Event cache invalidation summary:', invalidationSummary)
   }
 
+  if (initialCreationTimestamp != null && initialScanExhausted && cursor) {
+    await updatePnLCursor(cursor, null)
+    console.log('✅ Initial PnL sync completed; future runs will use the incremental cursor')
+  }
+
   return {
     fetchedCount,
     processedCount,
     skippedCreatorCount,
+    skippedExpiredCount,
     errors,
     timeLimitReached,
   }
 }
 
-async function getLastPnLCursor(): Promise<SyncCursor | null> {
+function resolveMinCreationTimestamp(nowMs = Date.now()) {
+  return Math.floor(nowMs / 1000) - INITIAL_MARKET_LOOKBACK_SECONDS
+}
+
+function parsePnLCursorId(
+  cursorId: string,
+): Pick<PnLCursorState, 'initialCreationTimestamp'> & { conditionId: string } {
+  if (!cursorId.startsWith(INITIAL_MARKET_CURSOR_PREFIX)) {
+    return { conditionId: cursorId, initialCreationTimestamp: null }
+  }
+
+  const encodedState = cursorId.slice(INITIAL_MARKET_CURSOR_PREFIX.length)
+  const separatorIndex = encodedState.indexOf(':')
+  const initialCreationTimestamp = Number(encodedState.slice(0, separatorIndex))
+  const conditionId = encodedState.slice(separatorIndex + 1)
+  if (separatorIndex <= 0 || !Number.isSafeInteger(initialCreationTimestamp) || !conditionId) {
+    throw new Error('Invalid persisted initial market sync cursor')
+  }
+
+  return { conditionId, initialCreationTimestamp }
+}
+
+function serializePnLCursorId(conditionId: string, initialCreationTimestamp: number | null) {
+  return initialCreationTimestamp == null
+    ? conditionId
+    : `${INITIAL_MARKET_CURSOR_PREFIX}${initialCreationTimestamp}:${conditionId}`
+}
+
+async function getPnLCursorState(): Promise<PnLCursorState | null> {
   const rows = await db
     .select({
       cursor_updated_at: subgraph_syncs.cursor_updated_at,
@@ -604,17 +743,21 @@ async function getLastPnLCursor(): Promise<SyncCursor | null> {
     return null
   }
 
+  const parsedCursor = parsePnLCursorId(data.cursor_id)
   return {
-    conditionId: data.cursor_id,
-    updatedAt,
+    cursor: {
+      conditionId: parsedCursor.conditionId,
+      updatedAt,
+    },
+    initialCreationTimestamp: parsedCursor.initialCreationTimestamp,
   }
 }
 
-async function updatePnLCursor(cursor: SyncCursor) {
+async function updatePnLCursor(cursor: SyncCursor, initialCreationTimestamp: number | null) {
   try {
     const cursorPayload = {
       cursor_updated_at: BigInt(cursor.updatedAt),
-      cursor_id: cursor.conditionId,
+      cursor_id: serializePnLCursorId(cursor.conditionId, initialCreationTimestamp),
     }
 
     const updatedRows = await db
@@ -634,24 +777,45 @@ async function updatePnLCursor(cursor: SyncCursor) {
 async function fetchPnLConditionsPage(
   creators: string[],
   afterCursor: SyncCursor | null,
+  initialCreationTimestamp: number | null,
 ): Promise<{ conditions: SubgraphCondition[] }> {
   if (creators.length === 0) {
     return { conditions: [] }
   }
 
-  const hasCursor = afterCursor != null
-  const query = hasCursor ? PNL_CONDITIONS_PAGE_SINCE_QUERY : PNL_CONDITIONS_PAGE_QUERY
-  const variables = hasCursor
-    ? {
-        creators,
-        pageSize: PNL_PAGE_SIZE,
-        lastUpdatedAt: afterCursor.updatedAt.toString(),
-        lastConditionId: afterCursor.conditionId,
+  let query: string
+  let variables: Record<string, string | number | string[]>
+
+  if (!afterCursor) {
+    if (initialCreationTimestamp == null) {
+      throw new Error('Initial market sync requires a creation timestamp cutoff')
+    }
+
+    query = PNL_CONDITIONS_PAGE_QUERY
+    variables = {
+      creators,
+      pageSize: PNL_PAGE_SIZE,
+      minCreationTimestamp: initialCreationTimestamp.toString(),
+    }
+  } else {
+    const cursorVariables = {
+      creators,
+      pageSize: PNL_PAGE_SIZE,
+      lastUpdatedAt: afterCursor.updatedAt.toString(),
+      lastConditionId: afterCursor.conditionId,
+    }
+
+    if (initialCreationTimestamp == null) {
+      query = PNL_CONDITIONS_PAGE_SINCE_QUERY
+      variables = cursorVariables
+    } else {
+      query = PNL_CONDITIONS_PAGE_SINCE_WITH_CUTOFF_QUERY
+      variables = {
+        ...cursorVariables,
+        minCreationTimestamp: initialCreationTimestamp.toString(),
       }
-    : {
-        creators,
-        pageSize: PNL_PAGE_SIZE,
-      }
+    }
+  }
 
   const response = await fetch(PNL_SUBGRAPH_URL, {
     method: 'POST',
@@ -686,11 +850,22 @@ async function processMarket(
   runtimeState: SyncRuntimeState,
 ): Promise<ProcessMarketResult> {
   const timestamps = getMarketTimestamps(market)
-  const conditionChanged = await processCondition(market, timestamps)
   if (!market.metadataHash) {
     throw new Error(`Market ${market.id} missing required metadataHash field`)
   }
   const metadata = await fetchMetadata(market.metadataHash)
+  if (isMarketMetadataExpired(metadata) && !(await hasStoredMarket(market.id))) {
+    return {
+      eventIdForStatusUpdate: null,
+      eventIdsForCacheInvalidation: [],
+      changed: false,
+      listAffectingChange: false,
+      urlSetChanged: false,
+      skippedExpired: true,
+    }
+  }
+
+  const conditionChanged = await processCondition(market, timestamps)
   const eventResult = await processEvent(
     metadata.event,
     metadata.sports?.event,
@@ -732,7 +907,27 @@ async function processMarket(
     changed,
     listAffectingChange: eventResult.listAffectingChange || hiddenChanged,
     urlSetChanged: eventResult.urlSetChanged || marketResult.urlSetChanged,
+    skippedExpired: false,
   }
+}
+
+export function isMarketMetadataExpired(metadata: any, nowMs = Date.now()) {
+  const endTimeIso = normalizeTimestamp(metadata?.end_time) ?? normalizeTimestamp(metadata?.event?.end_time)
+  if (!endTimeIso) {
+    return false
+  }
+
+  return Date.parse(endTimeIso) < nowMs - EXPIRED_MARKET_GRACE_MS
+}
+
+async function hasStoredMarket(conditionId: string) {
+  const rows = await db
+    .select({ condition_id: marketsTable.condition_id })
+    .from(marketsTable)
+    .where(eq(marketsTable.condition_id, conditionId))
+    .limit(1)
+
+  return rows.length > 0
 }
 
 async function fetchMetadata(metadataHash: string) {

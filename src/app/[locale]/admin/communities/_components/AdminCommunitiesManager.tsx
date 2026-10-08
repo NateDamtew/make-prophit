@@ -1,17 +1,19 @@
 'use client'
 
-import type { ColumnDef } from '@tanstack/react-table'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { BadgeCheckIcon, SettingsIcon } from 'lucide-react'
 import Link from 'next/link'
 import { useMemo, useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+
+import type { DataTableColumnDef } from '@/lib/data-table'
+
 import { DataTable } from '@/app/[locale]/admin/_components/DataTable'
-import { toast } from '@/components/ui/toast'
 import { formatAbsolute, formatNumber, formatRelativeTime } from '@/components/admin-ui/format'
 import { PageHeader } from '@/components/admin-ui/PageHeader'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
+import { toast } from '@/components/ui/toast'
 
 interface CommunityRow {
   id: string
@@ -33,7 +35,7 @@ async function fetchCommunities(pageIndex: number, pageSize: number, search: str
   if (!res.ok) {
     throw new Error(`Failed to load communities (${res.status})`)
   }
-  return res.json() as Promise<{ data: CommunityRow[], totalCount: number }>
+  return res.json() as Promise<{ data: CommunityRow[]; totalCount: number }>
 }
 
 export function AdminCommunitiesManager() {
@@ -46,7 +48,7 @@ export function AdminCommunitiesManager() {
   const query = useQuery({ queryKey, queryFn: () => fetchCommunities(pageIndex, pageSize, search), staleTime: 15_000 })
 
   const patch = useMutation({
-    mutationFn: async ({ id, body }: { id: string, body: Record<string, unknown> }) => {
+    mutationFn: async ({ id, body }: { id: string; body: Record<string, unknown> }) => {
       const res = await fetch(`/admin/api/communities/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -60,7 +62,7 @@ export function AdminCommunitiesManager() {
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['admin-communities'] }),
   })
 
-  const columns: ColumnDef<CommunityRow>[] = [
+  const columns: DataTableColumnDef<CommunityRow>[] = [
     {
       accessorKey: 'name',
       id: 'community',
@@ -97,10 +99,10 @@ export function AdminCommunitiesManager() {
         <Switch
           checked={row.original.is_verified}
           onCheckedChange={(next) => {
-            toast.promise(patch.mutateAsync({ id: row.original.id, body: { is_verified: next } }), {
+            void toast.promise(patch.mutateAsync({ id: row.original.id, body: { is_verified: next } }), {
               loading: 'Updating…',
               success: next ? 'Marked verified' : 'Verification removed',
-              error: err => (err as Error).message,
+              error: (err) => (err as Error).message,
             })
           }}
           aria-label="Toggle verified"
@@ -111,7 +113,12 @@ export function AdminCommunitiesManager() {
       accessorKey: 'community_fee_bps',
       id: 'fee',
       header: () => <span className="text-muted-foreground">Fee</span>,
-      cell: ({ row }) => <FeeEditor row={row.original} onSave={bps => patch.mutateAsync({ id: row.original.id, body: { community_fee_bps: bps } })} />,
+      cell: ({ row }) => (
+        <FeeEditor
+          row={row.original}
+          onSave={(bps) => patch.mutateAsync({ id: row.original.id, body: { community_fee_bps: bps } })}
+        />
+      ),
     },
     {
       accessorKey: 'created_at',
@@ -131,10 +138,15 @@ export function AdminCommunitiesManager() {
       id: 'actions',
       cell: ({ row }) => (
         <div className="flex justify-end gap-1">
-          <Button size="sm" variant="ghost" nativeButton={false} render={<Link href={`/community/${row.original.slug}/insights`} />}>
-              <SettingsIcon className="size-3.5" />
-              Insights
-            </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            nativeButton={false}
+            render={<Link href={`/community/${row.original.slug}/insights`} />}
+          >
+            <SettingsIcon className="size-3.5" />
+            Insights
+          </Button>
         </div>
       ),
     },
@@ -179,7 +191,7 @@ export function AdminCommunitiesManager() {
   )
 }
 
-function FeeEditor({ row, onSave }: { row: CommunityRow, onSave: (bps: number) => Promise<unknown> }) {
+function FeeEditor({ row, onSave }: { row: CommunityRow; onSave: (bps: number) => Promise<unknown> }) {
   const [editing, setEditing] = useState(false)
   const [value, setValue] = useState(row.community_fee_bps)
   const [saving, setSaving] = useState(false)
@@ -194,11 +206,9 @@ function FeeEditor({ row, onSave }: { row: CommunityRow, onSave: (bps: number) =
       await onSave(value)
       toast.success(`Fee set to ${(value / 100).toFixed(2)}%`)
       setEditing(false)
-    }
-    catch (error) {
+    } catch (error) {
       toast.error((error as Error).message)
-    }
-    finally {
+    } finally {
       setSaving(false)
     }
   }
@@ -208,10 +218,9 @@ function FeeEditor({ row, onSave }: { row: CommunityRow, onSave: (bps: number) =
       <button
         type="button"
         onClick={() => setEditing(true)}
-        className="text-sm tabular-nums text-foreground/80 hover:text-primary"
+        className="text-sm text-foreground/80 tabular-nums hover:text-primary"
       >
-        {(row.community_fee_bps / 100).toFixed(2)}
-        %
+        {(row.community_fee_bps / 100).toFixed(2)}%
       </button>
     )
   }
@@ -224,12 +233,11 @@ function FeeEditor({ row, onSave }: { row: CommunityRow, onSave: (bps: number) =
         max={1000}
         step={5}
         value={value}
-        onChange={e => setValue(Math.max(0, Math.min(1000, Number(e.target.value) || 0)))}
+        onChange={(e) => setValue(Math.max(0, Math.min(1000, Number(e.target.value) || 0)))}
         onKeyDown={(e) => {
           if (e.key === 'Enter') {
             void commit()
-          }
-          else if (e.key === 'Escape') {
+          } else if (e.key === 'Escape') {
             setEditing(false)
             setValue(row.community_fee_bps)
           }

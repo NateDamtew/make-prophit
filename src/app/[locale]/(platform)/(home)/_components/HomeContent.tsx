@@ -1,10 +1,9 @@
-// Trigger Vercel build
-import type { SupportedLocale } from '@/i18n/locales'
 import type { CategoryFaqContext } from '@/lib/category-faq'
 import type { Event, HomeFeaturedEventCard, HomeFeaturedHotTopic, HomeFeaturedSideCardSettings } from '@/types'
 
 import HomeClient from '@/app/[locale]/(platform)/(home)/_components/HomeClient'
 import FaqStructuredData from '@/components/seo/FaqStructuredData'
+import { getRootLocale } from '@/i18n/root-locale'
 import { buildTranslatedCategoryFaqItems } from '@/lib/category-faq-server'
 import { listHomeEventsPage } from '@/lib/home-events-page'
 import { getHomeFeaturedSideCard, listHomeFeaturedEvents, listHomeFeaturedHotTopics } from '@/lib/home-featured-events'
@@ -14,7 +13,6 @@ import { loadRuntimeThemeSiteName } from '@/lib/theme-settings'
 
 interface HomeContentProps {
   categoryFaqContext?: CategoryFaqContext
-  locale: string
   currentTimestamp: number | null
   initialTag?: string
   initialMainTag?: string
@@ -22,12 +20,11 @@ interface HomeContentProps {
 
 export default async function HomeContent({
   categoryFaqContext,
-  locale,
   currentTimestamp,
   initialTag,
   initialMainTag,
 }: HomeContentProps) {
-  const resolvedLocale = locale as SupportedLocale
+  const resolvedLocale = await getRootLocale()
   const initialTagSlug = initialTag ?? 'trending'
   const initialMainTagSlug = initialMainTag ?? initialTagSlug
   const shouldLoadFeaturedEvents = initialTagSlug === 'trending' && initialMainTagSlug === 'trending'
@@ -80,7 +77,7 @@ export default async function HomeContent({
 
           const featuredSideCard =
             featuredEvents.length > 0
-              ? await getHomeFeaturedSideCard(featuredEvents, featuredHotTopics)
+              ? await getHomeFeaturedSideCard(featuredEvents, featuredHotTopics, resolvedLocale)
               : DEFAULT_HOME_FEATURED_SETTINGS.sideCard
 
           return {

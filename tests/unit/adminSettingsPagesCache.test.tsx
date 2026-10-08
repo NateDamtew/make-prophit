@@ -29,6 +29,7 @@ vi.mock('@/lib/db/queries/settings', () => ({
 }))
 
 vi.mock('@/lib/ai/openrouter', () => ({
+  fetchAllOpenRouterModels: vi.fn(),
   fetchOpenRouterModels: vi.fn(),
 }))
 
@@ -73,10 +74,9 @@ describe('admin settings pages runtime behavior', () => {
     ])
 
     const params = Promise.resolve({ locale: 'en' })
-    const searchParams = Promise.resolve({})
 
-    await AdminGeneralSettingsPage({ params })
-    await AdminIntegrationsPage({ params, searchParams })
+    await AdminGeneralSettingsPage()
+    await AdminIntegrationsPage()
     await AdminThemeSettingsPage({ params } as any)
     await AdminMarketContextSettingsPage({ params } as any)
 

@@ -1,6 +1,6 @@
 import type { Event } from '@/types'
 
-import { UNKNOWN_50_50_RESOLUTION_LABEL } from '@/app/[locale]/(platform)/event/[slug]/_utils/resolution-timeline-builder'
+import { INCONCLUSIVE_RESOLUTION_LABEL } from '@/app/[locale]/(platform)/event/[slug]/_utils/resolution-timeline-builder'
 import {
   normalizeComparableText,
   parseSportsScore,
@@ -298,7 +298,7 @@ function resolveBinaryMarketOutcomes(market: Market | null | undefined) {
   }
 }
 
-function isUnknownFiftyFiftyResolvedMarket(market: Market | null | undefined) {
+export function isUnknownFiftyFiftyResolvedMarket(market: Market | null | undefined) {
   if (!market) {
     return false
   }
@@ -495,7 +495,7 @@ export function resolveResolvedOrderPanelDisplay(params: {
     displayMarket?.outcomes?.find((outcome) => outcome.outcome_index === resolvedOutcomeIndex) ?? null
   const resolvedOutcomeText = resolvedOutcome?.outcome_text?.trim() ?? null
   const unknownFiftyFiftyOutcomeLabel = isUnknownFiftyFiftyResolvedMarket(displayMarket ?? selectedMarket)
-    ? UNKNOWN_50_50_RESOLUTION_LABEL
+    ? INCONCLUSIVE_RESOLUTION_LABEL
     : null
 
   if (sportsKind === 'moneyline' || sportsKind === 'halftimeResult') {

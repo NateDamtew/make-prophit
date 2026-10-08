@@ -1,13 +1,21 @@
 import type { LucideIcon } from 'lucide-react'
 import type { Route } from 'next'
 
-import { ChartNoAxesCombinedIcon, GavelIcon, HandCoinsIcon, UsersIcon, VolleyballIcon } from 'lucide-react'
+import {
+  ChartNoAxesCombinedIcon,
+  GavelIcon,
+  HandCoinsIcon,
+  MessageSquareWarningIcon,
+  UsersIcon,
+  VolleyballIcon,
+} from 'lucide-react'
 import { getExtracted, setRequestLocale } from 'next-intl/server'
 import { io } from 'next/cache'
 import { Suspense } from 'react'
 
 import AdminDashboardSparkline from '@/app/[locale]/admin/_components/AdminDashboardSparkline'
 import { Link } from '@/i18n/navigation'
+import { fetchBuilderVolume } from '@/lib/clob-builder-volume'
 import { DEFAULT_FEE_RECEIVER_WALLET_ADDRESS } from '@/lib/contracts'
 import {
   baseUnitsToNumber,
@@ -16,14 +24,20 @@ import {
   fetchFeeHistoryTotal,
 } from '@/lib/data-api/fees'
 import { AdminDashboardRepository } from '@/lib/db/queries/admin-dashboard'
+import { ResolutionReportContextRepository } from '@/lib/db/queries/resolution-report-context'
 import { SettingsRepository } from '@/lib/db/queries/settings'
 import { formatCompactCount, formatCompactCurrency } from '@/lib/formatters'
+import {
+  countResolutionReportsByCondition,
+  fetchAllowedCreatorResolutionReports,
+} from '@/lib/resolution-reports-server'
 import { getFeeRecipientWalletFormValue } from '@/lib/theme-settings'
 import { cn } from '@/lib/utils'
 
 export const instant = false
 
 interface MetricCardProps {
+  className?: string
   description: string
   href: Route
   highlightIcon?: boolean
@@ -32,11 +46,14 @@ interface MetricCardProps {
   value: string
 }
 
-function MetricCard({ description, highlightIcon, href, icon: Icon, label, value }: MetricCardProps) {
+function MetricCard({ className, description, highlightIcon, href, icon: Icon, label, value }: MetricCardProps) {
   return (
     <Link
       href={href}
-      className="group flex min-h-44 flex-col rounded-xl border bg-background p-5 transition-colors hover:border-foreground/20"
+      className={cn(
+        'group flex min-h-44 flex-col rounded-xl border bg-background p-5 transition-colors hover:border-foreground/20',
+        className,
+      )}
     >
       <div
         className={cn(
@@ -57,13 +74,14 @@ function MetricCard({ description, highlightIcon, href, icon: Icon, label, value
 
 interface ChartMetricCardProps extends MetricCardProps {
   chartAriaLabel: string
+  chartClassName?: string
   chartFormat: 'count' | 'currency'
-  className?: string
   points: Array<{ date: string; value: number }>
 }
 
 function ChartMetricCard({
   chartAriaLabel,
+  chartClassName,
   chartFormat,
   className,
   description,
@@ -91,7 +109,7 @@ function ChartMetricCard({
           <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>
         </div>
       </div>
-      <div className="absolute inset-y-3 right-4 left-1/2">
+      <div className={cn('absolute inset-y-3 right-4 left-[44%] sm:left-[40%]', chartClassName)}>
         <AdminDashboardSparkline ariaLabel={chartAriaLabel} className="h-full" format={chartFormat} points={points} />
       </div>
     </Link>
@@ -111,12 +129,13 @@ function DashboardCardSkeleton({ className }: { className?: string }) {
 
 function DashboardCardsFallback() {
   return (
-    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-      <DashboardCardSkeleton />
-      <DashboardCardSkeleton />
-      <DashboardCardSkeleton />
-      <DashboardCardSkeleton />
-      <DashboardCardSkeleton className="sm:col-span-2 xl:col-span-2" />
+    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
+      <DashboardCardSkeleton className="xl:col-span-2" />
+      <DashboardCardSkeleton className="xl:col-span-2" />
+      <DashboardCardSkeleton className="xl:col-span-2" />
+      <DashboardCardSkeleton className="xl:col-span-3" />
+      <DashboardCardSkeleton className="xl:col-span-3" />
+      <DashboardCardSkeleton className="sm:col-span-2 xl:col-span-6" />
     </div>
   )
 }
@@ -129,7 +148,16 @@ async function AdminDashboardCards() {
     AdminDashboardRepository.getMetrics(),
     SettingsRepository.getSettings(),
   ])
-  const metrics = metricsResult.data
+  let resolutionReportCount: number | undefined
+  try {
+    const resolutionReports = await fetchAllowedCreatorResolutionReports()
+    resolutionReportCount = await ResolutionReportContextRepository.countActiveReports(
+      countResolutionReportsByCondition(resolutionReports),
+    )
+  } catch (error) {
+    console.warn('Could not load the resolution report dashboard metric.', error)
+  }
+  const metrics = metricsResult.data ? { ...metricsResult.data, resolutionReportCount } : metricsResult.data
   const feeRecipientWallet =
     getFeeRecipientWalletFormValue(settingsResult.data ?? undefined) || DEFAULT_FEE_RECEIVER_WALLET_ADDRESS
   const feeHistoryResults = await Promise.allSettled([
@@ -137,8 +165,9 @@ async function AdminDashboardCards() {
     fetchFeeHistoryTotal(feeRecipientWallet, 'AFFILIATE'),
     fetchFeeHistoryTimeSeries(feeRecipientWallet, 'BUILDER'),
     fetchFeeHistoryTimeSeries(feeRecipientWallet, 'AFFILIATE'),
+    fetchBuilderVolume(feeRecipientWallet),
   ])
-  const [builderTotal, affiliateTotal, builderSeries, affiliateSeries] = feeHistoryResults
+  const [builderTotal, affiliateTotal, builderSeries, affiliateSeries, builderVolumeResult] = feeHistoryResults
   let totalFees: number | null = null
   if (builderTotal.status === 'fulfilled' && affiliateTotal.status === 'fulfilled') {
     try {
@@ -151,14 +180,19 @@ async function AdminDashboardCards() {
     }
   }
   const feeSeries = combineAvailableDailyFeeSeries([builderSeries, affiliateSeries])
+  const builderVolume = builderVolumeResult.status === 'fulfilled' ? builderVolumeResult.value : null
+  if (builderVolumeResult.status === 'rejected') {
+    console.warn('Could not load the CLOB builder volume.', builderVolumeResult.reason)
+  }
 
   function formatCount(value: number | undefined) {
     return value == null ? '—' : formatCompactCount(value)
   }
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
       <MetricCard
+        className="xl:col-span-2"
         href={'/admin/events?attention=missing-sports-id' as Route}
         highlightIcon={(metrics?.missingSportsSourceCount ?? 0) > 0}
         icon={VolleyballIcon}
@@ -167,6 +201,7 @@ async function AdminDashboardCards() {
         description={t('Active sports and esports events')}
       />
       <MetricCard
+        className="xl:col-span-2"
         href={'/admin/events?attention=past-due-unresolved' as Route}
         highlightIcon={(metrics?.pendingResolutionCount ?? 0) > 0}
         icon={GavelIcon}
@@ -174,7 +209,17 @@ async function AdminDashboardCards() {
         label={t('Events awaiting resolution')}
         description={t('Past their end time')}
       />
+      <MetricCard
+        className="xl:col-span-2"
+        href={'/admin/events?attention=resolution-reports' as Route}
+        highlightIcon={(metrics?.resolutionReportCount ?? 0) > 0}
+        icon={MessageSquareWarningIcon}
+        value={formatCount(metrics?.resolutionReportCount)}
+        label={t('Resolution reports')}
+        description={t('User proposals awaiting review')}
+      />
       <ChartMetricCard
+        className="xl:col-span-3"
         href={'/admin/users' as Route}
         icon={UsersIcon}
         value={formatCount(metrics?.registeredUsersCount)}
@@ -189,6 +234,7 @@ async function AdminDashboardCards() {
         points={metrics?.registeredUsersSeries ?? []}
       />
       <ChartMetricCard
+        className="xl:col-span-3"
         href={'/admin/affiliate' as Route}
         icon={HandCoinsIcon}
         value={totalFees == null ? '—' : formatCompactCurrency(totalFees)}
@@ -199,15 +245,16 @@ async function AdminDashboardCards() {
         points={feeSeries}
       />
       <ChartMetricCard
-        className="sm:col-span-2 xl:col-span-2"
+        className="sm:col-span-2 xl:col-span-6"
+        chartClassName="sm:left-[28%]"
         href={'/admin/events' as Route}
         icon={ChartNoAxesCombinedIcon}
-        value={metrics ? formatCompactCurrency(metrics.siteOrderVolume) : '—'}
-        label={t('Site trading volume')}
-        description={t('Orders submitted through this site')}
-        chartAriaLabel={t('Site order volume over the last 30 days')}
+        value={builderVolume ? formatCompactCurrency(builderVolume.total) : '—'}
+        label={t('Trading volume')}
+        description={t('All-time traded value')}
+        chartAriaLabel={t('Daily trading volume over the last 30 days')}
         chartFormat="currency"
-        points={metrics?.siteOrderVolumeSeries ?? []}
+        points={builderVolume?.daily ?? []}
       />
     </div>
   )

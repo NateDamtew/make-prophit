@@ -75,11 +75,11 @@ function useCommentItemHandlers({
   onLikeToggle: (commentId: string) => void
   onDelete: (commentId: string) => void
 }) {
-  const { open } = useAppKit()
+  const { open: openAppKit } = useAppKit()
 
   const handleReplyClick = useCallback(() => {
     if (!user) {
-      void open()
+      void openAppKit()
       return
     }
     const shouldOpen = replyingTo !== comment.id
@@ -87,7 +87,7 @@ function useCommentItemHandlers({
     if (shouldOpen) {
       onSetReplyText('')
     }
-  }, [user, comment, replyingTo, onSetReplyingTo, onSetReplyText, open])
+  }, [user, comment, replyingTo, onSetReplyingTo, onSetReplyText, openAppKit])
 
   const handleLikeToggle = useCallback(() => {
     onLikeToggle(comment.id)
@@ -167,7 +167,8 @@ export default function EventCommentItem({
         profileSlug={profileSlug}
         date={comment.created_at}
         joinedAt={comment.user_created_at}
-        containerClassName="[&_[data-avatar-wrapper]]:mt-2.5 [&_[data-avatar]]:h-10 [&_[data-avatar]]:w-10"
+        avatarSize={40}
+        containerClassName="[&_[data-avatar-wrapper]]:mt-2.5"
         usernameClassName="text-sm font-semibold text-foreground hover:underline underline-offset-2"
         usernameAddon={
           <CommentPositionsIndicator
@@ -207,7 +208,7 @@ export default function EventCommentItem({
                     <button
                       type="button"
                       className="text-muted-foreground transition-colors hover:text-foreground"
-                      aria-label="Comment options"
+                      aria-label={t('Comment options')}
                     />
                   }
                 >

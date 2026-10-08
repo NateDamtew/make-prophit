@@ -1,20 +1,17 @@
 'use client'
 
-import type { ArbitrageQuote } from '@/lib/arbitrage-quote'
 import { InfoIcon, TriangleAlertIcon, UnplugIcon } from 'lucide-react'
 import { useExtracted } from 'next-intl'
 import Image from 'next/image'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { AnimatedCounter } from 'react-animated-counter'
 import { useAccount, useConnections } from 'wagmi'
 
-import type { EventOrderPanelOutcomeSelectedAccent } from '@/app/[locale]/(platform)/event/[slug]/_components/EventOrderPanelOutcomeButton'
-import type { OutcomeArbitrageQuote } from '@/lib/outcome-arbitrage-quote'
-import type { Market, SportsTeam } from '@/types'
+import type { ArbitrageQuote } from '@/lib/arbitrage-quote'
+import type { Event, Market } from '@/types'
 
 import { useOrderBookSummaries } from '@/app/[locale]/(platform)/event/[slug]/_components/EventOrderBook'
 import EventOrderPanelAnimatedCents from '@/app/[locale]/(platform)/event/[slug]/_components/EventOrderPanelAnimatedCents'
-import EventOrderPanelOutcomeArbitrage from '@/app/[locale]/(platform)/event/[slug]/_components/EventOrderPanelOutcomeArbitrage'
 import EventOrderPanelSubmitButton from '@/app/[locale]/(platform)/event/[slug]/_components/EventOrderPanelSubmitButton'
 import { Button } from '@/components/ui/button'
 import {
@@ -26,7 +23,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { toast } from '@/components/ui/toast'
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useAppKit } from '@/hooks/useAppKit'
 import { useAppKitAccount } from '@/hooks/useAppKitAccount'
@@ -51,6 +47,8 @@ import { normalizeBookLevels } from '@/lib/order-panel-utils'
 import { MIN_LIMIT_ORDER_SHARES, MIN_MARKET_BUY_AMOUNT } from '@/lib/orders/validation'
 import { POLYMARKET_MIN_MARKETABLE_BUY_AMOUNT } from '@/lib/polymarket-orders-client'
 import { PolymarketWalletUnavailableError, syncPolymarketWallet } from '@/lib/polymarket-wallet-client'
+import { resolveSportsOutcomeTeamLabel } from '@/lib/sports-team-label'
+import { calculateGrossedKuestUnitFee } from '@/lib/trading-fees'
 import { cn } from '@/lib/utils'
 import { usePolymarketWallet } from '@/stores/usePolymarketWallet'
 import { useUser } from '@/stores/useUser'
@@ -61,22 +59,16 @@ const CURRENCY_SCALE = 100
 type AmountPreset = 'min' | 'mid' | 'max'
 
 interface EventOrderPanelArbitrageProps {
+  event: Pick<Event, 'sports_teams'>
   market: Market
-  polymarketEnabled: boolean
   multiWalletEnabled: boolean
-  yesOutcomeLabel: string
-  noOutcomeLabel: string
-  yesOutcomeAccent: EventOrderPanelOutcomeSelectedAccent | null
-  noOutcomeAccent: EventOrderPanelOutcomeSelectedAccent | null
-  sportsTeams: SportsTeam[] | null
   siteWalletReady: boolean
   kuestBalance: number
-  kuestFeeBps: number
+  operatorShareBps: number
   isSubmitting: boolean
   submissionStep: 0 | 1 | 2 | 3
   onRequireSiteWallet: () => void
   onSubmit: (quote: ArbitrageQuote, polymarketMinimumOrderSize: number) => void
-  onSubmitOutcome: (quote: OutcomeArbitrageQuote) => void
 }
 
 interface ArbitragePricePreview {
@@ -169,10 +161,11 @@ function findPercentForAmount(quote: ArbitrageQuote, amount: number) {
 type EventOrderPanelPolymarketArbitrageProps = Pick<
   EventOrderPanelArbitrageProps,
   | 'market'
+  | 'event'
   | 'multiWalletEnabled'
   | 'siteWalletReady'
   | 'kuestBalance'
-  | 'kuestFeeBps'
+  | 'operatorShareBps'
   | 'isSubmitting'
   | 'submissionStep'
   | 'onRequireSiteWallet'
@@ -180,11 +173,12 @@ type EventOrderPanelPolymarketArbitrageProps = Pick<
 >
 
 function EventOrderPanelPolymarketArbitrage({
+  event,
   market,
   multiWalletEnabled,
   siteWalletReady,
   kuestBalance,
-  kuestFeeBps,
+  operatorShareBps,
   isSubmitting,
   submissionStep,
   onRequireSiteWallet,
@@ -260,8 +254,6 @@ function EventOrderPanelPolymarketArbitrage({
     const noTokenId = noOutcome.token_id
     const polymarketYesTokenId = yesOutcome.polymarket_token_id!
     const polymarketNoTokenId = noOutcome.polymarket_token_id!
-    const kuestYesFeeBps = kuestFeeBps + kuestYesFeeRate.data
-    const kuestNoFeeBps = kuestFeeBps + kuestNoFeeRate.data
     const polymarketFeeRate = polymarketMarketInfo.data.feeRate
     const polymarketFeeExponent = polymarketMarketInfo.data.feeExponent
 
@@ -272,14 +264,14 @@ function EventOrderPanelPolymarketArbitrage({
           polymarketOutcome: 'NO' as const,
           kuestLevel: kuestYesAsks[0],
           polymarketLevel: polymarketNoAsks[0],
-          kuestFeeBps: kuestYesFeeBps,
+          kuestFeeSchedule: kuestYesFeeRate.data,
         },
         {
           kuestOutcome: 'NO' as const,
           polymarketOutcome: 'YES' as const,
           kuestLevel: kuestNoAsks[0],
           polymarketLevel: polymarketYesAsks[0],
-          kuestFeeBps: kuestNoFeeBps,
+          kuestFeeSchedule: kuestNoFeeRate.data,
         },
       ]
         .flatMap<ArbitragePricePreview>((direction) => {
@@ -289,7 +281,8 @@ function EventOrderPanelPolymarketArbitrage({
 
           const kuestPrice = direction.kuestLevel.priceDollars
           const polymarketPrice = direction.polymarketLevel.priceDollars
-          const kuestUnitCost = kuestPrice * (1 + Math.max(0, direction.kuestFeeBps) / 10_000)
+          const kuestUnitCost =
+            kuestPrice + calculateGrossedKuestUnitFee(kuestPrice, direction.kuestFeeSchedule, operatorShareBps)
           const polymarketUnitCost = calculatePolymarketUnitCost(
             polymarketPrice,
             polymarketFeeRate,
@@ -320,7 +313,8 @@ function EventOrderPanelPolymarketArbitrage({
           polymarketAsks: polymarketNoAsks,
           kuestBalance: availableKuestCash,
           polymarketBalance: availablePolymarketCash,
-          kuestFeeBps: kuestYesFeeBps,
+          kuestFeeSchedule: kuestYesFeeRate.data,
+          operatorShareBps,
           polymarketFeeRate,
           polymarketFeeExponent,
         },
@@ -333,7 +327,8 @@ function EventOrderPanelPolymarketArbitrage({
           polymarketAsks: polymarketYesAsks,
           kuestBalance: availableKuestCash,
           polymarketBalance: availablePolymarketCash,
-          kuestFeeBps: kuestNoFeeBps,
+          kuestFeeSchedule: kuestNoFeeRate.data,
+          operatorShareBps,
           polymarketFeeRate,
           polymarketFeeExponent,
         },
@@ -349,7 +344,7 @@ function EventOrderPanelPolymarketArbitrage({
     canQuote,
     kuestBalance,
     kuestBooks.data,
-    kuestFeeBps,
+    operatorShareBps,
     kuestNoFeeRate.data,
     kuestYesFeeRate.data,
     noOutcome,
@@ -447,10 +442,16 @@ function EventOrderPanelPolymarketArbitrage({
           edge: selectedQuote.profit / selectedQuote.shares,
         }
       : displayPreview
-  const kuestOutcomeLabel =
-    executionPreview?.kuestOutcome === 'YES' ? yesOutcome?.outcome_text || 'YES' : noOutcome?.outcome_text || 'NO'
-  const polymarketOutcomeLabel =
-    executionPreview?.polymarketOutcome === 'YES' ? yesOutcome?.outcome_text || 'YES' : noOutcome?.outcome_text || 'NO'
+  const kuestOutcomeLabel = resolveSportsOutcomeTeamLabel({
+    outcomeText: executionPreview?.kuestOutcome === 'YES' ? yesOutcome?.outcome_text : noOutcome?.outcome_text,
+    fallback: executionPreview?.kuestOutcome === 'YES' ? 'YES' : 'NO',
+    teams: event.sports_teams,
+  })
+  const polymarketOutcomeLabel = resolveSportsOutcomeTeamLabel({
+    outcomeText: executionPreview?.polymarketOutcome === 'YES' ? yesOutcome?.outcome_text : noOutcome?.outcome_text,
+    fallback: executionPreview?.polymarketOutcome === 'YES' ? 'YES' : 'NO',
+    teams: event.sports_teams,
+  })
   const hasMarketOpportunity = Boolean(marketQuote)
   const shouldShakePriceDifference = hasMarketOpportunity && previousMarketOpportunityRef.current === false
   const amountInputValue = amountDraft ?? presetAmount?.toFixed(2) ?? selectedQuote?.totalCost.toFixed(2) ?? '0.00'
@@ -465,8 +466,7 @@ function EventOrderPanelPolymarketArbitrage({
     previousMarketOpportunityRef.current = hasMarketOpportunity
   }, [hasMarketOpportunity])
 
-  /* oxlint-disable react-you-might-not-need-an-effect/no-event-handler -- External wallet state arrives through provider events. */
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!multiWalletEnabled) {
       appKitModalWasOpenRef.current = false
       return
@@ -484,7 +484,7 @@ function EventOrderPanelPolymarketArbitrage({
     }
   }, [appKitState.open, multiWalletEnabled, walletStatus])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (multiWalletEnabled || isEmbeddedSiteWallet || !primaryAddress || !primaryConnection) {
       return
     }
@@ -524,7 +524,7 @@ function EventOrderPanelPolymarketArbitrage({
       })
   }, [isEmbeddedSiteWallet, multiWalletEnabled, primaryAddress, primaryConnection])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const connectingWallet = appKitState.connectingWallet
     if (!multiWalletEnabled || walletStatus !== 'connecting' || !appKitState.open || !connectingWallet?.isInjected) {
       injectedPermissionRequestRef.current = null
@@ -616,7 +616,7 @@ function EventOrderPanelPolymarketArbitrage({
     walletStatus,
   ])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (
       !multiWalletEnabled ||
       walletStatus !== 'connecting' ||
@@ -668,7 +668,6 @@ function EventOrderPanelPolymarketArbitrage({
     user?.address,
     walletStatus,
   ])
-  /* oxlint-enable react-you-might-not-need-an-effect/no-event-handler */
 
   async function handleConnect() {
     dismissIntro()
@@ -931,7 +930,7 @@ function EventOrderPanelPolymarketArbitrage({
   ) : null
 
   return (
-    <div className="grid gap-4">
+    <div className="mt-4 grid gap-4">
       {multiWalletEnabled && appKitState.multiWallet && (
         <MultiWalletConnectionBridge onSwitchConnectionChange={handleSwitchConnectionChange} />
       )}
@@ -945,7 +944,7 @@ function EventOrderPanelPolymarketArbitrage({
             {polymarketWalletRow}
             <div className="mb-4 overflow-hidden rounded-2xl border border-border bg-secondary dark:bg-background">
               <div className="grid grid-cols-2 gap-2 rounded-2xl border border-border bg-secondary p-1 text-sm dark:bg-background">
-                <div className="flex min-h-12 flex-col justify-center rounded-xl bg-card p-2 dark:bg-secondary">
+                <div className="flex min-h-12 flex-col justify-start rounded-xl bg-card p-2 dark:bg-secondary">
                   <div className="text-xs font-medium text-primary">{site.name}</div>
                   <div className="mt-1 flex items-baseline justify-between gap-2 text-base font-semibold">
                     <span>{executionPreview ? kuestOutcomeLabel : '—'}</span>
@@ -960,7 +959,7 @@ function EventOrderPanelPolymarketArbitrage({
                     )}
                   </div>
                 </div>
-                <div className="flex min-h-12 flex-col justify-center rounded-xl bg-card p-2 dark:bg-secondary">
+                <div className="flex min-h-12 flex-col justify-start rounded-xl bg-card p-2 dark:bg-secondary">
                   <div className="text-xs font-medium text-[#2E5CFF]">Polymarket</div>
                   <div className="mt-1 flex items-baseline justify-between gap-2 text-base font-semibold">
                     <span>{executionPreview ? polymarketOutcomeLabel : '—'}</span>
@@ -1260,81 +1259,5 @@ function EventOrderPanelPolymarketArbitrage({
 }
 
 export default function EventOrderPanelArbitrage(props: EventOrderPanelArbitrageProps) {
-  const t = useExtracted()
-  const hasPolymarketMarket = Boolean(
-    props.polymarketEnabled &&
-    props.market.polymarket_condition_id &&
-    props.market.outcomes.some(
-      (outcome) => outcome.outcome_index === OUTCOME_INDEX.YES && Boolean(outcome.polymarket_token_id),
-    ) &&
-    props.market.outcomes.some(
-      (outcome) => outcome.outcome_index === OUTCOME_INDEX.NO && Boolean(outcome.polymarket_token_id),
-    ),
-  )
-  const [strategy, setStrategy] = useState<'outcome' | 'polymarket'>('outcome')
-  const activeStrategy = hasPolymarketMarket ? strategy : 'outcome'
-  const strategyOptions = [
-    { value: 'outcome' as const, label: t('Outcome') },
-    ...(hasPolymarketMarket ? [{ value: 'polymarket' as const, label: 'Polymarket' }] : []),
-  ]
-
-  return (
-    <div className="grid gap-4">
-      {hasPolymarketMarket && (
-        <ToggleGroup
-          className="grid w-full grid-cols-2 border-b"
-          aria-label={t('Arbitrage strategy')}
-          value={[activeStrategy]}
-          onValueChange={(values) => {
-            const nextStrategy = values[0]
-            if (nextStrategy === 'outcome' || nextStrategy === 'polymarket') {
-              setStrategy(nextStrategy)
-            }
-          }}
-        >
-          {strategyOptions.map((option) => (
-            <ToggleGroupItem
-              key={option.value}
-              value={option.value}
-              disabled={props.isSubmitting}
-              className={cn(
-                'relative h-auto min-w-0 px-3 py-2.5 text-sm font-semibold transition-colors hover:bg-transparent data-pressed:bg-transparent data-pressed:text-foreground',
-                activeStrategy === option.value ? 'text-foreground' : 'text-muted-foreground hover:text-foreground',
-                props.isSubmitting && 'cursor-not-allowed opacity-60',
-              )}
-            >
-              {option.label}
-              <span
-                aria-hidden="true"
-                className={cn(
-                  'absolute inset-x-3 -bottom-px h-0.5 rounded-full transition-colors',
-                  activeStrategy === option.value ? 'bg-foreground' : 'bg-transparent',
-                )}
-              />
-            </ToggleGroupItem>
-          ))}
-        </ToggleGroup>
-      )}
-
-      {activeStrategy === 'polymarket' ? (
-        <EventOrderPanelPolymarketArbitrage {...props} />
-      ) : (
-        <EventOrderPanelOutcomeArbitrage
-          market={props.market}
-          yesOutcomeLabel={props.yesOutcomeLabel}
-          noOutcomeLabel={props.noOutcomeLabel}
-          yesOutcomeAccent={props.yesOutcomeAccent}
-          noOutcomeAccent={props.noOutcomeAccent}
-          sportsTeams={props.sportsTeams}
-          siteWalletReady={props.siteWalletReady}
-          kuestBalance={props.kuestBalance}
-          kuestFeeBps={props.kuestFeeBps}
-          isSubmitting={props.isSubmitting}
-          submissionStep={props.submissionStep}
-          onRequireSiteWallet={props.onRequireSiteWallet}
-          onSubmit={props.onSubmitOutcome}
-        />
-      )}
-    </div>
-  )
+  return <EventOrderPanelPolymarketArbitrage {...props} />
 }

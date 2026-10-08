@@ -28,14 +28,16 @@ import {
   getRoundedCents,
   microToUnit,
 } from '@/app/[locale]/(platform)/event/[slug]/_utils/EventOrderBookUtils'
-import { Spinner } from '@/components/ui/spinner'
+import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from '@/components/ui/toast'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useCurrentTimestamp } from '@/hooks/useCurrentTimestamp'
 import { useIsMobile } from '@/hooks/useIsMobile'
+import { useMarketRewards } from '@/hooks/useMarketRewards'
 import { useOpenOrdersCacheInvalidation } from '@/hooks/useOpenOrdersCacheInvalidation'
 import { useOutcomeLabel } from '@/hooks/useOutcomeLabel'
-import { ORDER_SIDE, ORDER_TYPE, tableHeaderClass } from '@/lib/constants'
+import { usePolymarketOrderBooks } from '@/hooks/usePolymarketOrderBooks'
+import { ORDER_SIDE, ORDER_TYPE } from '@/lib/constants'
 import { canProvideMarketLiquidity } from '@/lib/liquidity-ladder'
 import { formatOddsFromCents } from '@/lib/odds-format'
 import { isTradingAuthRequiredError } from '@/lib/trading-auth/errors'
@@ -46,11 +48,30 @@ import { useUser } from '@/stores/useUser'
 import EventOrderBookEmptyRow from './EventOrderBookEmptyRow'
 import EventOrderBookRow from './EventOrderBookRow'
 import EventProvideLiquidityDialog from './EventProvideLiquidityDialog'
+import EventRewardsBadge from './EventRewardsBadge'
 
 export { useOrderBookSummaries }
 
 const orderBookHeaderLabelClass =
   'inline-flex -translate-y-px whitespace-nowrap text-[10px] leading-3 tracking-normal sm:text-xs sm:tracking-wide'
+const orderBookHeaderClass = 'py-3 text-xs font-semibold tracking-wide text-muted-foreground uppercase'
+
+function EventOrderBookSkeletonRow() {
+  return (
+    <div className="grid h-9 grid-cols-[40%_20%_20%_20%] items-center pr-4 pl-0">
+      <div />
+      <div className="flex h-full items-center justify-center px-4">
+        <Skeleton className="h-5 w-12 rounded-sm" />
+      </div>
+      <div className="flex h-full items-center justify-center px-2 sm:px-3">
+        <Skeleton className="h-5 w-12 rounded-sm" />
+      </div>
+      <div className="flex h-full items-center justify-center px-2 sm:px-3">
+        <Skeleton className="h-5 w-12 rounded-sm" />
+      </div>
+    </div>
+  )
+}
 
 function useOrderBookRecenter(summary: unknown) {
   const orderBookScrollRef = useRef<HTMLDivElement | null>(null)
@@ -257,6 +278,7 @@ export default function EventOrderBook({
   onToggleOutcome,
   toggleOutcomeTooltip,
   openMobileOrderPanelOnLevelSelect = false,
+  rewardHighlight,
 }: EventOrderBookProps) {
   const t = useExtracted()
   const normalizeOutcomeLabel = useOutcomeLabel()
@@ -265,7 +287,8 @@ export default function EventOrderBook({
   const queryClient = useQueryClient()
   const tokenId = outcome?.token_id || market.outcomes[0]?.token_id
   const isSportsCardSurface = surfaceVariant === 'sportsCard'
-  const surfaceClass = isSportsCardSurface ? 'bg-card' : 'bg-background'
+  const surfaceClass = surfaceVariant === 'transparent' ? 'bg-transparent' : 'bg-card'
+  const headerSurfaceClass = surfaceVariant === 'transparent' ? 'bg-background' : surfaceClass
 
   const summary = tokenId ? (summaries?.[tokenId] ?? null) : null
   const setType = useOrder((state) => state.setType)
@@ -279,6 +302,16 @@ export default function EventOrderBook({
   const isMobile = useIsMobile()
   const currentTimestamp = useCurrentTimestamp({ intervalMs: 60_000 })
   const [isLiquidityDialogOpen, setIsLiquidityDialogOpen] = useState(false)
+  const [internalRewardHighlight, setInternalRewardHighlight] = useState(false)
+  const showRewardHighlight = rewardHighlight ?? internalRewardHighlight
+  const rewardsQuery = useMarketRewards([market.condition_id])
+  const rewardConfig = rewardsQuery.data?.[0] ?? null
+  const polymarketTokenId = outcome?.polymarket_token_id ?? null
+  const usesPolymarketMidpoint = rewardConfig?.midpointSource.toLowerCase() === 'polymarket'
+  const polymarketBooks = usePolymarketOrderBooks(
+    polymarketTokenId ? [polymarketTokenId] : [],
+    Boolean(usesPolymarketMidpoint && polymarketTokenId),
+  )
 
   const { orderBookScrollRef, centerRowRef, hasCenteredRef, recenterOrderBook } = useOrderBookRecenter(summary)
   useResetCenteringOnTokenChange(tokenId, hasCenteredRef)
@@ -314,6 +347,34 @@ export default function EventOrderBook({
   )
 
   const renderedAsks = useMemo(() => [...asks].sort((a, b) => b.priceCents - a.priceCents), [asks])
+  const kuestMidpointCents =
+    asks[0] && bids[0]
+      ? (asks[0].priceCents + bids[0].priceCents) / 2
+      : typeof lastPrice === 'number'
+        ? lastPrice
+        : null
+  const polymarketSummary = polymarketTokenId ? polymarketBooks.data?.[polymarketTokenId] : null
+  const polymarketAskPrices = (polymarketSummary?.asks ?? [])
+    .map((level) => Number(level.price) * 100)
+    .filter((price) => Number.isFinite(price) && price > 0)
+  const polymarketBidPrices = (polymarketSummary?.bids ?? [])
+    .map((level) => Number(level.price) * 100)
+    .filter((price) => Number.isFinite(price) && price > 0)
+  const polymarketMidpointCents =
+    polymarketAskPrices.length && polymarketBidPrices.length
+      ? (Math.min(...polymarketAskPrices) + Math.max(...polymarketBidPrices)) / 2
+      : null
+  const midpointCents = usesPolymarketMidpoint ? (polymarketMidpointCents ?? kuestMidpointCents) : kuestMidpointCents
+  const isRewardEligible = useCallback(
+    (level: OrderBookLevel) =>
+      Boolean(
+        rewardConfig &&
+        midpointCents != null &&
+        level.shares >= rewardConfig.minSize &&
+        Math.abs(level.priceCents - midpointCents) < rewardConfig.maxSpread,
+      ),
+    [midpointCents, rewardConfig],
+  )
   const isMarketOrderBookEmpty = useMemo(
     () =>
       Boolean(summaries) &&
@@ -325,6 +386,32 @@ export default function EventOrderBook({
   )
   const showLiquidityAction = Boolean(
     isMarketOrderBookEmpty && currentTimestamp != null && canProvideMarketLiquidity(market, currentTimestamp),
+  )
+
+  const orderBookCenterRow = (
+    <div
+      ref={centerRowRef}
+      className={cn(
+        `grid h-9 cursor-pointer grid-cols-[40%_20%_20%_20%] items-center border-y px-2 text-xs font-medium text-muted-foreground transition-colors sm:px-3`,
+        isSportsCardSurface && 'sticky top-9 bottom-0 z-10',
+        surfaceClass,
+        'hover:bg-muted',
+      )}
+      role="presentation"
+    >
+      <div className="flex h-full cursor-pointer items-center">
+        {t('Last')}
+        :&nbsp;
+        {lastPrice == null ? '--' : formatDisplayedPrice(lastPrice)}
+      </div>
+      <div className="flex h-full cursor-pointer items-center justify-center">
+        {t('Spread')}
+        :&nbsp;
+        {formatOrderBookPrice(spread)}
+      </div>
+      <div className="flex h-full items-center justify-center" />
+      <div className="flex h-full items-center justify-center" />
+    </div>
   )
 
   const handleLevelSelect = useCallback(
@@ -377,27 +464,18 @@ export default function EventOrderBook({
     )
   }
 
-  if (isLoadingSummaries) {
-    return (
-      <div className="flex items-center justify-center gap-2 px-4 py-6 text-sm text-muted-foreground">
-        <Spinner className="size-4" />
-        {t('Loading order book...')}
-      </div>
-    )
-  }
-
   return (
     <div ref={orderBookScrollRef} className={cn('relative isolate max-h-90 overflow-y-auto', surfaceClass)}>
       <div className={cn(surfaceClass)}>
         <div
           className={cn(
-            tableHeaderClass,
-            'grid h-9 grid-cols-[40%_20%_20%_20%] items-center border-b',
+            orderBookHeaderClass,
+            'grid h-9 grid-cols-[40%_20%_20%_20%] items-center border-b pr-4 pl-0',
             'sticky top-0 z-10',
-            surfaceClass,
+            headerSurfaceClass,
           )}
         >
-          <div className="flex h-full min-w-0 items-center gap-1">
+          <div className="flex h-full min-w-0 items-center gap-1 pl-2 sm:pl-3">
             <span className={orderBookHeaderLabelClass}>{displayTradeLabel}</span>
             {onToggleOutcome && toggleOutcomeTooltip && (
               <Tooltip>
@@ -442,12 +520,39 @@ export default function EventOrderBook({
           <div className="flex h-full items-center justify-center">
             <span className={orderBookHeaderLabelClass}>{t('Shares')}</span>
           </div>
-          <div className="flex h-full items-center justify-center">
+          <div
+            className={cn(
+              'flex h-full items-center',
+              rewardConfig && rewardHighlight === undefined
+                ? 'justify-between gap-1 pr-1'
+                : 'justify-center px-2 sm:px-3',
+            )}
+          >
             <span className={orderBookHeaderLabelClass}>{t('Total')}</span>
+            {rewardConfig && rewardHighlight === undefined && (
+              <EventRewardsBadge
+                rewards={[rewardConfig]}
+                compact
+                active={showRewardHighlight}
+                onHighlightChange={setInternalRewardHighlight}
+              />
+            )}
           </div>
         </div>
 
-        {showLiquidityAction ? (
+        {isLoadingSummaries ? (
+          <>
+            {Array.from({ length: 4 }, (_, index) => (
+              <EventOrderBookSkeletonRow key={`ask-skeleton-${index}`} />
+            ))}
+
+            {orderBookCenterRow}
+
+            {Array.from({ length: 4 }, (_, index) => (
+              <EventOrderBookSkeletonRow key={`bid-skeleton-${index}`} />
+            ))}
+          </>
+        ) : showLiquidityAction ? (
           <div className="flex min-h-44 flex-col items-center justify-center gap-3 px-6 py-8 text-center">
             <span className="flex size-10 items-center justify-center rounded-full bg-primary/10 text-primary">
               <DropletsIcon className="size-5" />
@@ -484,6 +589,8 @@ export default function EventOrderBook({
                     userOrder={userOrder}
                     isCancelling={userOrder ? pendingCancelIds.has(userOrder.id) : false}
                     onCancelUserOrder={handleCancelUserOrder}
+                    rewardEligible={isRewardEligible(level)}
+                    showRewardHighlight={showRewardHighlight}
                   />
                 )
               })
@@ -491,28 +598,7 @@ export default function EventOrderBook({
               <EventOrderBookEmptyRow label={t('No asks')} />
             )}
 
-            <div
-              ref={centerRowRef}
-              className={cn(
-                `grid h-9 cursor-pointer grid-cols-[40%_20%_20%_20%] items-center border-y px-2 text-xs font-medium text-muted-foreground transition-colors sm:px-3`,
-                isSportsCardSurface && 'sticky top-9 bottom-0 z-10',
-                isSportsCardSurface ? 'bg-card hover:bg-secondary' : 'bg-background hover:bg-muted',
-              )}
-              role="presentation"
-            >
-              <div className="flex h-full cursor-pointer items-center">
-                {t('Last')}
-                :&nbsp;
-                {lastPrice == null ? '--' : formatDisplayedPrice(lastPrice)}
-              </div>
-              <div className="flex h-full cursor-pointer items-center justify-center">
-                {t('Spread')}
-                :&nbsp;
-                {formatOrderBookPrice(spread)}
-              </div>
-              <div className="flex h-full items-center justify-center" />
-              <div className="flex h-full items-center justify-center" />
-            </div>
+            {orderBookCenterRow}
 
             {bids.length > 0 ? (
               bids.map((level, index) => {
@@ -528,6 +614,8 @@ export default function EventOrderBook({
                     userOrder={userOrder}
                     isCancelling={userOrder ? pendingCancelIds.has(userOrder.id) : false}
                     onCancelUserOrder={handleCancelUserOrder}
+                    rewardEligible={isRewardEligible(level)}
+                    showRewardHighlight={showRewardHighlight}
                   />
                 )
               })

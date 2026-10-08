@@ -3,17 +3,26 @@
 import type { Wallet } from '@dynamic-labs/sdk-react-core'
 import type { ReactNode } from 'react'
 import type { Config } from 'wagmi'
-import type { AppKitValue, TonTxMessage } from '@/hooks/useAppKit'
-import type { User } from '@/types'
+
 import { EthereumWalletConnectors } from '@dynamic-labs/ethereum'
-import { DynamicContextProvider, useConnectWithOtp, useDynamicContext, useDynamicModals, useUserWallets } from '@dynamic-labs/sdk-react-core'
+import {
+  DynamicContextProvider,
+  useConnectWithOtp,
+  useDynamicContext,
+  useDynamicModals,
+  useUserWallets,
+} from '@dynamic-labs/sdk-react-core'
 import { DynamicWagmiConnector } from '@dynamic-labs/wagmi-connector'
 import { useExtracted } from 'next-intl'
 import { Component, useEffect, useMemo, useState } from 'react'
 import { createSiweMessage } from 'viem/siwe'
 import { WagmiProvider } from 'wagmi'
-import { toast } from '@/components/ui/toast'
+
+import type { AppKitValue, TonTxMessage } from '@/hooks/useAppKit'
+import type { User } from '@/types'
+
 import { SignaturePromptHost } from '@/components/SignaturePromptHost'
+import { toast } from '@/components/ui/toast'
 import { AppKitContext, defaultAppKitValue } from '@/hooks/useAppKit'
 import { useHasHydrated } from '@/hooks/useHasHydrated'
 import { useIsTma } from '@/hooks/useIsTma'
@@ -29,7 +38,7 @@ import { mergeSessionUserState, useUser } from '@/stores/useUser'
 const wagmiConfig = createDynamicWagmiConfig()
 const activeWagmiConfig: Config = wagmiConfig
 
-function getConnectedAccount(): { address: `0x${string}` | undefined, chainId: number } {
+function getConnectedAccount(): { address: `0x${string}` | undefined; chainId: number } {
   const state = activeWagmiConfig?.state
   const current = state?.current
   const connection = current ? state.connections.get(current) : undefined
@@ -47,11 +56,11 @@ function isEmbeddedWallet(wallet: Wallet | null): boolean {
 const TON_CHAIN = 'TON'
 
 interface TonCapableConnector {
-  sendTransaction?: (request: { validUntil: number, messages: TonTxMessage[] }) => Promise<string>
+  sendTransaction?: (request: { validUntil: number; messages: TonTxMessage[] }) => Promise<string>
 }
 
 function findTonWallet(wallets: readonly Wallet[]): Wallet | null {
-  return wallets.find(wallet => wallet.chain === TON_CHAIN) ?? null
+  return wallets.find((wallet) => wallet.chain === TON_CHAIN) ?? null
 }
 
 function clearWalletState() {
@@ -71,10 +80,9 @@ async function isCurrentRegionBlocked() {
     if (!response.ok) {
       return false
     }
-    const payload = await response.json() as { blocked?: boolean }
+    const payload = (await response.json()) as { blocked?: boolean }
     return payload?.blocked === true
-  }
-  catch {
+  } catch {
     return false
   }
 }
@@ -99,17 +107,18 @@ async function driveSIWEHandshake(primaryWallet: Wallet, siteUrl: string) {
     if (sessionAddress?.toLowerCase() === address.toLowerCase()) {
       const user = session.data?.user
       if (user) {
-        useUser.setState(previous => mergeSessionUserState(previous, user as unknown as User))
+        useUser.setState((previous) => mergeSessionUserState(previous, user as unknown as User))
       }
       return
     }
-  }
-  catch {
+  } catch {
     // no session yet — continue
   }
 
   try {
-    const { data: nonceData, error: nonceError } = await authClient.siwe.nonce({ walletAddress: address, chainId })
+    // better-auth 1.7: the nonce endpoint takes no body; the wallet address and
+    // chain ID are read from the signed message at verify time instead.
+    const { data: nonceData, error: nonceError } = await authClient.siwe.nonce()
     const nonce = nonceData?.nonce
     if (!nonce) {
       // Without a server-issued nonce, verification can never succeed (the
@@ -139,11 +148,11 @@ async function driveSIWEHandshake(primaryWallet: Wallet, siteUrl: string) {
       return
     }
 
+    // The connected chainId is carried inside `message` (see createSiweMessage
+    // above) — the server derives address + chain from it.
     const { data: verifyData, error: verifyError } = await authClient.siwe.verify({
       message,
       signature,
-      walletAddress: address,
-      chainId,
     })
 
     if (!verifyData?.success) {
@@ -156,14 +165,12 @@ async function driveSIWEHandshake(primaryWallet: Wallet, siteUrl: string) {
     const session = await authClient.getSession()
     const user = session?.data?.user
     if (user) {
-      useUser.setState(previous => mergeSessionUserState(previous, user as unknown as User))
+      useUser.setState((previous) => mergeSessionUserState(previous, user as unknown as User))
       console.warn('[SIWE] handshake complete — session created for', address)
-    }
-    else {
+    } else {
       console.warn('[SIWE] verify succeeded but no session returned — check cookies/baseURL')
     }
-  }
-  catch (error) {
+  } catch (error) {
     console.warn('[SIWE] handshake failed:', error)
   }
 }
@@ -199,73 +206,76 @@ function AppKitBridge({
   hasAuthenticatedUser: boolean
 }) {
   const { setShowAuthFlow, handleLogOut, primaryWallet, user: dynamicUser } = useDynamicContext()
+  const dynamicUserEmail = typeof dynamicUser?.email === 'string' ? dynamicUser.email : undefined
   const { setShowLinkNewWalletModal } = useDynamicModals()
   const { connectWithEmail, verifyOneTimePassword } = useConnectWithOtp()
   const userWallets = useUserWallets()
   const tonWallet = useMemo(() => findTonWallet(userWallets), [userWallets])
 
-  const value = useMemo<AppKitValue>(() => ({
-    open: async () => {
-      if (!hasAuthenticatedUser && await isCurrentRegionBlocked()) {
-        toast.warning(regionBlockedMessage)
-        return
-      }
-      setShowAuthFlow(true)
-    },
-    close: async () => {
-      setShowAuthFlow(false)
-    },
-    isReady: true,
-    isEmbedded: isEmbeddedWallet(primaryWallet),
-    walletName: primaryWallet?.connector?.name ?? undefined,
-    walletEmail: typeof dynamicUser?.email === 'string' ? dynamicUser.email : undefined,
-    // Log out of BOTH layers: Dynamic (wallet) and better-auth (our session).
-    // Dynamic's handleLogOut alone leaves the better-auth cookie alive, so the
-    // user stays logged in after reload — signOutAndRedirect kills it + redirects.
-    logout: async () => {
-      try {
-        await handleLogOut()
-      }
-      catch {
-        // ignore — still clear better-auth below
-      }
-      await signOutAndRedirect({ currentPathname: IS_BROWSER ? window.location.pathname : '/' })
-    },
-    tonWalletAddress: tonWallet?.address,
-    connectTonWallet: () => {
-      setShowLinkNewWalletModal(true)
-    },
-    sendTonTransaction: async (messages: TonTxMessage[], validUntilSeconds = 600) => {
-      if (!tonWallet) {
-        throw new Error('No TON wallet connected')
-      }
-      const connector = tonWallet.connector as unknown as TonCapableConnector
-      if (typeof connector.sendTransaction !== 'function') {
-        throw new TypeError('Connected TON wallet cannot send transactions')
-      }
-      return connector.sendTransaction({
-        validUntil: Math.floor(Date.now() / 1000) + validUntilSeconds,
-        messages,
-      })
-    },
-    sendEmailOtp: async (email: string) => {
-      await connectWithEmail(email)
-    },
-    verifyEmailOtp: async (code: string) => {
-      await verifyOneTimePassword(code)
-    },
-  }), [
-    hasAuthenticatedUser,
-    regionBlockedMessage,
-    setShowAuthFlow,
-    handleLogOut,
-    primaryWallet,
-    dynamicUser?.email,
-    tonWallet,
-    setShowLinkNewWalletModal,
-    connectWithEmail,
-    verifyOneTimePassword,
-  ])
+  const value = useMemo<AppKitValue>(
+    () => ({
+      open: async () => {
+        if (!hasAuthenticatedUser && (await isCurrentRegionBlocked())) {
+          toast.warning(regionBlockedMessage)
+          return
+        }
+        setShowAuthFlow(true)
+      },
+      close: async () => {
+        setShowAuthFlow(false)
+      },
+      isReady: true,
+      isEmbedded: isEmbeddedWallet(primaryWallet),
+      walletName: primaryWallet?.connector?.name ?? undefined,
+      walletEmail: dynamicUserEmail,
+      // Log out of BOTH layers: Dynamic (wallet) and better-auth (our session).
+      // Dynamic's handleLogOut alone leaves the better-auth cookie alive, so the
+      // user stays logged in after reload — signOutAndRedirect kills it + redirects.
+      logout: async () => {
+        try {
+          await handleLogOut()
+        } catch {
+          // ignore — still clear better-auth below
+        }
+        await signOutAndRedirect({ currentPathname: IS_BROWSER ? window.location.pathname : '/' })
+      },
+      tonWalletAddress: tonWallet?.address,
+      connectTonWallet: () => {
+        setShowLinkNewWalletModal(true)
+      },
+      sendTonTransaction: async (messages: TonTxMessage[], validUntilSeconds = 600) => {
+        if (!tonWallet) {
+          throw new Error('No TON wallet connected')
+        }
+        const connector = tonWallet.connector as unknown as TonCapableConnector
+        if (typeof connector.sendTransaction !== 'function') {
+          throw new TypeError('Connected TON wallet cannot send transactions')
+        }
+        return connector.sendTransaction({
+          validUntil: Math.floor(Date.now() / 1000) + validUntilSeconds,
+          messages,
+        })
+      },
+      sendEmailOtp: async (email: string) => {
+        await connectWithEmail(email)
+      },
+      verifyEmailOtp: async (code: string) => {
+        await verifyOneTimePassword(code)
+      },
+    }),
+    [
+      hasAuthenticatedUser,
+      regionBlockedMessage,
+      setShowAuthFlow,
+      handleLogOut,
+      primaryWallet,
+      dynamicUserEmail,
+      tonWallet,
+      setShowLinkNewWalletModal,
+      connectWithEmail,
+      verifyOneTimePassword,
+    ],
+  )
 
   return <AppKitContext value={value}>{children}</AppKitContext>
 }
@@ -307,24 +317,27 @@ export default function AppKitProvider({ children }: { children: ReactNode }) {
     }
   }, [isTma])
 
-  const settings = useMemo(() => ({
-    environmentId: dynamicEnvId,
-    walletConnectors: [EthereumWalletConnectors, ...tonConnectors],
-    events: {
-      onAuthSuccess: async ({ primaryWallet }: { primaryWallet: Wallet | null }) => {
-        if (primaryWallet) {
-          await driveSIWEHandshake(primaryWallet, siteUrl)
-        }
+  const settings = useMemo(
+    () => ({
+      environmentId: dynamicEnvId,
+      walletConnectors: [EthereumWalletConnectors, ...tonConnectors],
+      events: {
+        onAuthSuccess: async ({ primaryWallet }: { primaryWallet: Wallet | null }) => {
+          if (primaryWallet) {
+            await driveSIWEHandshake(primaryWallet, siteUrl)
+          }
+        },
+        // Fires for any Dynamic logout (explicit or session-expiry). Just clear
+        // local state reactively — the explicit logout() handles better-auth +
+        // navigation, so reloading here would race ahead of that signOut.
+        onLogout: () => {
+          clearWalletState()
+          useUser.setState(null)
+        },
       },
-      // Fires for any Dynamic logout (explicit or session-expiry). Just clear
-      // local state reactively — the explicit logout() handles better-auth +
-      // navigation, so reloading here would race ahead of that signOut.
-      onLogout: () => {
-        clearWalletState()
-        useUser.setState(null)
-      },
-    },
-  }), [dynamicEnvId, siteUrl, tonConnectors])
+    }),
+    [dynamicEnvId, siteUrl, tonConnectors],
+  )
 
   // Dynamic's internal widgets are not compatible with cacheComponents'
   // streaming hydration, so we only mount Dynamic on the client after hydration.
@@ -334,9 +347,7 @@ export default function AppKitProvider({ children }: { children: ReactNode }) {
   if (!hasHydrated || (isTma && tonConnectors.length === 0)) {
     return (
       <WagmiProvider config={wagmiConfig}>
-        <AppKitContext value={ssrAppKitValue}>
-          {children}
-        </AppKitContext>
+        <AppKitContext value={ssrAppKitValue}>{children}</AppKitContext>
       </WagmiProvider>
     )
   }

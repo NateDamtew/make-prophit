@@ -3,15 +3,17 @@
 import type { ReactNode } from 'react'
 
 import { CheckIcon, EyeIcon, EyeOffIcon, FocusIcon } from 'lucide-react'
-import { useExtracted } from 'next-intl'
+import { useExtracted, useLocale } from 'next-intl'
 import Image from 'next/image'
 import { useMemo } from 'react'
 
 import type { PortfolioSnapshot } from '@/lib/portfolio'
 
+import CommunityFollowersCount from '@/components/CommunityFollowersCount'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useBalance } from '@/hooks/useBalance'
 import { useClipboard } from '@/hooks/useClipboard'
 import { usePortfolioValue } from '@/hooks/usePortfolioValue'
@@ -24,7 +26,6 @@ export interface ProfileForCards {
   username: string
   avatarUrl: string
   joinedAt?: string
-  viewsCount?: number
   portfolioAddress?: string | null
 }
 
@@ -32,12 +33,14 @@ interface ProfileOverviewCardProps {
   profile: ProfileForCards
   snapshot: PortfolioSnapshot
   actions?: ReactNode
+  headerActions?: ReactNode
+  resolutionHistoryAdornment?: ReactNode
   variant?: 'public' | 'portfolio'
   useDefaultUserWallet?: boolean
   enableLiveValue?: boolean
 }
 
-function useJoinedDateLabel(joinedAt: string | undefined) {
+function useJoinedDateLabel(joinedAt: string | undefined, locale: string) {
   return useMemo(() => {
     if (!joinedAt) {
       return null
@@ -46,19 +49,22 @@ function useJoinedDateLabel(joinedAt: string | undefined) {
     if (Number.isNaN(date.getTime())) {
       return null
     }
-    return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
-  }, [joinedAt])
+    return date.toLocaleDateString(locale, { month: 'long', year: 'numeric', timeZone: 'UTC' })
+  }, [joinedAt, locale])
 }
 
 export default function ProfileOverviewCard({
   profile,
   snapshot,
   actions,
+  headerActions,
+  resolutionHistoryAdornment,
   variant = 'public',
   useDefaultUserWallet = true,
   enableLiveValue = true,
 }: ProfileOverviewCardProps) {
   const t = useExtracted()
+  const locale = useLocale()
   const { copied, copy } = useClipboard()
   const liveWalletAddress = enableLiveValue ? profile.portfolioAddress : null
   const { value: livePositionsValue, isLoading } = usePortfolioValue(liveWalletAddress, {
@@ -85,8 +91,7 @@ export default function ProfileOverviewCard({
   const showPlaceholder = shouldUseAvatarPlaceholder(avatarUrl)
   const avatarSeed = profile.portfolioAddress || profile.username || 'user'
   const avatarFallbackStyle = showPlaceholder ? getAvatarPlaceholderStyle(avatarSeed) : undefined
-  const joinedText = useJoinedDateLabel(profile.joinedAt)
-
+  const joinedText = useJoinedDateLabel(profile.joinedAt, locale)
   const positionsValueLabel =
     Math.abs(positionsValue) >= 100_000
       ? formatCompactCurrency(positionsValue)
@@ -184,44 +189,50 @@ export default function ProfileOverviewCard({
                       />
                     ) : null}
                   </div>
-                  <div className="min-w-0 flex-1 space-y-1">
-                    <p className="truncate text-lg/tight font-semibold sm:text-xl" title={profile.username}>
-                      {profile.username}
-                    </p>
-                    <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                  <div className="min-w-0 flex-1 space-y-4">
+                    <div className="flex min-w-0 flex-col items-start gap-2 sm:flex-row sm:items-center">
+                      <p
+                        className="w-full text-lg/tight font-semibold wrap-break-word sm:w-auto sm:min-w-0 sm:truncate sm:text-xl"
+                        title={profile.username}
+                      >
+                        {profile.username}
+                      </p>
+                      {resolutionHistoryAdornment}
+                    </div>
+                    <div className="flex items-center text-sm whitespace-nowrap text-muted-foreground [&>*+*]:before:mx-2 [&>*+*]:before:text-muted-foreground/50 [&>*+*]:before:content-['•']">
+                      {profile.portfolioAddress && <CommunityFollowersCount wallet={profile.portfolioAddress} />}
                       {joinedText && (
                         <span className="inline-flex items-center gap-1">
                           {t('Joined')} {joinedText}
                         </span>
                       )}
-                      {typeof profile.viewsCount === 'number' && (
-                        <>
-                          <span aria-hidden className="text-muted-foreground/50">
-                            •
-                          </span>
-                          <span className="inline-flex items-center gap-1">
-                            <EyeIcon className="size-4" />
-                            {formatCompactCount(profile.viewsCount)} {t('views')}
-                          </span>
-                        </>
-                      )}
                     </div>
                   </div>
                 </div>
 
-                {profile.portfolioAddress && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className={cn(
-                      `size-9 rounded-full border bg-background/60 text-muted-foreground shadow-sm transition-colors hover:bg-background`,
-                    )}
-                    onClick={() => profile.portfolioAddress && copy(profile.portfolioAddress)}
-                    aria-label={t('Copy portfolio address')}
-                  >
-                    {copied ? <CheckIcon className="size-4 text-yes" /> : <FocusIcon className="size-4" />}
-                  </Button>
-                )}
+                <div className="flex shrink-0 items-center gap-2">
+                  {headerActions}
+                  {profile.portfolioAddress && (
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className={cn(
+                              `size-9 rounded-full border bg-background/60 text-muted-foreground shadow-sm transition-colors hover:bg-background`,
+                            )}
+                            onClick={() => profile.portfolioAddress && copy(profile.portfolioAddress)}
+                            aria-label={t('Copy profile address')}
+                          >
+                            {copied ? <CheckIcon className="size-4 text-yes" /> : <FocusIcon className="size-4" />}
+                          </Button>
+                        }
+                      />
+                      <TooltipContent>{t('Copy profile address')}</TooltipContent>
+                    </Tooltip>
+                  )}
+                </div>
               </div>
             )}
 

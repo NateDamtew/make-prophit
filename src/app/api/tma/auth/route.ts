@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
+
+import { auth, TELEGRAM_ACCOUNT_ISSUER } from '@/lib/auth'
 import { validateTelegramInitData } from '@/lib/tma/validate'
 
 export async function POST(request: Request) {
@@ -25,14 +26,16 @@ export async function POST(request: Request) {
     let userId: string
     if (existingUser?.user) {
       userId = existingUser.user.id
-    }
-    else {
-      const created = await ctx.internalAdapter.createUser({
-        name: displayName,
-        email,
-        emailVerified: false,
-        image: data.user.photo_url ?? '',
-      })
+    } else {
+      const created = await ctx.internalAdapter.createUser(
+        {
+          name: displayName,
+          email,
+          emailVerified: false,
+          image: data.user.photo_url ?? '',
+        },
+        { method: 'telegram' },
+      )
       if (!created) {
         return NextResponse.json({ error: 'Failed to create user' }, { status: 500 })
       }
@@ -42,6 +45,7 @@ export async function POST(request: Request) {
         userId,
         accountId: telegramId,
         providerId: 'telegram',
+        issuer: TELEGRAM_ACCOUNT_ISSUER,
         accessToken: null,
         refreshToken: null,
         idToken: null,
@@ -79,8 +83,7 @@ export async function POST(request: Request) {
         username: data.user.username,
       },
     })
-  }
-  catch (error) {
+  } catch (error) {
     console.error('TMA auth failed:', error)
     return NextResponse.json({ error: 'Authentication failed' }, { status: 500 })
   }

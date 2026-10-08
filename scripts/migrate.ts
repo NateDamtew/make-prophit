@@ -353,7 +353,7 @@ async function createSyncVolumeCron(sql: ReservedSql, siteUrl: string, cronSecre
 async function createSyncTranslationsCron(sql: ReservedSql, siteUrl: string, cronSecret: string): Promise<void> {
   await createSyncCron(sql, {
     jobName: 'sync-translations-enqueue',
-    schedule: '17 * * * *',
+    schedule: '3,12,21,30,39,48,57 * * * *',
     endpointPath: '/api/sync/translations/enqueue',
     siteUrl,
     cronSecret,
@@ -362,11 +362,11 @@ async function createSyncTranslationsCron(sql: ReservedSql, siteUrl: string, cro
 
   await createSyncCron(sql, {
     jobName: 'sync-translations',
-    schedule: '18 * * * *',
+    schedule: '4,13,22,31,40,49,58 * * * *',
     endpointPath: '/api/sync/translations',
     siteUrl,
     cronSecret,
-    timeoutMilliseconds: 30000,
+    timeoutMilliseconds: 60000,
   })
 }
 
@@ -506,8 +506,7 @@ function resolveMigrationSslOption(connectionString: string): false | { rejectUn
     if (sslmode || isSupabaseHost) {
       return { rejectUnauthorized: false }
     }
-  }
-  catch {
+  } catch {
     // Fall through to no-TLS for unparseable connection strings.
   }
   return false

@@ -1,6 +1,6 @@
 'use client'
 
-import { ArrowDownToLineIcon, Loader2Icon } from 'lucide-react'
+import { ArrowDownToLineIcon } from 'lucide-react'
 import { useExtracted } from 'next-intl'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { encodeFunctionData } from 'viem'
@@ -57,7 +57,7 @@ interface AdminAffiliateClaimableFeesCardProps {
 
 export default function AdminAffiliateClaimableFeesCard({ feeRecipientWallet }: AdminAffiliateClaimableFeesCardProps) {
   const t = useExtracted()
-  const { open } = useAppKit()
+  const { open: openAppKit } = useAppKit()
   const { runWithSignaturePrompt } = useSignaturePromptRunner()
   const { signTypedDataAsync } = useSignTypedData()
   const { data: walletClient } = useWalletClient()
@@ -88,6 +88,7 @@ export default function AdminAffiliateClaimableFeesCard({ feeRecipientWallet }: 
 
   const refreshClaimable = useCallback(async () => {
     const requestId = ++requestIdRef.current
+    await Promise.resolve()
 
     if (!publicClient || !normalizedFeeRecipientWallet) {
       setClaimableByExchange({})
@@ -148,7 +149,7 @@ export default function AdminAffiliateClaimableFeesCard({ feeRecipientWallet }: 
   }, [normalizedFeeRecipientWallet, publicClient])
 
   useEffect(() => {
-    void refreshClaimable()
+    queueMicrotask(() => void refreshClaimable())
   }, [refreshClaimable])
 
   const totalClaimable = useMemo(() => {
@@ -256,7 +257,7 @@ export default function AdminAffiliateClaimableFeesCard({ feeRecipientWallet }: 
 
   async function handleClaim() {
     if (!isConnected) {
-      await open()
+      await openAppKit()
       return
     }
 
@@ -295,7 +296,7 @@ export default function AdminAffiliateClaimableFeesCard({ feeRecipientWallet }: 
 
   return (
     <div className="rounded-lg bg-muted/40 p-4">
-      <p className="text-xs text-muted-foreground uppercase">{t('Your Claimable fees')}</p>
+      <p className="text-xs text-muted-foreground uppercase">{t('Claimable Earnings')}</p>
       <div className="mt-1 flex items-center gap-2">
         <p className="text-2xl font-semibold">{claimableValue}</p>
         <Tooltip>
@@ -304,9 +305,9 @@ export default function AdminAffiliateClaimableFeesCard({ feeRecipientWallet }: 
               <span className="inline-flex">
                 <Button
                   type="button"
-                  size="icon"
+                  size="sm"
                   className={cn(
-                    `size-8 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:bg-primary disabled:text-primary-foreground disabled:opacity-100`,
+                    `h-8 gap-1.5 rounded-md bg-primary px-3 text-primary-foreground hover:bg-primary/90 disabled:bg-primary disabled:text-primary-foreground disabled:opacity-100`,
                   )}
                   disabled={isButtonDisabled}
                   onClick={() => void handleClaim()}
@@ -317,6 +318,7 @@ export default function AdminAffiliateClaimableFeesCard({ feeRecipientWallet }: 
                   ) : (
                     <ArrowDownToLineIcon className="size-3.5" />
                   )}
+                  <span>{isClaiming ? t('Claiming...') : t('Claim')}</span>
                 </Button>
               </span>
             }

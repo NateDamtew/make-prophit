@@ -5,19 +5,53 @@ import type { DataPoint } from '@/types/PredictionChartTypes'
 
 import {
   appendLivePriceTransition,
+  buildClosedLiveSeriesData,
+  buildLiveSeriesFallbackData,
   classifyLiveSeriesReference,
   findLiveSeriesEvent,
+  formatDateAtTimezone,
+  formatTimeAtTimezone,
+  getVisibleCountdownUnits,
   isCanonicalBinanceDailySnapshot,
   LIVE_PRICE_TRANSITION_MS,
   MAX_POINTS,
+  POLYMARKET_CHAINLINK_TWAP_CUTOVER_MS,
   requiresCanonicalBinanceDailyClose,
+  resolveLiveChartPaddedDomainEnd,
   resolveDisplayedLiveSeriesBaselinePrice,
   resolveEventEndTimestamp,
   resolveLivePriceTransitionDuration,
   resolveLiveSeriesCountdown,
   resolveLiveSeriesDisplayPrice,
+  resolveLiveSeriesRealtimeTopic,
   SERIES_KEY,
 } from '@/app/[locale]/(platform)/event/[slug]/_utils/eventLiveSeriesChartUtils'
+
+describe('live series date labels', () => {
+  it('formats resolution dates and times with the page locale', () => {
+    const timestamp = Date.parse('2026-08-30T20:33:00.000Z')
+
+    expect(formatDateAtTimezone(timestamp, 'America/New_York', 'zh')).toBe('2026年8月30日')
+    expect(formatTimeAtTimezone(timestamp, 'America/New_York', 'zh')).toBe('16:33')
+  })
+})
+
+describe('getVisibleCountdownUnits', () => {
+  it('hides zero hours when less than one hour remains', () => {
+    expect(getVisibleCountdownUnits(false, 0, 0, 42, 15)).toEqual([
+      { unit: 'min', value: 42 },
+      { unit: 'sec', value: 15 },
+    ])
+  })
+
+  it('keeps hours when at least one hour remains', () => {
+    expect(getVisibleCountdownUnits(false, 0, 1, 0, 0)).toEqual([
+      { unit: 'hr', value: 1 },
+      { unit: 'min', value: 0 },
+      { unit: 'sec', value: 0 },
+    ])
+  })
+})
 
 function createLivePoint(timestamp: number, price: number): DataPoint {
   return {
@@ -41,6 +75,74 @@ function createSeriesEvent(overrides: Partial<EventSeriesEntry> = {}): EventSeri
 function readLivePrice(point: DataPoint) {
   return point[SERIES_KEY] as number
 }
+
+describe('resolveLiveSeriesRealtimeTopic', () => {
+  it('keeps legacy Chainlink markets on the spot topic before the cutover', () => {
+    expect(
+      resolveLiveSeriesRealtimeTopic({
+        configuredTopic: 'crypto_prices_chainlink',
+        activeWindowMinutes: 5,
+        eventEndTimestamp: POLYMARKET_CHAINLINK_TWAP_CUTOVER_MS,
+      }),
+    ).toBe('crypto_prices_chainlink')
+  })
+
+  it('uses the 30-second TWAP for five-minute markets after the cutover', () => {
+    expect(
+      resolveLiveSeriesRealtimeTopic({
+        configuredTopic: 'crypto_prices_chainlink',
+        activeWindowMinutes: 5,
+        eventEndTimestamp: POLYMARKET_CHAINLINK_TWAP_CUTOVER_MS + 5 * 60 * 1000,
+      }),
+    ).toBe('crypto_prices_twap_thirty')
+  })
+
+  it('uses the actual market start when selecting the realtime feed', () => {
+    expect(
+      resolveLiveSeriesRealtimeTopic({
+        configuredTopic: 'crypto_prices_chainlink',
+        activeWindowMinutes: 5,
+        eventStartTimestamp: POLYMARKET_CHAINLINK_TWAP_CUTOVER_MS - 1,
+        eventEndTimestamp: POLYMARKET_CHAINLINK_TWAP_CUTOVER_MS + 5 * 60 * 1000,
+      }),
+    ).toBe('crypto_prices_chainlink')
+    expect(
+      resolveLiveSeriesRealtimeTopic({
+        configuredTopic: 'crypto_prices_chainlink',
+        activeWindowMinutes: 5,
+        eventStartTimestamp: POLYMARKET_CHAINLINK_TWAP_CUTOVER_MS,
+        eventEndTimestamp: POLYMARKET_CHAINLINK_TWAP_CUTOVER_MS + 10 * 60 * 1000,
+      }),
+    ).toBe('crypto_prices_twap_thirty')
+  })
+
+  it.each([15, 4 * 60])('uses the 60-second TWAP for %s-minute markets after the cutover', (minutes) => {
+    expect(
+      resolveLiveSeriesRealtimeTopic({
+        configuredTopic: 'crypto_prices_chainlink',
+        activeWindowMinutes: minutes,
+        eventEndTimestamp: POLYMARKET_CHAINLINK_TWAP_CUTOVER_MS + minutes * 60 * 1000,
+      }),
+    ).toBe('crypto_prices_twap_sixty')
+  })
+
+  it('does not change unsupported cadences or unrelated topics', () => {
+    expect(
+      resolveLiveSeriesRealtimeTopic({
+        configuredTopic: 'crypto_prices_chainlink',
+        activeWindowMinutes: 60,
+        eventEndTimestamp: POLYMARKET_CHAINLINK_TWAP_CUTOVER_MS + 60 * 60 * 1000,
+      }),
+    ).toBe('crypto_prices_chainlink')
+    expect(
+      resolveLiveSeriesRealtimeTopic({
+        configuredTopic: 'equity_prices',
+        activeWindowMinutes: 5,
+        eventEndTimestamp: POLYMARKET_CHAINLINK_TWAP_CUTOVER_MS + 5 * 60 * 1000,
+      }),
+    ).toBe('equity_prices')
+  })
+})
 
 function createEvent(overrides: Partial<Event> = {}): Event {
   return {
@@ -102,6 +204,121 @@ function createEvent(overrides: Partial<Event> = {}): Event {
 }
 
 describe('event live series chart utils', () => {
+  it('pads the chart domain so the line inset and cursor share one x-scale', () => {
+    const startTimestamp = 10_000
+    const endTimestamp = 50_000
+    const chartWidth = 900
+    const marginRight = 52
+    const rightInset = 34
+    const plotWidth = chartWidth - marginRight
+    const paddedEndTimestamp = resolveLiveChartPaddedDomainEnd({
+      startTimestamp,
+      endTimestamp,
+      chartWidth,
+      marginLeft: 0,
+      marginRight,
+      rightInset,
+    })
+    const renderedEndX = ((endTimestamp - startTimestamp) / (paddedEndTimestamp - startTimestamp)) * plotWidth
+
+    expect(renderedEndX).toBeCloseTo(plotWidth - rightInset, 8)
+  })
+
+  it('supports positioning the live data endpoint at a requested plot ratio', () => {
+    const startTimestamp = 10_000
+    const endTimestamp = 50_000
+    const chartWidth = 900
+    const marginRight = 52
+    const plotWidth = chartWidth - marginRight
+    const paddedEndTimestamp = resolveLiveChartPaddedDomainEnd({
+      startTimestamp,
+      endTimestamp,
+      chartWidth,
+      marginLeft: 0,
+      marginRight,
+      rightInset: 34,
+      dataEndRatio: 0.6,
+    })
+    const renderedEndX = ((endTimestamp - startTimestamp) / (paddedEndTimestamp - startTimestamp)) * plotWidth
+
+    expect(renderedEndX).toBeCloseTo(plotWidth * 0.6, 8)
+  })
+
+  it('builds closed-event history across the event window with canonical endpoints', () => {
+    const startTimestamp = Date.parse('2026-08-13T08:00:00.000Z')
+    const endTimestamp = Date.parse('2026-08-13T12:00:00.000Z')
+
+    expect(
+      buildClosedLiveSeriesData({
+        startTimestamp,
+        endTimestamp,
+        openingPrice: 63_798.82,
+        closingPrice: 63_407.97,
+        history: [
+          { timestamp_ms: startTimestamp - 1, price: 99_999 },
+          { timestamp_ms: startTimestamp + 5 * 60 * 1000, price: 63_750 },
+          { timestamp_ms: endTimestamp - 5 * 60 * 1000, price: 63_414.66 },
+          { timestamp_ms: endTimestamp, price: 63_414.66 },
+        ],
+      }),
+    ).toEqual([
+      { date: new Date(startTimestamp), [SERIES_KEY]: 63_798.82 },
+      { date: new Date(startTimestamp + 5 * 60 * 1000), [SERIES_KEY]: 63_750 },
+      { date: new Date(endTimestamp - 5 * 60 * 1000), [SERIES_KEY]: 63_414.66 },
+      { date: new Date(endTimestamp), [SERIES_KEY]: 63_407.97 },
+    ])
+  })
+
+  it('falls back to the opening and closing prices when closed history is unavailable', () => {
+    expect(
+      buildClosedLiveSeriesData({
+        startTimestamp: 1_000,
+        endTimestamp: 2_000,
+        openingPrice: 100,
+        closingPrice: 90,
+        history: [],
+      }),
+    ).toEqual([
+      { date: new Date(1_000), [SERIES_KEY]: 100 },
+      { date: new Date(2_000), [SERIES_KEY]: 90 },
+    ])
+  })
+
+  it('seeds an immediately renderable line from the fallback price', () => {
+    const chartEndTimestamp = Date.parse('2026-08-13T15:00:00.000Z')
+
+    expect(buildLiveSeriesFallbackData(63_800, chartEndTimestamp)).toEqual([
+      {
+        date: new Date(chartEndTimestamp - 40_000),
+        [SERIES_KEY]: 63_800,
+      },
+      {
+        date: new Date(chartEndTimestamp),
+        [SERIES_KEY]: 63_800,
+      },
+    ])
+  })
+
+  it('supports a shorter fallback window for compact live charts', () => {
+    const chartEndTimestamp = Date.parse('2026-08-13T15:00:00.000Z')
+
+    expect(buildLiveSeriesFallbackData(63_800, chartEndTimestamp, 20_000)).toEqual([
+      {
+        date: new Date(chartEndTimestamp - 20_000),
+        [SERIES_KEY]: 63_800,
+      },
+      {
+        date: new Date(chartEndTimestamp),
+        [SERIES_KEY]: 63_800,
+      },
+    ])
+  })
+
+  it('does not seed the live line without a valid fallback price', () => {
+    expect(buildLiveSeriesFallbackData(null, Date.now())).toEqual([])
+    expect(buildLiveSeriesFallbackData(0, Date.now())).toEqual([])
+  })
+
   it('returns a zero countdown for the SSR clock sentinel', () => {
     expect(resolveLiveSeriesCountdown(Date.parse('2026-07-31T00:00:00.000Z'), 0)).toEqual({
       totalSeconds: 0,

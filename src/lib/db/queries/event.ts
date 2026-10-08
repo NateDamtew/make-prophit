@@ -2,15 +2,23 @@ import type { SQL } from 'drizzle-orm'
 
 import { and, asc, count, desc, eq, exists, ilike, inArray, not, or, sql } from 'drizzle-orm'
 import { cacheLife, cacheTag } from 'next/cache'
+import { createHash } from 'node:crypto'
 
-import type { SupportedLocale } from '@/i18n/locales'
+import type { NonDefaultLocale, SupportedLocale } from '@/i18n/locales'
 import type { AdminEventAttentionFilter } from '@/lib/admin-event-attention'
 import type { EventListSortBy, EventListStatusFilter } from '@/lib/event-list-filters'
 import type { SportsSlugResolver } from '@/lib/sports-slug-mapping'
 import type { SportsVertical } from '@/lib/sports-vertical'
-import type { ConditionChangeLogEntry, Event, EventLiveChartConfig, EventSeriesEntry, QueryResult } from '@/types'
+import type {
+  ConditionChangeLogEntry,
+  Event,
+  EventLiveChartConfig,
+  EventSeriesEntry,
+  QueryResult,
+  SportsSegmentScore,
+} from '@/types'
 
-import { DEFAULT_LOCALE } from '@/i18n/locales'
+import { DEFAULT_LOCALE, NON_DEFAULT_LOCALES } from '@/i18n/locales'
 import { cacheTags } from '@/lib/cache-tags'
 import { resolveClobUrl } from '@/lib/clob'
 import { buildEventVisibilityFilter } from '@/lib/community-visibility'
@@ -18,7 +26,7 @@ import { OUTCOME_INDEX } from '@/lib/constants'
 import {
   CRYPTO_CADENCE_ROUTES,
   isCryptoEvent,
-  resolveCryptoCadenceRelatedEventTitle,
+  resolveCryptoCadenceEventTitle,
   resolveCryptoCadenceRoute,
   resolveCryptoCadenceRouteSlug,
   resolveCryptoEventAsset,
@@ -60,6 +68,7 @@ import {
   SPORTS_AUXILIARY_SLUG_SQL_REGEX,
   stripSportsAuxiliaryEventSuffix,
 } from '@/lib/sports-event-slugs'
+import { normalizeSportsSegmentScores, resolveSportsSourceSegmentCount } from '@/lib/sports-segment-score'
 import { resolveCanonicalSportsSportSlug, resolveSportsSportSlugQueryCandidates } from '@/lib/sports-slug-mapping'
 import { getPublicAssetUrl } from '@/lib/storage'
 
@@ -513,7 +522,12 @@ interface ListAdminEventsParams {
   hideCrypto?: boolean
   activeOnly?: boolean
   attention?: AdminEventAttentionFilter
+  resolutionReportCountsByCondition?: ReadonlyMap<string, number>
 }
+
+export type EventTranslationsMap = Partial<Record<NonDefaultLocale, string>>
+export type EventAdditionalContextTranslationsMap = Partial<Record<NonDefaultLocale, string>>
+export type EventRulesTranslationsMap = Partial<Record<NonDefaultLocale, string>>
 
 interface AdminEventRow {
   id: string
@@ -524,9 +538,12 @@ interface AdminEventRow {
   livestream_url: string | null
   series_slug: string | null
   series_recurrence: string | null
+  start_date: string | null
   volume: number
   volume_24h: number
   is_hidden: boolean
+  translations: EventTranslationsMap
+  rules_translations: EventRulesTranslationsMap
   sports_score: string | null
   sports_live: boolean | null
   sports_ended: boolean | null
@@ -545,6 +562,7 @@ interface AdminEventRow {
   sports_source_match_confidence: string | null
   sports_vertical: 'sports' | 'esports' | null
   is_sports_games_moneyline: boolean
+  resolution_report_count: number
   end_date: string | null
   created_at: string
   updated_at: string
@@ -610,11 +628,94 @@ async function getLocalizedEventTitlesById(eventIds: string[], locale: Supported
     .select({
       event_id: event_translations.event_id,
       title: event_translations.title,
+      source_hash: event_translations.source_hash,
     })
     .from(event_translations)
-    .where(and(inArray(event_translations.event_id, eventIds), eq(event_translations.locale, locale)))
+    .where(
+      and(
+        inArray(event_translations.event_id, eventIds),
+        eq(event_translations.locale, locale),
+        sql`NULLIF(TRIM(COALESCE(${event_translations.source_hash}, '')), '') IS NOT NULL`,
+      ),
+    )
 
-  return new Map(rows.map((row) => [row.event_id, row.title]))
+  return new Map(
+    rows
+      .filter((row): row is typeof row & { title: string } => typeof row.title === 'string' && Boolean(row.source_hash))
+      .map((row) => [row.event_id, row.title]),
+  )
+}
+
+async function getLocalizedEventAdditionalContextsById(
+  eventIds: string[],
+  locale: SupportedLocale,
+): Promise<Map<string, { value: string; sourceHash: string | null }>> {
+  if (!eventIds.length || locale === DEFAULT_LOCALE) {
+    return new Map()
+  }
+
+  const rows = await db
+    .select({
+      event_id: event_translations.event_id,
+      additional_context: event_translations.additional_context,
+      source_hash: event_translations.additional_context_source_hash,
+    })
+    .from(event_translations)
+    .where(
+      and(
+        inArray(event_translations.event_id, eventIds),
+        eq(event_translations.locale, locale),
+        sql`NULLIF(TRIM(COALESCE(${event_translations.additional_context}, '')), '') IS NOT NULL`,
+      ),
+    )
+
+  return new Map(
+    rows
+      .filter((row): row is typeof row & { additional_context: string } => typeof row.additional_context === 'string')
+      .map((row) => [
+        row.event_id,
+        {
+          value: row.additional_context.trim(),
+          sourceHash: typeof row.source_hash === 'string' ? row.source_hash : null,
+        },
+      ]),
+  )
+}
+
+async function getLocalizedEventRulesById(
+  eventIds: string[],
+  locale: SupportedLocale,
+): Promise<Map<string, { value: string; sourceHash: string | null }>> {
+  if (!eventIds.length || locale === DEFAULT_LOCALE) {
+    return new Map()
+  }
+
+  const rows = await db
+    .select({
+      event_id: event_translations.event_id,
+      rules: event_translations.rules,
+      source_hash: event_translations.rules_source_hash,
+    })
+    .from(event_translations)
+    .where(
+      and(
+        inArray(event_translations.event_id, eventIds),
+        eq(event_translations.locale, locale),
+        sql`NULLIF(TRIM(COALESCE(${event_translations.rules}, '')), '') IS NOT NULL`,
+      ),
+    )
+
+  return new Map(
+    rows
+      .filter((row): row is typeof row & { rules: string } => typeof row.rules === 'string')
+      .map((row) => [
+        row.event_id,
+        {
+          value: row.rules.trim(),
+          sourceHash: typeof row.source_hash === 'string' ? row.source_hash : null,
+        },
+      ]),
+  )
 }
 
 function toOptionalNumber(value: unknown): number | null {
@@ -661,6 +762,8 @@ async function hydrateSportsAuxiliaryEventContext(eventResult: DrizzleEventResul
 
   const shouldLoadBaseSports =
     currentSports.sports_score == null ||
+    currentSports.sports_segment_scores == null ||
+    currentSports.sports_source_payload == null ||
     currentSports.sports_period == null ||
     currentSports.sports_elapsed == null ||
     currentSports.sports_live == null ||
@@ -676,6 +779,8 @@ async function hydrateSportsAuxiliaryEventContext(eventResult: DrizzleEventResul
   const baseSportsRows = await db
     .select({
       sports_score: event_sports.sports_score,
+      sports_segment_scores: event_sports.sports_segment_scores,
+      sports_source_payload: event_sports.sports_source_payload,
       sports_period: event_sports.sports_period,
       sports_elapsed: event_sports.sports_elapsed,
       sports_live: event_sports.sports_live,
@@ -704,6 +809,8 @@ async function hydrateSportsAuxiliaryEventContext(eventResult: DrizzleEventResul
     sports: {
       ...currentSports,
       sports_score: currentSports.sports_score ?? baseSports.sports_score,
+      sports_segment_scores: currentSports.sports_segment_scores ?? baseSports.sports_segment_scores,
+      sports_source_payload: currentSports.sports_source_payload ?? baseSports.sports_source_payload,
       sports_period: currentSports.sports_period ?? baseSports.sports_period,
       sports_elapsed: currentSports.sports_elapsed ?? baseSports.sports_elapsed,
       sports_live: currentSports.sports_live ?? baseSports.sports_live,
@@ -745,6 +852,8 @@ function hydrateGroupedSportsAuxiliaryEventContexts(groupedEvents: DrizzleEventR
       sports: {
         ...currentSports,
         sports_score: currentSports.sports_score ?? baseSports.sports_score,
+        sports_segment_scores: currentSports.sports_segment_scores ?? baseSports.sports_segment_scores,
+        sports_source_payload: currentSports.sports_source_payload ?? baseSports.sports_source_payload,
         sports_period: currentSports.sports_period ?? baseSports.sports_period,
         sports_elapsed: currentSports.sports_elapsed ?? baseSports.sports_elapsed,
         sports_live: currentSports.sports_live ?? baseSports.sports_live,
@@ -981,8 +1090,19 @@ function eventResource(
   lastTradeMap: Map<string, number> = new Map(),
   localizedTagNamesById: Map<number, string> = new Map(),
   localizedEventTitlesById: Map<string, string> = new Map(),
+  localizedEventAdditionalContextsById: Map<string, { value: string; sourceHash: string | null }> = new Map(),
+  localizedEventRulesById: Map<string, { value: string; sourceHash: string | null }> = new Map(),
   liveChartSeriesSlugs: Set<string> = new Set(),
 ): Event {
+  const sourceRules = typeof event.rules === 'string' ? event.rules.trim() : ''
+  const localizedRules = localizedEventRulesById.get(event.id)
+  const localizedRulesValue =
+    localizedRules &&
+    sourceRules &&
+    localizedRules.sourceHash === createHash('sha256').update(sourceRules).digest('hex')
+      ? localizedRules.value
+      : null
+
   const tagRecords = (event.eventTags ?? [])
     .map((et) => et.tag)
     .filter((tag) => Boolean(tag?.slug))
@@ -1014,6 +1134,9 @@ function eventResource(
 
     return {
       ...market,
+      ...(localizedRulesValue && typeof market.market_rules === 'string' && market.market_rules.trim() === sourceRules
+        ? { market_rules: localizedRulesValue }
+        : {}),
       neg_risk: Boolean(market.neg_risk),
       neg_risk_other: Boolean(market.neg_risk_other),
       accepting_orders: resolveMetadataStatusFlag(marketMetadata, ['acceptingOrders', 'accepting_orders'], true),
@@ -1081,6 +1204,7 @@ function eventResource(
       (logoPath) => getPublicAssetUrl(logoPath) || logoPath,
     ) ?? null
   const sportsLeagueSlug = event.sports?.sports_league_slug ?? null
+  const sportsSegmentCount = resolveSportsSourceSegmentCount(event.sports?.sports_source_payload)
 
   return {
     id: event.id || '',
@@ -1089,7 +1213,18 @@ function eventResource(
     creator: event.creator || '',
     icon_url: getPublicAssetUrl(event.icon_url),
     livestream_url: event.livestream_url ?? null,
-    additional_context: event.additional_context ?? null,
+    additional_context: (() => {
+      const sourceContext = typeof event.additional_context === 'string' ? event.additional_context.trim() : ''
+      const localizedContext = localizedEventAdditionalContextsById.get(event.id)
+      if (
+        localizedContext &&
+        sourceContext &&
+        localizedContext.sourceHash === createHash('sha256').update(sourceContext).digest('hex')
+      ) {
+        return localizedContext.value
+      }
+      return event.additional_context ?? null
+    })(),
     additional_context_updated_at: event.additional_context_updated_at?.toISOString?.() ?? null,
     show_market_icons: event.show_market_icons ?? true,
     is_polymarket_mirror: Boolean(event.is_polymarket_mirror),
@@ -1098,7 +1233,12 @@ function eventResource(
     neg_risk: Boolean(event.neg_risk),
     neg_risk_market_id: event.neg_risk_market_id || undefined,
     status: (event.status ?? 'draft') as Event['status'],
-    rules: event.rules || undefined,
+    rules: (() => {
+      if (localizedRulesValue) {
+        return localizedRulesValue
+      }
+      return event.rules || undefined
+    })(),
     series_slug: event.series_slug ?? null,
     series_recurrence: event.series_recurrence ?? null,
     sports_event_id: event.sports?.sports_event_id ?? null,
@@ -1115,6 +1255,8 @@ function eventResource(
     sports_start_time: event.sports?.sports_start_time?.toISOString() ?? null,
     sports_event_week: toOptionalNumber(event.sports?.sports_event_week),
     sports_score: event.sports?.sports_score ?? null,
+    sports_segment_scores: normalizeSportsSegmentScores(event.sports?.sports_segment_scores),
+    sports_segment_count: sportsSegmentCount,
     sports_period: event.sports?.sports_period ?? null,
     sports_elapsed: event.sports?.sports_elapsed ?? null,
     sports_live: event.sports?.sports_live ?? null,
@@ -1168,14 +1310,23 @@ async function buildEventResource(
         .filter((tagId): tagId is number => typeof tagId === 'number'),
     ),
   )
-  const [priceMap, lastTradeMap, localizedTagNamesById, localizedEventTitlesById, liveChartSeriesSlugs] =
-    await Promise.all([
-      fetchOutcomePrices(outcomeTokenIds),
-      fetchLastTradePrices(outcomeTokenIds),
-      getLocalizedTagNamesById(tagIds, locale),
-      getLocalizedEventTitlesById([eventResult.id], locale),
-      getEnabledLiveChartSeriesSlugs(),
-    ])
+  const [
+    priceMap,
+    lastTradeMap,
+    localizedTagNamesById,
+    localizedEventTitlesById,
+    localizedEventAdditionalContextsById,
+    localizedEventRulesById,
+    liveChartSeriesSlugs,
+  ] = await Promise.all([
+    fetchOutcomePrices(outcomeTokenIds),
+    fetchLastTradePrices(outcomeTokenIds),
+    getLocalizedTagNamesById(tagIds, locale),
+    getLocalizedEventTitlesById([eventResult.id], locale),
+    getLocalizedEventAdditionalContextsById([eventResult.id], locale),
+    getLocalizedEventRulesById([eventResult.id], locale),
+    getEnabledLiveChartSeriesSlugs(),
+  ])
   return eventResource(
     eventResult,
     userId,
@@ -1184,6 +1335,8 @@ async function buildEventResource(
     lastTradeMap,
     localizedTagNamesById,
     localizedEventTitlesById,
+    localizedEventAdditionalContextsById,
+    localizedEventRulesById,
     liveChartSeriesSlugs,
   )
 }
@@ -1711,14 +1864,23 @@ async function hydrateEventListResults({
   const eventIds = eventsData.map((event) => event.id)
   const sportsVolumeGroupKeyByEventId = await getSportsVolumeGroupKeysByEventId(eventIds)
   const sportsVolumeGroupKeysForAggregation = Array.from(new Set(sportsVolumeGroupKeyByEventId.values()))
-  const [priceMap, lastTradeMap, localizedTagNamesById, localizedEventTitlesById, groupedSportsVolumesByGroupKey] =
-    await Promise.all([
-      skipLivePricing ? Promise.resolve(new Map<string, OutcomePrices>()) : fetchOutcomePrices(tokensForPricing),
-      skipLivePricing ? Promise.resolve(new Map<string, number>()) : fetchLastTradePrices(tokensForPricing),
-      getLocalizedTagNamesById(tagIds, locale),
-      getLocalizedEventTitlesById(eventIds, locale),
-      getSportsAggregatedVolumesByGroupKey(sportsVolumeGroupKeysForAggregation),
-    ])
+  const [
+    priceMap,
+    lastTradeMap,
+    localizedTagNamesById,
+    localizedEventTitlesById,
+    localizedEventAdditionalContextsById,
+    localizedEventRulesById,
+    groupedSportsVolumesByGroupKey,
+  ] = await Promise.all([
+    skipLivePricing ? Promise.resolve(new Map<string, OutcomePrices>()) : fetchOutcomePrices(tokensForPricing),
+    skipLivePricing ? Promise.resolve(new Map<string, number>()) : fetchLastTradePrices(tokensForPricing),
+    getLocalizedTagNamesById(tagIds, locale),
+    getLocalizedEventTitlesById(eventIds, locale),
+    getLocalizedEventAdditionalContextsById(eventIds, locale),
+    getLocalizedEventRulesById(eventIds, locale),
+    getSportsAggregatedVolumesByGroupKey(sportsVolumeGroupKeysForAggregation),
+  ])
   const liveChartSeriesSlugs = await getEnabledLiveChartSeriesSlugs()
 
   return eventsData
@@ -1732,6 +1894,8 @@ async function hydrateEventListResults({
         lastTradeMap,
         localizedTagNamesById,
         localizedEventTitlesById,
+        localizedEventAdditionalContextsById,
+        localizedEventRulesById,
         liveChartSeriesSlugs,
       ),
     )
@@ -1754,6 +1918,42 @@ async function hydrateEventListResults({
 }
 
 export const EventRepository = {
+  async listAdminSeriesSlugs(creatorWalletAddresses: string[]): Promise<QueryResult<string[]>> {
+    const creators = Array.from(
+      new Set(
+        creatorWalletAddresses
+          .map((address) => address.trim().toLowerCase())
+          .filter((address) => /^0x[0-9a-f]{40}$/.test(address)),
+      ),
+    )
+
+    if (creators.length === 0) {
+      return { data: [], error: null }
+    }
+
+    const creatorSeriesConditions = creators.map((creator) => {
+      const walletTail = creator.slice(-12)
+      return and(
+        eq(sql<string>`LOWER(COALESCE(${events.creator}, ''))`, creator),
+        sql`LOWER(TRIM(COALESCE(${events.series_slug}, ''))) ~ ${`-[0-9]{10,}${walletTail}$`}`,
+      )
+    })
+
+    return runQuery(async () => {
+      const rows = await db
+        .select({ series_slug: events.series_slug })
+        .from(events)
+        .where(or(...creatorSeriesConditions))
+        .groupBy(events.series_slug)
+        .orderBy(asc(events.series_slug))
+
+      return {
+        data: rows.map((row) => row.series_slug?.trim() ?? '').filter(Boolean),
+        error: null,
+      }
+    })
+  },
+
   async listEvents({
     tag,
     mainTag = '',
@@ -2324,6 +2524,7 @@ export const EventRepository = {
     hideCrypto = false,
     activeOnly = false,
     attention,
+    resolutionReportCountsByCondition = new Map(),
   }: ListAdminEventsParams = {}): Promise<{
     data: AdminEventRow[]
     error: string | null
@@ -2337,6 +2538,7 @@ export const EventRepository = {
     const trimmedMainCategorySlug = mainCategorySlug?.trim()
     const trimmedCreator = creator?.trim()
     const trimmedSeriesSlug = seriesSlug?.trim()
+    const resolutionReportConditionIds = [...resolutionReportCountsByCondition.keys()]
 
     const searchCondition = normalizedSearch
       ? or(
@@ -2351,7 +2553,27 @@ export const EventRepository = {
         ? buildMissingSportsSourceCondition()
         : attention === 'past-due-unresolved'
           ? buildPastDueUnresolvedEventCondition()
-          : undefined
+          : attention === 'resolution-reports'
+            ? resolutionReportConditionIds.length > 0
+              ? and(
+                  eq(events.status, 'active'),
+                  exists(
+                    db
+                      .select({ id: markets.condition_id })
+                      .from(markets)
+                      .innerJoin(conditions, eq(conditions.id, markets.condition_id))
+                      .where(
+                        and(
+                          eq(markets.event_id, events.id),
+                          inArray(sql<string>`LOWER(${markets.condition_id})`, resolutionReportConditionIds),
+                          eq(markets.is_resolved, false),
+                          sql`COALESCE(${conditions.resolved}, false) = false`,
+                        ),
+                      ),
+                  ),
+                )
+              : sql`false`
+            : undefined
 
     let categorySlugs: string[] | null = null
     if (trimmedMainCategorySlug) {
@@ -2457,8 +2679,10 @@ export const EventRepository = {
         livestream_url: events.livestream_url,
         additional_context: events.additional_context,
         additional_context_updated_at: events.additional_context_updated_at,
+        rules: events.rules,
         series_slug: events.series_slug,
         series_recurrence: events.series_recurrence,
+        start_date: events.start_date,
         end_date: events.end_date,
         created_at: events.created_at,
         updated_at: events.updated_at,
@@ -2575,6 +2799,8 @@ export const EventRepository = {
       string,
       {
         sports_score: string | null
+        sports_segment_scores: SportsSegmentScore[] | null
+        sports_segment_count: number | null
         sports_live: boolean | null
         sports_ended: boolean | null
         sports_event_date: string | null
@@ -2597,8 +2823,41 @@ export const EventRepository = {
       { hasSportsTag: boolean; hasEsportsTag: boolean; hasGamesTag: boolean }
     >()
     const moneylineEventIds = new Set<string>()
+    const resolutionReportCountByEventId = new Map<string, number>()
+    const translationsByEventId = new Map<string, EventTranslationsMap>()
+    const rulesTranslationsByEventId = new Map<string, EventRulesTranslationsMap>()
 
     if (eventIds.length > 0) {
+      const translationRows = await db
+        .select({
+          event_id: event_translations.event_id,
+          locale: event_translations.locale,
+          title: event_translations.title,
+          source_hash: event_translations.source_hash,
+          rules: event_translations.rules,
+        })
+        .from(event_translations)
+        .where(inArray(event_translations.event_id, eventIds))
+
+      for (const row of translationRows) {
+        if (!NON_DEFAULT_LOCALES.includes(row.locale as NonDefaultLocale)) {
+          continue
+        }
+
+        const locale = row.locale as NonDefaultLocale
+        if (row.source_hash) {
+          const translations = translationsByEventId.get(row.event_id) ?? {}
+          translations[locale] = row.title
+          translationsByEventId.set(row.event_id, translations)
+        }
+
+        if (typeof row.rules === 'string' && row.rules.trim()) {
+          const rulesTranslations = rulesTranslationsByEventId.get(row.event_id) ?? {}
+          rulesTranslations[locale] = row.rules
+          rulesTranslationsByEventId.set(row.event_id, rulesTranslations)
+        }
+      }
+
       const volumeRows = await db
         .select({
           event_id: markets.event_id,
@@ -2616,10 +2875,40 @@ export const EventRepository = {
         })
       }
 
+      const resolutionReportRows = resolutionReportConditionIds.length
+        ? await db
+            .select({
+              event_id: markets.event_id,
+              condition_id: markets.condition_id,
+            })
+            .from(markets)
+            .innerJoin(conditions, eq(conditions.id, markets.condition_id))
+            .innerJoin(events, eq(events.id, markets.event_id))
+            .where(
+              and(
+                inArray(markets.event_id, eventIds),
+                inArray(sql<string>`LOWER(${markets.condition_id})`, resolutionReportConditionIds),
+                eq(events.status, 'active'),
+                eq(markets.is_resolved, false),
+                sql`COALESCE(${conditions.resolved}, false) = false`,
+              ),
+            )
+        : []
+
+      for (const row of resolutionReportRows) {
+        const countForCondition = resolutionReportCountsByCondition.get(row.condition_id.toLowerCase()) ?? 0
+        resolutionReportCountByEventId.set(
+          row.event_id,
+          (resolutionReportCountByEventId.get(row.event_id) ?? 0) + countForCondition,
+        )
+      }
+
       const sportsRows = await db
         .select({
           event_id: event_sports.event_id,
           sports_score: event_sports.sports_score,
+          sports_segment_scores: event_sports.sports_segment_scores,
+          sports_source_payload: event_sports.sports_source_payload,
           sports_live: event_sports.sports_live,
           sports_ended: event_sports.sports_ended,
           sports_event_date: event_sports.sports_event_date,
@@ -2642,6 +2931,8 @@ export const EventRepository = {
       for (const row of sportsRows) {
         sportsByEventId.set(row.event_id, {
           sports_score: row.sports_score ?? null,
+          sports_segment_scores: normalizeSportsSegmentScores(row.sports_segment_scores),
+          sports_segment_count: resolveSportsSourceSegmentCount(row.sports_source_payload),
           sports_live: row.sports_live ?? null,
           sports_ended: row.sports_ended ?? null,
           sports_event_date: row.sports_event_date ?? null,
@@ -2729,6 +3020,11 @@ export const EventRepository = {
     const formattedRows: AdminEventRow[] = rows.map((row) => {
       const createdAt = row.created_at instanceof Date ? row.created_at : new Date(row.created_at)
       const updatedAt = row.updated_at instanceof Date ? row.updated_at : new Date(row.updated_at)
+      const startDate = row.start_date
+        ? row.start_date instanceof Date
+          ? row.start_date
+          : new Date(row.start_date)
+        : null
       const endDate = row.end_date ? (row.end_date instanceof Date ? row.end_date : new Date(row.end_date)) : null
       const volumeData = volumeByEventId.get(row.id)
       const sportsData = sportsByEventId.get(row.id)
@@ -2743,12 +3039,18 @@ export const EventRepository = {
         livestream_url: row.livestream_url ?? null,
         additional_context: row.additional_context ?? null,
         additional_context_updated_at: row.additional_context_updated_at?.toISOString?.() ?? null,
+        rules: row.rules ?? null,
         series_slug: row.series_slug ?? null,
         series_recurrence: row.series_recurrence ?? null,
+        start_date: startDate && !Number.isNaN(startDate.getTime()) ? startDate.toISOString() : null,
         volume: volumeData?.volume ?? 0,
         volume_24h: volumeData?.volume_24h ?? 0,
         is_hidden: Boolean(row.is_hidden),
+        translations: translationsByEventId.get(row.id) ?? {},
+        rules_translations: rulesTranslationsByEventId.get(row.id) ?? {},
         sports_score: sportsData?.sports_score ?? null,
+        sports_segment_scores: sportsData?.sports_segment_scores ?? null,
+        sports_segment_count: sportsData?.sports_segment_count ?? null,
         sports_live: sportsData?.sports_live ?? null,
         sports_ended: sportsData?.sports_ended ?? null,
         sports_event_date: sportsData?.sports_event_date ?? null,
@@ -2770,6 +3072,7 @@ export const EventRepository = {
           sportsTagState?.hasGamesTag &&
           moneylineEventIds.has(row.id),
         ),
+        resolution_report_count: resolutionReportCountByEventId.get(row.id) ?? 0,
         end_date: endDate && !Number.isNaN(endDate.getTime()) ? endDate.toISOString() : null,
         created_at: Number.isNaN(createdAt.getTime()) ? new Date().toISOString() : createdAt.toISOString(),
         updated_at: Number.isNaN(updatedAt.getTime()) ? new Date().toISOString() : updatedAt.toISOString(),
@@ -2819,6 +3122,231 @@ export const EventRepository = {
         error: null,
       }
     })
+  },
+
+  async updateEventTranslationsById(
+    eventId: string,
+    translations: EventTranslationsMap,
+  ): Promise<{
+    data: { slug: string; translations: EventTranslationsMap } | null
+    error: string | null
+  }> {
+    const normalizedEntries = NON_DEFAULT_LOCALES.map((locale) => {
+      const rawValue = translations[locale]
+      const value = typeof rawValue === 'string' ? rawValue.trim() : ''
+      return { locale, value }
+    })
+
+    const { data: eventRecord, error: eventCheckError } = await runQuery(async () => {
+      const result = await db
+        .select({ id: events.id, slug: events.slug, title: events.title })
+        .from(events)
+        .where(eq(events.id, eventId))
+        .limit(1)
+
+      return { data: result[0] ?? null, error: null }
+    })
+
+    if (eventCheckError || !eventRecord) {
+      return { data: null, error: eventCheckError ?? 'Event not found.' }
+    }
+
+    const sourceHash = createHash('sha256').update(eventRecord.title).digest('hex')
+    const localesToDelete = normalizedEntries.filter((entry) => entry.value.length === 0).map((entry) => entry.locale)
+    const rowsToUpsert = normalizedEntries
+      .filter((entry) => entry.value.length > 0)
+      .map((entry) => ({
+        event_id: eventId,
+        locale: entry.locale,
+        title: entry.value,
+        source_hash: sourceHash,
+        is_manual: true,
+        updated_at: new Date(),
+      }))
+
+    const { error } = await runQuery(async () => {
+      await db.transaction(async (tx) => {
+        if (localesToDelete.length > 0) {
+          await tx
+            .update(event_translations)
+            .set({
+              title: eventRecord.title,
+              source_hash: '',
+              is_manual: false,
+              updated_at: new Date(),
+            })
+            .where(and(eq(event_translations.event_id, eventId), inArray(event_translations.locale, localesToDelete)))
+
+          await tx
+            .delete(event_translations)
+            .where(
+              and(
+                eq(event_translations.event_id, eventId),
+                inArray(event_translations.locale, localesToDelete),
+                sql`NULLIF(TRIM(COALESCE(${event_translations.additional_context}, '')), '') IS NULL`,
+                sql`NULLIF(TRIM(COALESCE(${event_translations.rules}, '')), '') IS NULL`,
+              ),
+            )
+        }
+
+        if (rowsToUpsert.length > 0) {
+          await tx
+            .insert(event_translations)
+            .values(rowsToUpsert)
+            .onConflictDoUpdate({
+              target: [event_translations.event_id, event_translations.locale],
+              set: {
+                title: sql`EXCLUDED.title`,
+                source_hash: sql`EXCLUDED.source_hash`,
+                is_manual: true,
+                updated_at: sql`EXCLUDED.updated_at`,
+              },
+            })
+        }
+      })
+
+      return { data: true, error: null }
+    })
+
+    if (error) {
+      return { data: null, error }
+    }
+
+    const { data: translationRows, error: translationError } = await runQuery(async () => {
+      const result = await db
+        .select({
+          locale: event_translations.locale,
+          title: event_translations.title,
+          source_hash: event_translations.source_hash,
+        })
+        .from(event_translations)
+        .where(eq(event_translations.event_id, eventId))
+
+      return { data: result, error: null }
+    })
+
+    if (translationError || !translationRows) {
+      return { data: null, error: translationError ?? 'Failed to load event translations.' }
+    }
+
+    const nextTranslations: EventTranslationsMap = {}
+    for (const row of translationRows) {
+      if (NON_DEFAULT_LOCALES.includes(row.locale as NonDefaultLocale) && row.source_hash) {
+        nextTranslations[row.locale as NonDefaultLocale] = row.title
+      }
+    }
+
+    return {
+      data: {
+        slug: eventRecord.slug,
+        translations: nextTranslations,
+      },
+      error: null,
+    }
+  },
+
+  async updateEventRulesTranslationsById(
+    eventId: string,
+    translations: EventRulesTranslationsMap,
+  ): Promise<{
+    data: { slug: string; rulesTranslations: EventRulesTranslationsMap } | null
+    error: string | null
+  }> {
+    const normalizedEntries = NON_DEFAULT_LOCALES.map((locale) => ({
+      locale,
+      value: typeof translations[locale] === 'string' ? translations[locale]!.trim() : '',
+    }))
+
+    const result = await runQuery(async () => {
+      await db.transaction(async (tx) => {
+        const eventRows = await tx
+          .select({ id: events.id, slug: events.slug, title: events.title, rules: events.rules })
+          .from(events)
+          .where(eq(events.id, eventId))
+          .limit(1)
+        const event = eventRows[0]
+        if (!event) {
+          throw new Error('Event not found.')
+        }
+
+        const now = new Date()
+        const sourceHash = createHash('sha256')
+          .update(event.rules?.trim() ?? '')
+          .digest('hex')
+
+        for (const entry of normalizedEntries) {
+          if (!entry.value) {
+            await tx
+              .update(event_translations)
+              .set({
+                rules: null,
+                rules_source_hash: null,
+                rules_is_manual: false,
+                updated_at: now,
+              })
+              .where(and(eq(event_translations.event_id, eventId), eq(event_translations.locale, entry.locale)))
+            continue
+          }
+
+          await tx
+            .insert(event_translations)
+            .values({
+              event_id: eventId,
+              locale: entry.locale,
+              title: event.title,
+              source_hash: '',
+              is_manual: false,
+              rules: entry.value,
+              rules_source_hash: sourceHash,
+              rules_is_manual: true,
+              updated_at: now,
+            })
+            .onConflictDoUpdate({
+              target: [event_translations.event_id, event_translations.locale],
+              set: {
+                rules: sql`EXCLUDED.rules`,
+                rules_source_hash: sql`EXCLUDED.rules_source_hash`,
+                rules_is_manual: true,
+                updated_at: sql`EXCLUDED.updated_at`,
+              },
+            })
+        }
+      })
+
+      return { data: true, error: null }
+    })
+
+    if (result.error) {
+      return { data: null, error: result.error }
+    }
+
+    const { data: eventRow, error: eventError } = await runQuery(async () => {
+      const rows = await db.select({ slug: events.slug }).from(events).where(eq(events.id, eventId)).limit(1)
+      return { data: rows[0] ?? null, error: null }
+    })
+    if (eventError || !eventRow) {
+      return { data: null, error: eventError ?? 'Event not found.' }
+    }
+
+    const { data: rows, error: rowsError } = await runQuery(async () => {
+      const values = await db
+        .select({ locale: event_translations.locale, rules: event_translations.rules })
+        .from(event_translations)
+        .where(eq(event_translations.event_id, eventId))
+      return { data: values, error: null }
+    })
+    if (rowsError || !rows) {
+      return { data: null, error: rowsError ?? 'Failed to load event Rules translations.' }
+    }
+
+    const rulesTranslations: EventRulesTranslationsMap = {}
+    for (const row of rows) {
+      if (NON_DEFAULT_LOCALES.includes(row.locale as NonDefaultLocale) && typeof row.rules === 'string') {
+        rulesTranslations[row.locale as NonDefaultLocale] = row.rules
+      }
+    }
+
+    return { data: { slug: eventRow.slug, rulesTranslations }, error: null }
   },
 
   async setEventLivestreamUrl(
@@ -2906,16 +3434,101 @@ export const EventRepository = {
     })
   },
 
+  async updateEventAdditionalContextTranslationsById(
+    eventId: string,
+    sourceContext: string | null,
+    translations: EventAdditionalContextTranslationsMap,
+  ): Promise<{ data: { updated: number } | null; error: string | null }> {
+    const normalizedContext = sourceContext?.trim() || null
+    const normalizedEntries = NON_DEFAULT_LOCALES.map((locale) => ({
+      locale,
+      value: typeof translations[locale] === 'string' ? translations[locale]!.trim() : '',
+    })).filter((entry) => entry.value.length > 0)
+
+    return runQuery(async () => {
+      await db.transaction(async (tx) => {
+        const eventRecord = await tx
+          .select({ id: events.id, title: events.title })
+          .from(events)
+          .where(eq(events.id, eventId))
+          .limit(1)
+
+        const event = eventRecord[0]
+        if (!event) {
+          throw new Error('Event not found.')
+        }
+
+        const now = new Date()
+        const localesToReplace = normalizedContext
+          ? normalizedEntries.map((entry) => entry.locale)
+          : NON_DEFAULT_LOCALES
+
+        if (localesToReplace.length > 0) {
+          await tx
+            .update(event_translations)
+            .set({
+              additional_context: null,
+              additional_context_source_hash: null,
+              additional_context_is_manual: false,
+              updated_at: now,
+            })
+            .where(
+              and(
+                eq(event_translations.event_id, eventId),
+                inArray(event_translations.locale, localesToReplace),
+                eq(event_translations.additional_context_is_manual, false),
+              ),
+            )
+        }
+
+        if (!normalizedContext || normalizedEntries.length === 0) {
+          return
+        }
+
+        const sourceHash = createHash('sha256').update(normalizedContext).digest('hex')
+        for (const entry of normalizedEntries) {
+          await tx
+            .insert(event_translations)
+            .values({
+              event_id: eventId,
+              locale: entry.locale,
+              title: event.title,
+              source_hash: '',
+              is_manual: false,
+              additional_context: entry.value,
+              additional_context_source_hash: sourceHash,
+              additional_context_is_manual: false,
+              updated_at: now,
+            })
+            .onConflictDoUpdate({
+              target: [event_translations.event_id, event_translations.locale],
+              set: {
+                additional_context: sql`EXCLUDED.additional_context`,
+                additional_context_source_hash: sql`EXCLUDED.additional_context_source_hash`,
+                additional_context_is_manual: false,
+                updated_at: sql`EXCLUDED.updated_at`,
+              },
+              setWhere: eq(event_translations.additional_context_is_manual, false),
+            })
+        }
+      })
+
+      return { data: { updated: normalizedEntries.length }, error: null }
+    })
+  },
+
   async setEventSportsFinalState(
     eventId: string,
     {
       sportsEnded,
       sportsScore,
+      sportsSegmentScores,
       sportsSource,
       livestreamUrl,
     }: {
       sportsEnded: boolean
       sportsScore: string | null
+      sportsSegmentScores?: SportsSegmentScore[] | null
       sportsSource?: {
         provider: string | null
         eventId: string | null
@@ -2969,6 +3582,10 @@ export const EventRepository = {
           sports_ended: sportsEnded,
           sports_score: sportsScore,
           updated_at: now,
+        }
+
+        if (sportsSegmentScores !== undefined) {
+          sportsPayload.sports_segment_scores = sportsSegmentScores
         }
 
         if (sportsEnded) {
@@ -3416,6 +4033,61 @@ export const EventRepository = {
     })
   },
 
+  async getEventsBySlugs(
+    slugs: string[],
+    userId: string = '',
+    locale: SupportedLocale = DEFAULT_LOCALE,
+  ): Promise<QueryResult<Event[]>> {
+    return runQuery(async () => {
+      const normalizedSlugs = Array.from(new Set(slugs.map((slug) => slug.trim()).filter(Boolean)))
+      if (normalizedSlugs.length === 0) {
+        return { data: [], error: null }
+      }
+
+      const eventResults = (await db.query.events.findMany({
+        where: and(inArray(events.slug, normalizedSlugs), eq(events.is_hidden, false)),
+        with: {
+          markets: {
+            with: {
+              sports: true,
+              condition: {
+                with: { outcomes: true },
+              },
+            },
+          },
+          eventTags: {
+            with: { tag: true },
+          },
+          sports: true,
+          ...(userId && {
+            bookmarks: {
+              where: eq(bookmarks.user_id, userId),
+            },
+          }),
+        },
+      })) as DrizzleEventResult[]
+
+      if (eventResults.length === 0) {
+        return { data: [], error: null }
+      }
+
+      const hydratedEventResults = await Promise.all(eventResults.map(hydrateSportsAuxiliaryEventContext))
+      const sportsSlugResolver = await getSportsSlugResolverFromDb()
+      const eventsWithMarkets = await hydrateEventListResults({
+        eventsData: hydratedEventResults,
+        locale,
+        sportsSlugResolver,
+        userId,
+      })
+      const eventsBySlug = new Map(eventsWithMarkets.map((event) => [event.slug, event]))
+
+      return {
+        data: normalizedSlugs.map((slug) => eventsBySlug.get(slug)).filter((event): event is Event => Boolean(event)),
+        error: null,
+      }
+    })
+  },
+
   async getSportsEventGroupBySlug(
     slug: string,
     userId: string = '',
@@ -3492,14 +4164,23 @@ export const EventRepository = {
         ),
       )
       const eventIds = hydratedGroupedEventsData.map((event) => event.id)
-      const [priceMap, lastTradeMap, localizedTagNamesById, localizedEventTitlesById, groupedVolumesByGroupKey] =
-        await Promise.all([
-          fetchOutcomePrices(tokensForPricing),
-          fetchLastTradePrices(tokensForPricing),
-          getLocalizedTagNamesById(tagIds, locale),
-          getLocalizedEventTitlesById(eventIds, locale),
-          getSportsAggregatedVolumesByGroupKey([baseGroupKey]),
-        ])
+      const [
+        priceMap,
+        lastTradeMap,
+        localizedTagNamesById,
+        localizedEventTitlesById,
+        localizedEventAdditionalContextsById,
+        localizedEventRulesById,
+        groupedVolumesByGroupKey,
+      ] = await Promise.all([
+        fetchOutcomePrices(tokensForPricing),
+        fetchLastTradePrices(tokensForPricing),
+        getLocalizedTagNamesById(tagIds, locale),
+        getLocalizedEventTitlesById(eventIds, locale),
+        getLocalizedEventAdditionalContextsById(eventIds, locale),
+        getLocalizedEventRulesById(eventIds, locale),
+        getSportsAggregatedVolumesByGroupKey([baseGroupKey]),
+      ])
       const liveChartSeriesSlugs = await getEnabledLiveChartSeriesSlugs()
 
       const groupedVolume = groupedVolumesByGroupKey.get(baseGroupKey)
@@ -3514,6 +4195,8 @@ export const EventRepository = {
             lastTradeMap,
             localizedTagNamesById,
             localizedEventTitlesById,
+            localizedEventAdditionalContextsById,
+            localizedEventRulesById,
             liveChartSeriesSlugs,
           ),
         )
@@ -3906,7 +4589,7 @@ export const EventRepository = {
         const chance = displayPrice != null ? displayPrice * 100 : null
         const normalizedSeriesSlug = row.series_slug?.trim().toLowerCase() ?? null
         const localizedTitle = localizedEventTitlesById.get(row.id) ?? String(row.title)
-        const compactCadenceTitle = resolveCryptoCadenceRelatedEventTitle(
+        const compactCadenceTitle = resolveCryptoCadenceEventTitle(
           {
             title: localizedTitle,
             end_date: row.end_date,

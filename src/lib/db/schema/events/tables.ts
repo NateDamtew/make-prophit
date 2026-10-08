@@ -18,37 +18,36 @@ import {
   unique,
 } from 'drizzle-orm/pg-core'
 
+import type { SportsSegmentScore } from '@/types'
+
 import { users } from '../auth/tables'
 
-export const conditions = pgTable(
-  'conditions',
-  {
-    id: text().primaryKey(),
-    oracle: text().notNull(),
-    question_id: text().notNull(),
-    resolved: boolean().default(false),
-    metadata_hash: text(),
-    creator: char('creator', { length: 42 }),
-    uma_request_tx_hash: char('uma_request_tx_hash', { length: 66 }),
-    uma_request_log_index: integer('uma_request_log_index'),
-    uma_oracle_address: char('uma_oracle_address', { length: 42 }),
-    mirror_uma_request_tx_hash: char('mirror_uma_request_tx_hash', { length: 66 }),
-    mirror_uma_request_log_index: integer('mirror_uma_request_log_index'),
-    mirror_uma_oracle_address: char('mirror_uma_oracle_address', { length: 42 }),
-    resolution_status: text(),
-    resolution_flagged: boolean(),
-    resolution_paused: boolean(),
-    resolution_last_update: timestamp({ withTimezone: true }),
-    resolution_price: numeric({ precision: 20, scale: 6 }),
-    resolution_was_disputed: boolean(),
-    resolution_approved: boolean(),
-    resolution_liveness_seconds: integer(),
-    resolution_deadline_at: timestamp({ withTimezone: true }),
-    community_governed: boolean().notNull().default(false),
-    created_at: timestamp({ withTimezone: true }).defaultNow().notNull(),
-    updated_at: timestamp({ withTimezone: true }).defaultNow().notNull(),
-  },
-)
+export const conditions = pgTable('conditions', {
+  id: text().primaryKey(),
+  oracle: text().notNull(),
+  question_id: text().notNull(),
+  resolved: boolean().default(false),
+  metadata_hash: text(),
+  creator: char('creator', { length: 42 }),
+  uma_request_tx_hash: char('uma_request_tx_hash', { length: 66 }),
+  uma_request_log_index: integer('uma_request_log_index'),
+  uma_oracle_address: char('uma_oracle_address', { length: 42 }),
+  mirror_uma_request_tx_hash: char('mirror_uma_request_tx_hash', { length: 66 }),
+  mirror_uma_request_log_index: integer('mirror_uma_request_log_index'),
+  mirror_uma_oracle_address: char('mirror_uma_oracle_address', { length: 42 }),
+  resolution_status: text(),
+  resolution_flagged: boolean(),
+  resolution_paused: boolean(),
+  resolution_last_update: timestamp({ withTimezone: true }),
+  resolution_price: numeric({ precision: 20, scale: 6 }),
+  resolution_was_disputed: boolean(),
+  resolution_approved: boolean(),
+  resolution_liveness_seconds: integer(),
+  resolution_deadline_at: timestamp({ withTimezone: true }),
+  community_governed: boolean().notNull().default(false),
+  created_at: timestamp({ withTimezone: true }).defaultNow().notNull(),
+  updated_at: timestamp({ withTimezone: true }).defaultNow().notNull(),
+})
 
 export const conditions_audit = pgTable('conditions_audit', {
   id: char({ length: 26 })
@@ -158,6 +157,12 @@ export const event_translations = pgTable(
     title: text().notNull(),
     source_hash: text().notNull(),
     is_manual: boolean().notNull().default(false),
+    additional_context: text(),
+    additional_context_source_hash: text(),
+    additional_context_is_manual: boolean().notNull().default(false),
+    rules: text(),
+    rules_source_hash: text(),
+    rules_is_manual: boolean().notNull().default(false),
     created_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
     updated_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
@@ -242,38 +247,44 @@ export const jobs = pgTable(
   }),
 )
 
-export const markets = pgTable('markets', {
-  condition_id: text()
-    .primaryKey()
-    .references(() => conditions.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
-  polymarket_condition_id: text(),
-  event_id: char({ length: 26 })
-    .notNull()
-    .references(() => events.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
-  title: text().notNull(),
-  slug: text().notNull(),
-  short_title: text(),
-  question: text(),
-  market_rules: text(),
-  resolution_source: text(),
-  resolution_source_url: text(),
-  resolver: char({ length: 42 }),
-  neg_risk: boolean().default(false).notNull(),
-  neg_risk_other: boolean().default(false).notNull(),
-  neg_risk_market_id: char({ length: 66 }),
-  neg_risk_request_id: char({ length: 66 }),
-  metadata_version: text(),
-  metadata_schema: text(),
-  icon_url: text(),
-  is_active: boolean().default(true).notNull(),
-  is_resolved: boolean().default(false).notNull(),
-  metadata: text(),
-  volume_24h: numeric({ precision: 20, scale: 6 }).default('0').notNull(),
-  volume: numeric({ precision: 20, scale: 6 }).default('0').notNull(),
-  end_time: timestamp({ withTimezone: true }),
-  created_at: timestamp({ withTimezone: true }).defaultNow().notNull(),
-  updated_at: timestamp({ withTimezone: true }).defaultNow().notNull(),
-})
+export const markets = pgTable(
+  'markets',
+  {
+    condition_id: text()
+      .primaryKey()
+      .references(() => conditions.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
+    polymarket_condition_id: text(),
+    event_id: char({ length: 26 })
+      .notNull()
+      .references(() => events.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
+    title: text().notNull(),
+    slug: text().notNull(),
+    short_title: text(),
+    question: text(),
+    market_rules: text(),
+    resolution_source: text(),
+    resolution_source_url: text(),
+    resolver: char({ length: 42 }),
+    neg_risk: boolean().default(false).notNull(),
+    neg_risk_other: boolean().default(false).notNull(),
+    neg_risk_market_id: char({ length: 66 }),
+    neg_risk_request_id: char({ length: 66 }),
+    metadata_version: text(),
+    metadata_schema: text(),
+    icon_url: text(),
+    is_active: boolean().default(true).notNull(),
+    is_resolved: boolean().default(false).notNull(),
+    metadata: text(),
+    volume_24h: numeric({ precision: 20, scale: 6 }).default('0').notNull(),
+    volume: numeric({ precision: 20, scale: 6 }).default('0').notNull(),
+    end_time: timestamp({ withTimezone: true }),
+    created_at: timestamp({ withTimezone: true }).defaultNow().notNull(),
+    updated_at: timestamp({ withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    conditionIdLowerIdx: index('idx_markets_condition_id_lower').on(sql`LOWER(${table.condition_id})`),
+  }),
+)
 
 export const market_context_cache = pgTable(
   'market_context_cache',
@@ -402,6 +413,7 @@ export const event_sports = pgTable(
     sports_league_slug: text(),
     sports_event_week: integer(),
     sports_score: text(),
+    sports_segment_scores: jsonb().$type<SportsSegmentScore[] | null>(),
     sports_period: text(),
     sports_elapsed: text(),
     sports_live: boolean(),

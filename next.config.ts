@@ -37,8 +37,9 @@ const config: NextConfig = {
   ],
   reactStrictMode: false,
   reactCompiler: true,
-  staticPageGenerationTimeout: 180,
+  compress: false,
   experimental: {
+    inlineCss: true,
     serverActions: {
       bodySizeLimit: '2mb',
     },
@@ -55,7 +56,6 @@ const config: NextConfig = {
     //     type safety is enforced at the pre-push gate instead.
     // Re-test both if the build container ever gets more memory.
     turbopackFileSystemCacheForBuild: false,
-    inlineCss: true,
   },
   images: {
     unoptimized: process.env.DISABLE_IMAGE_OPTIMIZATION === 'true',
@@ -88,6 +88,30 @@ const config: NextConfig = {
             value: "default-src 'self'; script-src 'self'",
           },
         ],
+      },
+    ]
+  },
+  async redirects() {
+    return [
+      {
+        source: '/docs/my-account/affiliate-program',
+        destination: '/docs/my-account/rewards',
+        permanent: true,
+      },
+      {
+        source: '/docs/my-account/affiliate-program.md',
+        destination: '/docs/my-account/rewards.md',
+        permanent: true,
+      },
+      {
+        source: '/:locale/docs/my-account/affiliate-program',
+        destination: '/:locale/docs/my-account/rewards',
+        permanent: true,
+      },
+      {
+        source: '/:locale/docs/my-account/affiliate-program.md',
+        destination: '/:locale/docs/my-account/rewards.md',
+        permanent: true,
       },
     ]
   },

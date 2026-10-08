@@ -29,7 +29,10 @@ interface EventOrderPanelOrderInputProps {
   availableNoTokenShares: number
   outcomeIndex: typeof OUTCOME_INDEX.YES | typeof OUTCOME_INDEX.NO | undefined
   balance: ReturnType<typeof useBalance>['balance']
+  maxBuyAmount?: number
   isBalanceLoading: boolean
+  isBalanceError: boolean
+  onRetryBalance: () => void
   inputRef: RefObject<HTMLInputElement | null>
   shouldShakeInput: boolean
   shouldShowEarnings: boolean
@@ -45,9 +48,9 @@ interface EventOrderPanelOrderInputProps {
     changePct: number
     multiplier: number
   }
-  outcomeTokenId: string | null
-  operatorFeeBps: number
-  feeBaseAmount: number
+  totalFee: number | null
+  kuestFee: number | null
+  operatorFee: number | null
   shouldShowResolvedMarketMinimumWarning: boolean
   shouldShowResolvedNoLiquidityWarning: boolean
   showInsufficientSharesWarning: boolean
@@ -58,6 +61,7 @@ interface EventOrderPanelOrderInputProps {
   limitExpirationOption: LimitExpirationOption
   limitExpirationTimestamp: number | null
   limitMatchingShares: number | null
+  liquidityRewardMinShares?: number
   shouldShowLimitMinimumWarning: boolean
   shouldShakeLimitShares: boolean
   limitSharesRef: RefObject<HTMLInputElement | null>
@@ -87,7 +91,10 @@ export default function EventOrderPanelOrderInput({
   availableNoTokenShares,
   outcomeIndex,
   balance,
+  maxBuyAmount,
   isBalanceLoading,
+  isBalanceError,
+  onRetryBalance,
   inputRef,
   shouldShakeInput,
   shouldShowEarnings,
@@ -97,9 +104,9 @@ export default function EventOrderPanelOrderInput({
   avgSellPriceCentsValue,
   avgBuyPriceCentsValue,
   buyPayoutSummary,
-  outcomeTokenId,
-  operatorFeeBps,
-  feeBaseAmount,
+  totalFee,
+  kuestFee,
+  operatorFee,
   shouldShowResolvedMarketMinimumWarning,
   shouldShowResolvedNoLiquidityWarning,
   showInsufficientSharesWarning,
@@ -110,6 +117,7 @@ export default function EventOrderPanelOrderInput({
   limitExpirationOption,
   limitExpirationTimestamp,
   limitMatchingShares,
+  liquidityRewardMinShares,
   shouldShowLimitMinimumWarning,
   shouldShakeLimitShares,
   limitSharesRef,
@@ -148,6 +156,7 @@ export default function EventOrderPanelOrderInput({
             limitExpirationTimestamp={limitExpirationTimestamp}
             isLimitOrder={isLimitOrder}
             matchingShares={limitMatchingShares}
+            liquidityRewardMinShares={liquidityRewardMinShares}
             availableShares={availableShares}
             showLimitMinimumWarning={shouldShowLimitMinimumWarning}
             shouldShakeShares={shouldShakeLimitShares}
@@ -177,6 +186,7 @@ export default function EventOrderPanelOrderInput({
             amountNumber={amountNumber}
             availableShares={availableShares}
             balance={balance}
+            maxBuyAmount={maxBuyAmount}
             isBalanceLoading={isBalanceLoading}
             inputRef={inputRef}
             onAmountChange={onAmountChange}
@@ -203,9 +213,9 @@ export default function EventOrderPanelOrderInput({
               buyProfit={buyPayoutSummary.profit}
               buyChangePct={buyPayoutSummary.changePct}
               buyMultiplier={buyPayoutSummary.multiplier}
-              outcomeTokenId={outcomeTokenId}
-              operatorFeeBps={operatorFeeBps}
-              feeBaseAmount={feeBaseAmount}
+              totalFee={totalFee}
+              kuestFee={kuestFee}
+              operatorFee={operatorFee}
             />
           </div>
           {shouldShowResolvedMarketMinimumWarning && (
@@ -246,10 +256,20 @@ export default function EventOrderPanelOrderInput({
         </div>
       )}
 
+      {isBalanceError && side === ORDER_SIDE.BUY && (
+        <div className="mt-2 mb-3 flex items-center justify-center gap-2 text-center text-sm font-semibold text-orange-500">
+          <TriangleAlertIcon className="size-4 shrink-0" aria-hidden />
+          <span>{t('Could not validate USDC balance right now.')}</span>
+          <button type="button" className="underline underline-offset-2" onClick={onRetryBalance}>
+            {t('Retry')}
+          </button>
+        </div>
+      )}
+
       <EventOrderPanelSubmitButton
         type={!isInteractiveWalletReady || shouldShowDepositCta ? 'button' : 'submit'}
         isLoading={isLoading}
-        isDisabled={isLoading}
+        isDisabled={isLoading || (side === ORDER_SIDE.BUY && isBalanceError)}
         selectedAccent={selectedSubmitAccent}
         styleVariant={outcomeButtonStyleVariant}
         onClick={onSubmitButtonClick}

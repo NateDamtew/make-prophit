@@ -23,6 +23,7 @@ import {
 import {
   getTradingFlowErrorPreview,
   mapApproveTokensError,
+  mapAutoRedeemError,
   readTradingFlowErrorResponse,
 } from '@/lib/trading-flow-errors'
 
@@ -84,6 +85,15 @@ function friendlyWalletSubmitError(rawError: string | null | undefined, fallback
     default:
       return fallback
   }
+}
+
+function mapDepositWalletApprovalError(
+  rawError: string | null | undefined,
+  metadata: string | undefined,
+  options: { status?: number | null; contentType?: string | null; forceFallback?: boolean } = {},
+) {
+  const mapError = metadata === 'auto_redeem_approval' ? mapAutoRedeemError : mapApproveTokensError
+  return mapError(rawError, options)
 }
 
 interface RelayerTransactionState {
@@ -224,7 +234,7 @@ export async function getDepositWalletNonceAction(metadata?: string): Promise<Re
         durationMs,
         status: response.status,
       })
-      const message = mapApproveTokensError(rawError, {
+      const message = mapDepositWalletApprovalError(rawError, metadata, {
         status: response.status,
         contentType,
         forceFallback: response.ok,
@@ -293,7 +303,7 @@ export async function submitDepositWalletTransactionAction(
   const useUserAuth = !!auth?.relayer
   const usePlatformAuth = !useUserAuth && !!(platformKey && platformSecret && platformPassphrase && platformAddress)
 
-  const path = (useUserAuth || usePlatformAuth) ? '/submit' : '/submit/wallet'
+  const path = useUserAuth || usePlatformAuth ? '/submit' : '/submit/wallet'
   const body = JSON.stringify(request)
   const startedAt = Date.now()
 
@@ -302,8 +312,7 @@ export async function submitDepositWalletTransactionAction(
   if (useUserAuth) {
     timestamp = Math.floor(Date.now() / 1000)
     signature = buildClobHmacSignature(auth!.relayer!.secret, timestamp, 'POST', path, body)
-  }
-  else if (usePlatformAuth) {
+  } else if (usePlatformAuth) {
     timestamp = Math.floor(Date.now() / 1000)
     signature = buildClobHmacSignature(platformSecret!, timestamp, 'POST', path, body)
   }
@@ -319,8 +328,7 @@ export async function submitDepositWalletTransactionAction(
       headers.KUEST_PASSPHRASE = auth!.relayer!.passphrase
       headers.KUEST_TIMESTAMP = timestamp.toString()
       headers.KUEST_SIGNATURE = signature
-    }
-    else if (usePlatformAuth && timestamp !== null && signature) {
+    } else if (usePlatformAuth && timestamp !== null && signature) {
       headers.KUEST_ADDRESS = platformAddress!
       headers.KUEST_API_KEY = platformKey!
       headers.KUEST_PASSPHRASE = platformPassphrase!
@@ -344,7 +352,7 @@ export async function submitDepositWalletTransactionAction(
         rawError: getTradingFlowErrorPreview(rawError),
         durationMs,
       })
-      const fallback = mapApproveTokensError(rawError, {
+      const fallback = mapDepositWalletApprovalError(rawError, request.metadata, {
         status: response.status,
         contentType,
         forceFallback: response.ok,

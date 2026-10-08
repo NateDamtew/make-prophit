@@ -1,6 +1,7 @@
 'use client'
 
 import { CheckIcon, ShareIcon } from 'lucide-react'
+import { useExtracted } from 'next-intl'
 
 import type { SportsGamesCard } from '@/app/[locale]/(platform)/sports/_utils/sports-games-data'
 
@@ -12,8 +13,9 @@ import { cn } from '@/lib/utils'
 import { useUser } from '@/stores/useUser'
 
 function SportsEventShareButton({ event }: { event: SportsGamesCard['event'] }) {
+  const t = useExtracted()
   const user = useUser()
-  const affiliateCode = user?.affiliate_code?.trim() ?? ''
+  const affiliateCode = user?.affiliate_code?.trim() || user?.username?.trim() || ''
   const { shareSuccess, setShareSuccess, maybeHandleDebugCopy } = useSportsEventShareButton(event)
 
   async function handleShare() {
@@ -41,7 +43,7 @@ function SportsEventShareButton({ event }: { event: SportsGamesCard['event'] }) 
       variant="ghost"
       size="icon"
       className={cn(headerIconButtonClass, 'size-auto p-0')}
-      aria-label="Copy event link"
+      aria-label={t('Copy event link')}
       onClick={(event) => {
         if (maybeHandleDebugCopy(event)) {
           return

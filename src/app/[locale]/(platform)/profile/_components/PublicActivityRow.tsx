@@ -1,6 +1,7 @@
 import type { Route } from 'next'
 
-import { CircleDollarSignIcon } from 'lucide-react'
+import { BadgeCheckIcon, CircleDollarSignIcon } from 'lucide-react'
+import { useExtracted } from 'next-intl'
 import { createElement } from 'react'
 
 import type { PublicActivityRowProps } from '@/app/[locale]/(platform)/profile/_types/PublicActivityTypes'
@@ -12,12 +13,15 @@ import {
   resolveVariant,
 } from '@/app/[locale]/(platform)/profile/_utils/PublicActivityUtils'
 import EventIconImage from '@/components/EventIconImage'
+import useLocalizedTimeAgo from '@/hooks/useLocalizedTimeAgo'
 import { Link } from '@/i18n/navigation'
 import { MICRO_UNIT } from '@/lib/constants'
-import { formatCurrency, formatTimeAgo } from '@/lib/formatters'
+import { formatCurrency } from '@/lib/formatters'
 import { cn } from '@/lib/utils'
 
 export default function PublicActivityRow({ activity }: PublicActivityRowProps) {
+  const t = useExtracted()
+  const { formatTimeAgo } = useLocalizedTimeAgo()
   const variant = resolveVariant(activity)
   const icon = activityIcon(variant)
   const sharesText = formatActivityShares(activity)
@@ -25,35 +29,73 @@ export default function PublicActivityRow({ activity }: PublicActivityRowProps) 
   const eventSlug = activity.market.event?.slug || activity.market.slug
   const marketSlug = activity.market.event?.slug ? activity.market.slug : null
   const eventHref = (marketSlug ? `/event/${eventSlug}/${marketSlug}` : `/event/${eventSlug}`) as Route
-  const outcomeText = activity.outcome?.text || 'Outcome'
+  const fallbackOutcomeLabel = t('Outcome')
+  const outcomeText = activity.outcome?.text || fallbackOutcomeLabel
   const outcomeIsYes = outcomeText.toLowerCase().includes('yes') || activity.outcome?.index === 0
   const outcomeColor = outcomeIsYes ? 'bg-yes/15 text-yes' : 'bg-no/15 text-no'
-  const showOutcomeBadge = (variant === 'buy' || variant === 'sell') && outcomeText !== 'Outcome'
+  const showOutcomeBadge = (variant === 'buy' || variant === 'sell') && outcomeText !== fallbackOutcomeLabel
   const imageUrl = activity.market.icon_url
     ? activity.market.icon_url.startsWith('http')
       ? activity.market.icon_url
       : `https://gateway.irys.xyz/${activity.market.icon_url}`
     : null
-  const isFundsFlow = variant === 'deposit' || variant === 'withdraw'
+  const isResolutionFlow = variant === 'resolution_bond' || variant === 'resolution_reward'
+  const isTradingReward = variant === 'liquidity_reward' || variant === 'maker_rebate'
+  const isFundsFlow = variant === 'deposit' || variant === 'withdraw' || isResolutionFlow || isTradingReward
   const valueNumber = Number(activity.total_value) / MICRO_UNIT
   const hasValue = Number.isFinite(valueNumber)
-  const isCreditVariant = variant === 'merge' || variant === 'redeem' || variant === 'deposit' || variant === 'sell'
-  const isDebitVariant = variant === 'withdraw' || variant === 'split' || variant === 'buy' || variant === 'convert'
+  const isCreditVariant =
+    variant === 'merge' ||
+    variant === 'redeem' ||
+    variant === 'deposit' ||
+    variant === 'resolution_reward' ||
+    variant === 'liquidity_reward' ||
+    variant === 'maker_rebate' ||
+    variant === 'sell'
+  const isDebitVariant =
+    variant === 'withdraw' ||
+    variant === 'resolution_bond' ||
+    variant === 'split' ||
+    variant === 'buy' ||
+    variant === 'convert'
   const isPositive = isCreditVariant || (!isDebitVariant && hasValue && valueNumber > 0)
   const isNegative = isDebitVariant || (!isCreditVariant && hasValue && valueNumber < 0)
   const valueDisplay = hasValue ? formatCurrency(Math.abs(valueNumber)) : '—'
   const valuePrefix = hasValue ? (isNegative ? '-' : '+') : ''
   const valueContent = variant === 'loss' ? '-' : Number.isFinite(valueNumber) ? `${valuePrefix}${valueDisplay}` : '—'
+  const activityLabel =
+    variant === 'resolution_bond'
+      ? t('Bond')
+      : variant === 'resolution_reward'
+        ? t('Reward')
+        : variant === 'liquidity_reward'
+          ? t('Liquidity reward')
+          : variant === 'maker_rebate'
+            ? t('Maker rebate')
+            : icon.label
   const marketContent = isFundsFlow ? (
     <div className="flex min-w-0 items-center gap-2.5 pl-1">
       <div
-        className={cn(`grid size-12 shrink-0 place-items-center overflow-hidden rounded-sm bg-primary/10 text-primary`)}
+        className={cn(
+          'grid size-12 shrink-0 place-items-center overflow-hidden rounded-sm',
+          isResolutionFlow ? 'bg-blue-500/10 text-blue-500' : 'bg-primary/10 text-primary',
+        )}
       >
-        <CircleDollarSignIcon className="size-5" />
+        {isResolutionFlow ? <BadgeCheckIcon className="size-5" /> : <CircleDollarSignIcon className="size-5" />}
       </div>
       <div className="min-w-0 flex-1 space-y-1">
         <div className="block max-w-full truncate text-sm/tight font-semibold text-foreground">
-          {variant === 'deposit' ? 'Deposited funds' : 'Withdrew funds'}
+          {variant === 'deposit'
+            ? t('Deposited funds')
+            : variant === 'withdraw'
+              ? t('Withdrew funds')
+              : variant === 'resolution_bond'
+                ? t('Resolution bond')
+                : variant === 'resolution_reward'
+                  ? t('Resolution reward')
+                  : variant === 'liquidity_reward'
+                    ? t('Liquidity reward')
+                    : t('Maker rebate')}
         </div>
       </div>
     </div>
@@ -67,7 +109,7 @@ export default function PublicActivityRow({ activity }: PublicActivityRowProps) 
             <CircleDollarSignIcon className="size-5" />
           </div>
         ) : (
-          <div className="grid size-full place-items-center text-2xs text-muted-foreground">No image</div>
+          <div className="grid size-full place-items-center text-2xs text-muted-foreground">{t('No image')}</div>
         )}
       </Link>
 
@@ -104,7 +146,7 @@ export default function PublicActivityRow({ activity }: PublicActivityRowProps) 
       <td className="px-2 py-3 text-sm font-semibold text-foreground sm:px-3">
         <div className="flex items-center gap-2">
           {createElement(icon.Icon, { className: cn('size-4 text-muted-foreground', icon.className) })}
-          <span>{icon.label}</span>
+          <span>{activityLabel}</span>
         </div>
       </td>
 

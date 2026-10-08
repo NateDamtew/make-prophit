@@ -5,6 +5,9 @@ import {
   CircleMinusIcon,
   CirclePlusIcon,
   CircleXIcon,
+  GiftIcon,
+  HandCoinsIcon,
+  LockKeyholeIcon,
   MergeIcon,
   UnfoldHorizontalIcon,
 } from 'lucide-react'
@@ -106,6 +109,18 @@ export function resolveVariant(activity: ActivityOrder): ActivityVariant {
   if (type === 'withdraw' || type === 'withdraw_funds') {
     return 'withdraw'
   }
+  if (type === 'resolution_bond') {
+    return 'resolution_bond'
+  }
+  if (type === 'resolution_reward') {
+    return 'resolution_reward'
+  }
+  if (type === 'reward') {
+    return 'liquidity_reward'
+  }
+  if (type === 'maker_rebate') {
+    return 'maker_rebate'
+  }
   if (type === 'sell') {
     return 'sell'
   }
@@ -137,6 +152,14 @@ export function activityIcon(variant: ActivityVariant) {
       return { Icon: ArrowDownToLineIcon, label: 'Deposited', className: '' }
     case 'withdraw':
       return { Icon: ArrowUpToLineIcon, label: 'Withdrew', className: '' }
+    case 'resolution_bond':
+      return { Icon: LockKeyholeIcon, label: 'Bond', className: '' }
+    case 'resolution_reward':
+      return { Icon: GiftIcon, label: 'Reward', className: '' }
+    case 'liquidity_reward':
+      return { Icon: GiftIcon, label: 'Liquidity reward', className: 'text-primary' }
+    case 'maker_rebate':
+      return { Icon: HandCoinsIcon, label: 'Maker rebate', className: 'text-primary' }
     case 'sell':
       return { Icon: CircleMinusIcon, label: 'Sold', className: '' }
     case 'buy':
@@ -373,12 +396,24 @@ export function buildActivityCsv(activities: ActivityOrder[], siteName: string) 
     const variant = resolveVariant(activity)
     const action = variant.charAt(0).toUpperCase() + variant.slice(1)
     const marketName =
-      variant === 'deposit' ? 'Deposited funds' : variant === 'withdraw' ? 'Withdrew funds' : activity.market.title
+      variant === 'deposit'
+        ? 'Deposited funds'
+        : variant === 'withdraw'
+          ? 'Withdrew funds'
+          : variant === 'resolution_bond'
+            ? 'Resolution Bond'
+            : variant === 'resolution_reward'
+              ? 'Resolution Reward'
+              : activity.market.title
     const usdcAmount = formatCsvNumber(Math.abs(Number(activity.total_value)) / MICRO_UNIT)
     const tokenAmountValue =
       variant === 'split' ? Math.abs(Number(activity.amount)) / 2 : Math.abs(Number(activity.amount))
     const tokenAmount =
-      variant === 'deposit' || variant === 'withdraw' || variant === 'redeem'
+      variant === 'deposit' ||
+      variant === 'withdraw' ||
+      variant === 'resolution_bond' ||
+      variant === 'resolution_reward' ||
+      variant === 'redeem'
         ? ''
         : formatCsvNumber(tokenAmountValue / MICRO_UNIT)
     const tokenName =

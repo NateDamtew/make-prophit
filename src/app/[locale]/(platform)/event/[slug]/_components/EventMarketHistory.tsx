@@ -9,16 +9,11 @@ import type { Event } from '@/types'
 import AlertBanner from '@/components/AlertBanner'
 import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
+import useLocalizedTimeAgo from '@/hooks/useLocalizedTimeAgo'
 import { useOutcomeLabel } from '@/hooks/useOutcomeLabel'
 import { MICRO_UNIT, OUTCOME_INDEX } from '@/lib/constants'
 import { fetchUserActivityData, mapDataApiActivityToActivityOrder } from '@/lib/data-api/user'
-import {
-  formatDollarValueLabel,
-  formatSharePriceLabel,
-  formatSharesLabel,
-  formatTimeAgo,
-  fromMicro,
-} from '@/lib/formatters'
+import { formatDollarValueLabel, formatSharePriceLabel, formatSharesLabel, fromMicro } from '@/lib/formatters'
 import { POLYGON_SCAN_BASE } from '@/lib/network'
 import { getUserPublicAddress } from '@/lib/user-address'
 import { cn } from '@/lib/utils'
@@ -36,6 +31,7 @@ function useInfiniteScrollSentinel({
   hasError,
   fetchNextPage,
   setInfiniteScrollError,
+  fallbackErrorMessage,
 }: {
   sentinelRef: React.RefObject<HTMLDivElement | null>
   hasNextPage: boolean
@@ -43,6 +39,7 @@ function useInfiniteScrollSentinel({
   hasError: boolean
   fetchNextPage: () => Promise<unknown>
   setInfiniteScrollError: (value: string | null) => void
+  fallbackErrorMessage: string
 }) {
   useEffect(
     function observeInfiniteScrollSentinel() {
@@ -56,7 +53,7 @@ function useInfiniteScrollSentinel({
           const entry = entries[0]
           if (entry?.isIntersecting && hasNextPage && !isFetchingNextPage && !hasError) {
             fetchNextPage().catch((error) => {
-              setInfiniteScrollError(error.message || 'Failed to load more activity')
+              setInfiniteScrollError(error.message || fallbackErrorMessage)
             })
           }
         },
@@ -68,13 +65,22 @@ function useInfiniteScrollSentinel({
         observer.disconnect()
       }
     },
-    [hasError, hasNextPage, isFetchingNextPage, fetchNextPage, sentinelRef, setInfiniteScrollError],
+    [
+      hasError,
+      hasNextPage,
+      isFetchingNextPage,
+      fetchNextPage,
+      sentinelRef,
+      setInfiniteScrollError,
+      fallbackErrorMessage,
+    ],
   )
 }
 
 export default function EventMarketHistory({ market }: EventMarketHistoryProps) {
   const t = useExtracted()
   const locale = useLocale()
+  const { formatTimeAgo } = useLocalizedTimeAgo()
   const loadMoreRef = useRef<HTMLDivElement | null>(null)
   const [infiniteScrollErrorState, setInfiniteScrollErrorState] = useState<{
     conditionId: string | undefined
@@ -139,12 +145,13 @@ export default function EventMarketHistory({ market }: EventMarketHistoryProps) 
     hasError: Boolean(infiniteScrollError),
     fetchNextPage,
     setInfiniteScrollError,
+    fallbackErrorMessage: t('Failed to load more activity'),
   })
 
   function retryInfiniteScroll() {
     setInfiniteScrollError(null)
     fetchNextPage().catch((error) => {
-      setInfiniteScrollError(error.message || 'Failed to load more activity')
+      setInfiniteScrollError(error.message || t('Failed to load more activity'))
     })
   }
 

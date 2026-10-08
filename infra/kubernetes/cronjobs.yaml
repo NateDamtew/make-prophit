@@ -132,10 +132,12 @@ metadata:
   name: kuest-sync-translations-enqueue
   namespace: kuest
 spec:
-  schedule: '17 * * * *'
+  schedule: '3,12,21,30,39,48,57 * * * *'
+  startingDeadlineSeconds: 120
   concurrencyPolicy: Forbid
   jobTemplate:
     spec:
+      activeDeadlineSeconds: 60
       template:
         spec:
           restartPolicy: Never
@@ -146,7 +148,7 @@ spec:
                 - sh
                 - -c
                 - >
-                  curl -fsS
+                  curl -fsS --max-time 45
                   -H "Authorization: Bearer ${CRON_SECRET}"
                   "${SITE_URL}/api/sync/translations/enqueue"
               env:
@@ -164,10 +166,12 @@ metadata:
   name: kuest-sync-translations
   namespace: kuest
 spec:
-  schedule: '18 * * * *'
+  schedule: '4,13,22,31,40,49,58 * * * *'
+  startingDeadlineSeconds: 120
   concurrencyPolicy: Forbid
   jobTemplate:
     spec:
+      activeDeadlineSeconds: 90
       template:
         spec:
           restartPolicy: Never
@@ -178,7 +182,7 @@ spec:
                 - sh
                 - -c
                 - >
-                  curl -fsS
+                  curl -fsS --max-time 70
                   -H "Authorization: Bearer ${CRON_SECRET}"
                   "${SITE_URL}/api/sync/translations"
               env:

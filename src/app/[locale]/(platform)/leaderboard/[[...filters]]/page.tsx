@@ -1,7 +1,11 @@
 import type { Metadata } from 'next'
-import type { SupportedLocale } from '@/i18n/locales'
+
 import { getExtracted, setRequestLocale } from 'next-intl/server'
 import { Suspense } from 'react'
+
+import type { SupportedLocale } from '@/i18n/locales'
+
+import LeaderboardPageSkeleton from '@/app/[locale]/(platform)/leaderboard/_components/LeaderboardPageSkeleton'
 import LeaderboardViews from '@/app/[locale]/(platform)/leaderboard/_components/LeaderboardViews'
 import {
   buildLeaderboardPath,
@@ -11,6 +15,7 @@ import {
   PERIOD_OPTIONS,
 } from '@/app/[locale]/(platform)/leaderboard/_utils/leaderboardFilters'
 import { DEFAULT_LOCALE } from '@/i18n/locales'
+import { getRootLocale } from '@/i18n/root-locale'
 import { resolveCommitSha } from '@/lib/git'
 import { deferPublicShellPrerenderIfNeeded } from '@/lib/public-shell-rendering'
 import resolveSiteUrl from '@/lib/site-url'
@@ -52,10 +57,13 @@ function buildLeaderboardOgImageUrl({
   return new URL(`/api/og/leaderboard?${params.toString()}`, siteUrl).toString()
 }
 
-export async function generateMetadata({ params }: PageProps<'/[locale]/leaderboard/[[...filters]]'>): Promise<Metadata> {
+export async function generateMetadata({
+  params,
+}: PageProps<'/[locale]/leaderboard/[[...filters]]'>): Promise<Metadata> {
   await deferPublicShellPrerenderIfNeeded()
 
-  const { locale, filters } = await params
+  const { filters } = await params
+  const locale = await getRootLocale()
   setRequestLocale(locale)
 
   const t = await getExtracted()
@@ -65,12 +73,9 @@ export async function generateMetadata({ params }: PageProps<'/[locale]/leaderbo
   const parsedFilters = parseLeaderboardFilters(filters)
   const hasRequestedFilters = Array.isArray(filters) && filters.length > 0
   const pagePath = hasRequestedFilters ? buildLeaderboardPath(parsedFilters) : '/leaderboard'
-  const pageUrl = new URL(
-    buildLocalizedPagePath(pagePath, locale as SupportedLocale),
-    resolveSiteUrl(process.env),
-  ).toString()
+  const pageUrl = new URL(buildLocalizedPagePath(pagePath, locale), resolveSiteUrl(process.env)).toString()
   const imageUrl = buildLeaderboardOgImageUrl({
-    locale: locale as SupportedLocale,
+    locale,
     category: parsedFilters.category,
     period: parsedFilters.period,
     order: parsedFilters.order,
@@ -109,9 +114,9 @@ export async function generateMetadata({ params }: PageProps<'/[locale]/leaderbo
 export async function generateStaticParams() {
   const params: Array<{ filters: string[] }> = [{ filters: [] }]
 
-  for (const category of CATEGORY_OPTIONS.map(option => option.value)) {
-    for (const period of PERIOD_OPTIONS.map(option => option.value)) {
-      for (const order of ORDER_OPTIONS.map(option => option.value)) {
+  for (const category of CATEGORY_OPTIONS.map((option) => option.value)) {
+    for (const period of PERIOD_OPTIONS.map((option) => option.value)) {
+      for (const order of ORDER_OPTIONS.map((option) => option.value)) {
         params.push({ filters: [category, period, order] })
       }
     }
@@ -120,22 +125,30 @@ export async function generateStaticParams() {
   return params
 }
 
-export default async function LeaderboardPage({ params }: PageProps<'/[locale]/leaderboard/[[...filters]]'>) {
-  const { locale, filters } = await params
-
-  return <LeaderboardPageContent locale={locale as SupportedLocale} filters={filters} />
+export default function LeaderboardPage({ params }: PageProps<'/[locale]/leaderboard/[[...filters]]'>) {
+  return (
+    <main className="container w-full py-6 md:py-8">
+      <Suspense fallback={<LeaderboardPageSkeleton />}>
+        <LeaderboardPageWithParams params={params} />
+      </Suspense>
+    </main>
+  )
 }
 
-async function LeaderboardPageContent({
-  locale,
-  filters,
+async function LeaderboardPageWithParams({
+  params,
 }: {
-  locale: SupportedLocale
-  filters?: string[]
+  params: PageProps<'/[locale]/leaderboard/[[...filters]]'>['params']
 }) {
+  const { filters } = await params
+
+  return <LeaderboardPageContent filters={filters} />
+}
+
+async function LeaderboardPageContent({ filters }: { filters?: string[] }) {
   'use cache'
 
-  setRequestLocale(locale)
+  setRequestLocale(await getRootLocale())
 
   const initialFilters = parseLeaderboardFilters(filters)
 
@@ -145,10 +158,8 @@ async function LeaderboardPageContent({
   // must be wrapped in Suspense so the page can still be statically prerendered
   // (searchParams aren't known at prerender time; the fallback renders then).
   return (
-    <main className="container w-full py-6 md:py-8">
-      <Suspense fallback={null}>
-        <LeaderboardViews initialFilters={initialFilters} />
-      </Suspense>
-    </main>
+    <Suspense fallback={null}>
+      <LeaderboardViews initialFilters={initialFilters} />
+    </Suspense>
   )
 }
