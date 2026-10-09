@@ -93,10 +93,10 @@ async function isCurrentRegionBlocked() {
  * so the server-side nonce key matches (see CLAUDE.md — never force a chain
  * switch for sign-in).
  */
-async function driveSIWEHandshake(primaryWallet: Wallet, siteUrl: string) {
+async function driveSIWEHandshake(primaryWallet: Wallet, siteUrl: string): Promise<boolean> {
   const address = primaryWallet.address as `0x${string}` | undefined
   if (!address) {
-    return
+    return false
   }
 
   const { chainId } = getConnectedAccount()
@@ -109,7 +109,7 @@ async function driveSIWEHandshake(primaryWallet: Wallet, siteUrl: string) {
       if (user) {
         useUser.setState((previous) => mergeSessionUserState(previous, user as unknown as User))
       }
-      return
+      return true
     }
   } catch {
     // no session yet — continue
@@ -126,7 +126,7 @@ async function driveSIWEHandshake(primaryWallet: Wallet, siteUrl: string) {
       // signing a message that is guaranteed to fail. A 403 here usually means
       // the current origin is missing from better-auth trustedOrigins.
       console.warn('[SIWE] nonce request failed — aborting handshake:', nonceError ?? 'empty response')
-      return
+      return false
     }
 
     const message = createSiweMessage({
@@ -145,7 +145,7 @@ async function driveSIWEHandshake(primaryWallet: Wallet, siteUrl: string) {
     const signature = await primaryWallet.signMessage(message)
     if (!signature) {
       console.warn('[SIWE] wallet returned no signature')
-      return
+      return false
     }
 
     // The connected chainId is carried inside `message` (see createSiweMessage
@@ -159,7 +159,7 @@ async function driveSIWEHandshake(primaryWallet: Wallet, siteUrl: string) {
       // Surface the server's rejection reason — a silent failure here leaves
       // the user "connected" in Dynamic but with no Prophit session.
       console.warn('[SIWE] verify rejected:', verifyError ?? verifyData ?? 'empty response')
-      return
+      return false
     }
 
     const session = await authClient.getSession()
@@ -167,11 +167,13 @@ async function driveSIWEHandshake(primaryWallet: Wallet, siteUrl: string) {
     if (user) {
       useUser.setState((previous) => mergeSessionUserState(previous, user as unknown as User))
       console.warn('[SIWE] handshake complete — session created for', address)
-    } else {
-      console.warn('[SIWE] verify succeeded but no session returned — check cookies/baseURL')
+      return true
     }
+    console.warn('[SIWE] verify succeeded but no session returned — check cookies/baseURL')
+    return false
   } catch (error) {
     console.warn('[SIWE] handshake failed:', error)
+    return false
   }
 }
 
@@ -206,6 +208,7 @@ function AppKitBridge({
   hasAuthenticatedUser: boolean
 }) {
   const { setShowAuthFlow, handleLogOut, primaryWallet, user: dynamicUser } = useDynamicContext()
+  const { siteUrl } = usePublicRuntimeConfig()
   const dynamicUserEmail = typeof dynamicUser?.email === 'string' ? dynamicUser.email : undefined
   const { setShowLinkNewWalletModal } = useDynamicModals()
   const { connectWithEmail, verifyOneTimePassword } = useConnectWithOtp()
@@ -218,6 +221,21 @@ function AppKitBridge({
         if (!hasAuthenticatedUser && (await isCurrentRegionBlocked())) {
           toast.warning(regionBlockedMessage)
           return
+        }
+        // Dynamic still holds a wallet but there is no Prophit session (an
+        // earlier SIWE verify failed). Dynamic won't reopen its auth flow for
+        // an already-authenticated user, so the button would silently do
+        // nothing: retry the handshake, and if that still fails, drop the
+        // stale Dynamic login so the user can start over.
+        if (primaryWallet && !hasAuthenticatedUser) {
+          if (await driveSIWEHandshake(primaryWallet, siteUrl)) {
+            return
+          }
+          try {
+            await handleLogOut()
+          } catch {
+            // fall through to a fresh auth flow regardless
+          }
         }
         setShowAuthFlow(true)
       },
@@ -266,6 +284,7 @@ function AppKitBridge({
     [
       hasAuthenticatedUser,
       regionBlockedMessage,
+      siteUrl,
       setShowAuthFlow,
       handleLogOut,
       primaryWallet,
