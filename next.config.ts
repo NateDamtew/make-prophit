@@ -36,7 +36,13 @@ const config: NextConfig = {
     '@dynamic-labs/wallet-connector-core',
   ],
   reactStrictMode: false,
-  reactCompiler: true,
+  // FORK: off. Upstream's turbopackRustReactCompiler also compiles node_modules
+  // and miscompiled Dynamic's createStoreState: it hoisted the selector
+  // `(state) => state[variable]` out of its closure, shipping
+  // `function x(e){return e[variable]}` and crashing DynamicContextProvider
+  // ("variable is not defined") for any visitor with an injected wallet.
+  // Re-enable only if the compiler can be scoped to src/.
+  reactCompiler: false,
   compress: false,
   experimental: {
     agentUpgrade: 'latest',
@@ -45,7 +51,7 @@ const config: NextConfig = {
       bodySizeLimit: '2mb',
     },
     typedEnv: true,
-    turbopackRustReactCompiler: true,
+    turbopackRustReactCompiler: false,
     // Upstream enables turbopackFileSystemCacheForBuild + useTypeScriptCli.
     // Both are disabled here: together they SIGKILL'd the Vercel build with an
     // OOM on 2026-08-02 (the fork generates 520+ static pages, and the build
