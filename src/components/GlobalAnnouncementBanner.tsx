@@ -1,7 +1,7 @@
 'use client'
 
 import { usePathname } from 'next/navigation'
-import { useMemo } from 'react'
+import { Suspense, useMemo } from 'react'
 
 import type { CustomJavascriptCodeDisablePage } from '@/lib/custom-javascript-code'
 
@@ -41,28 +41,20 @@ function useLocalizedPathname(locale: string) {
   return useMemo(() => stripLocalePrefix(pathname, locale), [locale, pathname])
 }
 
-export default function GlobalAnnouncementBanner({
+function GlobalAnnouncementBannerContent({
   locale,
   message,
   linkUrl,
-  disabledOn,
-}: GlobalAnnouncementBannerProps) {
-  const localizedPathname = useLocalizedPathname(locale)
+}: Pick<GlobalAnnouncementBannerProps, 'locale' | 'message' | 'linkUrl'>) {
   const localizedMessage = localizeGlobalAnnouncementMessage(locale, message)
   const hasMessage = localizedMessage.length > 0
-  const isEnabled = isCustomJavascriptCodeEnabledOnPathname({ disabledOn }, localizedPathname)
 
-  // The marketing landing (/landing) never shows the app announcement bar. The
-  // home page ('/') is governed by the admin "Disable on → Home" checkbox
-  // (disabledOn), so it is intentionally NOT hard-hidden here.
-  const isMarketingLanding = localizedPathname?.startsWith('/landing') ?? false
-
-  if (!hasMessage || !isEnabled || isMarketingLanding) {
+  if (!hasMessage) {
     return null
   }
 
   const content = (
-    <div className="w-full bg-primary text-primary-foreground">
+    <div data-global-announcement className="w-full bg-primary text-primary-foreground">
       <div className="container py-2 text-center text-xs font-semibold sm:text-sm">{localizedMessage}</div>
     </div>
   )
@@ -82,5 +74,26 @@ export default function GlobalAnnouncementBanner({
     >
       {content}
     </a>
+  )
+}
+
+function PathnameGlobalAnnouncementBanner(props: GlobalAnnouncementBannerProps) {
+  const localizedPathname = useLocalizedPathname(props.locale)
+  if (!isCustomJavascriptCodeEnabledOnPathname({ disabledOn: props.disabledOn }, localizedPathname)) {
+    return null
+  }
+
+  return <GlobalAnnouncementBannerContent {...props} />
+}
+
+export default function GlobalAnnouncementBanner(props: GlobalAnnouncementBannerProps) {
+  if (props.disabledOn.length === 0) {
+    return <GlobalAnnouncementBannerContent {...props} />
+  }
+
+  return (
+    <Suspense fallback={null}>
+      <PathnameGlobalAnnouncementBanner {...props} />
+    </Suspense>
   )
 }

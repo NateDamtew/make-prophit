@@ -46,6 +46,7 @@ const config: NextConfig = {
   compress: false,
   experimental: {
     agentUpgrade: 'latest',
+    cachedNavigations: process.env.VERCEL_ENV ? false : undefined,
     inlineCss: true,
     serverActions: {
       bodySizeLimit: '2mb',
