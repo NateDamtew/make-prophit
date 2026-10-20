@@ -5,8 +5,8 @@
 // renders blank. The market-only entry defines a single clean element.
 //
 // Pinned to an explicit version so an unpkg "latest" publish can't silently
-// break embeds again (which is exactly what happened with 1.3.8's barrel).
-const EMBED_SCRIPT_URL = 'https://unpkg.com/@kuestcom/embeds@1.3.12/dist/embeds/market/index.js'
+// break embeds again (which is exactly what happened with 1.3.8's barrel; upstream renamed the scope to @kuest in 1.3.14).
+const EMBED_SCRIPT_URL = 'https://unpkg.com/@kuest/embeds@1.3.14/dist/embeds/market/index.js'
 
 type EmbedTheme = 'light' | 'dark'
 const CUSTOM_ELEMENT_NAME_PATTERN = /^[a-z](?:[a-z0-9-]*[a-z0-9])?$/
