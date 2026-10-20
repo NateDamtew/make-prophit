@@ -6,6 +6,7 @@ import {
   CreditCardIcon,
   ExternalLinkIcon,
   SendIcon,
+  SmartphoneIcon,
   WalletIcon,
 } from 'lucide-react'
 import { useExtracted } from 'next-intl'
@@ -29,6 +30,8 @@ function WalletFundMenu({
   onWallet,
   onTon,
   showTon = false,
+  onMobileMoney,
+  showMobileMoney = false,
   canBridge,
   disabledReceive,
   canBuyMeld,
@@ -42,6 +45,8 @@ function WalletFundMenu({
   onWallet: () => void
   onTon?: () => void
   showTon?: boolean
+  onMobileMoney?: () => void
+  showMobileMoney?: boolean
   canBridge: boolean
   disabledReceive: boolean
   canBuyMeld: boolean
@@ -131,6 +136,30 @@ function WalletFundMenu({
           </div>
         </div>
       </button>
+
+      {showMobileMoney && onMobileMoney && (
+        <button
+          type="button"
+          className={cn(
+            `group flex w-full items-center justify-between gap-4 rounded-lg border border-border px-4 py-2 text-left transition hover:bg-muted/50`,
+          )}
+          onClick={onMobileMoney}
+        >
+          <div className="flex items-center gap-3">
+            <div className="flex size-12 items-center justify-center text-foreground">
+              <SmartphoneIcon className="size-6" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold">{t('Mobile money')}</p>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span>{t('M-Pesa')}</span>
+                <span className="size-1 rounded-full bg-muted-foreground" />
+                <span>{t('deposit or withdraw')}</span>
+              </div>
+            </div>
+          </div>
+        </button>
+      )}
 
       {showTon && onTon && (
         <button
