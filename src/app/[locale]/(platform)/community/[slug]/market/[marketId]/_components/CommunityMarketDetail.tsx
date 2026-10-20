@@ -24,7 +24,6 @@ import { cn } from '@/lib/utils'
 
 import { castJuryVoteAction } from '../../../_actions/community-actions'
 import CommunityVoteChart from './CommunityVoteChart'
-import PoolStakePanel from './PoolStakePanel'
 
 interface Market {
   id: string
@@ -233,15 +232,6 @@ export default function CommunityMarketDetail({
                 </div>
               </CardContent>
             </Card>
-
-            {/* Pool stake panel (fork): community markets on the pool engine trade here, in local currency. */}
-            {market.engine === 'pool' && !market.event_id && (
-              <PoolStakePanel
-                marketId={market.id}
-                marketStatus={market.status}
-                resolvedOutcome={market.resolved_outcome}
-              />
-            )}
 
             {/* Chart card */}
             <Card>

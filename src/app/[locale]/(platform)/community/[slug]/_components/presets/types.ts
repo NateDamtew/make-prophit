@@ -5,6 +5,7 @@
  */
 
 import type { CommunityThemeState } from '@/lib/db/queries/community-theme'
+import type { PoolCardSummary } from '@/lib/pools/activity'
 
 interface PresetCommunity {
   id: string
@@ -18,6 +19,7 @@ interface PresetCommunity {
   type: string
   created_at: Date
   is_verified?: boolean | null
+  icon_url?: string | null
 }
 
 export interface PresetMember {
@@ -36,12 +38,17 @@ export interface PresetMarket {
   resolution_rules: string | null
   status: string
   resolved_outcome: string | null
+  resolved_at?: Date | null
   resolution_date: Date | null
   event_id: string | null
   created_at: Date
   main_category_slug?: string | null
   category_slugs?: string[] | null
   votes?: { yes: number; no: number; disputed: number }
+  image_url?: string | null
+  engine?: string | null
+  /** Fork: pool totals for pool-engine markets (null when the market has no pool). */
+  pool?: PoolCardSummary | null
 }
 
 interface PresetReview {

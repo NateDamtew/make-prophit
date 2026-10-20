@@ -5,6 +5,7 @@ import { notFound } from 'next/navigation'
 import { Suspense } from 'react'
 
 import type { SupportedLocale } from '@/i18n/locales'
+import type { PoolCardSummary } from '@/lib/pools/activity'
 
 import { CommunityThemeStyle } from '@/components/community-themes/CommunityThemeStyle'
 import { WhiteLabelBrandBar } from '@/components/community-themes/WhiteLabelBrandBar'
@@ -13,6 +14,7 @@ import { CommunityIntegrityRepository } from '@/lib/db/queries/community-integri
 import { CommunityMonetizationRepository } from '@/lib/db/queries/community-monetization'
 import { CommunityThemeRepository } from '@/lib/db/queries/community-theme'
 import { UserRepository } from '@/lib/db/queries/user'
+import { getPoolCardSummaries } from '@/lib/pools/activity'
 import { STATIC_PARAMS_PLACEHOLDER } from '@/lib/static-params'
 
 import ClassicHero from './_components/classic/ClassicHero'
@@ -85,6 +87,12 @@ async function CommunityContent({ slug }: { slug: string }) {
     CommunityIntegrityRepository.getWhiteLabelFlag(community.id),
   ])
 
+  // Fork: pool totals drive the odds/volume shown on the market cards.
+  const poolSummaries: Record<string, PoolCardSummary> = await getPoolCardSummaries(
+    (markets ?? []).map((market) => market.id),
+  ).catch(() => ({}))
+  const marketsWithPools = (markets ?? []).map((market) => ({ ...market, pool: poolSummaries[market.id] ?? null }))
+
   const isVerified = monetization?.is_verified ?? false
   const communityWithVerified = {
     ...community,
@@ -110,7 +118,7 @@ async function CommunityContent({ slug }: { slug: string }) {
           preset={theme.layout_preset}
           community={community as any}
           members={(members ?? []) as any}
-          markets={(markets ?? []) as any}
+          markets={marketsWithPools as any}
           reviews={(reviews ?? []) as any}
           memberRole={memberRole}
           currentUserId={user?.id ?? null}

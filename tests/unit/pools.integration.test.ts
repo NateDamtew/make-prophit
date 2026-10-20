@@ -188,6 +188,23 @@ describe.skipIf(!ENABLED || IS_PRODUCTION_DB)('pool engine (integration)', () =>
     expect(summary?.pool.odds.yes).toBeCloseTo(100_000 / 175_000, 3)
     expect(summary?.user?.availableMinor).toBe('40000')
 
+    // read models behind the market page (chart, holders, activity, cards)
+    const activity = await import('@/lib/pools/activity')
+    const history = await activity.getPoolOddsHistory(pool.id)
+    expect(history.map((point) => Math.round(point.yes))).toEqual([50, 100, 100, 57])
+    const holders = await activity.getPoolTopHolders(pool.id)
+    expect(holders.yes.map((holder) => holder.amountMinor)).toEqual(['60000', '40000'])
+    expect(holders.no[0]?.amountMinor).toBe('75000')
+    expect(holders.yes[0]?.username).toBe(`pool_0_${suffix}`)
+    const feed = await activity.getPoolActivity(pool.id)
+    expect(feed.map((item) => item.amountMinor)).toEqual(['75000', '40000', '60000'])
+    expect(Math.round(feed[0]!.yesChanceAfter)).toBe(57)
+    expect((await activity.getPoolActivity(pool.id, { outcome: 'no' })).length).toBe(1)
+    const cards = await activity.getPoolCardSummaries([marketId, 'missing'])
+    expect(cards[marketId]?.totalYesMinor).toBe('100000')
+    expect(Math.round(cards[marketId]!.yesChance)).toBe(57)
+    expect(cards.missing).toBeUndefined()
+
     const poolAccount = await LedgerService.getOrCreateHouseAccount('pool', 'KES', undefined, pool.id)
     expect((await LedgerService.getAccount(poolAccount.id))?.balance).toBe(175_000n)
 

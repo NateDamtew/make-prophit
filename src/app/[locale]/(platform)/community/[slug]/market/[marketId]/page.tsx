@@ -10,9 +10,11 @@ import { ModerationBar } from '@/components/community-engagement/ModerationBar'
 import { CommunityRepository } from '@/lib/db/queries/community'
 import { CommunityIntegrityRepository } from '@/lib/db/queries/community-integrity'
 import { UserRepository } from '@/lib/db/queries/user'
+import { getPoolSummary } from '@/lib/pools/service'
 import { STATIC_PARAMS_PLACEHOLDER } from '@/lib/static-params'
 
 import CommunityMarketDetail from './_components/CommunityMarketDetail'
+import PoolMarketContent from './_components/pool/PoolMarketContent'
 
 export async function generateStaticParams() {
   return [{ slug: STATIC_PARAMS_PLACEHOLDER, marketId: STATIC_PARAMS_PLACEHOLDER }]
@@ -55,8 +57,10 @@ export async function generateMetadata({
 
 export default async function CommunityMarketDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ locale: string; slug: string; marketId: string }>
+  searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
   const { locale, slug, marketId } = await params
   setRequestLocale(locale as SupportedLocale)
@@ -97,6 +101,31 @@ export default async function CommunityMarketDetailPage({
       }}
     />
   ) : null
+
+  // Fork: pool-engine markets (no platform event behind them) render with the
+  // platform market page layout and trade against the local-currency ledger.
+  if (data.market.engine === 'pool' && !data.market.event_id) {
+    const [initialSummary, query] = await Promise.all([
+      getPoolSummary(marketId, user?.id ?? null).catch(() => null),
+      searchParams,
+    ])
+    const requestedOutcome = Array.isArray(query.outcome) ? query.outcome[0] : query.outcome
+    return (
+      <main className="container grid min-h-screen gap-8 pb-12 lg:grid-cols-[minmax(0,3fr)_21.25rem]">
+        <PoolMarketContent
+          market={data.market}
+          community={data.community}
+          votes={votes ?? []}
+          memberRole={memberRole}
+          currentUserId={user?.id ?? null}
+          initialSummary={initialSummary}
+          initialOutcome={requestedOutcome === 'no' ? 'no' : 'yes'}
+          headerActions={embedSlot}
+          moderationSlot={moderationSlot}
+        />
+      </main>
+    )
+  }
 
   return (
     <CommunityMarketDetail

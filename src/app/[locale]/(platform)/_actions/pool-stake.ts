@@ -1,17 +1,13 @@
 'use server'
 
+import type { PoolOutcome } from '@/lib/db/schema/pools/tables'
+import type { PoolActivityItem, PoolHolder, PoolOddsPoint } from '@/lib/pools/activity'
 import type { PoolSummary } from '@/lib/pools/service'
 
 import { UserRepository } from '@/lib/db/queries/user'
 import { parseAmountToMinorUnits } from '@/lib/pawapay/amounts'
-import {
-  estimateStakePayout,
-  getPoolByMarket,
-  getPoolSummary,
-  POOL_ERROR_MESSAGES,
-  PoolError,
-  stakeInPool,
-} from '@/lib/pools/service'
+import { getPoolActivity, getPoolOddsHistory, getPoolTopHolders } from '@/lib/pools/activity'
+import { getPoolByMarket, getPoolSummary, PoolError, stakeInPool } from '@/lib/pools/service'
 
 export async function getPoolSummaryAction(
   communityMarketId: string,
@@ -23,19 +19,6 @@ export async function getPoolSummaryAction(
   } catch (error) {
     console.error('[pool] summary failed', error)
     return { data: null, error: 'Could not load this market’s pool right now.' }
-  }
-}
-
-export async function estimatePoolPayoutAction(communityMarketId: string, outcome: 'yes' | 'no', amountInput: string) {
-  try {
-    const pool = await getPoolByMarket(communityMarketId)
-    if (!pool) {
-      return { data: null, error: POOL_ERROR_MESSAGES.pool_not_found }
-    }
-    const amount = parseAmountToMinorUnits(amountInput)
-    return { data: { payoutMinor: estimateStakePayout(pool, outcome, amount).toString() }, error: null }
-  } catch {
-    return { data: null, error: 'Please enter a valid amount.' }
   }
 }
 
@@ -78,5 +61,49 @@ export async function stakeInPoolAction(input: {
     }
     console.error('[pool] stake failed', error)
     return { data: null, error: 'Could not place that stake right now. Please try again.' }
+  }
+}
+
+export async function getPoolHistoryAction(communityMarketId: string): Promise<{ data: PoolOddsPoint[] }> {
+  try {
+    const pool = await getPoolByMarket(communityMarketId)
+    if (!pool) {
+      return { data: [] }
+    }
+    return { data: await getPoolOddsHistory(pool.id) }
+  } catch (error) {
+    console.error('[pool] history failed', error)
+    return { data: [] }
+  }
+}
+
+export async function getPoolTopHoldersAction(
+  communityMarketId: string,
+): Promise<{ data: { yes: PoolHolder[]; no: PoolHolder[] } }> {
+  try {
+    const pool = await getPoolByMarket(communityMarketId)
+    if (!pool) {
+      return { data: { yes: [], no: [] } }
+    }
+    return { data: await getPoolTopHolders(pool.id) }
+  } catch (error) {
+    console.error('[pool] holders failed', error)
+    return { data: { yes: [], no: [] } }
+  }
+}
+
+export async function getPoolActivityAction(
+  communityMarketId: string,
+  outcome: PoolOutcome | null = null,
+): Promise<{ data: PoolActivityItem[] }> {
+  try {
+    const pool = await getPoolByMarket(communityMarketId)
+    if (!pool) {
+      return { data: [] }
+    }
+    return { data: await getPoolActivity(pool.id, { outcome, limit: 100 }) }
+  } catch (error) {
+    console.error('[pool] activity failed', error)
+    return { data: [] }
   }
 }
