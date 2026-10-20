@@ -1,6 +1,6 @@
 # Local Payments Design — pawaPay rail, omnibus custody, local-currency ledger
 
-**Status:** design agreed in discussion on 2026-10-20, no code yet.
+**Status:** design agreed 2026-10-20; phases 0–4, 7, 8, 9 built and tested against the dev project on the same day, phases 5/6 scaffolded server-side. See `LOCAL-PAYMENTS-IMPLEMENTATION.md` for the build log, decisions and the owner checklist.
 **Branch:** `claude/local-payments-birr-270802` (based on `custom-production`, which is production).
 **Owner:** Nate. **Sandbox:** pawaPay sandbox account exists.
 **Scope (2026-10-20):** **Kenya / KES only.** The rail is currency-agnostic and driven by pawaPay's
@@ -39,16 +39,16 @@ exchange rate. It replaces the 2026-10-06 "separate service, USD-priced position
 
 ## 2. Decisions log
 
-| Date | Decision | Why |
-|---|---|---|
-| 2026-10-06 | Keep Kuest underneath; reject pure-fiat rewrite | Loses shared book, mirrored markets, needs a licence per country anyway |
-| 2026-10-20 | Build in make-prophit, not a separate service | Ledger and trading must share a database under omnibus |
-| 2026-10-20 | Omnibus custody: one house Kuest account | Sidesteps the deposit-wallet relayer blocker; phone-number onboarding |
-| 2026-10-20 | Ledger balances in local currency; users never see USD | Product requirement; matches every betting app users already know |
-| 2026-10-20 | House carries FX; margin baked into trade price | Consequence of fixed local payouts |
-| 2026-10-20 | Deposits free, flat withdrawal fee, pool rake | Simple, familiar fee shape |
-| 2026-10-20 | Community markets = in-house parimutuel pools by default | No liquidity needed, zero FX, jury resolves in the ledger |
-| 2026-10-20 | Tiered promotion of communities to the Kuest order book | Shared liquidity and MM support only where there is volume |
+| Date       | Decision                                                                 | Why                                                                                                    |
+| ---------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
+| 2026-10-06 | Keep Kuest underneath; reject pure-fiat rewrite                          | Loses shared book, mirrored markets, needs a licence per country anyway                                |
+| 2026-10-20 | Build in make-prophit, not a separate service                            | Ledger and trading must share a database under omnibus                                                 |
+| 2026-10-20 | Omnibus custody: one house Kuest account                                 | Sidesteps the deposit-wallet relayer blocker; phone-number onboarding                                  |
+| 2026-10-20 | Ledger balances in local currency; users never see USD                   | Product requirement; matches every betting app users already know                                      |
+| 2026-10-20 | House carries FX; margin baked into trade price                          | Consequence of fixed local payouts                                                                     |
+| 2026-10-20 | Deposits free, flat withdrawal fee, pool rake                            | Simple, familiar fee shape                                                                             |
+| 2026-10-20 | Community markets = in-house parimutuel pools by default                 | No liquidity needed, zero FX, jury resolves in the ledger                                              |
+| 2026-10-20 | Tiered promotion of communities to the Kuest order book                  | Shared liquidity and MM support only where there is volume                                             |
 | 2026-10-20 | Kenya / KES only; ETB dropped from scope but rail kept currency-agnostic | Ethiopia is unlicensed and birr is hard to repatriate; pawaPay makes adding a currency a config change |
 
 ---
@@ -204,17 +204,17 @@ Facts verified against the v2 docs on 2026-10-20.
 
 ### 7.1 Endpoints used
 
-| Purpose | Call |
-|---|---|
-| Providers, limits, decimals, status | `GET /v2/active-conf?country=KEN` (other countries later) |
-| Phone to provider | `POST /v2/predict-provider { phoneNumber }` |
-| Deposit | `POST /v2/deposits` |
-| Deposit status | `GET /v2/deposits/{depositId}` |
-| Payout | `POST /v2/payouts` |
-| Payout status | `GET /v2/payouts/{payoutId}` |
-| Cancel enqueued payout | `GET /v2/payouts/fail-enqueued/{payoutId}` |
-| Provider availability | `GET /v2/availability?country=...&operationType=PAYOUT` |
-| Public keys for callback verification | toolkit public-keys endpoint |
+| Purpose                               | Call                                                      |
+| ------------------------------------- | --------------------------------------------------------- |
+| Providers, limits, decimals, status   | `GET /v2/active-conf?country=KEN` (other countries later) |
+| Phone to provider                     | `POST /v2/predict-provider { phoneNumber }`               |
+| Deposit                               | `POST /v2/deposits`                                       |
+| Deposit status                        | `GET /v2/deposits/{depositId}`                            |
+| Payout                                | `POST /v2/payouts`                                        |
+| Payout status                         | `GET /v2/payouts/{payoutId}`                              |
+| Cancel enqueued payout                | `GET /v2/payouts/fail-enqueued/{payoutId}`                |
+| Provider availability                 | `GET /v2/availability?country=...&operationType=PAYOUT`   |
+| Public keys for callback verification | toolkit public-keys endpoint                              |
 
 Base URLs: `https://api.sandbox.pawapay.io`, `https://api.pawapay.io`. Auth: `Authorization:
 Bearer <token>`, separate tokens per environment. Launch provider: `MPESA_KEN` (KES, deposits in
@@ -309,12 +309,12 @@ cash-out, and treasury conversions of float. Deposits, payouts, and pools never 
 
 ### 8.3 Margin and fees
 
-| Item | Default | Where set |
-|---|---|---|
-| Platform margin on order-book trades | 1.5% (KES) | `settings` per currency |
-| Deposit fee | none | n/a |
-| Withdrawal fee | flat, e.g. 25 KES | `settings` per currency |
-| Pool rake | 4%, optional creator share | `settings`, overridable per community |
+| Item                                 | Default                    | Where set                             |
+| ------------------------------------ | -------------------------- | ------------------------------------- |
+| Platform margin on order-book trades | 1.5% (KES)                 | `settings` per currency               |
+| Deposit fee                          | none                       | n/a                                   |
+| Withdrawal fee                       | flat, e.g. 25 KES          | `settings` per currency               |
+| Pool rake                            | 4%, optional creator share | `settings`, overridable per community |
 
 The margin must cover pawaPay's per-leg fees (pull the real percentages from the sandbox
 dashboard before fixing these), the realised cost of converting float, FX drift while money
@@ -407,12 +407,12 @@ notifications) is extended, and four new sections are added.
 
 ### New sections
 
-| Section | What it shows | Actions |
-|---|---|---|
-| **Treasury** | Per enabled currency: pawaPay wallet balance (live), ledger `float:<CCY>`, target, days of payout cover, outstanding fixed payouts vs exposure cap, house USDC on Kuest, realised FX P&L, conversion history | Record a float conversion (KES to USDC, posts the ledger lines and FX result); edit float target, exposure cap, margin, withdrawal fee, pool rake; **pause switches** per currency for deposits, payouts, and order-book trading independently |
-| **Payments** | Every `payment_intents` row with filters (kind, state, currency, provider, user, phone, date); detail drawer with raw pawaPay status history and callback log; a "stuck" view for anything pending over 24 h | Re-check status now; ask pawaPay to resend the callback; cancel an enqueued payout; manual mark completed or failed with mandatory reason (audit-logged, and maker-checker for payouts) |
-| **Ledger** | Per-user account view: balance, reserved, entries with running total, open positions and pool stakes; house accounts view; search by user, email, or phone | Manual adjustment (credit, refund, goodwill, correction) with mandatory reason and category; freeze or unfreeze an account; CSV export of entries for a period, for accountants and the regulator |
-| **Reconciliation** | Nightly run history; each of the five checks with expected, actual, delta, and state; drill-down to the rows that explain a delta | Acknowledge a run with a note; re-run a single check; the pause switch that a failed check tripped is shown here with a one-click resume once resolved |
+| Section            | What it shows                                                                                                                                                                                                | Actions                                                                                                                                                                                                                                        |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Treasury**       | Per enabled currency: pawaPay wallet balance (live), ledger `float:<CCY>`, target, days of payout cover, outstanding fixed payouts vs exposure cap, house USDC on Kuest, realised FX P&L, conversion history | Record a float conversion (KES to USDC, posts the ledger lines and FX result); edit float target, exposure cap, margin, withdrawal fee, pool rake; **pause switches** per currency for deposits, payouts, and order-book trading independently |
+| **Payments**       | Every `payment_intents` row with filters (kind, state, currency, provider, user, phone, date); detail drawer with raw pawaPay status history and callback log; a "stuck" view for anything pending over 24 h | Re-check status now; ask pawaPay to resend the callback; cancel an enqueued payout; manual mark completed or failed with mandatory reason (audit-logged, and maker-checker for payouts)                                                        |
+| **Ledger**         | Per-user account view: balance, reserved, entries with running total, open positions and pool stakes; house accounts view; search by user, email, or phone                                                   | Manual adjustment (credit, refund, goodwill, correction) with mandatory reason and category; freeze or unfreeze an account; CSV export of entries for a period, for accountants and the regulator                                              |
+| **Reconciliation** | Nightly run history; each of the five checks with expected, actual, delta, and state; drill-down to the rows that explain a delta                                                                            | Acknowledge a run with a note; re-run a single check; the pause switch that a failed check tripped is shown here with a one-click resume once resolved                                                                                         |
 
 ### Extended sections
 
@@ -460,15 +460,15 @@ layer:
 
 ### Where this lands in the phases
 
-| Phase | Admin work included |
-|---|---|
-| 1 | Ledger view (read-only) and CSV export, so every later phase can be inspected |
-| 2–3 | Payments console with re-check, resend, and cancel-enqueued; Integrations pawaPay card; Health checks for pawaPay and rates |
-| 4 | Treasury page, pause switches, Overview KPIs, finance capability and audit-log kinds |
-| 7 | Pools tab in Communities |
-| 8 | Reconciliation page, alert wiring, maker-checker for adjustments and conversions |
-| 9 | Tier controls and promotion history |
-| 10 | Limits and Risk settings, per-user overrides, user freeze and 2FA reset |
+| Phase | Admin work included                                                                                                         |
+| ----- | --------------------------------------------------------------------------------------------------------------------------- |
+| 1     | Ledger view (read-only) and CSV export, so every later phase can be inspected                                               |
+| 2–3   | Payments console with re-check, resend, and cancel-enqueued; Integrations pawaPay card; Health checks for pawaPay and rates |
+| 4     | Treasury page, pause switches, Overview KPIs, finance capability and audit-log kinds                                        |
+| 7     | Pools tab in Communities                                                                                                    |
+| 8     | Reconciliation page, alert wiring, maker-checker for adjustments and conversions                                            |
+| 9     | Tier controls and promotion history                                                                                         |
+| 10    | Limits and Risk settings, per-user overrides, user freeze and 2FA reset                                                     |
 
 Roughly a quarter of the total build is admin. It is not optional: without the Payments
 console you cannot test deposits in sandbox beyond happy paths, and without the pause switches
@@ -493,15 +493,15 @@ merge clean forever, same as Communities and the TON rail do today.
 an upstream-owned file, the change is a single import plus a single render or branch that
 delegates to a fork-only component or function, never inline logic:
 
-| Upstream file | Insertion | Note |
-|---|---|---|
-| `wallet-modal/WalletFundMenu.tsx`, `WalletFlow.tsx` | one menu entry + one view case rendering `MobileMoneyPanel` | Already conflict-prone because of the TON rail; the TON graft is the pattern to copy |
-| Order panel (`EventOrderPanel*`) | one branch: `if (engine !== 'clob') return <LedgerOrderPanel />` at the top | Keep upstream's panel untouched below the branch |
-| Portfolio and activity pages | one data-source switch to a fork hook when the user is a ledger user | Upstream's wallet path stays as the default |
-| `src/lib/db/schema/index.ts` | one `export * from './payments/tables'` line | Same as communities, sumsub, waitlist already do |
-| Admin sidebar config | new nav entries appended at the end | The admin shell is already fork-owned (FORK.md: take ours) |
-| `package.json` | only if a dependency is unavoidable; prefer zero new deps | RFC 9421 verification hand-rolled on `node:crypto` rather than a library |
-| `src/i18n/messages/*.json` | new hashed keys only | Union-merged every sync already; never edit existing keys |
+| Upstream file                                       | Insertion                                                                   | Note                                                                                 |
+| --------------------------------------------------- | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `wallet-modal/WalletFundMenu.tsx`, `WalletFlow.tsx` | one menu entry + one view case rendering `MobileMoneyPanel`                 | Already conflict-prone because of the TON rail; the TON graft is the pattern to copy |
+| Order panel (`EventOrderPanel*`)                    | one branch: `if (engine !== 'clob') return <LedgerOrderPanel />` at the top | Keep upstream's panel untouched below the branch                                     |
+| Portfolio and activity pages                        | one data-source switch to a fork hook when the user is a ledger user        | Upstream's wallet path stays as the default                                          |
+| `src/lib/db/schema/index.ts`                        | one `export * from './payments/tables'` line                                | Same as communities, sumsub, waitlist already do                                     |
+| Admin sidebar config                                | new nav entries appended at the end                                         | The admin shell is already fork-owned (FORK.md: take ours)                           |
+| `package.json`                                      | only if a dependency is unavoidable; prefer zero new deps                   | RFC 9421 verification hand-rolled on `node:crypto` rather than a library             |
+| `src/i18n/messages/*.json`                          | new hashed keys only                                                        | Union-merged every sync already; never edit existing keys                            |
 
 **Never touch** for this feature: `src/lib/auth.ts`, `AppKitProvider.tsx`, `network.ts`,
 `public-runtime-config*.ts`, `TradingOnboardingProvider.tsx`, `store-order.ts`,
@@ -514,6 +514,7 @@ insertion point. With the flag off the app renders exactly the upstream path, so
 verified against known behaviour before the rail is switched back on.
 
 **Housekeeping on every phase.**
+
 - Add each new fork-only path to FORK.md section 1 and each insertion to section 2, with the
   resolution policy ("keep ours, re-apply upstream's hunks below the branch").
 - Register parked exports in `knip.config.ts` rather than deleting them, as the rhino client
@@ -566,19 +567,19 @@ Alerts via the existing notifications plumbing to super admins; Sentry for excep
 
 Each phase ends green on `npm run build`, `npx tsc --noEmit`, `npm run test:unit`, knip.
 
-| # | Phase | Done when |
-|---|---|---|
-| 0 | Branch and plumbing | Branch on `custom-production` (done). Env vars, `pawapay` client with active-conf and predict-provider, unit tests against recorded fixtures. |
-| 1 | Ledger core | Schema and migrations, `Ledger` service (post transaction, reserve, release, derive balance), property tests that entries always sum to zero. |
-| 2 | Deposits (sandbox) | Deposit action, callback route with signature verification, status poller, wallet-modal deposit view. KES test numbers produce the documented outcomes end to end; balance shows in the header. |
-| 3 | Payouts (sandbox) | Payout action with fee and 2FA, enqueued and failed handling, withdraw view. Reservation released on failure; fee booked. |
-| 4 | FX and treasury base | Rate cron with snapshots, admin override, safety rails, `settings` for margin, fees, targets, treasury page v1 (read-only). |
-| 5 | Order-book trading via house account | House signer, `ledger-place-order`, house fill attribution, fixed local payouts, cash-out, portfolio from ledger. Verified on Amoy with the existing deployed house wallet. |
-| 6 | Redemption and resolution credits | House redeems once per resolved market; winners credited; FX posted. |
-| 7 | Community pools | Pool engine, stake, jury-threshold settlement, rake, pool odds UI; deploy hook swapped for `engine = pool`. |
-| 8 | Reconciliation and alerts | All five checks, pause switches, super-admin alerts. |
-| 9 | Tiering | Nightly tier job, overrides, new-markets-only semantics, badge and copy. On-chain push of jury verdicts via direct resolution (prerequisite for any promotion). |
-| 10 | Hardening | Limits, KYC tiers, IP allowlist, runbooks, load test of callback route. |
+| #   | Phase                                | Done when                                                                                                                                                                                       |
+| --- | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0   | Branch and plumbing                  | Branch on `custom-production` (done). Env vars, `pawapay` client with active-conf and predict-provider, unit tests against recorded fixtures.                                                   |
+| 1   | Ledger core                          | Schema and migrations, `Ledger` service (post transaction, reserve, release, derive balance), property tests that entries always sum to zero.                                                   |
+| 2   | Deposits (sandbox)                   | Deposit action, callback route with signature verification, status poller, wallet-modal deposit view. KES test numbers produce the documented outcomes end to end; balance shows in the header. |
+| 3   | Payouts (sandbox)                    | Payout action with fee and 2FA, enqueued and failed handling, withdraw view. Reservation released on failure; fee booked.                                                                       |
+| 4   | FX and treasury base                 | Rate cron with snapshots, admin override, safety rails, `settings` for margin, fees, targets, treasury page v1 (read-only).                                                                     |
+| 5   | Order-book trading via house account | House signer, `ledger-place-order`, house fill attribution, fixed local payouts, cash-out, portfolio from ledger. Verified on Amoy with the existing deployed house wallet.                     |
+| 6   | Redemption and resolution credits    | House redeems once per resolved market; winners credited; FX posted.                                                                                                                            |
+| 7   | Community pools                      | Pool engine, stake, jury-threshold settlement, rake, pool odds UI; deploy hook swapped for `engine = pool`.                                                                                     |
+| 8   | Reconciliation and alerts            | All five checks, pause switches, super-admin alerts.                                                                                                                                            |
+| 9   | Tiering                              | Nightly tier job, overrides, new-markets-only semantics, badge and copy. On-chain push of jury verdicts via direct resolution (prerequisite for any promotion).                                 |
+| 10  | Hardening                            | Limits, KYC tiers, IP allowlist, runbooks, load test of callback route.                                                                                                                         |
 
 Phases 1 to 4 and 7 do not depend on Kuest at all and can proceed while the relayer question
 stays open. Phase 5 needs the house account's deployed wallet (exists on Amoy).
