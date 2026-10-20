@@ -27,6 +27,14 @@ const config: KnipConfig = {
     // feature — kept for the future native-TMA project.
     'src/lib/rhino/client.ts',
     'src/lib/rhino/constants.ts',
+    // Local-payments rail (fork, LOCAL-PAYMENTS-DESIGN.md). The house-trading
+    // module ships server-side first; its order-panel surface lands in a later
+    // phase, so these exports have no UI importer yet. Constants/types in the
+    // pawaPay client are the full documented API surface.
+    'src/lib/house/**',
+    'src/lib/pawapay/constants.ts',
+    'src/lib/pawapay/types.ts',
+    'src/app/[locale]/(platform)/_actions/ledger-order.ts',
     // Community layout pieces that are temporarily unrendered while only the
     // Classic preset is active. Classic now ships its own hero/cards/tabs
     // (the `classic/` dir + self-contained ClassicPreset), so the generic
