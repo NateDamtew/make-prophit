@@ -2,8 +2,12 @@
 
 import type { PaymentIntentRow } from '@/lib/mobile-money/intents'
 
+import { headers } from 'next/headers'
+
+import { auth } from '@/lib/auth'
 import { UserRepository } from '@/lib/db/queries/user'
 import { LedgerService } from '@/lib/ledger/service'
+import { issueConfirmationToken, verifyConfirmationToken } from '@/lib/mobile-money/confirmation'
 import { createDeposit, previewDeposit, refreshDepositStatus } from '@/lib/mobile-money/deposits'
 import { MobileMoneyAccountRepository, PaymentIntentRepository } from '@/lib/mobile-money/intents'
 import { createPayout, previewPayout, refreshPayoutStatus } from '@/lib/mobile-money/payouts'
@@ -164,33 +168,99 @@ export async function createMobileMoneyDepositAction(input: { phoneInput: string
   }
 }
 
-export async function previewMobileMoneyPayoutAction(input: { phoneInput: string; amountInput: string }) {
+export interface MobileMoneyPayoutPreview {
+  msisdn: string
+  provider: string
+  providerDisplayName: string
+  currency: string
+  grossMinor: string
+  feeMinor: string
+  netMinor: string
+  numberVerified: boolean
+  /** Present the exact breakdown back to the server when creating the payout. */
+  confirmationToken: string
+  /** True when the account has TOTP enabled: a current code is required to withdraw. */
+  requiresTwoFactor: boolean
+}
+
+export async function previewMobileMoneyPayoutAction(input: {
+  phoneInput: string
+  amountInput: string
+}): Promise<{ data: MobileMoneyPayoutPreview | null; error: string | null }> {
   const user = await UserRepository.getCurrentUser({ minimal: true })
   if (!user) {
     return { data: null, error: NOT_SIGNED_IN }
   }
   try {
-    const result = await previewPayout({
-      userId: user.id,
-      phoneInput: input.phoneInput,
-      amountInput: input.amountInput,
-    })
+    const result = await previewPayout({ userId: user.id, phoneInput: input.phoneInput, amountInput: input.amountInput })
     if ('error' in result) {
       return { data: null, error: result.error }
     }
-    return { data: result.data, error: null }
+    const confirmationToken = issueConfirmationToken({
+      userId: user.id,
+      msisdn: result.data.msisdn,
+      grossMinor: result.data.grossMinor,
+      currency: result.data.currency,
+    })
+    return {
+      data: { ...result.data, confirmationToken, requiresTwoFactor: Boolean(user.twoFactorEnabled) },
+      error: null,
+    }
   } catch (error) {
     console.error('[mobile-money] payout preview failed', error)
     return { data: null, error: 'Could not prepare the withdrawal right now. Please try again.' }
   }
 }
 
-export async function createMobileMoneyPayoutAction(input: { phoneInput: string; amountInput: string }) {
+/**
+ * Create a payout. Requires the confirmation token from the preview (so the
+ * user confirmed this exact number and amount within 5 minutes) and, when the
+ * account has 2FA enabled, a current TOTP code verified through better-auth.
+ */
+export async function createMobileMoneyPayoutAction(input: {
+  phoneInput: string
+  amountInput: string
+  confirmationToken: string
+  totpCode?: string
+}) {
   const user = await UserRepository.getCurrentUser({ disableCookieCache: true, minimal: true })
   if (!user) {
     return { data: null, error: NOT_SIGNED_IN }
   }
   try {
+    const quote = await previewPayout({ userId: user.id, phoneInput: input.phoneInput, amountInput: input.amountInput })
+    if ('error' in quote) {
+      return { data: null, error: quote.error }
+    }
+    const check = verifyConfirmationToken(input.confirmationToken ?? '', {
+      userId: user.id,
+      msisdn: quote.data.msisdn,
+      grossMinor: quote.data.grossMinor,
+      currency: quote.data.currency,
+    })
+    if (!check.ok) {
+      return {
+        data: null,
+        error:
+          check.reason === 'expired'
+            ? 'That confirmation has expired. Please review the amount and confirm again.'
+            : 'Please review the withdrawal details and confirm again.',
+      }
+    }
+    if (user.twoFactorEnabled) {
+      const code = (input.totpCode ?? '').replace(/\s+/g, '')
+      if (!/^\d{6}$/.test(code)) {
+        return { data: null, error: 'Enter the 6-digit code from your authenticator app.' }
+      }
+      try {
+        const verified = await auth.api.verifyTOTP({ body: { code }, headers: await headers() })
+        if (!verified || (verified as { status?: boolean }).status === false) {
+          return { data: null, error: 'That authenticator code is not valid.' }
+        }
+      } catch {
+        return { data: null, error: 'That authenticator code is not valid.' }
+      }
+    }
     const result = await createPayout({ userId: user.id, phoneInput: input.phoneInput, amountInput: input.amountInput })
     if ('error' in result) {
       return { data: null, error: result.error }

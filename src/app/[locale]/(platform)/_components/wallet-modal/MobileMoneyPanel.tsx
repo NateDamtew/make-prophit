@@ -65,7 +65,14 @@ function MobileMoneyPanel({ onDone }: { onDone: () => void }) {
   const [amount, setAmount] = useState('')
   const [providerName, setProviderName] = useState<string | null>(null)
   const [wholeUnitsOnly, setWholeUnitsOnly] = useState(false)
-  const [payoutQuote, setPayoutQuote] = useState<{ feeMinor: string; netMinor: string } | null>(null)
+  const [payoutQuote, setPayoutQuote] = useState<{
+    feeMinor: string
+    netMinor: string
+    confirmationToken: string
+    requiresTwoFactor: boolean
+    numberVerified: boolean
+  } | null>(null)
+  const [totpCode, setTotpCode] = useState('')
   const [intent, setIntent] = useState<MobileMoneyIntentView | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isBusy, setIsBusy] = useState(false)
@@ -118,6 +125,7 @@ function MobileMoneyPanel({ onDone }: { onDone: () => void }) {
     setAmount('')
     setProviderName(null)
     setPayoutQuote(null)
+    setTotpCode('')
     setIntent(null)
     setError(null)
   }
@@ -152,7 +160,13 @@ function MobileMoneyPanel({ onDone }: { onDone: () => void }) {
     }
     const result = await previewMobileMoneyPayoutAction({ phoneInput: phone, amountInput: nextAmount })
     if (result.data) {
-      setPayoutQuote({ feeMinor: result.data.feeMinor, netMinor: result.data.netMinor })
+      setPayoutQuote({
+        feeMinor: result.data.feeMinor,
+        netMinor: result.data.netMinor,
+        confirmationToken: result.data.confirmationToken,
+        requiresTwoFactor: result.data.requiresTwoFactor,
+        numberVerified: result.data.numberVerified,
+      })
       setProviderName(result.data.providerDisplayName)
       setError(null)
     } else {
@@ -168,7 +182,12 @@ function MobileMoneyPanel({ onDone }: { onDone: () => void }) {
       const result =
         mode === 'deposit'
           ? await createMobileMoneyDepositAction({ phoneInput: phone, amountInput: amount })
-          : await createMobileMoneyPayoutAction({ phoneInput: phone, amountInput: amount })
+          : await createMobileMoneyPayoutAction({
+              phoneInput: phone,
+              amountInput: amount,
+              confirmationToken: payoutQuote?.confirmationToken ?? '',
+              totpCode: totpCode || undefined,
+            })
       if (!result.data) {
         setError(result.error ?? 'Something went wrong.')
         return
@@ -202,7 +221,10 @@ function MobileMoneyPanel({ onDone }: { onDone: () => void }) {
   const depositsPaused = false
   const amountNumber = Number.parseFloat(amount || '0')
   const canSubmit =
-    Number.isFinite(amountNumber) && amountNumber > 0 && !isBusy && (mode === 'deposit' || Boolean(payoutQuote))
+    Number.isFinite(amountNumber) &&
+    amountNumber > 0 &&
+    !isBusy &&
+    (mode === 'deposit' || (Boolean(payoutQuote) && (!payoutQuote?.requiresTwoFactor || totpCode.length === 6)))
 
   return (
     <div className="space-y-4">
@@ -350,6 +372,31 @@ function MobileMoneyPanel({ onDone }: { onDone: () => void }) {
                   {payoutQuote ? formatMinor(payoutQuote.netMinor, currency) : '—'}
                 </span>
               </div>
+            </div>
+          )}
+
+          {mode === 'withdraw' && payoutQuote && !payoutQuote.numberVerified && (
+            <p className="text-center text-xs text-muted-foreground">
+              This number has not deposited before, so a lower limit applies until it does.
+            </p>
+          )}
+
+          {mode === 'withdraw' && payoutQuote?.requiresTwoFactor && (
+            <div className="space-y-1">
+              <label className="block text-sm font-medium text-foreground" htmlFor="mobile-money-totp">
+                Authenticator code
+              </label>
+              <input
+                id="mobile-money-totp"
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={6}
+                value={totpCode}
+                onChange={(event) => setTotpCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
+                placeholder="123456"
+                className="h-12 w-full rounded-lg border border-border bg-transparent px-3 text-base tracking-widest text-foreground outline-none"
+              />
             </div>
           )}
 

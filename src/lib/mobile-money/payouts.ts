@@ -80,6 +80,7 @@ export async function previewPayout(
         grossMinor: string
         feeMinor: string
         netMinor: string
+        numberVerified: boolean
       }
       operation: ResolvedProviderOperation
     }
@@ -113,11 +114,16 @@ export async function previewPayout(
   }
   const balance = await LedgerService.getUserBalance(params.userId, profile.currency)
   const dailyUsed = await PaymentIntentRepository.getDailyUsage(params.userId, 'payout', profile.currency)
+  const savedNumbers = await MobileMoneyAccountRepository.listForUser(params.userId)
+  const isVerifiedNumber = savedNumbers.some(
+    (row) => row.msisdn === resolved.msisdn && row.provider === resolved.operation.provider && Boolean(row.verified_at),
+  )
   const validated = validatePayoutAmount({
     grossMinor,
     availableMinor: balance.available,
     operation: resolved.operation,
     dailyUsedMinor: dailyUsed,
+    isVerifiedNumber,
   })
   if (!validated.ok) {
     if (validated.error === 'above_maximum' && grossMinor > balance.available) {
@@ -135,6 +141,7 @@ export async function previewPayout(
       grossMinor: validated.value.grossMinor.toString(),
       feeMinor: validated.value.feeMinor.toString(),
       netMinor: validated.value.netMinor.toString(),
+      numberVerified: isVerifiedNumber,
     },
   }
 }

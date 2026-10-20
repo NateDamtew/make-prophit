@@ -11,6 +11,7 @@ describe('parseMobileMoneySettings', () => {
     expect(settings.currencies.KES.country).toBe('KEN')
     expect(settings.currencies.KES.marginBps).toBe(150)
     expect(settings.currencies.KES.withdrawalFeeMinor).toBe(2_500n)
+    expect(settings.currencies.KES.newNumberPayoutCapMinor).toBe(1_000_000n)
     expect(settings.allowUnsignedCallbacks).toBe(false)
   })
 

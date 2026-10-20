@@ -204,6 +204,16 @@ describe('validatePayoutAmount', () => {
     expect(result).toEqual({ ok: true, value: { grossMinor: 90_000n, feeMinor: 2_500n, netMinor: 87_500n } })
   })
 
+  it('caps payouts to numbers that have never deposited', () => {
+    const base = { availableMinor: 5_000_000n, operation, dailyUsedMinor: 0n }
+    expect(validatePayoutAmount({ ...base, grossMinor: 1_500_000n, isVerifiedNumber: false })).toEqual({
+      ok: false,
+      error: 'new_number_cap',
+    })
+    expect(validatePayoutAmount({ ...base, grossMinor: 1_000_000n, isVerifiedNumber: false }).ok).toBe(true)
+    expect(validatePayoutAmount({ ...base, grossMinor: 1_500_000n, isVerifiedNumber: true }).ok).toBe(true)
+  })
+
   it('refuses more than available, amounts that do not cover the fee, and daily caps', () => {
     expect(
       validatePayoutAmount({ grossMinor: 100_001n, availableMinor: 100_000n, operation, dailyUsedMinor: 0n }),

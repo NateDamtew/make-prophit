@@ -30,6 +30,8 @@ export interface MobileMoneyCurrencyConfig {
   /** Per-user rolling 24h caps in minor units; 0 disables the cap. */
   dailyDepositCapMinor: bigint
   dailyPayoutCapMinor: bigint
+  /** Max single payout to a number that has never completed a deposit (minor units; 0 = no limit). */
+  newNumberPayoutCapMinor: bigint
   /** Treasury targets (minor units); 0 = not set. */
   floatTargetMinor: bigint
   exposureCapMinor: bigint
@@ -63,6 +65,7 @@ export const DEFAULT_CURRENCY_CONFIGS: Record<string, MobileMoneyCurrencyConfig>
     maxPayoutMinor: 15_000_000n,
     dailyDepositCapMinor: 30_000_000n, // 300,000 KES
     dailyPayoutCapMinor: 30_000_000n,
+    newNumberPayoutCapMinor: 1_000_000n, // 10,000 KES
     floatTargetMinor: 0n,
     exposureCapMinor: 0n,
     depositsPaused: false,
@@ -135,6 +138,7 @@ export function parseCurrencyConfig(currency: string, raw: string | undefined): 
     maxPayoutMinor: readBigint(parsed.maxPayoutMinor, base.maxPayoutMinor),
     dailyDepositCapMinor: readBigint(parsed.dailyDepositCapMinor, base.dailyDepositCapMinor),
     dailyPayoutCapMinor: readBigint(parsed.dailyPayoutCapMinor, base.dailyPayoutCapMinor),
+    newNumberPayoutCapMinor: readBigint(parsed.newNumberPayoutCapMinor, base.newNumberPayoutCapMinor),
     floatTargetMinor: readBigint(parsed.floatTargetMinor, base.floatTargetMinor),
     exposureCapMinor: readBigint(parsed.exposureCapMinor, base.exposureCapMinor),
     depositsPaused: readBoolean(parsed.depositsPaused, base.depositsPaused),
@@ -156,6 +160,7 @@ export function serializeCurrencyConfig(config: MobileMoneyCurrencyConfig): stri
     maxPayoutMinor: config.maxPayoutMinor.toString(),
     dailyDepositCapMinor: config.dailyDepositCapMinor.toString(),
     dailyPayoutCapMinor: config.dailyPayoutCapMinor.toString(),
+    newNumberPayoutCapMinor: config.newNumberPayoutCapMinor.toString(),
     floatTargetMinor: config.floatTargetMinor.toString(),
     exposureCapMinor: config.exposureCapMinor.toString(),
     depositsPaused: config.depositsPaused,

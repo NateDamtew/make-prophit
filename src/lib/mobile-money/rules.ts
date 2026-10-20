@@ -21,6 +21,7 @@ export type MobileMoneyRuleError =
   | 'below_minimum'
   | 'above_maximum'
   | 'daily_cap_reached'
+  | 'new_number_cap'
   | 'amount_not_whole_units'
   | 'invalid_amount'
 
@@ -35,6 +36,8 @@ export const MOBILE_MONEY_RULE_MESSAGES: Record<MobileMoneyRuleError, string> = 
   below_minimum: 'That amount is below the minimum.',
   above_maximum: 'That amount is above the maximum.',
   daily_cap_reached: 'You have reached your daily limit. Please try again tomorrow.',
+  new_number_cap:
+    'Larger withdrawals to a new number are not allowed yet. Make a deposit from this number first, or withdraw a smaller amount.',
   amount_not_whole_units: 'Please enter a whole-number amount for this provider.',
   invalid_amount: 'Please enter a valid amount.',
 }
@@ -194,8 +197,10 @@ export function validatePayoutAmount(params: {
   availableMinor: bigint
   operation: ResolvedProviderOperation
   dailyUsedMinor: bigint
+  /** False when the destination number has never completed a deposit; a tighter cap applies. */
+  isVerifiedNumber?: boolean
 }): RuleResult<{ grossMinor: bigint; feeMinor: bigint; netMinor: bigint }> {
-  const { grossMinor, availableMinor, operation, dailyUsedMinor } = params
+  const { grossMinor, availableMinor, operation, dailyUsedMinor, isVerifiedNumber = true } = params
   if (grossMinor <= 0n) {
     return { ok: false, error: 'invalid_amount' }
   }
@@ -223,6 +228,9 @@ export function validatePayoutAmount(params: {
   }
   if (operation.config.dailyPayoutCapMinor > 0n && dailyUsedMinor + grossMinor > operation.config.dailyPayoutCapMinor) {
     return { ok: false, error: 'daily_cap_reached' }
+  }
+  if (!isVerifiedNumber && operation.config.newNumberPayoutCapMinor > 0n && grossMinor > operation.config.newNumberPayoutCapMinor) {
+    return { ok: false, error: 'new_number_cap' }
   }
   return { ok: true, value: { grossMinor, feeMinor, netMinor } }
 }
