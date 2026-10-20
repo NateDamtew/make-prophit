@@ -165,6 +165,20 @@ export async function approveMarketAction(
     return { error: 'Market is missing required categories.', data: null }
   }
 
+  // Pool-tier communities (the default) never go on-chain: approving opens a
+  // local-currency parimutuel pool instead of an event_creations draft.
+  const { data: owningCommunity } = await CommunityRepository.getById(market.community_id)
+  if (owningCommunity && (owningCommunity as { tier?: string }).tier !== 'orderbook') {
+    const { approveAsPoolMarket } = await import('@/lib/pools/approval')
+    return approveAsPoolMarket({
+      market,
+      community: owningCommunity,
+      reviewer: user,
+      communitySlug,
+      edits: parsedEdits.data,
+    })
+  }
+
   // Pick a signer wallet from configured pool
   const signers = loadEventCreationSignersFromEnv()
   if (signers.length === 0) {
