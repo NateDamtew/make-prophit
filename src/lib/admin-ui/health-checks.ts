@@ -103,6 +103,26 @@ export async function runHealthChecks(): Promise<HealthReport> {
   } catch {
     checks.push({ name: 'FX reference rate', state: 'warn', detail: 'Could not read snapshots' })
   }
+  try {
+    const { ReconciliationRepository } = await import('@/lib/ledger/reconciliation')
+    const latest = await ReconciliationRepository.latestRunAt()
+    if (!latest) {
+      checks.push({
+        name: 'Ledger reconciliation',
+        state: 'warn',
+        detail: 'Never run (schedule /api/sync/reconcile nightly)',
+      })
+    } else {
+      const ageHours = (Date.now() - latest.getTime()) / 3_600_000
+      checks.push({
+        name: 'Ledger reconciliation',
+        state: ageHours > 36 ? 'warn' : 'ok',
+        detail: `Last run ${Math.round(ageHours)}h ago`,
+      })
+    }
+  } catch {
+    checks.push({ name: 'Ledger reconciliation', state: 'warn', detail: 'Could not read runs' })
+  }
 
   return {
     checkedAt: new Date().toISOString(),
