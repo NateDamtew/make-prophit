@@ -82,6 +82,25 @@ export interface MobileMoneySummary {
   } | null
 }
 
+/**
+ * Lightweight: is the caller a local-currency (ledger) user, and in which
+ * currency? Used by the main market page to route such users to the pools
+ * instead of the on-chain order panel. `null` when signed out or no profile.
+ */
+export async function getLedgerUserStatusAction(): Promise<{ data: { currency: string } | null }> {
+  const user = await UserRepository.getCurrentUser({ minimal: true })
+  if (!user) {
+    return { data: null }
+  }
+  try {
+    const profile = await LedgerService.getUserProfile(user.id)
+    return { data: profile ? { currency: profile.currency } : null }
+  } catch (error) {
+    console.error('[mobile-money] ledger status failed', error)
+    return { data: null }
+  }
+}
+
 export async function getMobileMoneySummaryAction(): Promise<{
   data: MobileMoneySummary | null
   error: string | null

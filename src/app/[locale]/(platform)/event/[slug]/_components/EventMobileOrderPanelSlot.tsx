@@ -4,7 +4,9 @@ import dynamic from 'next/dynamic'
 
 import type { Event, Market, Outcome } from '@/types'
 
+import EventOrderPanelLedgerGate from '@/app/[locale]/(platform)/event/[slug]/_components/EventOrderPanelLedgerGate'
 import { useIsMobile } from '@/hooks/useIsMobile'
+import { useLedgerUser } from '@/hooks/useLedgerUser'
 
 const EventOrderPanelMobile = dynamic(
   () => import('@/app/[locale]/(platform)/event/[slug]/_components/EventOrderPanelMobile'),
@@ -23,9 +25,14 @@ export default function EventMobileOrderPanelSlot({
   initialOutcome,
 }: EventMobileOrderPanelSlotProps) {
   const isMobile = useIsMobile()
+  // Fork: local-currency users cannot spend their ledger balance through the on-chain panel.
+  const ledgerUser = useLedgerUser()
 
-  if (!isMobile) {
+  if (!isMobile || ledgerUser.isLoading) {
     return null
+  }
+  if (ledgerUser.currency) {
+    return <EventOrderPanelLedgerGate currency={ledgerUser.currency} isMobile />
   }
 
   return <EventOrderPanelMobile event={event} initialMarket={initialMarket} initialOutcome={initialOutcome} />

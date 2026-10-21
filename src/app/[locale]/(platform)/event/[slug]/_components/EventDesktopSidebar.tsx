@@ -4,10 +4,12 @@ import dynamic from 'next/dynamic'
 
 import type { Event, Market, Outcome } from '@/types'
 
+import EventOrderPanelLedgerGate from '@/app/[locale]/(platform)/event/[slug]/_components/EventOrderPanelLedgerGate'
 import EventOrderPanelTermsDisclaimer from '@/app/[locale]/(platform)/event/[slug]/_components/EventOrderPanelTermsDisclaimer'
 import EventRelatedSlot from '@/app/[locale]/(platform)/event/[slug]/_components/EventRelatedSlot'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useIsMobile } from '@/hooks/useIsMobile'
+import { useLedgerUser } from '@/hooks/useLedgerUser'
 
 const EventOrderPanelDesktop = dynamic(
   () => import('@/app/[locale]/(platform)/event/[slug]/_components/EventOrderPanelForm'),
@@ -22,6 +24,8 @@ interface EventDesktopSidebarProps {
 
 export default function EventDesktopSidebar({ event, initialMarket, initialOutcome }: EventDesktopSidebarProps) {
   const isMobile = useIsMobile()
+  // Fork: local-currency users cannot spend their ledger balance through the on-chain panel.
+  const ledgerUser = useLedgerUser()
 
   if (isMobile) {
     return null
@@ -30,14 +34,22 @@ export default function EventDesktopSidebar({ event, initialMarket, initialOutco
   return (
     <aside className="hidden lg:block lg:pt-5">
       <div className="grid gap-6 lg:sticky lg:top-29 lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto">
-        <EventOrderPanelDesktop
-          event={event}
-          isMobile={false}
-          className="bg-card"
-          initialMarket={initialMarket}
-          initialOutcome={initialOutcome}
-        />
-        <EventOrderPanelTermsDisclaimer />
+        {ledgerUser.isLoading ? (
+          <Skeleton className="h-80 w-full rounded-xl" />
+        ) : ledgerUser.currency ? (
+          <EventOrderPanelLedgerGate currency={ledgerUser.currency} isMobile={false} />
+        ) : (
+          <>
+            <EventOrderPanelDesktop
+              event={event}
+              isMobile={false}
+              className="bg-card"
+              initialMarket={initialMarket}
+              initialOutcome={initialOutcome}
+            />
+            <EventOrderPanelTermsDisclaimer />
+          </>
+        )}
         <span className="border border-dashed"></span>
         <EventRelatedSlot event={event} placement="desktop" />
       </div>
