@@ -9,7 +9,7 @@
  */
 export const MIN_POOL_JURY_SIZE = 3
 
-export const POOL_JURY_SIZE_MESSAGE = `Communities need a jury of at least ${MIN_POOL_JURY_SIZE} so no single member decides how markets settle.`
+const POOL_JURY_SIZE_MESSAGE = `Communities need a jury of at least ${MIN_POOL_JURY_SIZE} so no single member decides how markets settle.`
 
 /** Returns an error message when a pool-tier community's jury size is too small, else null. */
 export function validatePoolJurySize(jurySize: number): string | null {
