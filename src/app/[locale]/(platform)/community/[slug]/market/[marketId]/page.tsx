@@ -26,6 +26,10 @@ export async function generateMetadata({
   params: Promise<{ marketId: string; slug: string }>
 }): Promise<Metadata> {
   const { marketId } = await params
+  // Bun SQL reads `Date.now()` on connect, which cacheComponents rejects during prerender.
+  if (marketId === STATIC_PARAMS_PLACEHOLDER) {
+    return { title: 'Market' }
+  }
   const { data } = await CommunityRepository.getMarketWithCommunity(marketId)
   if (!data) {
     return { title: 'Market not found' }
