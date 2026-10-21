@@ -174,27 +174,6 @@ function Eyebrow({ children, size = 16 }: { children: string; size?: number }) {
   )
 }
 
-function Scallops({ count }: { count: number }) {
-  return (
-    <div
-      style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        width: '100%',
-        padding: '0 24px',
-        marginTop: '-11px',
-      }}
-    >
-      {Array.from({ length: count }).map((_, index) => (
-        <div
-          key={index}
-          style={{ display: 'flex', width: '22px', height: '22px', borderRadius: '999px', backgroundColor: INK }}
-        />
-      ))}
-    </div>
-  )
-}
-
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const payload = parsePayload(searchParams.get('position'))
@@ -438,24 +417,18 @@ export async function GET(request: Request) {
   )
 
   const urlText = `${host}/${shortPath}`.toUpperCase()
-  const taglineText = 'CALLED IT BEFORE IT HAPPENS.'
   const urlLine = (
     <div
       style={{
         display: 'flex',
-        flexDirection: isTall ? 'column' : 'row',
-        alignItems: 'center',
-        gap: isTall ? '10px' : '14px',
-        marginTop: '14px',
+        marginTop: '22px',
         fontSize: '16px',
         fontWeight: 800,
         letterSpacing: '4px',
         color: 'rgba(14, 15, 13, 0.7)',
       }}
     >
-      <div style={{ display: 'flex', color: INK }}>{taglineText}</div>
-      {!isTall && <div style={{ display: 'flex' }}>·</div>}
-      <div style={{ display: 'flex' }}>{urlText}</div>
+      {urlText}
     </div>
   )
 
@@ -495,7 +468,6 @@ export async function GET(request: Request) {
         </div>
         <div style={{ display: 'flex', marginTop: '18px' }}>{oddsRow}</div>
       </div>
-      <Scallops count={24} />
       {urlLine}
     </div>
   ) : (
@@ -521,25 +493,24 @@ export async function GET(request: Request) {
           <div style={{ display: 'flex', flexDirection: 'column', flex: '3 1 0%', minWidth: 0 }}>
             {marketBlock}
             <div style={{ display: 'flex', flex: '1 1 0%' }} />
-            <div style={{ display: 'flex', marginTop: '22px' }}>{sideRow}</div>
+            <div style={{ display: 'flex', height: '52px', alignItems: 'center', marginTop: '22px' }}>{sideRow}</div>
           </div>
           {verticalDivider}
           <div
             style={{
               display: 'flex',
               flexDirection: 'column',
-              justifyContent: 'space-between',
               flex: '2 1 0%',
               minWidth: 0,
             }}
           >
             {betBlock}
             <div style={{ display: 'flex', marginTop: '18px' }}>{toWinBlock}</div>
-            <div style={{ display: 'flex', marginTop: '14px' }}>{oddsRow}</div>
+            <div style={{ display: 'flex', flex: '1 1 0%' }} />
+            <div style={{ display: 'flex', height: '52px', alignItems: 'center' }}>{oddsRow}</div>
           </div>
         </div>
       </div>
-      <Scallops count={27} />
       {urlLine}
     </div>
   )
