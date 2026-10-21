@@ -16,6 +16,8 @@ export interface ShareCardPayload {
   userImage?: string
   variant: ShareCardVariant
   eventSlug: string
+  /** Eyebrow on the slip, e.g. the community or category name. */
+  tag?: string
 }
 
 export interface ShareCardPosition {
@@ -109,10 +111,13 @@ function encodeSharePayload(payload: ShareCardPayload) {
   return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
 }
 
-export function buildShareCardUrl(payload: ShareCardPayload) {
+export type ShareCardFormat = 'square' | 'portrait' | 'landscape'
+
+export function buildShareCardUrl(payload: ShareCardPayload, format: ShareCardFormat = 'square') {
   const encodedPayload = encodeSharePayload(payload)
   const params = new URLSearchParams({
     position: encodedPayload,
+    format,
   })
   return `/api/og/position?${params.toString()}`
 }

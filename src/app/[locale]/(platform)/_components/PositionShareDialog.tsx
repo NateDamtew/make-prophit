@@ -5,7 +5,7 @@ import { useExtracted } from 'next-intl'
 import Image from 'next/image'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import type { ShareCardPayload } from '@/lib/share-card'
+import type { ShareCardFormat, ShareCardPayload } from '@/lib/share-card'
 
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -26,22 +26,29 @@ interface PositionShareDialogProps {
   payload: ShareCardPayload | null
 }
 
-function useShareCardUrl(payload: ShareCardPayload | null) {
+function useShareCardUrl(payload: ShareCardPayload | null, format: ShareCardFormat) {
   return useMemo(() => {
     if (!payload) {
       return ''
     }
-    return buildShareCardUrl(payload)
-  }, [payload])
+    return buildShareCardUrl(payload, format)
+  }, [format, payload])
 }
 
 export function PositionShareDialog({ open, onOpenChange, payload }: PositionShareDialogProps) {
   const t = useExtracted()
   const isMobile = useIsMobile()
-  const shareCardUrl = useShareCardUrl(payload)
+  const [format, setFormat] = useState<ShareCardFormat>('square')
+  const shareCardUrl = useShareCardUrl(payload, format)
 
   const dialogContent = open ? (
-    <PositionShareDialogContent key={shareCardUrl || 'empty'} payload={payload} shareCardUrl={shareCardUrl} />
+    <PositionShareDialogContent
+      key={shareCardUrl || 'empty'}
+      payload={payload}
+      shareCardUrl={shareCardUrl}
+      format={format}
+      onFormatChange={setFormat}
+    />
   ) : null
 
   return isMobile ? (
@@ -68,6 +75,8 @@ export function PositionShareDialog({ open, onOpenChange, payload }: PositionSha
 interface PositionShareDialogContentProps {
   payload: ShareCardPayload | null
   shareCardUrl: string
+  format: ShareCardFormat
+  onFormatChange: (format: ShareCardFormat) => void
 }
 
 type ShareCardStatus = 'idle' | 'loading' | 'ready' | 'error'
@@ -289,7 +298,12 @@ function useShareCardStatusHandlers(setShareCardStatus: (status: ShareCardStatus
   return { handleShareCardLoaded, handleShareCardError }
 }
 
-function PositionShareDialogContent({ payload, shareCardUrl }: PositionShareDialogContentProps) {
+function PositionShareDialogContent({
+  payload,
+  shareCardUrl,
+  format,
+  onFormatChange,
+}: PositionShareDialogContentProps) {
   const t = useExtracted()
   const { shareCardStatus, setShareCardStatus, shareCardBlob } = useShareCardState(shareCardUrl)
   const { isCopyingShareImage, handleCopyShareImage } = useCopyShareImage({ shareCardBlob, shareCardUrl })
@@ -300,20 +314,49 @@ function PositionShareDialogContent({ payload, shareCardUrl }: PositionShareDial
   const isShareReady = shareCardStatus === 'ready'
   const isBusy = isCopyingShareImage || isSharingOnX || isSharingImage
 
+  const isTall = format !== 'landscape'
+  const imageWidth = isTall ? 1080 : 1200
+  const imageHeight = format === 'portrait' ? 1350 : isTall ? 1080 : 630
+  const formatOptions: Array<{ value: ShareCardFormat; label: string }> = [
+    { value: 'square', label: t('Square') },
+    { value: 'portrait', label: t('Story') },
+    { value: 'landscape', label: t('Wide') },
+  ]
+
   return (
     <div className="space-y-3">
+      <div className="flex justify-center">
+        <div className="inline-flex rounded-md border p-0.5 text-xs font-semibold">
+          {formatOptions.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => onFormatChange(option.value)}
+              className={cn(
+                'rounded-sm px-3 py-1 transition-colors',
+                format === option.value
+                  ? 'bg-foreground text-background'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      </div>
       <div className="relative flex min-h-55 items-center justify-center rounded-lg border bg-muted/30 p-3">
         {shareCardUrl && (
           <Image
             key={shareCardUrl}
             src={shareCardUrl}
             alt={t('{title} share card', { title: payload?.title ?? t('Position') })}
-            width={1200}
-            height={630}
+            width={imageWidth}
+            height={imageHeight}
             loading="eager"
             unoptimized
             className={cn(
-              'h-auto w-full max-w-md rounded-md shadow-sm transition-opacity',
+              'h-auto w-full rounded-md shadow-sm transition-opacity',
+              isTall ? 'max-h-[55vh] w-auto max-w-full' : 'max-w-md',
               isShareReady ? 'opacity-100' : 'opacity-0',
             )}
             onLoad={handleShareCardLoaded}

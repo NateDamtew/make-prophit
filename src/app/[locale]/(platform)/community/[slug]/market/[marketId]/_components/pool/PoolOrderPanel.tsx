@@ -101,6 +101,7 @@ function buildPoolSharePayload(params: {
     userImage: params.userImage?.trim() || undefined,
     variant: params.outcome,
     eventSlug: `community/${params.community.slug}/market/${params.market.id}`,
+    tag: params.community.name,
   }
 }
 

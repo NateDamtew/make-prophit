@@ -8,6 +8,48 @@ import {
 } from '@/lib/og-image-security'
 import { loadRuntimeThemeState } from '@/lib/theme-settings'
 
+// Slip palette (shared with the daily-call share card).
+const YELLOW = '#EDFF3D'
+const INK = '#0E0F0D'
+const PAPER = '#FAFAF5'
+const MUTED = '#9AA09A'
+const YES = '#2EBD85'
+const NO = '#E5484D'
+
+// Heavy weights for the slip. Satori cannot read the woff2 files in /public/fonts,
+// so the TTFs come from fontsource (cached per instance); without them the
+// default font is used.
+const SLIP_FONT_URLS = {
+  medium: 'https://cdn.jsdelivr.net/fontsource/fonts/archivo@latest/latin-500-normal.ttf',
+  black: 'https://cdn.jsdelivr.net/fontsource/fonts/archivo@latest/latin-800-normal.ttf',
+} as const
+let slipFontsCache: Promise<Array<{ name: string; data: ArrayBuffer; weight: 500 | 800; style: 'normal' }>> | null =
+  null
+
+function loadSlipFonts() {
+  if (!slipFontsCache) {
+    slipFontsCache = Promise.all(
+      (Object.entries(SLIP_FONT_URLS) as Array<[keyof typeof SLIP_FONT_URLS, string]>).map(async ([key, url]) => {
+        const response = await fetch(url)
+        if (!response.ok) {
+          throw new Error(`Slip font fetch failed: ${url}`)
+        }
+        return {
+          name: 'Archivo',
+          data: await response.arrayBuffer(),
+          weight: key === 'black' ? (800 as const) : (500 as const),
+          style: 'normal' as const,
+        }
+      }),
+    ).catch((error) => {
+      slipFontsCache = null
+      console.warn('Share slip fonts unavailable, using the default font.', error)
+      return []
+    })
+  }
+  return slipFontsCache
+}
+
 interface ShareCardPayload {
   title: string
   outcome: string
@@ -21,6 +63,7 @@ interface ShareCardPayload {
   userImage?: string
   variant: 'yes' | 'no'
   eventSlug: string
+  tag?: string
 }
 
 function normalizeRequiredText(value: unknown, maxLength = 120) {
@@ -119,7 +162,37 @@ function normalizeSharePayload(parsed: Partial<ShareCardPayload>): ShareCardPayl
     userImage: safeUserImage || undefined,
     variant,
     eventSlug,
+    tag: normalizeOptionalText(parsed.tag, 40) || undefined,
   }
+}
+
+function Eyebrow({ children, size = 16 }: { children: string; size?: number }) {
+  return (
+    <div style={{ display: 'flex', fontSize: `${size}px`, fontWeight: 800, letterSpacing: '4px', color: MUTED }}>
+      {children}
+    </div>
+  )
+}
+
+function Scallops({ count }: { count: number }) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        width: '100%',
+        padding: '0 24px',
+        marginTop: '-11px',
+      }}
+    >
+      {Array.from({ length: count }).map((_, index) => (
+        <div
+          key={index}
+          style={{ display: 'flex', width: '22px', height: '22px', borderRadius: '999px', backgroundColor: INK }}
+        />
+      ))}
+    </div>
+  )
 }
 
 export async function GET(request: Request) {
@@ -128,21 +201,275 @@ export async function GET(request: Request) {
   if (!payload) {
     return new Response('Missing or invalid share payload.', { status: 400 })
   }
+  const requestedFormat = searchParams.get('format')
+  const format = requestedFormat === 'landscape' ? 'landscape' : requestedFormat === 'portrait' ? 'portrait' : 'square'
+  // square (1080²) and portrait/story (1080×1350) share the stacked layout; landscape (1200×630) is two columns.
+  const isTall = format !== 'landscape'
+  const isStory = format === 'portrait'
   const variant = payload.variant === 'no' ? 'no' : 'yes'
-  const accent = variant === 'no' ? '#ef4444' : '#22c55e'
+  const sideColor = variant === 'no' ? NO : YES
+  const sideTint = variant === 'no' ? 'rgba(229, 72, 77, 0.16)' : 'rgba(46, 189, 133, 0.16)'
   const outcomeLabel = payload.outcome || (variant === 'no' ? 'No' : 'Yes')
   const runtimeTheme = await loadRuntimeThemeState()
-  const [siteLogoSrc, positionImageSrc, userImageSrc] = await Promise.all([
+  const [siteLogoSrc, positionImageSrc, userImageSrc, fonts] = await Promise.all([
     resolveTrustedOgImageSource(runtimeTheme.site.logoUrl),
     fetchSafeOgImageDataUrl(payload.imageUrl),
     fetchSafeOgImageDataUrl(payload.userImage),
+    loadSlipFonts(),
   ])
   const siteName = runtimeTheme.site.name
-  const hasUserBadge = Boolean(payload.userName || userImageSrc)
-  const dividerDots = Array.from({ length: 32 })
-  const horizontalDots = Array.from({ length: 40 })
+  const fontFamily = fonts.length > 0 ? 'Archivo' : 'ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif'
+  const host = new URL(request.url).host.replace(/^www\./, '')
+  const eyebrow = (payload.tag || siteName).toUpperCase()
+  const shortPath = payload.eventSlug.replace(/^\//, '').split('/').slice(0, 2).join('/')
+  const titleLength = payload.title.length
+  const tallTitleFontSize = titleLength > 90 ? 44 : titleLength > 60 ? 52 : 60
+  const titleFontSize = isTall
+    ? Math.round(tallTitleFontSize * (isStory ? 1.12 : 1))
+    : titleLength > 90
+      ? 34
+      : titleLength > 60
+        ? 40
+        : 46
+  const userLabel = payload.userName ? `@${payload.userName.replace(/^@/, '')}` : siteName
 
-  const response = new ImageResponse(
+  const wordmark = (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+      {siteLogoSrc && (
+        <OgImage
+          src={siteLogoSrc}
+          alt=""
+          width={44}
+          height={44}
+          style={{ width: '44px', height: '44px', filter: 'brightness(0)' }}
+        />
+      )}
+      <div style={{ display: 'flex', fontSize: '36px', fontWeight: 800, letterSpacing: '-1px' }}>{siteName}</div>
+    </div>
+  )
+
+  const userBadge = (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+      {userImageSrc && (
+        <OgImage
+          src={userImageSrc}
+          alt=""
+          width={36}
+          height={36}
+          style={{ width: '36px', height: '36px', borderRadius: '999px', objectFit: 'cover' }}
+        />
+      )}
+      <div style={{ display: 'flex', fontSize: '26px', fontWeight: 800, color: INK }}>{userLabel}</div>
+    </div>
+  )
+
+  const header = (
+    <div style={{ display: 'flex', width: '100%', alignItems: 'center', justifyContent: 'space-between' }}>
+      {wordmark}
+      {userBadge}
+    </div>
+  )
+
+  const marketChip = (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: '72px',
+        height: '72px',
+        borderRadius: '16px',
+        backgroundColor: sideTint,
+        color: sideColor,
+        overflow: 'hidden',
+        flexShrink: 0,
+      }}
+    >
+      {positionImageSrc ? (
+        <OgImage
+          src={positionImageSrc}
+          alt=""
+          width={72}
+          height={72}
+          style={{ width: '72px', height: '72px', objectFit: 'cover' }}
+        />
+      ) : (
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke={sideColor} strokeWidth="2.5">
+          <path d="M3 17l6-6 4 4 8-8" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M14 7h7v7" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      )}
+    </div>
+  )
+
+  const marketBlock = (
+    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '18px' }}>
+      {marketChip}
+      <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: '1 1 0%' }}>
+        <Eyebrow>{eyebrow}</Eyebrow>
+        <div
+          style={{
+            display: 'flex',
+            marginTop: '6px',
+            fontSize: `${titleFontSize}px`,
+            fontWeight: 800,
+            lineHeight: 1.15,
+            letterSpacing: '-0.5px',
+          }}
+        >
+          {payload.title}
+        </div>
+      </div>
+    </div>
+  )
+
+  const sideRow = (
+    <div style={{ display: 'flex', width: '100%', alignItems: 'center', justifyContent: 'space-between', gap: '18px' }}>
+      <div
+        style={{
+          display: 'flex',
+          padding: '8px 18px',
+          borderRadius: '10px',
+          backgroundColor: sideTint,
+          color: sideColor,
+          fontSize: '28px',
+          fontWeight: 800,
+          letterSpacing: '1px',
+        }}
+      >
+        {outcomeLabel.toUpperCase()}
+      </div>
+      <div style={{ display: 'flex', gap: '8px', fontSize: '22px', color: MUTED }}>
+        <span>Avg price</span>
+        <span style={{ color: PAPER, fontWeight: 800 }}>{payload.avgPrice}</span>
+      </div>
+    </div>
+  )
+
+  const betBlock = (
+    <div style={{ display: 'flex', flexDirection: 'column' }}>
+      <Eyebrow>BET</Eyebrow>
+      <div
+        style={{
+          display: 'flex',
+          marginTop: '4px',
+          fontSize: isTall ? (isStory ? '68px' : '56px') : '50px',
+          fontWeight: 800,
+        }}
+      >
+        {payload.cost}
+      </div>
+    </div>
+  )
+
+  const toWinBlock = (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: isTall ? 'flex-end' : 'flex-start' }}>
+      <Eyebrow>TO WIN</Eyebrow>
+      <div
+        style={{
+          display: 'flex',
+          marginTop: '4px',
+          fontSize: isTall ? (isStory ? '78px' : '64px') : '58px',
+          fontWeight: 800,
+          color: YELLOW,
+        }}
+      >
+        {payload.toWin}
+      </div>
+    </div>
+  )
+
+  const oddsRow = (
+    <div style={{ display: 'flex', gap: '8px', fontSize: '22px', color: MUTED }}>
+      <span>Odds</span>
+      <span style={{ color: PAPER, fontWeight: 800 }}>{payload.odds}</span>
+    </div>
+  )
+
+  const slipPadX = isStory ? 52 : isTall ? 44 : 40
+  const slipPadTop = isStory ? 56 : isTall ? 44 : 34
+  const notchStyle = {
+    display: 'flex',
+    position: 'absolute' as const,
+    width: '36px',
+    height: '36px',
+    borderRadius: '999px',
+    backgroundColor: YELLOW,
+  }
+
+  const wideInnerWidth = 1200 - 2 * 72 - 2 * slipPadX
+  const wideNotchLeft = Math.round(slipPadX + ((wideInnerWidth - 3 - 80) * 3) / 5 + 40 + 1.5 - 18)
+
+  const horizontalDivider = (
+    <div style={{ display: 'flex', position: 'relative', alignItems: 'center', gap: '10px', margin: '34px 0' }}>
+      <div style={{ ...notchStyle, left: `${-(slipPadX + 18)}px`, top: '-16.5px' }} />
+      <div style={{ ...notchStyle, right: `${-(slipPadX + 18)}px`, top: '-16.5px' }} />
+      {Array.from({ length: 36 }).map((_, index) => (
+        <div
+          key={index}
+          style={{
+            display: 'flex',
+            height: '3px',
+            width: index === 17 ? '26px' : '12px',
+            borderRadius: '3px',
+            backgroundColor: index === 17 ? YELLOW : '#2A2D28',
+            flexGrow: index === 17 ? 0 : 1,
+          }}
+        />
+      ))}
+    </div>
+  )
+
+  const verticalDivider = (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
+      {Array.from({ length: 14 }).map((_, index) => (
+        <div
+          key={index}
+          style={{
+            display: 'flex',
+            width: '3px',
+            height: index === 6 ? '26px' : '12px',
+            borderRadius: '3px',
+            backgroundColor: index === 6 ? YELLOW : '#2A2D28',
+          }}
+        />
+      ))}
+    </div>
+  )
+
+  const urlText = `${host}/${shortPath}`.toUpperCase()
+  const taglineText = 'CALLED IT BEFORE IT HAPPENS.'
+  const urlLine = (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: isTall ? 'column' : 'row',
+        alignItems: 'center',
+        gap: isTall ? '10px' : '14px',
+        marginTop: '14px',
+        fontSize: '16px',
+        fontWeight: 800,
+        letterSpacing: '4px',
+        color: 'rgba(14, 15, 13, 0.7)',
+      }}
+    >
+      <div style={{ display: 'flex', color: INK }}>{taglineText}</div>
+      {!isTall && <div style={{ display: 'flex' }}>·</div>}
+      <div style={{ display: 'flex' }}>{urlText}</div>
+    </div>
+  )
+
+  const slipStyle = {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    width: '100%',
+    backgroundColor: INK,
+    color: PAPER,
+    borderRadius: '28px',
+    boxShadow: '0 24px 60px rgba(0, 0, 0, 0.35)',
+  }
+
+  const body = isTall ? (
     <div
       style={{
         width: '100%',
@@ -150,173 +477,53 @@ export async function GET(request: Request) {
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
-        justifyContent: 'space-around',
-        background: 'linear-gradient(135deg, #0f172a 0%, #0b1324 100%)',
-        padding: '0 56px',
-        fontFamily: 'ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif',
+        justifyContent: 'center',
+        backgroundColor: YELLOW,
+        padding: isStory ? '72px 56px' : '56px 56px',
+        fontFamily,
+        color: INK,
       }}
     >
-      {hasUserBadge && (
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '12px',
-            padding: '10px 18px',
-            borderRadius: '999px',
-            backgroundColor: 'rgba(15, 23, 42, 0.7)',
-            color: '#e2e8f0',
-          }}
-        >
-          {userImageSrc && (
-            <OgImage
-              src={userImageSrc}
-              alt=""
-              width={40}
-              height={40}
-              style={{
-                width: '40px',
-                height: '40px',
-                borderRadius: '999px',
-                objectFit: 'cover',
-              }}
-            />
-          )}
-          {payload.userName && (
-            <div style={{ display: 'flex', fontSize: '32px', fontWeight: 600 }}>{payload.userName}</div>
-          )}
+      <div style={{ display: 'flex', width: '100%', marginBottom: '28px' }}>{header}</div>
+      <div style={{ ...slipStyle, padding: `${slipPadTop}px ${slipPadX}px ${isStory ? 48 : 40}px` }}>
+        {marketBlock}
+        <div style={{ display: 'flex', marginTop: '36px' }}>{sideRow}</div>
+        {horizontalDivider}
+        <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
+          {betBlock}
+          {toWinBlock}
         </div>
-      )}
-
-      <div
-        style={{
-          width: '100%',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          position: 'relative',
-          backgroundColor: '#ffffff',
-          borderRadius: '28px',
-          padding: '44px',
-          boxShadow: '0 18px 40px rgba(15, 23, 42, 0.35)',
-        }}
-      >
-        <div
-          style={{
-            position: 'absolute',
-            left: '63%',
-            top: '-18px',
-            transform: 'translateX(-50%)',
-            width: '36px',
-            height: '36px',
-            borderRadius: '999px',
-            backgroundColor: '#0b1324',
-          }}
-        />
-        <div
-          style={{
-            position: 'absolute',
-            left: '63%',
-            bottom: '-18px',
-            transform: 'translateX(-50%)',
-            width: '36px',
-            height: '36px',
-            borderRadius: '999px',
-            backgroundColor: '#0b1324',
-          }}
-        />
-        <div
-          style={{
-            display: 'flex',
-            width: '100%',
-            height: '100%',
-            gap: '32px',
-          }}
-        >
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              justifyContent: 'space-between',
-              flex: '3 1 0%',
-              minWidth: 0,
-            }}
-          >
-            <div
-              style={{
-                display: 'flex',
-                width: '160px',
-                height: '160px',
-                borderRadius: '20px',
-                backgroundColor: '#e2e8f0',
-                overflow: 'hidden',
-                border: '2px solid #e2e8f0',
-              }}
-            >
-              {positionImageSrc ? (
-                <OgImage
-                  src={positionImageSrc}
-                  alt=""
-                  width={160}
-                  height={160}
-                  style={{
-                    width: '160px',
-                    height: '160px',
-                    objectFit: 'cover',
-                  }}
-                />
-              ) : (
-                <div
-                  style={{
-                    width: '100%',
-                    height: '100%',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: '#475569',
-                    fontSize: '18px',
-                    fontWeight: 600,
-                  }}
-                >
-                  No image
-                </div>
-              )}
-            </div>
-            <div
-              style={{
-                display: 'flex',
-                fontSize: '48px',
-                fontWeight: 900,
-                color: '#0f172a',
-                lineHeight: 1.2,
-                textShadow: '0 0 1px #0f172a, 0 0 2px #0f172a, 0 0 3px #0f172a',
-              }}
-            >
-              {payload.title}
-            </div>
+        <div style={{ display: 'flex', marginTop: '18px' }}>{oddsRow}</div>
+      </div>
+      <Scallops count={24} />
+      {urlLine}
+    </div>
+  ) : (
+    <div
+      style={{
+        width: '100%',
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        backgroundColor: YELLOW,
+        padding: '36px 72px 28px',
+        fontFamily,
+        color: INK,
+      }}
+    >
+      <div style={{ display: 'flex', width: '100%', marginBottom: '30px' }}>{header}</div>
+      <div style={{ ...slipStyle, position: 'relative', padding: `${slipPadTop}px ${slipPadX}px 34px` }}>
+        {/* ticket notches on the perforation: columns are 3fr | divider | 2fr with 40px gaps */}
+        <div style={{ ...notchStyle, left: `${wideNotchLeft}px`, top: '-18px' }} />
+        <div style={{ ...notchStyle, left: `${wideNotchLeft}px`, bottom: '-18px' }} />
+        <div style={{ display: 'flex', gap: '40px', alignItems: 'stretch' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', flex: '3 1 0%', minWidth: 0 }}>
+            {marketBlock}
+            <div style={{ display: 'flex', flex: '1 1 0%' }} />
+            <div style={{ display: 'flex', marginTop: '22px' }}>{sideRow}</div>
           </div>
-          <div
-            style={{
-              width: '8px',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              alignSelf: 'stretch',
-            }}
-          >
-            {dividerDots.map((_, index) => (
-              <div
-                key={`divider-dot-${index}`}
-                style={{
-                  width: '2px',
-                  height: '6px',
-                  borderRadius: '999px',
-                  backgroundColor: '#e2e8f0',
-                }}
-              />
-            ))}
-          </div>
+          {verticalDivider}
           <div
             style={{
               display: 'flex',
@@ -324,138 +531,24 @@ export async function GET(request: Request) {
               justifyContent: 'space-between',
               flex: '2 1 0%',
               minWidth: 0,
-              alignItems: 'stretch',
-              paddingLeft: '12px',
             }}
           >
-            <div
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '16px',
-                alignItems: 'stretch',
-                width: '100%',
-              }}
-            >
-              <div
-                style={{
-                  color: accent,
-                  fontSize: '52px',
-                  fontWeight: 900,
-                  letterSpacing: '0.02em',
-                  textShadow: `0 0 1px ${accent}, 0 0 2px ${accent}, 0 0 3px ${accent}`,
-                }}
-              >
-                {`Bought ${outcomeLabel}`}
-              </div>
-              <div
-                style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '10px',
-                  maxWidth: '100%',
-                  width: '100%',
-                }}
-              >
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    width: '100%',
-                  }}
-                >
-                  <div style={{ display: 'flex', fontSize: '32px', color: '#64748b' }}>Cost</div>
-                  <div style={{ display: 'flex', fontSize: '32px', fontWeight: 900, color: '#0f172a' }}>
-                    {payload.cost}
-                  </div>
-                </div>
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    width: '100%',
-                  }}
-                >
-                  <div style={{ display: 'flex', fontSize: '32px', color: '#64748b' }}>Odds</div>
-                  <div style={{ display: 'flex', fontSize: '32px', fontWeight: 900, color: '#0f172a' }}>
-                    {payload.odds}
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%', marginTop: '12px' }}>
-              <div
-                style={{
-                  display: 'flex',
-                  width: '100%',
-                  height: '8px',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                }}
-              >
-                {horizontalDots.map((_, index) => (
-                  <div
-                    key={`horizontal-dot-${index}`}
-                    style={{
-                      width: '6px',
-                      height: '2px',
-                      borderRadius: '999px',
-                      backgroundColor: '#e2e8f0',
-                    }}
-                  />
-                ))}
-              </div>
-              <div
-                style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'baseline',
-                  justifyContent: 'space-between',
-                  width: '100%',
-                }}
-              >
-                <div style={{ display: 'flex', fontSize: '38px', fontWeight: 900, color: '#0f172a' }}>To win</div>
-                <div style={{ display: 'flex', fontSize: '64px', fontWeight: 900, color: '#0f172a' }}>
-                  {payload.toWin}
-                </div>
-              </div>
-            </div>
+            {betBlock}
+            <div style={{ display: 'flex', marginTop: '18px' }}>{toWinBlock}</div>
+            <div style={{ display: 'flex', marginTop: '14px' }}>{oddsRow}</div>
           </div>
         </div>
       </div>
-
-      {siteLogoSrc && (
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '8px',
-            width: '100%',
-          }}
-        >
-          <OgImage
-            src={siteLogoSrc}
-            alt=""
-            width={64}
-            height={64}
-            style={{
-              width: '64px',
-              height: '64px',
-              filter: 'brightness(0) invert(1)',
-            }}
-          />
-          <div style={{ color: '#fff', fontSize: '64px', fontWeight: 900 }}>{siteName}</div>
-        </div>
-      )}
-    </div>,
-    {
-      width: 1200,
-      height: 640,
-    },
+      <Scallops count={27} />
+      {urlLine}
+    </div>
   )
+
+  const response = new ImageResponse(body, {
+    width: isTall ? 1080 : 1200,
+    height: isStory ? 1350 : isTall ? 1080 : 630,
+    fonts: fonts.length > 0 ? fonts : undefined,
+  })
 
   response.headers.set('Cache-Control', 'public, max-age=1800, s-maxage=1800, stale-while-revalidate=1800')
   return response
