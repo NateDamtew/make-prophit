@@ -1,4 +1,4 @@
-import { and, desc, eq, ilike, or, sql } from 'drizzle-orm'
+import { and, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm'
 
 import { getConsensusThreshold, getMaxMembersForJurySize } from '@/lib/community-config'
 import { users } from '@/lib/db/schema/auth/tables'
@@ -864,7 +864,7 @@ export const CommunityRepository = {
           count: sql<number>`COUNT(*)::int`,
         })
         .from(jury_votes)
-        .where(sql`${jury_votes.community_market_id} = ANY(${marketIds})`)
+        .where(inArray(jury_votes.community_market_id, marketIds))
         .groupBy(jury_votes.community_market_id, jury_votes.vote)
 
       const talliesByMarket = new Map<string, { yes: number; no: number; disputed: number }>()
