@@ -59,6 +59,10 @@ Nothing is pushed or deployed.
 
 ## Your checklist (do these yourself, in order)
 
+0. **See it on beta (demo seed)** — after this branch is merged into `custom-production` and the deploy has run `db:push`, sign in on beta once, then run from the repo root:
+   `SEED_CONFIRM=1 POSTGRES_URL='<beta POSTGRES_URL from Vercel>' bun scripts/seed-pool-demo.ts --user <your wallet address or username>`
+   It creates the `prophit-kenya` community (you as admin + juror), 3 pool markets, and credits 20,000 KES of test balance to your account (`--balance 0` to skip). Open `/community/prophit-kenya`. Idempotent.
+
 1. **Env on Vercel (and `.env.local` for dev)** — add, do not commit:
    - `PAWAPAY_API_TOKEN` (sandbox token now; production token later), `PAWAPAY_ENV=sandbox`
    - `PAWAPAY_ALLOW_UNSIGNED_CALLBACKS=true` **only** until signed callbacks are enabled in the pawaPay dashboard, then remove it

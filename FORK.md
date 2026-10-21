@@ -44,6 +44,7 @@ These are new files/directories upstream doesn't have. Merges leave them untouch
   `src/app/[locale]/admin/{treasury,payments,ledger,reconciliation}/`, `src/app/[locale]/admin/api/mobile-money/`,
   `_actions/{mobile-money,pool-stake,ledger-order}.ts`, `wallet-modal/MobileMoneyPanel.tsx`,
   `community/[slug]/market/[marketId]/_components/pool/` (pool market page), `community/[slug]/_components/classic/PoolMarketCard.tsx`,
+  `scripts/seed-pool-demo.ts`,
   `community/[slug]/market/[marketId]/_components/PoolStakePanel.tsx`, `src/hooks/useMobileMoneyConfig.ts`,
   migrations `2026_10_20_00{1,2,3,4}_*.sql`, tests `tests/unit/{pawapay*,mobileMoney*,ledger*,fx*,pools*,tiering,houseQuote,reconciliation*}.test.ts`.
 
