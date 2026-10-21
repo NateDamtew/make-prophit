@@ -1,16 +1,19 @@
 'use client'
 
-import { CheckIcon, XIcon } from 'lucide-react'
+import { CheckIcon, ShareIcon, XIcon } from 'lucide-react'
 import { useExtracted } from 'next-intl'
 import { useRef, useState } from 'react'
 
 import type { PoolSummary } from '@/lib/pools/service'
+import type { ShareCardPayload } from '@/lib/share-card'
 
 import { stakeInPoolAction } from '@/app/[locale]/(platform)/_actions/pool-stake'
+import { PositionShareDialog } from '@/app/[locale]/(platform)/_components/PositionShareDialog'
 import { useTradingOnboarding } from '@/app/[locale]/(platform)/_providers/TradingOnboardingProvider'
 import EventOrderPanelOutcomeButton from '@/app/[locale]/(platform)/event/[slug]/_components/EventOrderPanelOutcomeButton'
 import EventOrderPanelResolvedMarketDisplay from '@/app/[locale]/(platform)/event/[slug]/_components/EventOrderPanelResolvedMarketDisplay'
 import EventOrderPanelSubmitButton from '@/app/[locale]/(platform)/event/[slug]/_components/EventOrderPanelSubmitButton'
+import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
 import { toast } from '@/components/ui/toast'
@@ -57,6 +60,62 @@ function BuyTab() {
       </span>
     </div>
   )
+}
+
+/**
+ * Share-card payload for a pool stake, in the same shape the platform's
+ * "Shill your bag" dialog and /api/og/position expect. Prices are shown as
+ * percentages and money in the pool currency.
+ */
+function buildPoolSharePayload(params: {
+  market: PoolMarketRecord
+  community: PoolCommunityRecord
+  outcome: PoolSide
+  outcomeLabel: string
+  stakeMinor: bigint
+  payoutMinor: bigint
+  totalYes: bigint
+  totalNo: bigint
+  currency: string
+  userName?: string | null
+  userImage?: string | null
+}): ShareCardPayload {
+  const total = params.totalYes + params.totalNo
+  const yesChance = total > 0n ? Number((params.totalYes * 10_000n) / total) / 100 : 50
+  const chance = params.outcome === 'yes' ? yesChance : 100 - yesChance
+  const avgPricePct =
+    params.payoutMinor > 0n
+      ? Math.max(1, Math.min(99, Math.round((Number(params.stakeMinor) / Number(params.payoutMinor)) * 100)))
+      : Math.round(chance)
+  const imageUrl = params.market.image_url?.trim() || params.community.icon_url?.trim() || undefined
+  return {
+    title: params.market.title,
+    outcome: params.outcomeLabel,
+    avgPrice: `${avgPricePct}%`,
+    odds: `${Math.round(chance)}%`,
+    cost: formatPoolMoney(params.stakeMinor, params.currency),
+    invested: formatPoolMoney(params.stakeMinor, params.currency),
+    toWin: formatPoolMoney(params.payoutMinor, params.currency),
+    imageUrl,
+    userName: params.userName?.trim() || undefined,
+    userImage: params.userImage?.trim() || undefined,
+    variant: params.outcome,
+    eventSlug: `community/${params.community.slug}/market/${params.market.id}`,
+  }
+}
+
+/** Payout an existing position receives if its side wins, after rake. */
+function existingPositionPayout(params: {
+  myStake: bigint
+  sideTotal: bigint
+  total: bigint
+  rakeBps: number
+}): bigint {
+  if (params.myStake <= 0n || params.sideTotal <= 0n) {
+    return 0n
+  }
+  const distributable = params.total - (params.total * BigInt(params.rakeBps)) / 10_000n
+  return (distributable * params.myStake) / params.sideTotal
 }
 
 function MobileMarketInfo({
@@ -175,6 +234,8 @@ export default function PoolOrderPanel({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [shouldShake, setShouldShake] = useState(false)
   const [justStaked, setJustStaked] = useState(false)
+  const [sharePayload, setSharePayload] = useState<ShareCardPayload | null>(null)
+  const [isShareOpen, setIsShareOpen] = useState(false)
 
   const wrapperClassName = cn(
     { 'rounded-xl border lg:w-85': !isMobile },
@@ -268,9 +329,22 @@ export default function PoolOrderPanel({
       setAmount('')
       setJustStaked(true)
       window.setTimeout(() => setJustStaked(false), 2_500)
-      toast.success(
-        t('Bought {amount} {outcome}', { amount: formatPoolMoney(amountMinor, currency), outcome: selectedLabel }),
+      setSharePayload(
+        buildPoolSharePayload({
+          market,
+          community,
+          outcome: selectedOutcome,
+          outcomeLabel: selectedLabel,
+          stakeMinor: amountMinor,
+          payoutMinor: estimatedPayout,
+          totalYes: totalYes + (selectedOutcome === 'yes' ? amountMinor : 0n),
+          totalNo: totalNo + (selectedOutcome === 'no' ? amountMinor : 0n),
+          currency,
+          userName: user?.username,
+          userImage: user?.image,
+        }),
       )
+      setIsShareOpen(true)
       await invalidatePool()
     } finally {
       setIsSubmitting(false)
@@ -397,7 +471,45 @@ export default function PoolOrderPanel({
             {ledgerUser && ledgerUser.stakes.length > 0 && (
               <div className="mt-3 grid gap-1 border-t pt-3 text-xs text-muted-foreground">
                 <div className="flex items-center justify-between font-semibold text-foreground">
-                  <span>{t('Your position')}</span>
+                  <span className="inline-flex items-center gap-1">
+                    {t('Your position')}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="size-6 text-muted-foreground hover:text-foreground"
+                      aria-label={t('Share')}
+                      onClick={() => {
+                        const myYes = BigInt(ledgerUser.totalYes)
+                        const myNo = BigInt(ledgerUser.totalNo)
+                        const side: PoolSide = myYes >= myNo ? 'yes' : 'no'
+                        const myStake = side === 'yes' ? myYes : myNo
+                        setSharePayload(
+                          buildPoolSharePayload({
+                            market,
+                            community,
+                            outcome: side,
+                            outcomeLabel: side === 'yes' ? outcomeLabels.yes : outcomeLabels.no,
+                            stakeMinor: myStake,
+                            payoutMinor: existingPositionPayout({
+                              myStake,
+                              sideTotal: side === 'yes' ? totalYes : totalNo,
+                              total: totalYes + totalNo,
+                              rakeBps: pool.rakeBps,
+                            }),
+                            totalYes,
+                            totalNo,
+                            currency,
+                            userName: user?.username,
+                            userImage: user?.image,
+                          }),
+                        )
+                        setIsShareOpen(true)
+                      }}
+                    >
+                      <ShareIcon className="size-3.5" />
+                    </Button>
+                  </span>
                   <span>{formatPoolMoney(BigInt(ledgerUser.totalYes) + BigInt(ledgerUser.totalNo), currency)}</span>
                 </div>
                 {BigInt(ledgerUser.totalYes) > 0n && (
@@ -417,6 +529,7 @@ export default function PoolOrderPanel({
           </>
         )}
       </div>
+      <PositionShareDialog open={isShareOpen} onOpenChange={setIsShareOpen} payload={sharePayload} />
     </form>
   )
 }
