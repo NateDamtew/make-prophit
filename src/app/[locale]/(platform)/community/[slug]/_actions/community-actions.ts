@@ -8,6 +8,7 @@ import { dispatchCommunityNotification } from '@/lib/communities/notifications'
 import { DEFAULT_ERROR_MESSAGE } from '@/lib/constants'
 import { CommunityRepository } from '@/lib/db/queries/community'
 import { UserRepository } from '@/lib/db/queries/user'
+import { validatePoolJurySize } from '@/lib/pools/jury'
 
 function actorLabel(user: any): string {
   return user?.username || user?.name || user?.email || user?.address || user?.id || 'unknown'
@@ -48,6 +49,12 @@ export async function createCommunityAction(input: z.input<typeof CreateCommunit
   const parsed = CreateCommunitySchema.safeParse(input)
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? DEFAULT_ERROR_MESSAGE, data: null }
+  }
+
+  // Fork: new communities start on the pool tier, where the jury alone settles balances.
+  const juryError = validatePoolJurySize(parsed.data.jury_size)
+  if (juryError) {
+    return { error: juryError, data: null }
   }
 
   // Check slug availability

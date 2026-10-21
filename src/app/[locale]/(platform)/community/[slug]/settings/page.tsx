@@ -10,6 +10,7 @@ import { Card } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { CommunityRepository } from '@/lib/db/queries/community'
 import { UserRepository } from '@/lib/db/queries/user'
+import { MIN_POOL_JURY_SIZE } from '@/lib/pools/jury'
 import { STATIC_PARAMS_PLACEHOLDER } from '@/lib/static-params'
 
 import { MembersTab } from '../_components/community-tabs/MembersTab'
@@ -52,6 +53,7 @@ async function SettingsContent({ slug }: { slug: string }) {
       <CommunitySettingsForm
         communityId={community.id}
         communitySlug={community.slug}
+        minJurySize={(community as { tier?: string | null }).tier === 'orderbook' ? 1 : MIN_POOL_JURY_SIZE}
         initial={{
           name: community.name,
           description: community.description,

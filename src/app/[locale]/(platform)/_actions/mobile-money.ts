@@ -11,6 +11,7 @@ import { issueConfirmationToken, verifyConfirmationToken } from '@/lib/mobile-mo
 import { createDeposit, previewDeposit, refreshDepositStatus } from '@/lib/mobile-money/deposits'
 import { MobileMoneyAccountRepository, PaymentIntentRepository } from '@/lib/mobile-money/intents'
 import { createPayout, previewPayout, refreshPayoutStatus } from '@/lib/mobile-money/payouts'
+import { hasCurrentConsent } from '@/lib/mobile-money/rules'
 import { getMobileMoneySettings } from '@/lib/mobile-money/settings'
 import { describePawaPayFailure } from '@/lib/pawapay/failure-codes'
 
@@ -68,6 +69,8 @@ export interface MobileMoneySummary {
   reservedMinor: string
   availableMinor: string
   withdrawalsFrozen: boolean
+  /** True until the user has confirmed their age and accepted the current Terms (first deposit / stake). */
+  consentRequired: boolean
   savedAccounts: Array<{ msisdn: string; provider: string; currency: string; verified: boolean }>
   recent: MobileMoneyIntentView[]
   limits: {
@@ -105,6 +108,7 @@ export async function getMobileMoneySummaryAction(): Promise<{
         reservedMinor: (balance?.reserved ?? 0n).toString(),
         availableMinor: (balance?.available ?? 0n).toString(),
         withdrawalsFrozen: profile?.withdrawals_frozen ?? false,
+        consentRequired: !hasCurrentConsent(profile),
         savedAccounts: saved.map((row) => ({
           msisdn: row.msisdn,
           provider: row.provider,
@@ -147,7 +151,11 @@ export async function previewMobileMoneyDepositAction(phoneInput: string) {
   }
 }
 
-export async function createMobileMoneyDepositAction(input: { phoneInput: string; amountInput: string }) {
+export async function createMobileMoneyDepositAction(input: {
+  phoneInput: string
+  amountInput: string
+  acceptTerms?: boolean
+}) {
   const user = await UserRepository.getCurrentUser({ disableCookieCache: true, minimal: true })
   if (!user) {
     return { data: null, error: NOT_SIGNED_IN }
@@ -157,6 +165,7 @@ export async function createMobileMoneyDepositAction(input: { phoneInput: string
       userId: user.id,
       phoneInput: input.phoneInput,
       amountInput: input.amountInput,
+      acceptTerms: input.acceptTerms === true,
     })
     if ('error' in result) {
       return { data: null, error: result.error }
@@ -226,6 +235,7 @@ export async function createMobileMoneyPayoutAction(input: {
   amountInput: string
   confirmationToken: string
   totpCode?: string
+  acceptTerms?: boolean
 }) {
   const user = await UserRepository.getCurrentUser({ disableCookieCache: true, minimal: true })
   if (!user) {
@@ -265,7 +275,12 @@ export async function createMobileMoneyPayoutAction(input: {
         return { data: null, error: 'That authenticator code is not valid.' }
       }
     }
-    const result = await createPayout({ userId: user.id, phoneInput: input.phoneInput, amountInput: input.amountInput })
+    const result = await createPayout({
+      userId: user.id,
+      phoneInput: input.phoneInput,
+      amountInput: input.amountInput,
+      acceptTerms: input.acceptTerms === true,
+    })
     if ('error' in result) {
       return { data: null, error: result.error }
     }

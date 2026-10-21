@@ -1,0 +1,142 @@
+name: Payments Sync
+
+# Keeps the local-currency rail and the community pools moving: polls pawaPay
+# for payment intents whose callback never arrived, closes and settles pools,
+# resolves or auto-cancels community markets past their date, credits house
+# positions, refreshes FX reference rates, and runs the nightly ledger
+# reconciliation + community tier review.
+#
+# Like market-sync.yml it only makes authenticated HTTPS calls to the live
+# site, so it runs from the DEFAULT branch (GitHub only fires schedules there)
+# and is independent of the deploy branch.
+#
+# Setup: repository secret CRON_SECRET (same value as the CRON_SECRET env in
+# Vercel). Optional repo variable SYNC_BASE_URL to override the target origin.
+#
+# Note: GitHub disables scheduled workflows after 60 days without a commit on
+# the repository. If the Actions tab shows this workflow as disabled, re-enable
+# it (gh workflow enable payments-sync.yml).
+
+on:
+  workflow_dispatch:
+    inputs:
+      group:
+        description: Which group of jobs to run
+        type: choice
+        default: all
+        options: [all, fast, rates, nightly]
+  schedule:
+    # fast: every 5 minutes (GitHub's scheduler is best-effort, not exact)
+    - cron: '*/5 * * * *'
+    # rates: every 10 minutes
+    - cron: '*/10 * * * *'
+    # nightly: 23:00 UTC = 02:00 Nairobi
+    - cron: '0 23 * * *'
+
+permissions:
+  contents: read
+
+env:
+  BASE_URL: ${{ vars.SYNC_BASE_URL || 'https://beta.makeprophit.com' }}
+  CRON_SECRET: ${{ secrets.CRON_SECRET }}
+
+jobs:
+  fast:
+    name: Payments, pools, community resolutions
+    if: >-
+      github.repository != 'kuestcom/prediction-market' &&
+      (github.event.schedule == '*/5 * * * *' ||
+       (github.event_name == 'workflow_dispatch' && contains(fromJSON('["all","fast"]'), inputs.group)))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    concurrency:
+      group: payments-sync-fast
+      cancel-in-progress: false
+    steps:
+      - name: Require CRON_SECRET
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::error::CRON_SECRET repo secret is not set. Add it in Settings -> Secrets and variables -> Actions."
+            exit 1
+          fi
+      - name: Mobile money status poller
+        run: |
+          code=$(curl -sS -m 90 -o resp.json -w '%{http_code}' -H "Authorization: Bearer $CRON_SECRET" "$BASE_URL/api/sync/mobile-money-status") || true
+          echo "mobile-money-status (HTTP $code): $(cat resp.json)"
+          case "$code" in 401|403) echo "::error::Auth failed ($code): CRON_SECRET does not match Vercel."; exit 1;; 2*) ;; *) echo "::error::mobile-money-status returned HTTP $code"; exit 1;; esac
+          grep -q '"success":false' resp.json && { echo "::error::mobile-money-status reported success:false"; exit 1; } || true
+      - name: Pool settlements
+        if: always()
+        run: |
+          code=$(curl -sS -m 90 -o resp.json -w '%{http_code}' -H "Authorization: Bearer $CRON_SECRET" "$BASE_URL/api/sync/pool-settlements") || true
+          echo "pool-settlements (HTTP $code): $(cat resp.json)"
+          case "$code" in 2*) ;; *) echo "::error::pool-settlements returned HTTP $code"; exit 1;; esac
+          grep -q '"success":false' resp.json && { echo "::error::pool-settlements reported errors"; exit 1; } || true
+      - name: Community resolutions (jury consensus or 72h auto-cancel)
+        if: always()
+        run: |
+          code=$(curl -sS -m 120 -o resp.json -w '%{http_code}' -H "Authorization: Bearer $CRON_SECRET" "$BASE_URL/api/sync/community-resolutions") || true
+          echo "community-resolutions (HTTP $code): $(cat resp.json)"
+          case "$code" in 2*) ;; *) echo "::error::community-resolutions returned HTTP $code"; exit 1;; esac
+      - name: House settlements
+        if: always()
+        run: |
+          code=$(curl -sS -m 90 -o resp.json -w '%{http_code}' -H "Authorization: Bearer $CRON_SECRET" "$BASE_URL/api/sync/house-settlements") || true
+          echo "house-settlements (HTTP $code): $(cat resp.json)"
+          case "$code" in 2*) ;; *) echo "::error::house-settlements returned HTTP $code"; exit 1;; esac
+
+  rates:
+    name: FX reference rates
+    if: >-
+      github.repository != 'kuestcom/prediction-market' &&
+      (github.event.schedule == '*/10 * * * *' ||
+       (github.event_name == 'workflow_dispatch' && contains(fromJSON('["all","rates"]'), inputs.group)))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    concurrency:
+      group: payments-sync-rates
+      cancel-in-progress: false
+    steps:
+      - name: Require CRON_SECRET
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::error::CRON_SECRET repo secret is not set."
+            exit 1
+          fi
+      - name: Refresh FX rates
+        run: |
+          code=$(curl -sS -m 60 -o resp.json -w '%{http_code}' -H "Authorization: Bearer $CRON_SECRET" "$BASE_URL/api/sync/fx-rates") || true
+          echo "fx-rates (HTTP $code): $(cat resp.json)"
+          case "$code" in 401|403) echo "::error::Auth failed ($code): CRON_SECRET does not match Vercel."; exit 1;; 2*) ;; *) echo "::error::fx-rates returned HTTP $code"; exit 1;; esac
+
+  nightly:
+    name: Reconciliation and community tiers
+    if: >-
+      github.repository != 'kuestcom/prediction-market' &&
+      (github.event.schedule == '0 23 * * *' ||
+       (github.event_name == 'workflow_dispatch' && contains(fromJSON('["all","nightly"]'), inputs.group)))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    concurrency:
+      group: payments-sync-nightly
+      cancel-in-progress: false
+    steps:
+      - name: Require CRON_SECRET
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::error::CRON_SECRET repo secret is not set."
+            exit 1
+          fi
+      - name: Ledger reconciliation
+        run: |
+          code=$(curl -sS -m 150 -o resp.json -w '%{http_code}' -H "Authorization: Bearer $CRON_SECRET" "$BASE_URL/api/sync/reconcile") || true
+          echo "reconcile (HTTP $code): $(cat resp.json)"
+          case "$code" in 401|403) echo "::error::Auth failed ($code): CRON_SECRET does not match Vercel."; exit 1;; 2*) ;; *) echo "::error::reconcile returned HTTP $code"; exit 1;; esac
+          # A failed check has already paused payouts/trading for that currency and notified admins; fail the job so it shows up here too.
+          grep -q '"success":false' resp.json && { echo "::error::Reconciliation reported a failed check. See Admin -> Reconciliation."; exit 1; } || true
+      - name: Community tier evaluation
+        if: always()
+        run: |
+          code=$(curl -sS -m 90 -o resp.json -w '%{http_code}' -H "Authorization: Bearer $CRON_SECRET" "$BASE_URL/api/sync/community-tiers") || true
+          echo "community-tiers (HTTP $code): $(cat resp.json)"
+          case "$code" in 2*) ;; *) echo "::error::community-tiers returned HTTP $code"; exit 1;; esac

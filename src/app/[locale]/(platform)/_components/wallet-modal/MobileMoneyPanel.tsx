@@ -15,6 +15,7 @@ import {
 } from '@/app/[locale]/(platform)/_actions/mobile-money'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Link } from '@/i18n/navigation'
 import { cn } from '@/lib/utils'
 
 /**
@@ -73,6 +74,7 @@ function MobileMoneyPanel({ onDone }: { onDone: () => void }) {
     numberVerified: boolean
   } | null>(null)
   const [totpCode, setTotpCode] = useState('')
+  const [acceptTerms, setAcceptTerms] = useState(false)
   const [intent, setIntent] = useState<MobileMoneyIntentView | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isBusy, setIsBusy] = useState(false)
@@ -181,12 +183,13 @@ function MobileMoneyPanel({ onDone }: { onDone: () => void }) {
     try {
       const result =
         mode === 'deposit'
-          ? await createMobileMoneyDepositAction({ phoneInput: phone, amountInput: amount })
+          ? await createMobileMoneyDepositAction({ phoneInput: phone, amountInput: amount, acceptTerms })
           : await createMobileMoneyPayoutAction({
               phoneInput: phone,
               amountInput: amount,
               confirmationToken: payoutQuote?.confirmationToken ?? '',
               totpCode: totpCode || undefined,
+              acceptTerms,
             })
       if (!result.data) {
         setError(result.error ?? 'Something went wrong.')
@@ -219,11 +222,13 @@ function MobileMoneyPanel({ onDone }: { onDone: () => void }) {
 
   const available = summary?.availableMinor ?? '0'
   const depositsPaused = false
+  const consentRequired = summary?.consentRequired ?? false
   const amountNumber = Number.parseFloat(amount || '0')
   const canSubmit =
     Number.isFinite(amountNumber) &&
     amountNumber > 0 &&
     !isBusy &&
+    (!consentRequired || acceptTerms) &&
     (mode === 'deposit' || (Boolean(payoutQuote) && (!payoutQuote?.requiresTwoFactor || totpCode.length === 6)))
 
   return (
@@ -398,6 +403,24 @@ function MobileMoneyPanel({ onDone }: { onDone: () => void }) {
                 className="h-12 w-full rounded-lg border border-border bg-transparent px-3 text-base tracking-widest text-foreground outline-none"
               />
             </div>
+          )}
+
+          {consentRequired && (
+            <label className="flex items-start gap-3 rounded-lg border border-border px-3 py-3 text-sm text-foreground">
+              <input
+                type="checkbox"
+                className="mt-0.5 size-4 shrink-0 accent-primary"
+                checked={acceptTerms}
+                onChange={(event) => setAcceptTerms(event.target.checked)}
+              />
+              <span>
+                I confirm that I am 18 or older and I accept the{' '}
+                <Link className="underline" href="/tos" target="_blank">
+                  Terms of Use
+                </Link>
+                .
+              </span>
+            </label>
           )}
 
           {error && <p className="text-center text-sm font-medium text-destructive">{error}</p>}

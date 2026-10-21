@@ -8,6 +8,7 @@ import { z } from 'zod'
 import { DEFAULT_ERROR_MESSAGE } from '@/lib/constants'
 import { CommunityRepository } from '@/lib/db/queries/community'
 import { UserRepository } from '@/lib/db/queries/user'
+import { validatePoolJurySize } from '@/lib/pools/jury'
 import { getPublicAssetUrl } from '@/lib/storage'
 import { uploadPublicAsset } from '@/lib/storage-upload'
 
@@ -106,6 +107,15 @@ export async function updateCommunitySettingsAction(formData: FormData): Promise
         }
       })
       return { errors }
+    }
+
+    // Fork: pool-tier communities (the default) cannot shrink the jury below the pool minimum.
+    const { data: community } = await CommunityRepository.getById(communityId)
+    if (community && (community as { tier?: string | null }).tier !== 'orderbook') {
+      const juryError = validatePoolJurySize(parsed.data.jury_size)
+      if (juryError) {
+        return { errors: { jury_size: juryError } }
+      }
     }
 
     const update: Parameters<typeof CommunityRepository.update>[1] = {

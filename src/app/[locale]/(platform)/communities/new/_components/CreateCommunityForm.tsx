@@ -9,11 +9,13 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { toast } from '@/components/ui/toast'
 import { getMaxMembersForJurySize } from '@/lib/community-config'
+import { MIN_POOL_JURY_SIZE } from '@/lib/pools/jury'
 import { cn } from '@/lib/utils'
 
 type Step = 1 | 2 | 3
 
-const JURY_OPTIONS = [1, 2, 3, 5, 10] as const
+// Fork: pool communities need at least MIN_POOL_JURY_SIZE seats (the jury alone settles balances).
+const JURY_OPTIONS = [3, 5, 7, 10] as const
 
 function slugify(name: string) {
   return name
@@ -56,7 +58,7 @@ export default function CreateCommunityForm() {
   const [slug, setSlug] = useState('')
   const [description, setDescription] = useState('')
   const [type, setType] = useState<'public' | 'private'>('public')
-  const [jurySize, setJurySize] = useState(1)
+  const [jurySize, setJurySize] = useState<number>(MIN_POOL_JURY_SIZE)
   const [rules, setRules] = useState('')
   const [slugEdited, setSlugEdited] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -235,9 +237,10 @@ export default function CreateCommunityForm() {
             <div className="space-y-3">
               <label className="text-sm font-medium">Jury Size *</label>
               <p className="text-xs text-muted-foreground">
-                Larger juries allow more members and require higher consensus to resolve markets.
+                Larger juries allow more members and require higher consensus to resolve markets. At least{' '}
+                {MIN_POOL_JURY_SIZE} jurors must be seated before a market can go live.
               </p>
-              <div className="grid grid-cols-5 gap-2">
+              <div className="grid grid-cols-4 gap-2">
                 {JURY_OPTIONS.map((size) => (
                   <button
                     key={size}
@@ -251,7 +254,7 @@ export default function CreateCommunityForm() {
                     )}
                   >
                     <span className="text-lg font-bold">{size}</span>
-                    <span className="text-xs text-muted-foreground">{size === 1 ? 'juror' : 'jurors'}</span>
+                    <span className="text-xs text-muted-foreground">jurors</span>
                   </button>
                 ))}
               </div>

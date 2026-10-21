@@ -11,6 +11,7 @@ const IS_PRODUCTION_DB = (process.env.POSTGRES_URL ?? '').includes('vsytshpanaxx
 describe.skipIf(!ENABLED || IS_PRODUCTION_DB)('pool engine (integration)', () => {
   let service: typeof import('@/lib/pools/service')
   let LedgerService: typeof import('@/lib/ledger/service').LedgerService
+  let recordConsent: typeof import('@/lib/mobile-money/consent').recordConsent
   let db: typeof import('@/lib/drizzle').db
   let users: typeof import('@/lib/db/schema/auth/tables').users
   let communitySchema: typeof import('@/lib/db/schema/communities/tables')
@@ -25,8 +26,11 @@ describe.skipIf(!ENABLED || IS_PRODUCTION_DB)('pool engine (integration)', () =>
   let marketIds: string[] = []
   const houseKinds = ['pool_rake', 'rounding'] as const
 
-  async function fund(userId: string, amount: bigint) {
+  async function fund(userId: string, amount: bigint, { consent = true } = {}) {
     await LedgerService.ensureUserProfile(userId, 'KES')
+    if (consent) {
+      await recordConsent(userId)
+    }
     const cash = await LedgerService.getOrCreateUserCashAccount(userId, 'KES')
     const suspense = await LedgerService.getOrCreateHouseAccount('suspense', 'KES')
     await LedgerService.postTransaction({
@@ -51,6 +55,7 @@ describe.skipIf(!ENABLED || IS_PRODUCTION_DB)('pool engine (integration)', () =>
   beforeAll(async () => {
     service = await import('@/lib/pools/service')
     ;({ LedgerService } = await import('@/lib/ledger/service'))
+    ;({ recordConsent } = await import('@/lib/mobile-money/consent'))
     ;({ db } = await import('@/lib/drizzle'))
     ;({ users } = await import('@/lib/db/schema/auth/tables'))
     communitySchema = await import('@/lib/db/schema/communities/tables')
@@ -58,7 +63,7 @@ describe.skipIf(!ENABLED || IS_PRODUCTION_DB)('pool engine (integration)', () =>
     poolSchema = await import('@/lib/db/schema/pools/tables')
     ;({ eq, inArray } = await import('drizzle-orm'))
 
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 4; i++) {
       const [user] = await db
         .insert(users)
         .values({
@@ -83,6 +88,8 @@ describe.skipIf(!ENABLED || IS_PRODUCTION_DB)('pool engine (integration)', () =>
     await fund(userIds[0]!, 100_000n)
     await fund(userIds[1]!, 100_000n)
     await fund(userIds[2]!, 100_000n)
+    // userIds[3] has a balance but has not accepted the Terms yet.
+    await fund(userIds[3]!, 20_000n, { consent: false })
   })
 
   afterAll(async () => {
@@ -252,6 +259,33 @@ describe.skipIf(!ENABLED || IS_PRODUCTION_DB)('pool engine (integration)', () =>
     const after = await service.getPoolSummary(marketId, userIds[0]!)
     expect(after?.pool.state).toBe('settled')
     expect(after?.user?.totalPayout).toBe('100800')
+  })
+
+  it('refuses a stake until the age + terms box is ticked, then records the acceptance once', async () => {
+    const marketId = await createMarket(`Consent ${suffix}`)
+    await service.openPoolForMarket({ communityMarketId: marketId, communityId, closesAt: null })
+    await expect(
+      service.stakeInPool({ communityMarketId: marketId, userId: userIds[3]!, outcome: 'yes', amountMinor: 5_000n }),
+    ).rejects.toMatchObject({ code: 'consent_required' })
+    const summaryBefore = await service.getPoolSummary(marketId, userIds[3]!)
+    expect(summaryBefore?.user?.consentRequired).toBe(true)
+
+    await service.stakeInPool({
+      communityMarketId: marketId,
+      userId: userIds[3]!,
+      outcome: 'yes',
+      amountMinor: 5_000n,
+      acceptTerms: true,
+    })
+    const profile = await LedgerService.getUserProfile(userIds[3]!)
+    expect(profile?.terms_accepted_at).toBeInstanceOf(Date)
+    expect(profile?.age_confirmed_at).toBeInstanceOf(Date)
+    expect(profile?.terms_version).toBeTruthy()
+    const summaryAfter = await service.getPoolSummary(marketId, userIds[3]!)
+    expect(summaryAfter?.user?.consentRequired).toBe(false)
+
+    // Later stakes no longer need the flag.
+    await service.stakeInPool({ communityMarketId: marketId, userId: userIds[3]!, outcome: 'no', amountMinor: 5_000n })
   })
 
   it('refunds every stake when the jury cancels, and closes expired pools', async () => {

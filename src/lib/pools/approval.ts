@@ -1,10 +1,11 @@
-import { eq } from 'drizzle-orm'
+import { and, count, eq, inArray } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 
 import { recordCommunityEvent } from '@/lib/communities/events'
 import { notifyMarketApproved } from '@/lib/community-notifications'
-import { community_markets } from '@/lib/db/schema/communities/tables'
+import { community_markets, community_members } from '@/lib/db/schema/communities/tables'
 import { db } from '@/lib/drizzle'
+import { assertPoolJuryReady, MIN_POOL_JURY_SIZE } from '@/lib/pools/jury'
 import { openPoolForMarket } from '@/lib/pools/service'
 
 /**
@@ -13,7 +14,7 @@ import { openPoolForMarket } from '@/lib/pools/service'
  */
 export async function approveAsPoolMarket(params: {
   market: typeof community_markets.$inferSelect
-  community: { id: string; slug: string; tier?: string | null; currency?: string | null }
+  community: { id: string; slug: string; tier?: string | null; currency?: string | null; jury_size?: number }
   reviewer: { id: string; username?: string | null; name?: string | null }
   communitySlug: string
   edits: {
@@ -29,6 +30,21 @@ export async function approveAsPoolMarket(params: {
   const finalDate = edits.resolution_date ? new Date(edits.resolution_date) : market.resolution_date
   if (!finalDate) {
     return { error: 'Resolution date is required.', data: null }
+  }
+
+  // The jury alone settles a pool, so it must actually exist before money can be staked.
+  const [seated] = await db
+    .select({ count: count() })
+    .from(community_members)
+    .where(
+      and(eq(community_members.community_id, market.community_id), inArray(community_members.role, ['juror', 'admin'])),
+    )
+  const juryError = assertPoolJuryReady({
+    jurySize: params.community.jury_size ?? MIN_POOL_JURY_SIZE,
+    seatedJurors: Number(seated?.count ?? 0),
+  })
+  if (juryError) {
+    return { error: juryError, data: null }
   }
 
   const [updated] = await db
