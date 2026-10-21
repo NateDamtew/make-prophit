@@ -204,7 +204,7 @@ export async function GET(request: Request) {
   const titleLength = payload.title.length
   const tallTitleFontSize = titleLength > 90 ? 44 : titleLength > 60 ? 52 : 60
   const titleFontSize = isTall
-    ? Math.round(tallTitleFontSize * (isStory ? 1.12 : 1))
+    ? Math.round(tallTitleFontSize * 1.12)
     : titleLength > 90
       ? 34
       : titleLength > 60
@@ -332,7 +332,7 @@ export async function GET(request: Request) {
         style={{
           display: 'flex',
           marginTop: '4px',
-          fontSize: isTall ? (isStory ? '68px' : '56px') : '50px',
+          fontSize: isTall ? '68px' : '50px',
           fontWeight: 800,
         }}
       >
@@ -348,7 +348,7 @@ export async function GET(request: Request) {
         style={{
           display: 'flex',
           marginTop: '4px',
-          fontSize: isTall ? (isStory ? '78px' : '64px') : '58px',
+          fontSize: isTall ? '78px' : '58px',
           fontWeight: 800,
           color: YELLOW,
         }}
@@ -365,8 +365,10 @@ export async function GET(request: Request) {
     </div>
   )
 
-  const slipPadX = isStory ? 52 : isTall ? 44 : 40
-  const slipPadTop = isStory ? 56 : isTall ? 44 : 34
+  const slipPadX = isTall ? 56 : 40
+  const slipPadTop = isTall ? 56 : 34
+  // Square format: the slip itself is a square (880×880) centred on the 1080 canvas.
+  const squareSlipSize = 880
   const notchStyle = {
     display: 'flex',
     position: 'absolute' as const,
@@ -376,43 +378,82 @@ export async function GET(request: Request) {
     backgroundColor: YELLOW,
   }
 
+  // columns are 3fr | divider column | 2fr with 40px gaps; the divider column is as wide as the logo chip
+  const wideDividerWidth = siteLogoSrc ? 44 : 3
   const wideInnerWidth = 1200 - 2 * 72 - 2 * slipPadX
-  const wideNotchLeft = Math.round(slipPadX + ((wideInnerWidth - 3 - 80) * 3) / 5 + 40 + 1.5 - 18)
+  const wideNotchLeft = Math.round(
+    slipPadX + ((wideInnerWidth - wideDividerWidth - 80) * 3) / 5 + 40 + wideDividerWidth / 2 - 18,
+  )
+
+  const perforationMark = siteLogoSrc ? (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: '44px',
+        height: '44px',
+        borderRadius: '12px',
+        backgroundColor: YELLOW,
+        flexShrink: 0,
+      }}
+    >
+      <OgImage
+        src={siteLogoSrc}
+        alt=""
+        width={28}
+        height={28}
+        style={{ width: '28px', height: '28px', filter: 'brightness(0)' }}
+      />
+    </div>
+  ) : null
 
   const horizontalDivider = (
     <div style={{ display: 'flex', position: 'relative', alignItems: 'center', gap: '10px', margin: '34px 0' }}>
       <div style={{ ...notchStyle, left: `${-(slipPadX + 18)}px`, top: '-16.5px' }} />
       <div style={{ ...notchStyle, right: `${-(slipPadX + 18)}px`, top: '-16.5px' }} />
-      {Array.from({ length: 36 }).map((_, index) => (
-        <div
-          key={index}
-          style={{
-            display: 'flex',
-            height: '3px',
-            width: index === 17 ? '26px' : '12px',
-            borderRadius: '3px',
-            backgroundColor: index === 17 ? YELLOW : '#2A2D28',
-            flexGrow: index === 17 ? 0 : 1,
-          }}
-        />
-      ))}
+      {Array.from({ length: 36 }).map((_, index) =>
+        index === 17 && perforationMark ? (
+          <div key={index} style={{ display: 'flex', margin: '0 6px' }}>
+            {perforationMark}
+          </div>
+        ) : (
+          <div
+            key={index}
+            style={{
+              display: 'flex',
+              height: '3px',
+              width: index === 17 ? '26px' : '12px',
+              borderRadius: '3px',
+              backgroundColor: index === 17 ? YELLOW : '#2A2D28',
+              flexGrow: index === 17 ? 0 : 1,
+            }}
+          />
+        ),
+      )}
     </div>
   )
 
   const verticalDivider = (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
-      {Array.from({ length: 14 }).map((_, index) => (
-        <div
-          key={index}
-          style={{
-            display: 'flex',
-            width: '3px',
-            height: index === 6 ? '26px' : '12px',
-            borderRadius: '3px',
-            backgroundColor: index === 6 ? YELLOW : '#2A2D28',
-          }}
-        />
-      ))}
+      {Array.from({ length: 14 }).map((_, index) =>
+        index === 6 && perforationMark ? (
+          <div key={index} style={{ display: 'flex', margin: '6px 0' }}>
+            {perforationMark}
+          </div>
+        ) : (
+          <div
+            key={index}
+            style={{
+              display: 'flex',
+              width: '3px',
+              height: index === 6 ? '26px' : '12px',
+              borderRadius: '3px',
+              backgroundColor: index === 6 ? YELLOW : '#2A2D28',
+            }}
+          />
+        ),
+      )}
     </div>
   )
 
@@ -452,15 +493,22 @@ export async function GET(request: Request) {
         alignItems: 'center',
         justifyContent: 'center',
         backgroundColor: YELLOW,
-        padding: isStory ? '72px 56px' : '56px 56px',
+        padding: isStory ? '72px 56px' : `56px ${(1080 - squareSlipSize) / 2}px`,
         fontFamily,
         color: INK,
       }}
     >
       <div style={{ display: 'flex', width: '100%', marginBottom: '28px' }}>{header}</div>
-      <div style={{ ...slipStyle, padding: `${slipPadTop}px ${slipPadX}px ${isStory ? 48 : 40}px` }}>
+      <div
+        style={{
+          ...slipStyle,
+          ...(isStory ? {} : { width: `${squareSlipSize}px`, height: `${squareSlipSize}px` }),
+          padding: `${slipPadTop}px ${slipPadX}px ${isStory ? 48 : 56}px`,
+        }}
+      >
         {marketBlock}
-        <div style={{ display: 'flex', marginTop: '36px' }}>{sideRow}</div>
+        <div style={{ display: 'flex', flex: '1 1 0%', minHeight: '36px' }} />
+        <div style={{ display: 'flex' }}>{sideRow}</div>
         {horizontalDivider}
         <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
           {betBlock}
