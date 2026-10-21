@@ -2,11 +2,13 @@ import { setRequestLocale } from 'next-intl/server'
 import { Suspense } from 'react'
 
 import type { SupportedLocale } from '@/i18n/locales'
+import type { PoolCardSummary } from '@/lib/pools/activity'
 
 import { CommunityRepository } from '@/lib/db/queries/community'
 import { CommunityDiscoveryRepository } from '@/lib/db/queries/community-discovery'
 import { MyCommunitiesRepository } from '@/lib/db/queries/my-communities'
 import { UserRepository } from '@/lib/db/queries/user'
+import { getPoolCardSummaries } from '@/lib/pools/activity'
 import { STATIC_PARAMS_PLACEHOLDER } from '@/lib/static-params'
 
 import CommunitiesBrowse from './_components/CommunitiesBrowse'
@@ -38,10 +40,19 @@ async function CommunitiesContent() {
     CommunityDiscoveryRepository.listCategories(12),
   ])
 
+  // Fork: pool odds + volume for the featured market cards.
+  const poolSummaries: Record<string, PoolCardSummary> = await getPoolCardSummaries(
+    (featuredMarkets ?? []).map((market) => market.id),
+  ).catch(() => ({}))
+  const featuredWithPools = (featuredMarkets ?? []).map((market) => ({
+    ...market,
+    pool: poolSummaries[market.id] ?? null,
+  }))
+
   return (
     <CommunitiesBrowse
       initialCommunities={communities ?? []}
-      featuredMarkets={featuredMarkets ?? []}
+      featuredMarkets={featuredWithPools}
       joinedCommunityIds={joined.map((c) => c.id)}
       trendingCommunities={trending as any}
       categories={categories}

@@ -1,10 +1,12 @@
 'use client'
 
-import { Activity, Award, Clock, Globe, Lock, Search, Sparkles, Star, TrendingUp, Users } from 'lucide-react'
+import { Activity, Award, Globe, Lock, Search, Sparkles, Star, TrendingUp, Users } from 'lucide-react'
 import Link from 'next/link'
 import { useMemo, useState } from 'react'
 
-import { Card, CardContent } from '@/components/ui/card'
+import type { PoolCardSummary } from '@/lib/pools/activity'
+
+import PoolMarketCard from '@/app/[locale]/(platform)/community/[slug]/_components/classic/PoolMarketCard'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 
@@ -33,6 +35,10 @@ interface FeaturedMarket {
   resolution_date: Date | null
   status: string
   created_at: Date
+  event_id?: string | null
+  image_url?: string | null
+  resolved_outcome?: string | null
+  pool?: PoolCardSummary | null
   community_id: string
   community_slug: string
   community_name: string
@@ -47,74 +53,6 @@ const FILTERS: { id: Sort; label: string; icon: React.ElementType }[] = [
   { id: 'newest', label: 'Newest', icon: Sparkles },
   { id: 'top-rated', label: 'Top Rated', icon: Award },
 ]
-
-function FeaturedMarketCard({ market }: { market: FeaturedMarket }) {
-  const href = `/community/${market.community_slug}` as const
-
-  return (
-    <Link href={href as any} className="block w-80 shrink-0">
-      <Card
-        className={cn(
-          `group flex h-45 flex-col overflow-hidden rounded-xl shadow-md shadow-black/4 transition-all hover:-translate-y-0.5 hover:shadow-black/8 dark:hover:bg-secondary`,
-        )}
-      >
-        <CardContent className="flex h-full flex-col p-3 md:pb-1">
-          <div className="mb-3 flex items-start gap-2 pr-2">
-            <div className="flex size-10 shrink-0 items-center justify-center self-start rounded-sm bg-primary/10 text-base">
-              {market.community_icon ? (
-                <img src={market.community_icon} alt="" className="size-full rounded-sm object-cover" />
-              ) : (
-                '🏛️'
-              )}
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-2xs font-medium tracking-wide text-muted-foreground uppercase">
-                {market.community_name}
-              </p>
-              <h3 className="line-clamp-2 w-full text-sm/5 font-semibold underline-offset-2 transition-colors duration-200 group-hover:text-foreground group-hover:underline">
-                {market.title}
-              </h3>
-            </div>
-          </div>
-
-          {/*
-            Honest pre-launch state: rather than fake a 50/50 chance ring,
-            surface the real status until live trading is wired through Kuest.
-          */}
-          <div className="mt-auto mb-2 flex items-center justify-center rounded-md border border-dashed border-border bg-muted/30 px-3 py-2">
-            <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-              <span className="relative flex size-1.5">
-                <span className="absolute inline-flex size-full animate-ping rounded-full bg-amber-500 opacity-60" />
-                <span className="relative inline-flex size-1.5 rounded-full bg-amber-500" />
-              </span>
-              Trading opens soon
-            </span>
-          </div>
-
-          {/* FOOTER */}
-          <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-            <span className="flex items-center gap-1.5">
-              <span className="relative flex size-2">
-                <span className="absolute inline-flex size-2 animate-ping rounded-full bg-amber-500 opacity-75" />
-                <span className="relative inline-flex size-2 rounded-full bg-amber-500" />
-              </span>
-              <span className="leading-none font-medium text-amber-600 uppercase">Live</span>
-            </span>
-            {market.resolution_date && (
-              <span className="flex items-center gap-1">
-                <Clock className="size-3" />
-                {new Date(market.resolution_date).toLocaleDateString(undefined, {
-                  month: 'short',
-                  day: 'numeric',
-                })}
-              </span>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-    </Link>
-  )
-}
 
 function CommunityCard({ community }: { community: Community }) {
   const rating = Number(community.average_rating ?? 0)
@@ -269,7 +207,19 @@ export default function CommunitiesBrowse({
           </div>
           <div className="-mx-4 flex scrollbar-none gap-3 overflow-x-auto px-4 pb-2 [-ms-overflow-style:none] sm:-mx-6 sm:px-6 [&::-webkit-scrollbar]:hidden">
             {featuredMarkets.map((market) => (
-              <FeaturedMarketCard key={market.id} market={market} />
+              <div key={market.id} className="w-80 shrink-0">
+                <PoolMarketCard
+                  market={{
+                    ...market,
+                    event_id: market.event_id ?? null,
+                    resolved_outcome: market.resolved_outcome ?? null,
+                    resolution_source: null,
+                    resolution_rules: null,
+                  }}
+                  communitySlug={market.community_slug}
+                  communityIconUrl={market.community_icon}
+                />
+              </div>
             ))}
           </div>
         </section>

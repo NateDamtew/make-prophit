@@ -810,6 +810,10 @@ export const CommunityRepository = {
           resolution_date: community_markets.resolution_date,
           status: community_markets.status,
           created_at: community_markets.created_at,
+          // Fork: fields the platform-style market card needs
+          event_id: community_markets.event_id,
+          image_url: community_markets.image_url,
+          resolved_outcome: community_markets.resolved_outcome,
           community_id: communities.id,
           community_slug: communities.slug,
           community_name: communities.name,
