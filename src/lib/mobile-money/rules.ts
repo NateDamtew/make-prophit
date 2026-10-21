@@ -229,7 +229,11 @@ export function validatePayoutAmount(params: {
   if (operation.config.dailyPayoutCapMinor > 0n && dailyUsedMinor + grossMinor > operation.config.dailyPayoutCapMinor) {
     return { ok: false, error: 'daily_cap_reached' }
   }
-  if (!isVerifiedNumber && operation.config.newNumberPayoutCapMinor > 0n && grossMinor > operation.config.newNumberPayoutCapMinor) {
+  if (
+    !isVerifiedNumber &&
+    operation.config.newNumberPayoutCapMinor > 0n &&
+    grossMinor > operation.config.newNumberPayoutCapMinor
+  ) {
     return { ok: false, error: 'new_number_cap' }
   }
   return { ok: true, value: { grossMinor, feeMinor, netMinor } }

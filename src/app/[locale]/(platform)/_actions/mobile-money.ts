@@ -1,8 +1,8 @@
 'use server'
 
-import type { PaymentIntentRow } from '@/lib/mobile-money/intents'
-
 import { headers } from 'next/headers'
+
+import type { PaymentIntentRow } from '@/lib/mobile-money/intents'
 
 import { auth } from '@/lib/auth'
 import { UserRepository } from '@/lib/db/queries/user'
@@ -192,7 +192,11 @@ export async function previewMobileMoneyPayoutAction(input: {
     return { data: null, error: NOT_SIGNED_IN }
   }
   try {
-    const result = await previewPayout({ userId: user.id, phoneInput: input.phoneInput, amountInput: input.amountInput })
+    const result = await previewPayout({
+      userId: user.id,
+      phoneInput: input.phoneInput,
+      amountInput: input.amountInput,
+    })
     if ('error' in result) {
       return { data: null, error: result.error }
     }
