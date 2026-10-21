@@ -39,6 +39,11 @@ const TonRailPanel = dynamic(() => import('@/app/[locale]/(platform)/_components
   ssr: false,
 })
 
+// Mobile money (pawaPay) rail — fork-only, loaded on demand like the TON panel.
+const MobileMoneyPanel = dynamic(() => import('@/app/[locale]/(platform)/_components/wallet-modal/MobileMoneyPanel'), {
+  ssr: false,
+})
+
 export type { WalletDepositModalProps, WalletWithdrawModalProps }
 
 export function WalletDepositModal(props: WalletDepositModalProps) {
@@ -61,6 +66,7 @@ export function WalletDepositModal(props: WalletDepositModalProps) {
     walletBalance,
     isBalanceLoading = false,
     showTon = false,
+    showMobileMoney = false,
   } = props
 
   const [copied, setCopied] = useState(false)
@@ -177,7 +183,11 @@ export function WalletDepositModal(props: WalletDepositModalProps) {
         isBalanceLoading={isEffectiveWalletBalanceLoading}
         onTon={() => onViewChange('ton')}
         showTon={showTon}
+        onMobileMoney={() => onViewChange('mobile-money')}
+        showMobileMoney={showMobileMoney}
       />
+    ) : view === 'mobile-money' ? (
+      <MobileMoneyPanel onDone={() => onOpenChange(false)} />
     ) : view === 'ton' ? (
       <TonRailPanel
         user={walletEoaAddress ? { address: walletEoaAddress, deposit_wallet_address: walletAddress } : null}

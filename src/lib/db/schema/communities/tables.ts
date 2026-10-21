@@ -43,6 +43,11 @@ export const communities = pgTable(
     market_count: integer().notNull().default(0),
     average_rating: numeric({ precision: 3, scale: 2 }).default('0'),
     review_count: integer().notNull().default(0),
+    // Market engine tier (fork): 'pool' = in-house parimutuel, 'orderbook' = Kuest. New markets only.
+    tier: text().notNull().default('pool'),
+    currency: char({ length: 3 }),
+    tier_changed_at: timestamp({ withTimezone: true }),
+    tier_override: text(),
     created_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
     updated_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
@@ -123,6 +128,8 @@ export const community_markets = pgTable('community_markets', {
   deploy_attempts: integer().notNull().default(0),
   last_deploy_error: text(),
   event_creation_draft_id: char({ length: 26 }),
+  // Engine the market was created on; immutable. 'pool' | 'orderbook'
+  engine: text().notNull().default('pool'),
   created_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
   updated_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
 })

@@ -18,6 +18,7 @@ import { useIsMobile } from '@/hooks/useIsMobile'
 import { useIsTma } from '@/hooks/useIsTma'
 import { useLiFiWalletUsdBalance } from '@/hooks/useLiFiWalletUsdBalance'
 import { useMeldCheckoutIdFromUrl } from '@/hooks/useMeldCheckoutIdFromUrl'
+import { useMobileMoneyConfig } from '@/hooks/useMobileMoneyConfig'
 import { useSignaturePromptRunner } from '@/hooks/useSignaturePromptRunner'
 import { useSiteIdentity } from '@/hooks/useSiteIdentity'
 import { MAX_AMOUNT_INPUT } from '@/lib/amount-input'
@@ -48,7 +49,7 @@ import { isTradingAuthRequiredError } from '@/lib/trading-auth/errors'
 import { signAndSubmitDepositWalletCalls } from '@/lib/wallet/client'
 import { buildSendErc20Call } from '@/lib/wallet/transactions'
 
-type DepositView = 'fund' | 'receive' | 'wallets' | 'amount' | 'confirm' | 'success' | 'ton'
+type DepositView = 'fund' | 'receive' | 'wallets' | 'amount' | 'confirm' | 'success' | 'ton' | 'mobile-money'
 
 interface WalletFlowProps {
   depositOpen: boolean
@@ -352,6 +353,7 @@ export function WalletFlow({
 }: WalletFlowProps) {
   const isMobile = useIsMobile()
   const isTma = useIsTma()
+  const { config: mobileMoneyConfig } = useMobileMoneyConfig(depositOpen)
   const t = useExtracted()
   const { signTypedDataAsync } = useSignTypedData()
   const { runWithSignaturePrompt } = useSignaturePromptRunner()
@@ -801,6 +803,7 @@ export function WalletFlow({
         walletBalance={formattedConnectedWalletUsdBalance}
         isBalanceLoading={isLoadingConnectedWalletUsdBalance}
         showTon={isTma}
+        showMobileMoney={mobileMoneyConfig.enabled}
       />
       {depositWalletAddress && isLiFiBridgeOpen && (
         <WalletLiFiBridge

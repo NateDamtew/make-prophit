@@ -214,6 +214,13 @@ export async function castJuryVoteAction(
     // If consensus was reached and the market actually moved to a terminal
     // state, emit the resolved event + member-wide notification.
     if (resolution && (resolution.status === 'resolved' || resolution.status === 'disputed')) {
+      // Pool-engine markets settle in the ledger as soon as the jury decides.
+      try {
+        const { settlePoolForMarket } = await import('@/lib/pools/service')
+        await settlePoolForMarket(communityMarketId)
+      } catch (settleError) {
+        console.error('[castJuryVoteAction] pool settlement failed; the cron will retry', settleError)
+      }
       const marketRow = await CommunityRepository.getMarket(communityMarketId)
       const title = marketRow.data?.title ?? 'A market'
 

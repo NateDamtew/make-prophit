@@ -11,8 +11,8 @@ import { cn } from '@/lib/utils'
 
 import type { PresetMarket, PresetProps } from './types'
 
-import ClassicMarketCard from '../classic/ClassicMarketCard'
 import ClassicSideRail from '../classic/ClassicSideRail'
+import PoolMarketCard from '../classic/PoolMarketCard'
 import { AboutTab } from '../community-tabs/AboutTab'
 import { ActivityTab } from '../community-tabs/ActivityTab'
 import { JuryTab } from '../community-tabs/JuryTab'
@@ -116,7 +116,12 @@ export default function ClassicPreset({
 
         {/* Tab content */}
         {activeTab === 'markets' && (
-          <MarketsGrid markets={sortedMarkets} communitySlug={community.slug} isAdmin={isAdmin} />
+          <MarketsGrid
+            markets={sortedMarkets}
+            communitySlug={community.slug}
+            communityIconUrl={community.icon_url ?? null}
+            isAdmin={isAdmin}
+          />
         )}
         {activeTab === 'activity' && (
           <div className="rounded-2xl border bg-card p-4 sm:p-6">
@@ -158,10 +163,12 @@ export default function ClassicPreset({
 function MarketsGrid({
   markets,
   communitySlug,
+  communityIconUrl,
   isAdmin,
 }: {
   markets: PresetMarket[]
   communitySlug: string
+  communityIconUrl: string | null
   isAdmin: boolean
 }) {
   if (markets.length === 0) {
@@ -192,9 +199,9 @@ function MarketsGrid({
     )
   }
   return (
-    <div className="grid gap-4 sm:grid-cols-2">
+    <div className="grid gap-3 sm:grid-cols-2">
       {markets.map((m) => (
-        <ClassicMarketCard key={m.id} market={m} communitySlug={communitySlug} />
+        <PoolMarketCard key={m.id} market={m} communitySlug={communitySlug} communityIconUrl={communityIconUrl} />
       ))}
     </div>
   )
@@ -204,6 +211,11 @@ function sortMarkets(markets: PresetMarket[], key: SortKey): PresetMarket[] {
   const copy = [...markets]
   if (key === 'active') {
     return copy.sort((a, b) => {
+      const aPool = a.pool ? Number(BigInt(a.pool.totalYesMinor) + BigInt(a.pool.totalNoMinor)) : 0
+      const bPool = b.pool ? Number(BigInt(b.pool.totalYesMinor) + BigInt(b.pool.totalNoMinor)) : 0
+      if (bPool !== aPool) {
+        return bPool - aPool
+      }
       const aV = (a.votes?.yes ?? 0) + (a.votes?.no ?? 0)
       const bV = (b.votes?.yes ?? 0) + (b.votes?.no ?? 0)
       if (bV !== aV) {

@@ -36,6 +36,7 @@ interface Market {
   resolved_outcome: string | null
   resolved_at: Date | null
   event_id: string | null
+  engine?: string | null
   created_at: Date
 }
 

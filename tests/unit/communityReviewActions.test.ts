@@ -5,6 +5,7 @@ import { hoisted } from '../bun-test-helpers'
 const mocks = hoisted(() => ({
   getCurrentUser: mock(),
   getMemberRole: mock(),
+  getById: mock(),
   submitForReview: mock(),
   setReviewApproved: mock(),
   setReviewRejected: mock(),
@@ -25,6 +26,7 @@ void mock.module('@/lib/db/queries/user', () => ({
 void mock.module('@/lib/db/queries/community', () => ({
   CommunityRepository: {
     getMemberRole: mocks.getMemberRole,
+    getById: mocks.getById,
     submitForReview: mocks.submitForReview,
     setReviewApproved: mocks.setReviewApproved,
     setReviewRejected: mocks.setReviewRejected,
@@ -81,6 +83,8 @@ void mock.module('next/cache', () => ({
 describe('submitMarketForReviewAction', () => {
   beforeEach(() => {
     Object.values(mocks).forEach((m) => m.mockReset())
+    // Fork: order-book tier keeps these tests on the on-chain deploy path.
+    mocks.getById.mockResolvedValue({ data: { id: 'C1', tier: 'orderbook' }, error: null })
   })
 
   it('rejects non-community-admin users', async () => {
@@ -154,6 +158,8 @@ describe('submitMarketForReviewAction', () => {
 describe('rejectMarketAction', () => {
   beforeEach(() => {
     Object.values(mocks).forEach((m) => m.mockReset())
+    // Fork: order-book tier keeps these tests on the on-chain deploy path.
+    mocks.getById.mockResolvedValue({ data: { id: 'C1', tier: 'orderbook' }, error: null })
   })
 
   it('rejects non-platform-admins', async () => {
@@ -191,6 +197,8 @@ describe('rejectMarketAction', () => {
 describe('approveMarketAction', () => {
   beforeEach(() => {
     Object.values(mocks).forEach((m) => m.mockReset())
+    // Fork: order-book tier keeps these tests on the on-chain deploy path.
+    mocks.getById.mockResolvedValue({ data: { id: 'C1', tier: 'orderbook' }, error: null })
   })
 
   it('rejects non-platform-admins', async () => {
@@ -320,6 +328,8 @@ describe('approveMarketAction', () => {
 describe('retryDeployAction', () => {
   beforeEach(() => {
     Object.values(mocks).forEach((m) => m.mockReset())
+    // Fork: order-book tier keeps these tests on the on-chain deploy path.
+    mocks.getById.mockResolvedValue({ data: { id: 'C1', tier: 'orderbook' }, error: null })
   })
 
   it('rejects non-admins', async () => {
