@@ -45,7 +45,7 @@ export function resolveFxFeedUrl(env: NodeJS.ProcessEnv = process.env): { url: s
   return { url: 'https://open.er-api.com/v6/latest/USD', source: 'open-er-api' }
 }
 
-export async function fetchUsdRates(
+async function fetchUsdRates(
   fetchImpl: typeof fetch = fetch,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<{ rates: Record<string, number>; source: string }> {

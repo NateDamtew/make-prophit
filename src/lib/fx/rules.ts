@@ -4,8 +4,8 @@
  */
 
 export const FX_STALE_AFTER_MS = 30 * 60_000
-export const FX_JUMP_PAUSE_BPS = 200 // 2%
-export const FX_STALE_EXTRA_MARGIN_BPS = 100 // +1 point when the feed is stale
+const FX_JUMP_PAUSE_BPS = 200 // 2%
+const FX_STALE_EXTRA_MARGIN_BPS = 100 // +1 point when the feed is stale
 
 export interface RateSnapshotLike {
   ratePerUsd: number

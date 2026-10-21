@@ -196,6 +196,17 @@ CREATE TABLE IF NOT EXISTS fx_rate_snapshots (
 CREATE INDEX IF NOT EXISTS idx_fx_rate_snapshots_currency_fetched ON fx_rate_snapshots (currency, fetched_at);
 
 -- ─── Row level security (upstream convention: service_role policy only) ──────
+ALTER TABLE public.ledger_user_profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ledger_accounts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ledger_transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ledger_entries ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ledger_reservations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.mobile_money_accounts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.payment_intents ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.payment_callback_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.fx_rate_snapshots ENABLE ROW LEVEL SECURITY;
+
+-- service_role policies (idempotent)
 DO $migration$
 DECLARE
   tbl TEXT;
@@ -206,7 +217,6 @@ BEGIN
     'fx_rate_snapshots'
   ]
   LOOP
-    EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', tbl);
     IF NOT EXISTS (
       SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = tbl AND policyname = 'service_role_all_' || tbl
     ) THEN

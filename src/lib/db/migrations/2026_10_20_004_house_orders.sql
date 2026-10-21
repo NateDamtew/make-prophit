@@ -80,13 +80,17 @@ CREATE INDEX IF NOT EXISTS idx_positions_user ON positions (user_id);
 CREATE OR REPLACE TRIGGER set_positions_updated_at
   BEFORE UPDATE ON positions FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
+ALTER TABLE public.user_orders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.house_orders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.positions ENABLE ROW LEVEL SECURITY;
+
+-- service_role policies (idempotent)
 DO $migration$
 DECLARE
   tbl TEXT;
 BEGIN
   FOREACH tbl IN ARRAY ARRAY['user_orders', 'house_orders', 'positions']
   LOOP
-    EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', tbl);
     IF NOT EXISTS (
       SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = tbl AND policyname = 'service_role_all_' || tbl
     ) THEN

@@ -36,7 +36,7 @@ async function create(input: {
   }
 }
 
-export function formatLocalAmount(amountMinor: bigint, currency: string) {
+function formatLocalAmount(amountMinor: bigint, currency: string) {
   return `${formatMinorUnitsForDisplay(amountMinor, { trimWholeNumbers: true })} ${currency}`
 }
 

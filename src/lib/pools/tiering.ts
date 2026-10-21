@@ -31,7 +31,7 @@ export const DEFAULT_TIER_THRESHOLDS: TierThresholds = {
   demoteAfterDays: 60,
 }
 
-export const TIERING_SETTINGS_KEY = 'tiering'
+const TIERING_SETTINGS_KEY = 'tiering'
 
 export interface CommunityTierMetrics {
   members: number
@@ -113,12 +113,12 @@ export function decideTier(params: {
   return { tier: 'orderbook', reason: 'grace period before demotion' }
 }
 
-export async function getTierThresholds(): Promise<TierThresholds> {
+async function getTierThresholds(): Promise<TierThresholds> {
   const { data } = await SettingsRepository.getSettings()
   return parseTierThresholds(data?.[MOBILE_MONEY_SETTINGS_GROUP]?.[TIERING_SETTINGS_KEY]?.value)
 }
 
-export async function collectCommunityMetrics(): Promise<Map<string, CommunityTierMetrics>> {
+async function collectCommunityMetrics(): Promise<Map<string, CommunityTierMetrics>> {
   const since30 = new Date(Date.now() - 30 * 86_400_000)
   const since90 = new Date(Date.now() - 90 * 86_400_000)
   const members = await db.select({ id: communities.id, members: communities.member_count }).from(communities)

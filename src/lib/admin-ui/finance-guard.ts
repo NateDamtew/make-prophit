@@ -14,7 +14,7 @@ export interface FinanceActor extends AdminActor {
   is_finance: true
 }
 
-export function isFinanceIdentifier(label: string | null | undefined, env: NodeJS.ProcessEnv = process.env): boolean {
+function isFinanceIdentifier(label: string | null | undefined, env: NodeJS.ProcessEnv = process.env): boolean {
   const configured = env.MOBILE_MONEY_FINANCE_ADMINS?.split(',')
     .map((item) => item.trim().toLowerCase())
     .filter(Boolean)
@@ -22,10 +22,6 @@ export function isFinanceIdentifier(label: string | null | undefined, env: NodeJ
     return true
   }
   return Boolean(label && configured.includes(label.trim().toLowerCase()))
-}
-
-export function financeGuardIsOpen(env: NodeJS.ProcessEnv = process.env): boolean {
-  return !env.MOBILE_MONEY_FINANCE_ADMINS?.trim()
 }
 
 export async function getFinanceActor(): Promise<FinanceActor | null> {

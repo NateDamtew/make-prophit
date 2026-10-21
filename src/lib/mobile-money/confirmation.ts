@@ -18,7 +18,7 @@ export interface ConfirmationPayload {
   expiresAt: number
 }
 
-export const CONFIRMATION_TTL_MS = 5 * 60_000
+const CONFIRMATION_TTL_MS = 5 * 60_000
 
 function secretFromEnv(env: NodeJS.ProcessEnv): string | null {
   return env.MOBILE_MONEY_CONFIRMATION_SECRET?.trim() || env.BETTER_AUTH_SECRET?.trim() || null
@@ -36,12 +36,17 @@ export function issueConfirmationToken(
   if (!secret) {
     throw new Error('No confirmation secret configured (BETTER_AUTH_SECRET).')
   }
-  const payload: ConfirmationPayload = { ...input, expiresAt: (options.now ?? Date.now)() + (options.ttlMs ?? CONFIRMATION_TTL_MS) }
+  const payload: ConfirmationPayload = {
+    ...input,
+    expiresAt: (options.now ?? Date.now)() + (options.ttlMs ?? CONFIRMATION_TTL_MS),
+  }
   const encoded = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url')
   return `${encoded}.${sign(encoded, secret)}`
 }
 
-export type ConfirmationCheck = { ok: true; payload: ConfirmationPayload } | { ok: false; reason: 'malformed' | 'bad_signature' | 'expired' | 'mismatch' }
+export type ConfirmationCheck =
+  | { ok: true; payload: ConfirmationPayload }
+  | { ok: false; reason: 'malformed' | 'bad_signature' | 'expired' | 'mismatch' }
 
 export function verifyConfirmationToken(
   token: string,

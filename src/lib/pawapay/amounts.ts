@@ -7,10 +7,10 @@ import { PAWAPAY_AMOUNT_PATTERN, PAWAPAY_MSISDN_PATTERN } from './constants'
  * accepts at most the provider's `decimalsInAmount`, so the provider edge rounds
  * DOWN and formats without trailing zeros (their pattern rejects "15.00").
  */
-export const LEDGER_DECIMALS = 2
+const LEDGER_DECIMALS = 2
 const LEDGER_SCALE = 10n ** BigInt(LEDGER_DECIMALS)
 
-export class PawaPayAmountError extends Error {}
+class PawaPayAmountError extends Error {}
 
 /** "123.45" → 12345n. Truncates beyond 2 decimals. Rejects anything that is not a plain decimal. */
 export function parseAmountToMinorUnits(value: string): bigint {

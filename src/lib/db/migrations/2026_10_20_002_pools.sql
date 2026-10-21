@@ -77,13 +77,16 @@ CREATE TABLE IF NOT EXISTS pool_stakes (
 CREATE INDEX IF NOT EXISTS idx_pool_stakes_pool_user ON pool_stakes (pool_id, user_id);
 CREATE INDEX IF NOT EXISTS idx_pool_stakes_user_created ON pool_stakes (user_id, created_at);
 
+ALTER TABLE public.pools ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.pool_stakes ENABLE ROW LEVEL SECURITY;
+
+-- service_role policies (idempotent)
 DO $migration$
 DECLARE
   tbl TEXT;
 BEGIN
   FOREACH tbl IN ARRAY ARRAY['pools', 'pool_stakes']
   LOOP
-    EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', tbl);
     IF NOT EXISTS (
       SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = tbl AND policyname = 'service_role_all_' || tbl
     ) THEN
