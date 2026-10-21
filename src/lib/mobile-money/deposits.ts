@@ -10,10 +10,13 @@ import type { PawaPayTransactionRecord } from '@/lib/pawapay/types'
 import { payment_intents } from '@/lib/db/schema/ledger/tables'
 import { db } from '@/lib/drizzle'
 import { LedgerService } from '@/lib/ledger/service'
+import { recordConsent } from '@/lib/mobile-money/consent'
 import { MobileMoneyAccountRepository, PaymentIntentRepository } from '@/lib/mobile-money/intents'
 import { MobileMoneyNotifications } from '@/lib/mobile-money/notifications'
 import {
+  CONSENT_REQUIRED_MESSAGE,
   decideIntentTransition,
+  hasCurrentConsent,
   MOBILE_MONEY_RULE_MESSAGES,
   resolveProviderOperation,
   validateDepositAmount,
@@ -38,7 +41,7 @@ export interface DepositDependencies {
 
 export type DepositError = {
   error: string
-  code: MobileMoneyRuleError | 'invalid_phone' | 'provider_error' | 'not_found'
+  code: MobileMoneyRuleError | 'invalid_phone' | 'provider_error' | 'not_found' | 'consent_required'
 }
 
 export interface DepositPreview {
@@ -141,7 +144,7 @@ export interface CreateDepositResult {
  * NOT_FOUND / FOUND.
  */
 export async function createDeposit(
-  params: { userId: string; phoneInput: string; amountInput: string },
+  params: { userId: string; phoneInput: string; amountInput: string; acceptTerms?: boolean },
   deps: DepositDependencies = {},
 ): Promise<{ data: CreateDepositResult } | DepositError> {
   const preview = await previewDeposit({ phoneInput: params.phoneInput }, deps)
@@ -163,7 +166,14 @@ export async function createDeposit(
   }
 
   // Lock the user's ledger currency on first deposit and make sure the cash account exists.
-  await LedgerService.ensureUserProfile(params.userId, operation.currency, undefined, operation.country)
+  const profile = await LedgerService.ensureUserProfile(params.userId, operation.currency, undefined, operation.country)
+  // Age + Terms gate: the first deposit carries the acceptance; later ones skip it.
+  if (!hasCurrentConsent(profile)) {
+    if (!params.acceptTerms) {
+      return { code: 'consent_required', error: CONSENT_REQUIRED_MESSAGE }
+    }
+    await recordConsent(params.userId)
+  }
   await LedgerService.getOrCreateUserCashAccount(params.userId, operation.currency)
 
   const providerRef = randomUUID()

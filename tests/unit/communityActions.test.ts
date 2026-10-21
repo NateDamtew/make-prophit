@@ -127,9 +127,24 @@ describe('createCommunityAction', () => {
       name: 'Valid',
       slug: 'taken',
       type: 'public',
-      jury_size: 1,
+      jury_size: 3,
     })
     expect(result.error).toMatch(/already taken/i)
+  })
+
+  it('rejects a jury smaller than three (pool tier)', async () => {
+    mocks.getCurrentUser.mockResolvedValue({ id: 'u1' })
+    mocks.getBySlug.mockResolvedValue({ data: null, error: null })
+    const { createCommunityAction } =
+      await import('@/app/[locale]/(platform)/community/[slug]/_actions/community-actions')
+    const result = await createCommunityAction({
+      name: 'Valid',
+      slug: 'valid',
+      type: 'public',
+      jury_size: 2,
+    })
+    expect(result.error).toMatch(/at least 3/)
+    expect(mocks.create).not.toHaveBeenCalled()
   })
 
   it('creates community successfully with valid input', async () => {

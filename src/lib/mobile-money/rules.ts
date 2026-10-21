@@ -42,6 +42,30 @@ export const MOBILE_MONEY_RULE_MESSAGES: Record<MobileMoneyRuleError, string> = 
   invalid_amount: 'Please enter a valid amount.',
 }
 
+// ─── Age + Terms consent ─────────────────────────────────────────────────────
+
+/** Bump when the Terms change materially so every user has to accept them again. */
+export const CURRENT_TERMS_VERSION = '2026-10-21'
+
+export const CONSENT_REQUIRED_MESSAGE =
+  'Please confirm that you are 18 or older and accept the Terms of Use to continue.'
+
+export interface ConsentFields {
+  terms_accepted_at: Date | null
+  age_confirmed_at: Date | null
+  terms_version: string | null
+}
+
+/** True when the profile carries an age confirmation and an acceptance of the current Terms version. */
+export function hasCurrentConsent(profile: ConsentFields | null | undefined): boolean {
+  if (!profile) {
+    return false
+  }
+  return Boolean(
+    profile.terms_accepted_at && profile.age_confirmed_at && profile.terms_version === CURRENT_TERMS_VERSION,
+  )
+}
+
 export interface ResolvedProviderOperation {
   provider: string
   providerDisplayName: string

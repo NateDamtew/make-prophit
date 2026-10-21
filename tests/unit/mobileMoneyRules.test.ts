@@ -4,8 +4,10 @@ import type { MobileMoneySettings } from '@/lib/mobile-money/settings'
 import type { PawaPayActiveConfiguration } from '@/lib/pawapay/types'
 
 import {
+  CURRENT_TERMS_VERSION,
   decideIntentTransition,
   findCurrencyForCountry,
+  hasCurrentConsent,
   resolveProviderOperation,
   validateDepositAmount,
   validatePayoutAmount,
@@ -267,6 +269,27 @@ describe('decideIntentTransition', () => {
     expect(decideIntentTransition({ currentState: 'pending', reportedStatus: 'WHATEVER' })).toEqual({
       action: 'ignore',
       reason: 'unknown status WHATEVER',
+    })
+  })
+
+  describe('age + terms consent', () => {
+    const now = new Date()
+
+    it('requires both confirmations on the current terms version', () => {
+      expect(hasCurrentConsent(null)).toBe(false)
+      expect(hasCurrentConsent({ terms_accepted_at: null, age_confirmed_at: null, terms_version: null })).toBe(false)
+      expect(
+        hasCurrentConsent({ terms_accepted_at: now, age_confirmed_at: null, terms_version: CURRENT_TERMS_VERSION }),
+      ).toBe(false)
+      expect(
+        hasCurrentConsent({ terms_accepted_at: now, age_confirmed_at: now, terms_version: CURRENT_TERMS_VERSION }),
+      ).toBe(true)
+    })
+
+    it('asks again when the terms version changed', () => {
+      expect(hasCurrentConsent({ terms_accepted_at: now, age_confirmed_at: now, terms_version: '2000-01-01' })).toBe(
+        false,
+      )
     })
   })
 })

@@ -16,6 +16,8 @@ import { updateCommunitySettingsAction } from '../../_actions/community-settings
 interface Props {
   communityId: string
   communitySlug: string
+  /** Fork: pool-tier communities cannot go below the pool minimum. */
+  minJurySize?: number
   initial: {
     name: string
     description: string | null
@@ -28,7 +30,7 @@ interface Props {
   }
 }
 
-export function CommunitySettingsForm({ communityId, communitySlug, initial }: Props) {
+export function CommunitySettingsForm({ communityId, communitySlug, initial, minJurySize = 1 }: Props) {
   const [type, setType] = useState<'public' | 'private'>(initial.type === 'private' ? 'private' : 'public')
   const [jurySize, setJurySize] = useState(initial.jury_size)
   const [iconPreview, setIconPreview] = useState<string | null>(initial.icon_url)
@@ -216,7 +218,7 @@ export function CommunitySettingsForm({ communityId, communitySlug, initial }: P
             <input
               id="jury_size"
               type="range"
-              min={1}
+              min={minJurySize}
               max={10}
               value={jurySize}
               onChange={(e) => setJurySize(Number(e.target.value))}

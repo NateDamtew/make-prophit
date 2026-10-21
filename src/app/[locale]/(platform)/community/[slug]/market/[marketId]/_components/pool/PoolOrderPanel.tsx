@@ -18,6 +18,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
 import { toast } from '@/components/ui/toast'
 import { useAppKit } from '@/hooks/useAppKit'
+import { Link } from '@/i18n/navigation'
 import { formatPoolMoney, majorInputToMinor, minorToMajorNumber } from '@/lib/pools/format'
 import { estimatePayout } from '@/lib/pools/math'
 import { cn } from '@/lib/utils'
@@ -235,6 +236,7 @@ export default function PoolOrderPanel({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [shouldShake, setShouldShake] = useState(false)
   const [justStaked, setJustStaked] = useState(false)
+  const [acceptTerms, setAcceptTerms] = useState(false)
   const [sharePayload, setSharePayload] = useState<ShareCardPayload | null>(null)
   const [isShareOpen, setIsShareOpen] = useState(false)
 
@@ -287,6 +289,7 @@ export default function PoolOrderPanel({
   const selectedLabel = selectedOutcome === 'yes' ? outcomeLabels.yes : outcomeLabels.no
   const needsLogin = !user
   const needsDeposit = !needsLogin && (!hasLedgerBalance || insufficientBalance)
+  const consentRequired = !needsLogin && !needsDeposit && Boolean(ledgerUser?.consentRequired)
   const submitLabel = needsLogin
     ? t('Log In')
     : needsDeposit
@@ -294,7 +297,10 @@ export default function PoolOrderPanel({
       : justStaked
         ? t('Stake placed')
         : t('Buy {outcome}', { outcome: selectedLabel })
-  const isSubmitDisabled = !needsLogin && !needsDeposit && (amountMinor <= 0n || belowMinimum || isSubmitting)
+  const isSubmitDisabled =
+    !needsLogin &&
+    !needsDeposit &&
+    (amountMinor <= 0n || belowMinimum || isSubmitting || (consentRequired && !acceptTerms))
 
   function shakeInput() {
     setShouldShake(true)
@@ -322,6 +328,7 @@ export default function PoolOrderPanel({
         communityMarketId: market.id,
         outcome: selectedOutcome,
         amountInput: amount.replace(/,/g, ''),
+        acceptTerms: consentRequired ? acceptTerms : undefined,
       })
       if (result.error) {
         toast.error(result.error)
@@ -450,6 +457,24 @@ export default function PoolOrderPanel({
                 currency={currency}
                 rakeBps={pool.rakeBps}
               />
+            )}
+
+            {consentRequired && (
+              <label className="mb-3 flex items-start gap-2.5 text-xs text-muted-foreground">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 size-4 shrink-0 accent-primary"
+                  checked={acceptTerms}
+                  onChange={(event) => setAcceptTerms(event.target.checked)}
+                />
+                <span>
+                  {t('I confirm that I am 18 or older and I accept the')}{' '}
+                  <Link className="underline" href="/tos" target="_blank">
+                    {t('Terms of Use')}
+                  </Link>
+                  .
+                </span>
+              </label>
             )}
 
             <EventOrderPanelSubmitButton

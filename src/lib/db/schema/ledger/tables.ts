@@ -68,6 +68,10 @@ export const ledger_user_profiles = pgTable('ledger_user_profiles', {
   country: char({ length: 3 }),
   withdrawals_frozen: boolean().notNull().default(false),
   trading_frozen: boolean().notNull().default(false),
+  // Age + Terms consent, required before the first deposit, stake or withdrawal.
+  terms_accepted_at: timestamp({ withTimezone: true }),
+  age_confirmed_at: timestamp({ withTimezone: true }),
+  terms_version: text(),
   created_at: timestamp({ withTimezone: true }).defaultNow().notNull(),
   updated_at: timestamp({ withTimezone: true }).defaultNow().notNull(),
 })

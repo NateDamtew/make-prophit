@@ -32,7 +32,7 @@ export const communities = pgTable(
     icon_url: text(),
     type: text().notNull().default('public'), // 'public' | 'private'
     status: text().notNull().default('active'), // 'active' | 'archived'
-    jury_size: smallint().notNull().default(1),
+    jury_size: smallint().notNull().default(3), // fork: pool communities need at least 3 (see lib/pools/jury.ts)
     max_members: integer().notNull().default(5),
     rules: text(), // Community rules (free text)
     terms: text(), // Custom T&Cs
