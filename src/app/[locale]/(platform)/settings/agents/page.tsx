@@ -54,12 +54,13 @@ export default async function AgentsSettingsPage({ params }: AgentsRouteParams) 
   const builderCode = addressToBuilderCode(feeReceiver)
   const geoblock = getBlockedCountriesFromSettings(allSettings ?? undefined).length > 0
 
-  function buildDownloadUrl(language: 'python' | 'rust' | 'typescript', sdk: 'clob' | 'relayer') {
+  // Python and TypeScript ship as one unified SDK; Rust keeps separate CLOB and relayer clients.
+  function buildDownloadUrl(language: 'python' | 'rust' | 'typescript', sdk: 'unified' | 'clob' | 'relayer') {
     const url = new URL('/download', SDK_DOWNLOAD_URL)
     url.searchParams.set('sdk', sdk)
     url.searchParams.set('language', language)
     url.searchParams.set('site_url', siteUrl)
-    if (sdk === 'clob') {
+    if (sdk !== 'relayer') {
       url.searchParams.set('builder_code', builderCode)
       url.searchParams.set('geoblock', geoblock ? 'true' : 'false')
     }
@@ -143,7 +144,7 @@ export default async function AgentsSettingsPage({ params }: AgentsRouteParams) 
           <h2 className="text-lg font-semibold tracking-tight">{t('SDK Downloads')}</h2>
           <p className="text-sm text-muted-foreground">
             {t(
-              'Build trading bots and integrations with personalized SDK bundles. The CLOB client handles orderbook trading, while the Relayer client helps route and execute signed actions.',
+              'Build with a unified SDK for market data, CLOB trading, and Deposit Wallet actions in TypeScript or Python. Rust has separate CLOB and relayer clients.',
             )}
           </p>
         </div>
@@ -153,23 +154,17 @@ export default async function AgentsSettingsPage({ params }: AgentsRouteParams) 
           cards={[
             {
               id: 'python-client',
-              title: t('Python Client'),
-              description: t('CLOB and relayer bundles for Python bots and services.'),
+              title: t('Python'),
+              description: t('For trading bots, services, and workflow automation.'),
               logoSrc: '/images/sdks/python.svg',
               actions: [
-                { id: 'python-clob', label: t('CLOB'), href: buildDownloadUrl('python', 'clob'), variant: 'default' },
-                {
-                  id: 'python-relayer',
-                  label: t('Relayer'),
-                  href: buildDownloadUrl('python', 'relayer'),
-                  variant: 'outline',
-                },
+                { id: 'python-sdk', label: t('SDK'), href: buildDownloadUrl('python', 'unified'), variant: 'default' },
               ],
             },
             {
               id: 'rust-client',
-              title: t('Rust Client'),
-              description: t('CLOB and relayer bundles for Rust services and automations.'),
+              title: t('Rust'),
+              description: t('For high-performance bots, services, and workflow automation.'),
               logoSrc: '/images/sdks/rust.svg',
               actions: [
                 { id: 'rust-clob', label: t('CLOB'), href: buildDownloadUrl('rust', 'clob'), variant: 'default' },
@@ -183,21 +178,15 @@ export default async function AgentsSettingsPage({ params }: AgentsRouteParams) 
             },
             {
               id: 'typescript-client',
-              title: t('TypeScript Client'),
-              description: t('CLOB and relayer bundles for web apps, bots, and Node.js services.'),
+              title: t('TypeScript'),
+              description: t('For web apps, bots, Node.js services, and workflow automation.'),
               logoSrc: '/images/sdks/typescript.svg',
               actions: [
                 {
-                  id: 'typescript-clob',
-                  label: t('CLOB'),
-                  href: buildDownloadUrl('typescript', 'clob'),
+                  id: 'typescript-sdk',
+                  label: t('SDK'),
+                  href: buildDownloadUrl('typescript', 'unified'),
                   variant: 'default',
-                },
-                {
-                  id: 'typescript-relayer',
-                  label: t('Relayer'),
-                  href: buildDownloadUrl('typescript', 'relayer'),
-                  variant: 'outline',
                 },
               ],
             },
@@ -212,7 +201,9 @@ export default async function AgentsSettingsPage({ params }: AgentsRouteParams) 
             <div className="grid gap-1">
               <h3 className="text-base font-semibold tracking-tight">{t('Need implementation examples?')}</h3>
               <p className="max-w-3xl text-sm text-muted-foreground">
-                {t('Read the SDK documentation for CLOB trading, relayer wallet actions, and market maker workflows.')}
+                {t(
+                  'Read the SDK documentation for the unified TypeScript and Python clients, separate Rust clients, and market maker examples.',
+                )}
               </p>
             </div>
           </div>

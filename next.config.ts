@@ -9,9 +9,11 @@ import { getOptimizedImageHostPatterns } from '@/lib/image/image-optimization'
 
 const optimizedImageHostPatterns = getOptimizedImageHostPatterns(process.env)
 const commitSha = resolveCommitSha()
+const instantNavigationTest = process.env.NEXT_INSTANT_TEST === '1'
 
 const config: NextConfig = {
-  output: process.env.VERCEL_ENV ? undefined : 'standalone',
+  output: instantNavigationTest || process.env.VERCEL_ENV ? undefined : 'standalone',
+  distDir: instantNavigationTest ? '.next/instant-test' : undefined,
   deploymentId: process.env.VERCEL_ENV ? undefined : commitSha,
   cacheComponents: true,
   partialPrefetching: true,
@@ -46,7 +48,7 @@ const config: NextConfig = {
   compress: false,
   experimental: {
     agentUpgrade: 'latest',
-    cachedNavigations: process.env.VERCEL_ENV ? false : undefined,
+    exposeTestingApiInProductionBuild: instantNavigationTest,
     inlineCss: true,
     serverActions: {
       bodySizeLimit: '2mb',
