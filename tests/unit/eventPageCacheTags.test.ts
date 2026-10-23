@@ -2,7 +2,11 @@ import { describe, expect, it } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
-import { PUBLIC_EVENT_PAGE_CACHE_LIFE } from '@/lib/event-page-cache'
+import {
+  PUBLIC_EVENT_PAGE_CACHE_LIFE,
+  resolveEventPageCacheLife,
+  SETTLED_EVENT_PAGE_CACHE_LIFE,
+} from '@/lib/event-page-cache'
 
 const cachedEventPages = [
   {
@@ -20,6 +24,17 @@ describe('event page cache tags', () => {
     expect(PUBLIC_EVENT_PAGE_CACHE_LIFE).toEqual({ stale: 60, revalidate: 60, expire: 3_660 })
   })
 
+  it('keeps settled events cached for a day with a month of stale revalidation', () => {
+    expect(SETTLED_EVENT_PAGE_CACHE_LIFE).toEqual({ stale: 3_600, revalidate: 86_400, expire: 2_592_000 })
+  })
+
+  it('picks the lifetime from the event status', () => {
+    expect(resolveEventPageCacheLife('active')).toBe(PUBLIC_EVENT_PAGE_CACHE_LIFE)
+    expect(resolveEventPageCacheLife('draft')).toBe(PUBLIC_EVENT_PAGE_CACHE_LIFE)
+    expect(resolveEventPageCacheLife('resolved')).toBe(SETTLED_EVENT_PAGE_CACHE_LIFE)
+    expect(resolveEventPageCacheLife('archived')).toBe(SETTLED_EVENT_PAGE_CACHE_LIFE)
+  })
+
   it.each(cachedEventPages)('tags $functionName with its event slug', ({ functionName, path }) => {
     const source = readFileSync(resolve(process.cwd(), path), 'utf8')
     const functionStart = source.indexOf(`async function ${functionName}`)
@@ -31,7 +46,8 @@ describe('event page cache tags', () => {
     const cachedFunction = source.slice(functionStart, functionEnd)
 
     expect(cachedFunction).toContain("'use cache'")
-    expect(cachedFunction).toContain('cacheLife(PUBLIC_EVENT_PAGE_CACHE_LIFE)')
+    expect(cachedFunction).toContain('cacheLife(resolveEventPageCacheLife(eventPageData.event.status))')
+    expect(cachedFunction).not.toContain('cacheLife(PUBLIC_EVENT_PAGE_CACHE_LIFE)')
     expect(cachedFunction).toContain('cacheTag(cacheTags.event(slug))')
     expect(cachedFunction).toContain("eventPageData.event.series_slug?.trim() ?? ''")
     expect(cachedFunction).toContain('cacheTag(cacheTags.seriesEvents(')
@@ -46,7 +62,8 @@ describe('event page cache tags', () => {
     expect(functionStart).toBeGreaterThanOrEqual(0)
     expect(functionEnd).toBeGreaterThan(functionStart)
     expect(cachedFunction).toContain("'use cache'")
-    expect(cachedFunction).toContain('cacheLife(PUBLIC_EVENT_PAGE_CACHE_LIFE)')
+    expect(cachedFunction).toContain('cacheLife(resolveEventPageCacheLife(rawEvent.status))')
+    expect(cachedFunction).not.toContain('cacheLife(PUBLIC_EVENT_PAGE_CACHE_LIFE)')
     expect(cachedFunction).toContain('cacheTag(cacheTags.event(eventSlug))')
     expect(cachedFunction).toContain('cacheTag(cacheTags.seriesEvents(seriesSlug))')
   })

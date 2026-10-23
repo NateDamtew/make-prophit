@@ -1,0 +1,14 @@
+# Netlify build configuration.
+#
+# Mirrors vercel.json: apply the Drizzle schema, then build with Bun running
+# Next (`bun run --bun next build`). Next 16's compiled server runtime only
+# loads under a recent Bun; older Bun releases fail during "Collecting page
+# data" with "Expected CommonJS module to have a function wrapper", so the
+# Bun version is pinned to the one Vercel builds with.
+
+[build]
+command = "bun run db:push && bun run build"
+
+[build.environment]
+BUN_VERSION = "1.4.2"
+NODE_VERSION = "24"
