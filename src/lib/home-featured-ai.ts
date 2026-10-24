@@ -14,6 +14,12 @@ import {
   HOME_FEATURED_NEWS_LIMIT,
   HOME_FEATURED_NEWS_TTL_MS,
 } from '@/lib/home-featured-settings'
+import {
+  buildWorldNewsQuery,
+  isWorldNewsApiConfigured,
+  resolveWorldNewsLanguage,
+  searchWorldNewsSafe,
+} from '@/lib/world-news-api'
 
 interface NewsHeadline {
   source: string
@@ -21,6 +27,8 @@ interface NewsHeadline {
   url: string
   faviconUrl?: string | null
   publishedAt: string | null
+  /** Slug of the market this headline was searched for (World News API results only). */
+  eventSlug?: string
 }
 
 interface AiSelectedMarket {
@@ -375,6 +383,52 @@ async function collectNewsHeadlines(sources: string[]) {
   }
 
   return headlines.slice(0, 80)
+}
+
+const WORLD_NEWS_LOOKBACK_MS = 7 * 24 * 60 * 60 * 1000
+const WORLD_NEWS_MAX_EVENTS = 8
+const WORLD_NEWS_RESULTS_PER_EVENT = HOME_FEATURED_NEWS_LIMIT
+
+/**
+ * Searches World News API once per displayed event. Requests run sequentially because
+ * the free plan allows a single concurrent request; each call costs ~1 quota point.
+ */
+async function fetchWorldNewsHeadlinesByEvent(events: Event[], locale: SupportedLocale) {
+  const headlinesBySlug = new Map<string, NewsHeadline[]>()
+  if (!isWorldNewsApiConfigured() || events.length === 0) {
+    return headlinesBySlug
+  }
+
+  const earliestPublishDate = new Date(Date.now() - WORLD_NEWS_LOOKBACK_MS)
+  const language = resolveWorldNewsLanguage(locale)
+
+  for (const event of events.slice(0, WORLD_NEWS_MAX_EVENTS)) {
+    const articles = await searchWorldNewsSafe({
+      text: buildWorldNewsQuery({
+        title: event.title,
+        teams: (event.sports_teams ?? []).map((team) => team.name),
+      }),
+      language,
+      earliestPublishDate,
+      number: WORLD_NEWS_RESULTS_PER_EVENT,
+    })
+
+    if (articles.length > 0) {
+      headlinesBySlug.set(
+        event.slug,
+        articles.map((article) => ({
+          source: article.source,
+          title: article.title,
+          url: article.url,
+          faviconUrl: article.faviconUrl,
+          publishedAt: article.publishedAt,
+          eventSlug: event.slug,
+        })),
+      )
+    }
+  }
+
+  return headlinesBySlug
 }
 
 function eventToPromptCandidate(event: Event) {
@@ -838,12 +892,20 @@ export async function regenerateHomeFeaturedEvents(
   const selectionBySlug = new Map<string, AiSelectedMarket>(
     selectedMarkets.map((selection) => [selection.slug, selection]),
   )
+  const worldNewsBySlug = await fetchWorldNewsHeadlinesByEvent(
+    displayedEvents
+      .filter(({ item }) => item.contextMode !== 'hidden' && item.contextMode !== 'comments')
+      .map(({ event }) => event),
+    locale,
+  )
+  const allHeadlines = [...headlines, ...Array.from(worldNewsBySlug.values()).flat()]
 
   if (openRouterSettings.apiKey && displayedEvents.length > 0) {
     const prompt = [
       'Match relevant news headlines to prediction markets already selected for a featured home carousel.',
       'Return JSON only with this shape: {"markets":[{"slug":"event-slug","news":[{"title":"headline","source":"source","url":"https://...","publishedAt":null,"score":0.8}]}]}',
       `Return every market slug that has at least one directly relevant headline. Use no more than ${HOME_FEATURED_NEWS_LIMIT} headlines per market.`,
+      'Headlines with an "eventSlug" were retrieved from a news search for that specific market and should be preferred for it when they are on topic.',
       'Use live web search when available to find recent article URLs for markets whose provided headlines are weak or too generic.',
       ...buildHomeFeaturedNewsSearchPromptLines(),
       'The phrase "prediction market" describes our product only. Do not search for or return articles about prediction markets, betting, exchanges, Polymarket, Kalshi, regulation, or the app itself unless the market title is explicitly about those things.',
@@ -853,7 +915,7 @@ export async function regenerateHomeFeaturedEvents(
       'Do not invent market slugs or URLs. Prefer specific article URLs over homepages, feeds, search pages, or tag pages.',
       `Markets: ${JSON.stringify(displayedEvents.map((entry) => eventToPromptCandidate(entry.event)))}`,
       `Source hints: ${JSON.stringify(settings.newsSources)}`,
-      `Headlines: ${JSON.stringify(headlines)}`,
+      `Headlines: ${JSON.stringify(allHeadlines)}`,
     ].join('\n\n')
 
     try {
@@ -896,10 +958,20 @@ export async function regenerateHomeFeaturedEvents(
       continue
     }
 
-    const news = normalizeNewsItems(selectionBySlug.get(event.slug)?.news, headlines, { requireAllowedHeadline: false })
+    const news = normalizeNewsItems(selectionBySlug.get(event.slug)?.news, allHeadlines, {
+      requireAllowedHeadline: false,
+    })
+    const worldNews =
+      news.length > 0
+        ? []
+        : (worldNewsBySlug.get(event.slug) ?? [])
+            .slice(0, HOME_FEATURED_NEWS_LIMIT)
+            .map((headline) => ({ ...headline, score: null }))
     const fallbackNews =
-      news.length > 0 ? [] : normalizeNewsItems(matchFallbackNewsForEvent(event, headlines), headlines)
-    const contextNews = news.length > 0 ? news : fallbackNews
+      news.length > 0 || worldNews.length > 0
+        ? []
+        : normalizeNewsItems(matchFallbackNewsForEvent(event, allHeadlines), allHeadlines)
+    const contextNews = news.length > 0 ? news : worldNews.length > 0 ? worldNews : fallbackNews
     await HomeFeaturedEventsRepository.replaceContextItems(
       item.id,
       event.id,

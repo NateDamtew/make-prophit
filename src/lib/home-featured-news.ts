@@ -17,6 +17,12 @@ import {
 } from '@/lib/home-featured-context-metadata'
 import { buildHomeFeaturedNewsSearchPromptLines } from '@/lib/home-featured-news-search-prompt'
 import { HOME_FEATURED_NEWS_LIMIT, HOME_FEATURED_NEWS_TTL_MS } from '@/lib/home-featured-settings'
+import {
+  buildWorldNewsQuery,
+  isWorldNewsApiConfigured,
+  resolveWorldNewsLanguage,
+  searchWorldNewsSafe,
+} from '@/lib/world-news-api'
 
 interface HomeFeaturedNewsSearchInput {
   title: string
@@ -38,6 +44,33 @@ const AiNewsResultSchema = z.object({
 })
 
 type AiNewsResult = z.infer<typeof AiNewsResultSchema>
+
+const WORLD_NEWS_LOOKBACK_MS = 14 * 24 * 60 * 60 * 1000
+
+/**
+ * Structured article search via World News API (no LLM). Returns [] when the key is
+ * not configured or the search fails, so callers can fall back to OpenRouter.
+ */
+async function findHomeFeaturedNewsWithWorldNewsApi(input: HomeFeaturedNewsSearchInput) {
+  if (!isWorldNewsApiConfigured()) {
+    return []
+  }
+
+  const articles = await searchWorldNewsSafe({
+    text: buildWorldNewsQuery({ title: input.title }),
+    language: resolveWorldNewsLanguage(input.locale),
+    earliestPublishDate: new Date(Date.now() - WORLD_NEWS_LOOKBACK_MS),
+    number: HOME_FEATURED_NEWS_LIMIT,
+  })
+
+  return articles.map((article) => ({
+    title: article.title,
+    source: article.source,
+    url: article.url,
+    faviconUrl: article.faviconUrl,
+    publishedAt: article.publishedAt,
+  }))
+}
 
 function parseAiNewsResults(value: string): AiNewsResult[] {
   const jsonCandidate = value.trim().startsWith('{') ? value.trim() : (value.match(/\{[\s\S]*\}/)?.[0] ?? '')
@@ -80,7 +113,15 @@ async function buildAiNewsMetadataFallback(item: AiNewsResult) {
   }
 }
 
-export async function findHomeFeaturedNews(input: HomeFeaturedNewsSearchInput, openRouter: OpenRouterProviderSettings) {
+export async function findHomeFeaturedNews(
+  input: HomeFeaturedNewsSearchInput,
+  openRouter: Pick<OpenRouterProviderSettings, 'apiKey' | 'model'>,
+) {
+  const worldNewsItems = await findHomeFeaturedNewsWithWorldNewsApi(input)
+  if (worldNewsItems.length > 0 || !openRouter.apiKey) {
+    return worldNewsItems
+  }
+
   const prompt = [
     'Find recent news article URLs that explain the real-world topic behind one prediction market home context card.',
     'Use live web search. Return JSON only with this shape: {"news":[{"title":"article headline","source":"publisher","url":"https://...","publishedAt":"2026-07-04T12:00:00Z"}]}',
@@ -192,7 +233,7 @@ export async function loadHomeFeaturedNews(
 
     const { data: allSettings } = await SettingsRepository.getSettings()
     const openRouter = parseOpenRouterProviderSettings(allSettings ?? undefined)
-    if (!openRouter.apiKey) {
+    if (!openRouter.apiKey && !isWorldNewsApiConfigured()) {
       return await readSavedHomeFeaturedNews(featuredId, event.id, locale)
     }
 
