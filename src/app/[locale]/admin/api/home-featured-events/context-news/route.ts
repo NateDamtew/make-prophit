@@ -6,6 +6,7 @@ import { parseOpenRouterProviderSettings } from '@/lib/ai/market-context-config'
 import { SettingsRepository } from '@/lib/db/queries/settings'
 import { UserRepository } from '@/lib/db/queries/user'
 import { findHomeFeaturedNews } from '@/lib/home-featured-news'
+import { isWorldNewsApiConfigured } from '@/lib/world-news-api'
 
 const RequestSchema = z.object({
   locale: z.enum(SUPPORTED_LOCALES).optional(),
@@ -29,10 +30,14 @@ export async function POST(request: Request) {
 
     const { data: allSettings } = await SettingsRepository.getSettings()
     const openRouter = parseOpenRouterProviderSettings(allSettings ?? undefined)
-    if (!openRouter.apiKey) {
-      return NextResponse.json({ error: 'OpenRouter API key is not configured.' }, { status: 400 })
+    if (!openRouter.apiKey && !isWorldNewsApiConfigured()) {
+      return NextResponse.json(
+        { error: 'Set WORLD_NEWS_API_KEY or configure an OpenRouter API key to find news.' },
+        { status: 400 },
+      )
     }
 
+    // World News API is tried first inside findHomeFeaturedNews; OpenRouter web search is the fallback.
     const items = await findHomeFeaturedNews(parsed.data, openRouter)
     return NextResponse.json({ items })
   } catch (error) {
