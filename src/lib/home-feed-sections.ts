@@ -7,7 +7,7 @@ import type {
   HomeFeedSportsButton,
   HomeFeedSportsCard,
 } from '@/lib/home-feed-types'
-import type { HomeNewsFeed } from '@/lib/home-news'
+import type { HomeNewsFeed, HomeNewsStory } from '@/lib/home-news'
 import type { Event, Market } from '@/types'
 
 import { hasHomeCardMarketChance } from '@/app/[locale]/(platform)/(home)/_utils/homeCardMarketDisplay'
@@ -26,6 +26,7 @@ import {
   HOME_FEED_LIVE_NOW_LIMIT,
   HOME_FEED_MOST_TRADED_LIMIT,
 } from '@/lib/home-feed-types'
+import { findHomeNewsRelatedMarketIndex } from '@/lib/home-news-match'
 import { buildChanceByMarket } from '@/lib/market-chance'
 import { buildHomeSportsMoneylineModel, resolveHomeSportsButtonChance } from '@/lib/sports-home-card'
 import { resolveCompactSportsTeamNames } from '@/lib/sports-team-label'
@@ -328,6 +329,47 @@ function buildHomeFeedCommunities(rows: HomeFeedCommunityRow[]): HomeFeedCommuni
   }))
 }
 
+function buildNewsMatchTerms(event: Event) {
+  return [
+    event.main_tag ?? '',
+    ...(event.tags ?? []).map((tag) => tag.name ?? ''),
+    ...event.markets.map((market) => `${market.title} ${market.short_title ?? ''} ${market.question ?? ''}`),
+    ...(event.sports_teams ?? []).map((team) => team.name ?? ''),
+  ].filter(Boolean)
+}
+
+/**
+ * Links each live news story to the best keyword-matching active market, if
+ * any. Placeholder feeds are returned untouched so the fixture link survives.
+ */
+function attachHomeNewsRelatedMarkets(feed: HomeNewsFeed, events: Event[], locale: string): HomeNewsFeed {
+  if (feed.isPlaceholder || feed.stories.length === 0 || events.length === 0) {
+    return feed
+  }
+
+  const candidates = events.map((event) => ({ title: event.title, terms: buildNewsMatchTerms(event) }))
+  const stories: HomeNewsStory[] = feed.stories.map((story) => {
+    if (story.relatedMarket) {
+      return story
+    }
+
+    const index = findHomeNewsRelatedMarketIndex(`${story.headline} ${story.summary ?? ''}`, candidates)
+    if (index === -1) {
+      return story
+    }
+
+    const event = events[index]!
+    const market = buildRankedMarket(event, locale)
+    return {
+      ...story,
+      category: story.category ?? resolveEventCategoryLabel(event),
+      relatedMarket: { title: market.title, href: market.href, chance: market.chance },
+    }
+  })
+
+  return { ...feed, stories }
+}
+
 export function buildHomeFeed(input: BuildHomeFeedInput): HomeFeedData {
   const { locale } = input
   const used = new Set<string>()
@@ -374,7 +416,7 @@ export function buildHomeFeed(input: BuildHomeFeedInput): HomeFeedData {
     cryptoUpDown,
     communities: buildHomeFeedCommunities(input.communities),
     finance,
-    news: input.news,
+    news: attachHomeNewsRelatedMarkets(input.news, everyEvent, locale),
     politics,
     sports,
     mostTraded,

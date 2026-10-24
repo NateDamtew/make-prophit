@@ -176,33 +176,19 @@ export function buildWorldNewsQuery(input: {
   return query.slice(0, maxLength).trim()
 }
 
-export async function searchWorldNews(options: WorldNewsSearchOptions): Promise<WorldNewsArticle[]> {
+async function requestWorldNews<T>(
+  path: string,
+  params: Record<string, string>,
+  options: { signal?: AbortSignal; timeoutMs?: number } = {},
+): Promise<T | null> {
   const apiKey = getWorldNewsApiKey()
   if (!apiKey) {
     throw new WorldNewsApiError('WORLD_NEWS_API_KEY is not configured.', 0)
   }
 
-  const text = options.text.trim()
-  if (!text) {
-    return []
-  }
-
-  const url = new URL('/search-news', WORLD_NEWS_API_BASE_URL)
-  url.searchParams.set('text', text)
-  url.searchParams.set('language', resolveWorldNewsLanguage(options.language))
-  url.searchParams.set(
-    'number',
-    String(Math.min(MAX_RESULT_COUNT, Math.max(1, Math.round(options.number ?? DEFAULT_RESULT_COUNT)))),
-  )
-  if (options.sourceCountries?.trim()) {
-    url.searchParams.set('source-countries', options.sourceCountries.trim())
-  }
-  if (options.earliestPublishDate) {
-    url.searchParams.set('earliest-publish-date', formatPublishDate(options.earliestPublishDate))
-  }
-  if (options.sort === 'publish-time') {
-    url.searchParams.set('sort', 'publish-time')
-    url.searchParams.set('sort-direction', 'DESC')
+  const url = new URL(path, WORLD_NEWS_API_BASE_URL)
+  for (const [key, value] of Object.entries(params)) {
+    url.searchParams.set(key, value)
   }
 
   const response = await fetch(url.toString(), {
@@ -226,10 +212,13 @@ export async function searchWorldNews(options: WorldNewsSearchOptions): Promise<
     throw new WorldNewsApiError(message, response.status)
   }
 
-  const payload = (await response.json().catch(() => null)) as WorldNewsSearchResponsePayload | null
+  return (await response.json().catch(() => null)) as T | null
+}
+
+function dedupeArticles(items: NonNullable<WorldNewsSearchResponsePayload['news']>) {
   const seenUrls = new Set<string>()
 
-  return (payload?.news ?? []).flatMap((item) => {
+  return items.flatMap((item) => {
     const article = normalizeWorldNewsArticle(item)
     if (!article || seenUrls.has(article.url)) {
       return []
@@ -238,6 +227,77 @@ export async function searchWorldNews(options: WorldNewsSearchOptions): Promise<
     seenUrls.add(article.url)
     return [article]
   })
+}
+
+export async function searchWorldNews(options: WorldNewsSearchOptions): Promise<WorldNewsArticle[]> {
+  const text = options.text.trim()
+  if (!text) {
+    return []
+  }
+
+  const params: Record<string, string> = {
+    text,
+    language: resolveWorldNewsLanguage(options.language),
+    number: String(Math.min(MAX_RESULT_COUNT, Math.max(1, Math.round(options.number ?? DEFAULT_RESULT_COUNT)))),
+  }
+  if (options.sourceCountries?.trim()) {
+    params['source-countries'] = options.sourceCountries.trim()
+  }
+  if (options.earliestPublishDate) {
+    params['earliest-publish-date'] = formatPublishDate(options.earliestPublishDate)
+  }
+  if (options.sort === 'publish-time') {
+    params.sort = 'publish-time'
+    params['sort-direction'] = 'DESC'
+  }
+
+  const payload = await requestWorldNews<WorldNewsSearchResponsePayload>('/search-news', params, options)
+  return dedupeArticles(payload?.news ?? [])
+}
+
+export interface WorldNewsTopNewsOptions {
+  /** ISO 2-letter country whose top stories to load, e.g. `us`, `gb`, `ke`. */
+  sourceCountry: string
+  language?: string | null
+  /** Max stories to return (one per cluster, best-ranked clusters first). */
+  limit?: number
+  timeoutMs?: number
+  signal?: AbortSignal
+}
+
+interface WorldNewsTopNewsResponsePayload {
+  top_news?: Array<{ news?: NonNullable<WorldNewsSearchResponsePayload['news']> }>
+  language?: string
+  country?: string
+}
+
+/**
+ * Top stories for a country, as ranked clusters by World News API. Returns the
+ * lead article of each cluster so the result reads like a front page. Costs
+ * one quota point per call.
+ */
+export async function fetchWorldNewsTopNews(options: WorldNewsTopNewsOptions): Promise<WorldNewsArticle[]> {
+  const sourceCountry = options.sourceCountry.trim().toLowerCase()
+  if (!/^[a-z]{2}$/.test(sourceCountry)) {
+    throw new WorldNewsApiError(`Invalid World News source country "${options.sourceCountry}".`, 0)
+  }
+
+  const payload = await requestWorldNews<WorldNewsTopNewsResponsePayload>(
+    '/top-news',
+    {
+      'source-country': sourceCountry,
+      language: resolveWorldNewsLanguage(options.language),
+      'headlines-only': 'false',
+    },
+    options,
+  )
+  const limit = Math.max(1, Math.round(options.limit ?? DEFAULT_RESULT_COUNT))
+  const leads = (payload?.top_news ?? []).flatMap((cluster) => {
+    const lead = (cluster.news ?? []).find((item) => item.title?.trim() && item.url?.trim())
+    return lead ? [lead] : []
+  })
+
+  return dedupeArticles(leads).slice(0, limit)
 }
 
 /**
