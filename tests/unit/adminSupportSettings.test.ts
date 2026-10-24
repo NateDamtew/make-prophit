@@ -47,7 +47,7 @@ describe('admin support settings', () => {
     ).toEqual(expect.arrayContaining(['brand', 'fee-wallet', 'openrouter', 'translations', 'endpoints']))
   })
 
-  it('requires both a custom site name and custom logo to infer brand completion', () => {
+  it('requires both a site name and a logo to infer brand completion', () => {
     expect(
       getCompletedAdminOnboardingTasks({
         general: {
