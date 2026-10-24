@@ -132,7 +132,7 @@ export default async function HomeContent({
   return (
     <>
       <FaqStructuredData items={categoryFaqItems} />
-      <main className="container flex min-w-0 flex-col gap-4 py-4">
+      <main className="container grid gap-4 py-4">
         <HomeClient
           categoryFaqItems={categoryFaqItems}
           initialFeaturedEvents={initialFeaturedEvents}

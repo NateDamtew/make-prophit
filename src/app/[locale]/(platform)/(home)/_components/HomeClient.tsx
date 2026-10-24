@@ -34,10 +34,6 @@ import { useUser } from '@/stores/useUser'
 
 const CategorySidebar = dynamic(() => import('@/app/[locale]/(platform)/(home)/_components/CategorySidebar'))
 
-const HomeHero = dynamic(() => import('@/app/[locale]/(platform)/(home)/_components/HomeHero'), {
-  loading: () => <div className="mb-6 h-96 w-full animate-pulse rounded-xl bg-accent/20" />,
-})
-
 interface HomeClientProps {
   categoryFaqItems: EventFaqItem[]
   initialEvents: Event[]
@@ -483,8 +479,7 @@ function HomeClientContent({
   const hasFeaturedEvents = pathState.isHomePage && initialFeaturedEvents.length > 0
 
   return (
-    <div className="space-y-6">
-      {pathState.isHomePage && initialEvents.length > 0 && <HomeHero events={initialEvents} />}
+    <>
       <div className="flex min-w-0 gap-6 lg:items-start lg:gap-10">
         {categorySidebar && (
           <CategorySidebar
@@ -554,6 +549,6 @@ function HomeClientContent({
         categoryTag={pathState.isMainTagPathPage ? targetTag : null}
         categorySlug={pathState.isMainTagPathPage ? targetMainTag : null}
       />
-    </div>
+    </>
   )
 }
