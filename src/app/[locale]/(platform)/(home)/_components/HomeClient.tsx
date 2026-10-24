@@ -9,10 +9,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import type { FilterState } from '@/app/[locale]/(platform)/_providers/FilterProvider'
 import type { EventFaqItem } from '@/lib/event-faq'
+import type { HomeFeedData } from '@/lib/home-feed-types'
 import type { Event, HomeFeaturedEventCard, HomeFeaturedHotTopic, HomeFeaturedSideCardSettings } from '@/types'
 
 import EventsGrid from '@/app/[locale]/(platform)/(home)/_components/EventsGrid'
 import FilterToolbar from '@/app/[locale]/(platform)/(home)/_components/FilterToolbar'
+import HomeFeed from '@/app/[locale]/(platform)/(home)/_components/home-feed/HomeFeed'
 import HomeFeaturedEventsCarousel from '@/app/[locale]/(platform)/(home)/_components/HomeFeaturedEventsCarousel'
 import HomeSecondaryNavigation from '@/app/[locale]/(platform)/(home)/_components/HomeSecondaryNavigation'
 import PlatformFooter from '@/app/[locale]/(platform)/(home)/_components/PlatformFooter'
@@ -41,6 +43,7 @@ interface HomeClientProps {
   initialFeaturedEvents: HomeFeaturedEventCard[]
   initialFeaturedHotTopics: HomeFeaturedHotTopic[]
   initialFeaturedSideCard: HomeFeaturedSideCardSettings
+  initialHomeFeed: HomeFeedData | null
   initialCurrentTimestamp: number | null
   initialTag?: string
   initialMainTag?: string
@@ -127,6 +130,7 @@ export default function HomeClient({
   initialFeaturedEvents,
   initialFeaturedHotTopics,
   initialFeaturedSideCard,
+  initialHomeFeed,
   initialCurrentTimestamp,
   initialTag,
   initialMainTag,
@@ -159,6 +163,7 @@ export default function HomeClient({
       initialFeaturedEvents={initialFeaturedEvents}
       initialFeaturedHotTopics={initialFeaturedHotTopics}
       initialFeaturedSideCard={initialFeaturedSideCard}
+      initialHomeFeed={initialHomeFeed}
       pathname={pathname}
       pathState={pathState}
       serverTargetMainTag={serverTargetMainTag}
@@ -180,6 +185,7 @@ interface HomeClientContentProps {
   initialFeaturedEvents: HomeFeaturedEventCard[]
   initialFeaturedHotTopics: HomeFeaturedHotTopic[]
   initialFeaturedSideCard: HomeFeaturedSideCardSettings
+  initialHomeFeed: HomeFeedData | null
   pathname: ReturnType<typeof usePathname>
   pathState: ReturnType<typeof parsePlatformPathname>
   serverTargetMainTag: string
@@ -447,6 +453,7 @@ function HomeClientContent({
   initialFeaturedEvents,
   initialFeaturedHotTopics,
   initialFeaturedSideCard,
+  initialHomeFeed,
   pathname,
   pathState,
   serverTargetMainTag,
@@ -477,6 +484,7 @@ function HomeClientContent({
     targetTag,
   })
   const hasFeaturedEvents = pathState.isHomePage && initialFeaturedEvents.length > 0
+  const homeFeed = pathState.isHomePage ? initialHomeFeed : null
 
   return (
     <>
@@ -501,44 +509,52 @@ function HomeClientContent({
             />
           )}
 
-          {hasFeaturedEvents ? (
-            <div className="grid gap-3">
-              <div className="flex min-w-0 flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                <h1 className="hidden shrink-0 text-2xl font-semibold tracking-tight md:block">{t('All markets')}</h1>
-
-                <div className="min-w-0">
-                  <FilterToolbar
-                    collapsibleSearch
-                    filters={homeFilters}
-                    onFiltersChange={handleFiltersChange}
-                    showFilterCheckboxes={pathState.isHomePage}
-                  />
-                </div>
-              </div>
-
-              {secondaryNavigation}
-            </div>
+          {homeFeed ? (
+            <HomeFeed data={homeFeed} currentTimestamp={initialCurrentTimestamp} />
           ) : (
-            <FilterToolbar
-              filters={homeFilters}
-              onFiltersChange={handleFiltersChange}
-              hideDesktopSecondaryNavigation={hasCategorySidebar}
-              desktopTitle={categoryPageTitle ?? categorySidebar?.title}
-              secondaryNavigation={secondaryNavigation}
-              showFilterCheckboxes={pathState.isHomePage}
-            />
-          )}
+            <>
+              {hasFeaturedEvents ? (
+                <div className="grid gap-3">
+                  <div className="flex min-w-0 flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                    <h1 className="hidden shrink-0 text-2xl font-semibold tracking-tight md:block">
+                      {t('All markets')}
+                    </h1>
 
-          <EventsGrid
-            filters={homeFilters}
-            initialEvents={canUseServerInitialEvents ? initialEvents : []}
-            initialHasMore={canUseServerInitialEvents && initialHasMore}
-            initialCurrentTimestamp={initialCurrentTimestamp}
-            onClearFilters={handleClearFilters}
-            routeMainTag={targetMainTag}
-            routeTag={targetTag}
-            maxColumns={hasCategorySidebar ? 3 : undefined}
-          />
+                    <div className="min-w-0">
+                      <FilterToolbar
+                        collapsibleSearch
+                        filters={homeFilters}
+                        onFiltersChange={handleFiltersChange}
+                        showFilterCheckboxes={pathState.isHomePage}
+                      />
+                    </div>
+                  </div>
+
+                  {secondaryNavigation}
+                </div>
+              ) : (
+                <FilterToolbar
+                  filters={homeFilters}
+                  onFiltersChange={handleFiltersChange}
+                  hideDesktopSecondaryNavigation={hasCategorySidebar}
+                  desktopTitle={categoryPageTitle ?? categorySidebar?.title}
+                  secondaryNavigation={secondaryNavigation}
+                  showFilterCheckboxes={pathState.isHomePage}
+                />
+              )}
+
+              <EventsGrid
+                filters={homeFilters}
+                initialEvents={canUseServerInitialEvents ? initialEvents : []}
+                initialHasMore={canUseServerInitialEvents && initialHasMore}
+                initialCurrentTimestamp={initialCurrentTimestamp}
+                onClearFilters={handleClearFilters}
+                routeMainTag={targetMainTag}
+                routeTag={targetTag}
+                maxColumns={hasCategorySidebar ? 3 : undefined}
+              />
+            </>
+          )}
         </div>
       </div>
 

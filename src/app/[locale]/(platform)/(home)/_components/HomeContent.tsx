@@ -1,6 +1,7 @@
 import { cacheLife, cacheTag } from 'next/cache'
 
 import type { CategoryFaqContext } from '@/lib/category-faq'
+import type { HomeFeedData } from '@/lib/home-feed-types'
 import type { Event, HomeFeaturedEventCard, HomeFeaturedHotTopic, HomeFeaturedSideCardSettings } from '@/types'
 
 import HomeClient from '@/app/[locale]/(platform)/(home)/_components/HomeClient'
@@ -11,6 +12,8 @@ import { buildTranslatedCategoryFaqItems } from '@/lib/category-faq-server'
 import { listHomeEventsPage } from '@/lib/home-events-page'
 import { getHomeFeaturedSideCard, listHomeFeaturedEvents, listHomeFeaturedHotTopics } from '@/lib/home-featured-events'
 import { DEFAULT_HOME_FEATURED_SETTINGS } from '@/lib/home-featured-settings'
+import { loadHomeFeedPools } from '@/lib/home-feed'
+import { buildHomeFeed } from '@/lib/home-feed-sections'
 import { getInitialHomeEventsSortBy } from '@/lib/home-route-sort'
 import { PUBLIC_LISTING_PAGE_CACHE_LIFE } from '@/lib/public-listing-cache'
 import { loadRuntimeThemeSiteName } from '@/lib/theme-settings'
@@ -107,10 +110,19 @@ export default async function HomeContent({
         featuredSideCard: DEFAULT_HOME_FEATURED_SETTINGS.sideCard,
       })
 
-  const [initialEventsResult, featuredEventsResult, siteName] = await Promise.all([
+  // FORK: section-led home feed (Live now, Top stories, Crypto, Communities, Finance, News, Politics, Sports, sidebar).
+  const homeFeedPoolsPromise = shouldLoadFeaturedEvents
+    ? loadHomeFeedPools({ locale: resolvedLocale, currentTimestamp }).catch((error) => {
+        console.error('Failed to load home feed sections', error)
+        return null
+      })
+    : Promise.resolve(null)
+
+  const [initialEventsResult, featuredEventsResult, siteName, homeFeedPools] = await Promise.all([
     initialEventsPromise,
     featuredEventsPromise,
     categoryFaqContext ? loadRuntimeThemeSiteName() : Promise.resolve(''),
+    homeFeedPoolsPromise,
   ])
 
   initialEvents = initialEventsResult.events
@@ -119,6 +131,10 @@ export default async function HomeContent({
   initialFeaturedEvents = featuredEventsResult.featuredEvents
   initialFeaturedHotTopics = featuredEventsResult.featuredHotTopics
   initialFeaturedSideCard = featuredEventsResult.featuredSideCard
+
+  const initialHomeFeed: HomeFeedData | null = homeFeedPools
+    ? buildHomeFeed({ trending: initialEvents, ...homeFeedPools, locale: resolvedLocale })
+    : null
 
   const categoryFaqItems = categoryFaqContext
     ? await buildTranslatedCategoryFaqItems({
@@ -138,6 +154,7 @@ export default async function HomeContent({
           initialFeaturedEvents={initialFeaturedEvents}
           initialFeaturedHotTopics={initialFeaturedHotTopics}
           initialFeaturedSideCard={initialFeaturedSideCard}
+          initialHomeFeed={initialHomeFeed}
           initialEvents={initialEvents}
           initialHasMore={initialHasMore}
           initialCurrentTimestamp={initialCurrentTimestamp}
