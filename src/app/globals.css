@@ -11,6 +11,8 @@
   --yes-foreground: oklch(0.711 0.144 161.553);
   --no: oklch(0.654 0.211 18.17);
   --no-foreground: oklch(0.654 0.211 18.17);
+  /* FORK: lighter red for No/Down text on dark surfaces (the fill red fails 4.5:1 as text). */
+  --no-text: oklch(0.654 0.211 18.17);
   --radius: 0.75rem;
   --background: oklch(1 0 0);
   --foreground: oklch(0.129 0.042 264.695);
@@ -44,6 +46,7 @@
 [data-theme-mode='dark'] {
   --background: oklch(0.284 0.034 250.76);
   --foreground: oklch(0.984 0.003 247.858);
+  --no-text: #ff6b70;
   --card: oklch(0.32 0.04 257);
   --card-foreground: oklch(0.984 0.003 247.858);
   --popover: oklch(0.284 0.034 250.76);
@@ -150,6 +153,7 @@
   --color-yes-foreground: var(--yes-foreground);
   --color-no: var(--no);
   --color-no-foreground: var(--no-foreground);
+  --color-no-text: var(--no-text);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);

@@ -3,6 +3,7 @@ import { getExtracted } from 'next-intl/server'
 import { cacheLife, cacheTag } from 'next/cache'
 
 import type { SupportedLocale } from '@/i18n/locales'
+import type { HomeFeaturedResolvedTarget } from '@/lib/db/queries/home-featured-events'
 import type {
   Comment,
   Event,
@@ -34,6 +35,13 @@ import { db } from '@/lib/drizzle'
 import { buildPublicEventListVisibilityCondition } from '@/lib/event-visibility'
 import { resolveEventPagePath } from '@/lib/events-routing'
 import { formatDollarValueLabel } from '@/lib/formatters'
+import { filterHomeEvents } from '@/lib/home-events'
+import {
+  HOME_FEATURED_FALLBACK_ID_PREFIX,
+  HOME_FEATURED_FALLBACK_LIMIT,
+  resolveHomeFeaturedTargetMode,
+  selectHomeFeaturedFallbackEvents,
+} from '@/lib/home-featured-fallback'
 import { loadHomeFeaturedNews } from '@/lib/home-featured-news'
 import { findNextHomeFeaturedSeriesEvent, isHomeFeaturedEventEnded } from '@/lib/home-featured-rollover'
 import { getHomeFeaturedSettingsFromSettings } from '@/lib/home-featured-settings'
@@ -396,11 +404,8 @@ export async function getNextHomeFeaturedSeriesRolloverEvent(
 ) {
   const { data: allSettings } = await loadHomeFeaturedSettings()
   const settings = getHomeFeaturedSettingsFromSettings(allSettings ?? undefined)
-  if (!settings.enabled) {
-    return null
-  }
-  const { data: targets } = await HomeFeaturedEventsRepository.resolvePublicTargets(settings.maxCards)
-  const target = targets?.find((entry) => entry.featuredId === featuredId && entry.targetType === 'series')
+  const targets = await resolveHomeFeaturedTargets(settings, locale)
+  const target = targets.find((entry) => entry.featuredId === featuredId && entry.targetType === 'series')
   if (!target) {
     return null
   }
@@ -907,6 +912,84 @@ async function resolveContextItems(input: {
   return comments.items
 }
 
+const HOME_FEATURED_FALLBACK_POOL_SIZE = 24
+const HOME_FEATURED_FALLBACK_POOL_TAGS = ['crypto', 'finance', 'trending'] as const
+
+async function loadHomeFeaturedFallbackPool(
+  tag: (typeof HOME_FEATURED_FALLBACK_POOL_TAGS)[number],
+  locale: SupportedLocale,
+) {
+  try {
+    const { data, error } = await EventRepository.listEvents({
+      tag,
+      mainTag: tag,
+      search: '',
+      ...(tag !== 'trending' && { sortBy: 'volume_24h' as const }),
+      userId: '',
+      bookmarked: false,
+      status: 'active',
+      excludeSportsAuxiliary: true,
+      offset: 0,
+      limit: HOME_FEATURED_FALLBACK_POOL_SIZE,
+      locale,
+    })
+    if (error) {
+      console.error(`Failed to load home featured fallback pool "${tag}"`, error)
+      return []
+    }
+    return data ?? []
+  } catch (error) {
+    console.error(`Failed to load home featured fallback pool "${tag}"`, error)
+    return []
+  }
+}
+
+/**
+ * FORK: synthesises featured targets from the busiest live Up/Down markets
+ * when Admin has no featured markets configured. Context items stay hidden so
+ * nothing is written against the synthetic ids.
+ */
+async function resolveHomeFeaturedFallbackTargets(locale: SupportedLocale): Promise<HomeFeaturedResolvedTarget[]> {
+  const pools = await Promise.all(
+    HOME_FEATURED_FALLBACK_POOL_TAGS.map((tag) => loadHomeFeaturedFallbackPool(tag, locale)),
+  )
+  const candidates = filterHomeEvents(pools.flat(), { currentTimestamp: Date.now() })
+
+  return selectHomeFeaturedFallbackEvents(candidates, HOME_FEATURED_FALLBACK_LIMIT).map((event, index) => ({
+    featuredId: `${HOME_FEATURED_FALLBACK_ID_PREFIX}${event.id}`,
+    targetType: event.series_slug ? 'series' : 'event',
+    source: 'ai',
+    rank: index,
+    contextMode: 'hidden',
+    eventId: event.id,
+    eventSlug: event.slug,
+    eventTitle: event.title,
+    seriesSlug: event.series_slug ?? null,
+  }))
+}
+
+async function resolveHomeFeaturedTargets(
+  settings: HomeFeaturedSettings,
+  locale: SupportedLocale,
+): Promise<HomeFeaturedResolvedTarget[]> {
+  let configuredTargets: HomeFeaturedResolvedTarget[] = []
+
+  if (settings.enabled) {
+    const { data, error } = await HomeFeaturedEventsRepository.resolvePublicTargets(settings.maxCards)
+    if (error) {
+      console.error('Failed to resolve home featured targets', error)
+    }
+    configuredTargets = data ?? []
+  }
+
+  const mode = resolveHomeFeaturedTargetMode({
+    enabled: settings.enabled,
+    configuredTargetCount: configuredTargets.length,
+  })
+
+  return mode === 'configured' ? configuredTargets : resolveHomeFeaturedFallbackTargets(locale)
+}
+
 export async function listHomeFeaturedEvents(
   locale: SupportedLocale = DEFAULT_LOCALE,
 ): Promise<HomeFeaturedEventCard[]> {
@@ -917,20 +1000,9 @@ export async function listHomeFeaturedEvents(
   }
 
   const settings = getHomeFeaturedSettingsFromSettings(allSettings ?? undefined)
-
-  if (!settings.enabled) {
-    return []
-  }
-
-  const { data: resolvedTargets, error } = await HomeFeaturedEventsRepository.resolvePublicTargets(settings.maxCards)
-  if (error) {
-    console.error('Failed to resolve home featured targets', error)
-    return []
-  }
-
-  const targets = resolvedTargets ?? []
+  const targets = await resolveHomeFeaturedTargets(settings, locale)
   if (targets.length === 0) {
-    console.warn('Home featured markets are enabled, but no public targets were resolved.')
+    console.warn('Home featured markets: no configured targets and no live Up/Down fallback candidates.')
     return []
   }
 

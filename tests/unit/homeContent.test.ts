@@ -17,6 +17,17 @@ void mock.module('@/lib/home-featured-events', () => ({
   listHomeFeaturedHotTopics: mock().mockResolvedValue([]),
 }))
 
+void mock.module('@/lib/home-feed', () => ({
+  loadHomeFeedPools: mock().mockResolvedValue({
+    crypto: [],
+    finance: [],
+    politics: [],
+    sports: [],
+    communities: [],
+    news: { stories: [], outlets: [], isPlaceholder: true },
+  }),
+}))
+
 void mock.module('next/cache', () => {
   return {
     ...actualNextCache,
