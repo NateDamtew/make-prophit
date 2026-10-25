@@ -62,3 +62,14 @@ export const polymarket_trading_interest = pgTable(
   },
   (table) => [primaryKey({ columns: [table.user_id, table.event_id] })],
 )
+
+/** A user's Polymarket Deposit Wallet (public), saved when they set up Polymarket trading. */
+export const polymarket_accounts = pgTable('polymarket_accounts', {
+  user_id: text()
+    .primaryKey()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  wallet_address: char({ length: 42 }).notNull(),
+  signer_address: char({ length: 42 }).notNull(),
+  created_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  updated_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
+})

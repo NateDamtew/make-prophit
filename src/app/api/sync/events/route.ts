@@ -188,6 +188,8 @@ interface SyncOptions {
 interface SyncRuntimeState {
   eventTagSlugsByEventId: Map<string, Set<string>>
   sportsSourceSettingsPromise?: Promise<SportsSourceProviderSettings>
+  /** External imports (Polymarket) already carry teams and kickoff; skip provider lookups. */
+  skipSportsSourceInference?: boolean
 }
 
 interface NormalizedEventTag {
@@ -765,7 +767,7 @@ export async function ingestMarketsWithMetadata(
   entries: ExternalMarketEntry[],
   options: SyncOptions & { deadlineMs: number },
 ): Promise<ExternalMarketIngestResult> {
-  const runtimeState: SyncRuntimeState = { eventTagSlugsByEventId: new Map() }
+  const runtimeState: SyncRuntimeState = { eventTagSlugsByEventId: new Map(), skipSportsSourceInference: true }
   const eventIdByConditionId = new Map<string, string>()
   const errors: { conditionId: string; error: string }[] = []
   const eventIdsNeedingStatusUpdate = new Set<string>()
@@ -2711,7 +2713,11 @@ async function maybeInferSportsSourceCandidate(args: {
   eventDate: string | null
   runtimeState: SyncRuntimeState
 }) {
-  if (args.hasSourceIdentity || !hasSportsOrEsportsTag(args.normalizedEventTags)) {
+  if (
+    args.runtimeState.skipSportsSourceInference ||
+    args.hasSourceIdentity ||
+    !hasSportsOrEsportsTag(args.normalizedEventTags)
+  ) {
     return null
   }
 

@@ -184,3 +184,52 @@ export async function placePolymarketMarketOrder(
     orderType: OrderType.FAK,
   })
 }
+
+/** Native USDC on Polygon — where withdrawals land by default. */
+const POLYGON_USDC_ADDRESS = '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359'
+/** pUSD, Polymarket's collateral token, held in the user's Deposit Wallet. */
+const PUSD_ADDRESS = '0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB'
+
+/** Claims a resolved market's winnings back into the wallet as pUSD (gas-free). */
+export async function redeemPolymarketMarket(client: SecureClient, conditionId: string) {
+  const handle = await client.redeemPositions({ conditionId })
+  return await handle.wait()
+}
+
+/**
+ * Withdraws pUSD as USDC on Polygon to `recipient` through the Polymarket
+ * Bridge: the bridge gives a one-off address, the wallet sends pUSD there
+ * (gas-free) and the bridge pays out USDC.
+ */
+export async function withdrawPolymarketFunds(
+  client: SecureClient,
+  input: { amountUsd: number; recipient: Address; builderCode: string },
+) {
+  if (!(input.amountUsd > 0)) {
+    throw new Error('Enter an amount to withdraw.')
+  }
+  const response = await fetch(`${POLYMARKET_ENDPOINTS.bridge}/withdraw`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Builder-Code': input.builderCode },
+    body: JSON.stringify({
+      address: client.account.wallet,
+      toChainId: '137',
+      toTokenAddress: POLYGON_USDC_ADDRESS,
+      recipientAddr: input.recipient,
+    }),
+  })
+  if (!response.ok) {
+    throw new Error('Polymarket could not prepare the withdrawal.')
+  }
+  const payload = (await response.json()) as { address?: { evm?: string } }
+  const bridgeAddress = payload.address?.evm
+  if (!bridgeAddress) {
+    throw new Error('Polymarket did not return a withdrawal address.')
+  }
+  const handle = await client.transferErc20({
+    amount: BigInt(Math.floor(input.amountUsd * 1e6)),
+    recipientAddress: bridgeAddress,
+    tokenAddress: PUSD_ADDRESS,
+  })
+  return await handle.wait()
+}
