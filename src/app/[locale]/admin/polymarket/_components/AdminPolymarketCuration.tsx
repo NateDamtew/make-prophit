@@ -6,6 +6,7 @@ import { useMemo, useState, useTransition } from 'react'
 
 import type {
   BrowsedEvent,
+  BuilderTradeRow,
   CurationRuleInput,
   PolymarketLeagueOption,
 } from '@/app/[locale]/admin/polymarket/_actions/curation'
@@ -15,6 +16,7 @@ import {
   addTagRuleAction,
   browsePolymarketAction,
   deleteCurationRuleAction,
+  fetchBuilderActivityAction,
   listCurationRulesAction,
   listLeaguesAction,
   runPolymarketSyncAction,
@@ -113,6 +115,7 @@ export default function AdminPolymarketCuration({ initialRules }: AdminPolymarke
           <TabsTrigger value="categories">{t('Categories & leagues')}</TabsTrigger>
           <TabsTrigger value="browse">{t('Browse & pick')}</TabsTrigger>
           <TabsTrigger value="overrides">{t('Overrides')}</TabsTrigger>
+          <TabsTrigger value="builder">{t('Builder activity')}</TabsTrigger>
         </TabsList>
         <TabsContent value="categories" className="pt-4">
           <CategoryRules
@@ -125,6 +128,9 @@ export default function AdminPolymarketCuration({ initialRules }: AdminPolymarke
         </TabsContent>
         <TabsContent value="browse" className="pt-4">
           <BrowsePolymarket rules={rules} disabled={isPending} onSave={saveRule} onRemove={removeRule} />
+        </TabsContent>
+        <TabsContent value="builder" className="pt-4">
+          <BuilderActivity />
         </TabsContent>
         <TabsContent value="overrides" className="pt-4">
           <OverrideRules
@@ -633,6 +639,75 @@ function OverrideRules({
           </Button>
         </div>
       ))}
+    </div>
+  )
+}
+
+function BuilderActivity() {
+  const t = useExtracted()
+  const [isLoading, startLoading] = useTransition()
+  const [state, setState] = useState<{
+    trades: BuilderTradeRow[]
+    totalVolumeUsd: number
+    totalFeesUsd: number
+    builderCode: string
+  } | null>(null)
+
+  function load() {
+    startLoading(async () => {
+      const result = await fetchBuilderActivityAction()
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      setState(result)
+    })
+  }
+
+  return (
+    <div className="grid gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm text-muted-foreground">
+          {t('Trades Polymarket has attributed to Prophit’s builder code. Attribution can lag by up to a day.')}
+        </p>
+        <Button size="sm" variant="outline" onClick={load} disabled={isLoading}>
+          <RefreshCwIcon className={cn('size-4', isLoading && 'animate-spin')} />
+          {state ? t('Refresh') : t('Load activity')}
+        </Button>
+      </div>
+      {state && (
+        <>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="rounded-lg border p-3">
+              <p className="text-xs text-muted-foreground">{t('Trades (latest page)')}</p>
+              <p className="text-xl font-semibold tabular-nums">{state.trades.length}</p>
+            </div>
+            <div className="rounded-lg border p-3">
+              <p className="text-xs text-muted-foreground">{t('Volume')}</p>
+              <p className="text-xl font-semibold tabular-nums">${compactNumber.format(state.totalVolumeUsd)}</p>
+            </div>
+            <div className="rounded-lg border p-3">
+              <p className="text-xs text-muted-foreground">{t('Builder fees')}</p>
+              <p className="text-xl font-semibold tabular-nums">${state.totalFeesUsd.toFixed(2)}</p>
+            </div>
+          </div>
+          {state.trades.length === 0 ? (
+            <p className="text-sm text-muted-foreground">{t('No attributed trades yet.')}</p>
+          ) : (
+            <div className="grid gap-1">
+              {state.trades.slice(0, 25).map((trade) => (
+                <div key={trade.id} className="flex flex-wrap items-center gap-3 rounded-md border px-3 py-2 text-sm">
+                  <Badge variant="outline">{trade.side}</Badge>
+                  <span className="min-w-0 flex-1 truncate">{trade.outcome}</span>
+                  <span className="tabular-nums">${trade.sizeUsd.toFixed(2)}</span>
+                  <span className="text-xs text-muted-foreground tabular-nums">@ {trade.price.toFixed(2)}</span>
+                  <span className="text-xs text-muted-foreground">{trade.status}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
     </div>
   )
 }

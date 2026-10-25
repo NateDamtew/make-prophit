@@ -1,5 +1,6 @@
 'use server'
 
+import { createPublicClient } from '@polymarket/client'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
@@ -23,6 +24,7 @@ import {
   toGammaNumber,
 } from '@/lib/polymarket/gamma'
 import { runPolymarketSync } from '@/lib/polymarket/sync'
+import { getPolymarketBuilderCode } from '@/lib/polymarket/trading-access'
 
 const ADMIN_PATH = '/[locale]/admin/polymarket'
 
@@ -239,6 +241,48 @@ export async function runPolymarketSyncAction() {
     await requireAdmin()
     const summary = await runPolymarketSync({ deadlineMs: Date.now() + 50_000 })
     return { success: true as const, summary }
+  } catch (error) {
+    return { success: false as const, error: toErrorMessage(error) }
+  }
+}
+
+export interface BuilderTradeRow {
+  id: string
+  side: string
+  outcome: string
+  sizeUsd: number
+  feeUsd: number
+  price: number
+  status: string
+  matchedAt: string | null
+}
+
+/** Trades Polymarket has attributed to Prophit's builder code (newest page). */
+export async function fetchBuilderActivityAction() {
+  try {
+    await requireAdmin()
+    const builderCode = getPolymarketBuilderCode()
+    if (!builderCode) {
+      return { success: false as const, error: 'POLYMARKET_BUILDER_CODE is not set.' }
+    }
+    const page = await createPublicClient().listBuilderTrades({ builderCode }).firstPage()
+    const trades: BuilderTradeRow[] = page.items.map((trade: Record<string, any>) => ({
+      id: String(trade.id ?? ''),
+      side: String(trade.side ?? ''),
+      outcome: String(trade.outcome ?? ''),
+      sizeUsd: Number(trade.sizeUsdc ?? 0),
+      feeUsd: Number(trade.feeUsdc ?? 0),
+      price: Number(trade.price ?? 0),
+      status: String(trade.status ?? ''),
+      matchedAt: trade.matchTime ? String(trade.matchTime) : trade.createdAt ? String(trade.createdAt) : null,
+    }))
+    return {
+      success: true as const,
+      builderCode,
+      trades,
+      totalVolumeUsd: trades.reduce((sum, trade) => sum + trade.sizeUsd, 0),
+      totalFeesUsd: trades.reduce((sum, trade) => sum + trade.feeUsd, 0),
+    }
   } catch (error) {
     return { success: false as const, error: toErrorMessage(error) }
   }
