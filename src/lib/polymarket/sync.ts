@@ -23,6 +23,7 @@ import { updateOutcomePayoutsFromResolutionPrice } from '@/lib/resolution-payout
 
 const DEFAULT_MAX_EVENTS_PER_TAG = 40
 const PIN_SOURCE = 'polymarket-curation'
+const VOLUME_CHUNK_SIZE = 200
 
 export interface PolymarketSyncSummary {
   candidates: number
@@ -119,22 +120,40 @@ function invalidateEventSlugs(slugs: string[]) {
   }
 }
 
-/** Volumes come from Gamma; Kuest's volume job skips venue = 'polymarket'. */
+/** Volumes come from Gamma; Kuest's volume job skips venue = 'polymarket'. One statement per chunk. */
 async function applyVolumes(decisions: Map<string, CurationDecision>) {
-  for (const decision of decisions.values()) {
-    for (const market of decision.markets) {
-      await db
-        .update(markets)
-        .set({ volume: String(toGammaNumber(market.volume)), volume_24h: String(toGammaNumber(market.volume24hr)) })
-        .where(eq(markets.condition_id, market.conditionId))
-    }
+  const rows = Array.from(decisions.values()).flatMap((decision) =>
+    decision.markets.map((market) => ({
+      conditionId: market.conditionId,
+      volume: String(toGammaNumber(market.volume)),
+      volume24h: String(toGammaNumber(market.volume24hr)),
+    })),
+  )
+  for (let start = 0; start < rows.length; start += VOLUME_CHUNK_SIZE) {
+    const values = sql.join(
+      rows
+        .slice(start, start + VOLUME_CHUNK_SIZE)
+        .map((row) => sql`(${row.conditionId}, ${row.volume}::numeric, ${row.volume24h}::numeric)`),
+      sql`, `,
+    )
+    await db.execute(sql`
+      UPDATE ${markets} AS m
+      SET volume = v.volume, volume_24h = v.volume_24h
+      FROM (VALUES ${values}) AS v(condition_id, volume, volume_24h)
+      WHERE m.condition_id = v.condition_id
+        AND (m.volume IS DISTINCT FROM v.volume OR m.volume_24h IS DISTINCT FROM v.volume_24h)
+    `)
   }
 }
 
-async function applyResolutions(decisions: Map<string, CurationDecision>) {
+async function applyResolutions(decisions: Map<string, CurationDecision>, deadlineMs: number) {
   let resolved = 0
   for (const decision of decisions.values()) {
     for (const market of decision.markets) {
+      // Settled markets are picked up again on the next run.
+      if (Date.now() >= deadlineMs) {
+        return resolved
+      }
       const price = resolveSettledPrice(market)
       if (price == null) {
         continue
@@ -183,15 +202,17 @@ async function hideCoveredMirrors(visibleConditionIds: Set<string>) {
   return covered.map(([, entry]) => entry.slug)
 }
 
-async function syncPins(pinnedEventIds: string[]) {
-  await db
-    .delete(home_featured_events)
-    .where(
-      and(
-        eq(home_featured_events.source, PIN_SOURCE),
-        pinnedEventIds.length > 0 ? notInArray(home_featured_events.event_id, pinnedEventIds) : undefined,
-      ),
-    )
+async function syncPins(pinnedEventIds: string[], options: { removeStale: boolean }) {
+  if (options.removeStale) {
+    await db
+      .delete(home_featured_events)
+      .where(
+        and(
+          eq(home_featured_events.source, PIN_SOURCE),
+          pinnedEventIds.length > 0 ? notInArray(home_featured_events.event_id, pinnedEventIds) : undefined,
+        ),
+      )
+  }
   if (pinnedEventIds.length === 0) {
     return 0
   }
@@ -232,26 +253,20 @@ export async function runPolymarketSync(options: { deadlineMs: number }): Promis
   const entries = visibleIds.flatMap((id) =>
     buildExternalMarketEntries(candidates.get(id)!, decisions.get(id)!.markets),
   )
-  const ingest = await ingestMarketsWithMetadata(entries, { autoDeployNewEvents: true, deadlineMs: options.deadlineMs })
-  for (const error of ingest.errors) {
-    errors.push({ ref: `market:${error.conditionId}`, error: error.error })
-  }
-
-  // Map Gamma event id -> Prophit event id through the ingested markets.
-  const prophitEventIdByGammaId = new Map<string, string>()
-  for (const id of visibleIds) {
-    for (const market of decisions.get(id)!.markets) {
-      const eventId = ingest.eventIdByConditionId.get(market.conditionId)
-      if (eventId) {
-        prophitEventIdByGammaId.set(id, eventId)
-        break
-      }
-    }
-  }
-
+  // Tag each event as Polymarket the moment its first market lands, so a run cut
+  // short (serverless time limit) never leaves Polymarket events looking like Kuest ones.
+  const gammaEventIdByConditionId = new Map(
+    visibleIds.flatMap((id) => decisions.get(id)!.markets.map((market) => [market.conditionId, id] as const)),
+  )
+  const taggedEventIds = new Set<string>()
   const changedSlugs = new Set<string>()
   let shown = 0
-  for (const [gammaId, eventId] of prophitEventIdByGammaId) {
+  async function tagEvent(conditionId: string, eventId: string) {
+    const gammaId = gammaEventIdByConditionId.get(conditionId)
+    if (!gammaId || taggedEventIds.has(eventId)) {
+      return
+    }
+    taggedEventIds.add(eventId)
     const updated = await db
       .update(events)
       .set({ venue: 'polymarket', polymarket_event_id: gammaId, is_hidden: false })
@@ -265,6 +280,27 @@ export async function runPolymarketSync(options: { deadlineMs: number }): Promis
     for (const row of updated) {
       changedSlugs.add(row.slug)
       shown++
+    }
+  }
+
+  const ingest = await ingestMarketsWithMetadata(entries, {
+    autoDeployNewEvents: true,
+    deadlineMs: options.deadlineMs,
+    onMarketStored: tagEvent,
+  })
+  for (const error of ingest.errors) {
+    errors.push({ ref: `market:${error.conditionId}`, error: error.error })
+  }
+
+  // Map Gamma event id -> Prophit event id through the ingested markets.
+  const prophitEventIdByGammaId = new Map<string, string>()
+  for (const id of visibleIds) {
+    for (const market of decisions.get(id)!.markets) {
+      const eventId = ingest.eventIdByConditionId.get(market.conditionId)
+      if (eventId) {
+        prophitEventIdByGammaId.set(id, eventId)
+        break
+      }
     }
   }
 
@@ -294,7 +330,7 @@ export async function runPolymarketSync(options: { deadlineMs: number }): Promis
 
   const visibleDecisions = new Map(visibleIds.map((id) => [id, decisions.get(id)!]))
   await applyVolumes(visibleDecisions)
-  const resolved = await applyResolutions(visibleDecisions)
+  const resolved = await applyResolutions(visibleDecisions, options.deadlineMs)
 
   const visibleConditionIds = new Set(
     visibleIds.flatMap((id) => decisions.get(id)!.markets.map((market) => market.conditionId)),
@@ -308,7 +344,8 @@ export async function runPolymarketSync(options: { deadlineMs: number }): Promis
     .filter((id) => decisions.get(id)!.pinned)
     .map((id) => prophitEventIdByGammaId.get(id))
     .filter((id): id is string => Boolean(id))
-  const pinned = await syncPins(pinnedEventIds)
+  // A run cut short has not mapped every pinned event yet, so it only adds pins.
+  const pinned = await syncPins(pinnedEventIds, { removeStale: !ingest.timeLimitReached })
 
   if (changedSlugs.size > 0 || resolved > 0 || pinned > 0) {
     invalidateEventSlugs(Array.from(changedSlugs))

@@ -765,7 +765,11 @@ export interface ExternalMarketIngestResult {
  */
 export async function ingestMarketsWithMetadata(
   entries: ExternalMarketEntry[],
-  options: SyncOptions & { deadlineMs: number },
+  options: SyncOptions & {
+    deadlineMs: number
+    /** Runs right after each market is stored, before the next one (e.g. to tag its event). */
+    onMarketStored?: (conditionId: string, eventId: string) => Promise<void>
+  },
 ): Promise<ExternalMarketIngestResult> {
   const runtimeState: SyncRuntimeState = { eventTagSlugsByEventId: new Map(), skipSportsSourceInference: true }
   const eventIdByConditionId = new Map<string, string>()
@@ -794,6 +798,7 @@ export async function ingestMarketsWithMetadata(
       }
       if (result.eventId) {
         eventIdByConditionId.set(entry.condition.id, result.eventId)
+        await options.onMarketStored?.(entry.condition.id, result.eventId)
       }
       translationSourceChanged ||= result.translationSourceChanged
       if (result.eventIdForStatusUpdate && result.changed) {

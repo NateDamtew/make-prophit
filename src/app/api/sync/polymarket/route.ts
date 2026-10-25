@@ -13,7 +13,8 @@ const POLYMARKET_SYNC_STATE = {
   serviceName: 'polymarket_sync',
   subgraphName: 'gamma',
 } as const
-const SYNC_DEADLINE_MS = 270_000
+// Imports stop here; volumes, resolutions, mirrors and pins need the rest of maxDuration.
+const SYNC_DEADLINE_MS = 240_000
 
 /** Imports the admin-curated Polymarket catalogue (see src/lib/polymarket/sync.ts). */
 export async function GET(request: Request) {
