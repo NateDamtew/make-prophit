@@ -73,6 +73,9 @@ export const events = pgTable(
     icon_url: text(),
     is_hidden: boolean().notNull().default(false),
     is_polymarket_mirror: boolean().notNull().default(false),
+    // 'kuest' (our order book) or 'polymarket' (imported from Gamma, priced on Polymarket's CLOB)
+    venue: text().notNull().default('kuest'),
+    polymarket_event_id: text(),
     livestream_url: text(),
     additional_context: text(),
     additional_context_updated_at: timestamp({ withTimezone: true }),

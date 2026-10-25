@@ -3,6 +3,7 @@
 import { Loader2Icon, RotateCcwIcon, ShareIcon, WalletIcon, XIcon, ZapIcon } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
+import { registerPolymarketTradingInterestAction } from '@/app/[locale]/(platform)/event/[slug]/_actions/polymarket-interest'
 import SiteLogoIcon from '@/components/SiteLogoIcon'
 import { Button } from '@/components/ui/button'
 import { toast } from '@/components/ui/toast'
@@ -124,6 +125,20 @@ export default function QuickView({ open, onClose }: { open: boolean; onClose: (
 
     if (!isAuthenticated) {
       void openWallet()
+      return
+    }
+
+    if (staged.card.venue === 'polymarket') {
+      // Polymarket trading is not open yet: record interest instead of an order.
+      const interest = await registerPolymarketTradingInterestAction(staged.card.eventId)
+      if ('error' in interest) {
+        toast.error('Could not save that', { description: interest.error })
+        return
+      }
+      toast.info('Trading Polymarket markets opens soon.', {
+        description: 'We’ll let you know when you can swipe to trade it.',
+      })
+      advance()
       return
     }
 

@@ -97,7 +97,7 @@ interface PnLCursorState {
   initialCreationTimestamp: number | null
 }
 
-interface SubgraphCondition {
+export interface SubgraphCondition {
   id: string
   oracle: string | null
   questionId: string | null
@@ -197,6 +197,7 @@ interface NormalizedEventTag {
 }
 
 interface ProcessMarketResult {
+  eventId: string | null
   eventIdForStatusUpdate: string | null
   eventIdsForCacheInvalidation: string[]
   seriesSlugsForCacheInvalidation: string[]
@@ -743,6 +744,105 @@ async function syncMarkets(
   }
 }
 
+export interface ExternalMarketEntry {
+  condition: SubgraphCondition
+  metadata: Record<string, any>
+}
+
+export interface ExternalMarketIngestResult {
+  processedCount: number
+  skippedExpiredCount: number
+  eventIdByConditionId: Map<string, string>
+  errors: { conditionId: string; error: string }[]
+  timeLimitReached: boolean
+}
+
+/**
+ * Runs markets whose metadata did not come from the Kuest subgraph/Irys (the
+ * Polymarket importer) through the same event, market, tag and cache pipeline.
+ */
+export async function ingestMarketsWithMetadata(
+  entries: ExternalMarketEntry[],
+  options: SyncOptions & { deadlineMs: number },
+): Promise<ExternalMarketIngestResult> {
+  const runtimeState: SyncRuntimeState = { eventTagSlugsByEventId: new Map() }
+  const eventIdByConditionId = new Map<string, string>()
+  const errors: { conditionId: string; error: string }[] = []
+  const eventIdsNeedingStatusUpdate = new Set<string>()
+  const eventIdsNeedingCacheInvalidation = new Set<string>()
+  const seriesSlugsNeedingCacheInvalidation = new Set<string>()
+  let processedCount = 0
+  let skippedExpiredCount = 0
+  let translationSourceChanged = false
+  let shouldInvalidateListCache = false
+  let shouldInvalidateSitemap = false
+  let timeLimitReached = false
+
+  for (const entry of entries) {
+    if (Date.now() >= options.deadlineMs) {
+      timeLimitReached = true
+      break
+    }
+
+    try {
+      const result = await processMarketWithMetadata(entry.condition, entry.metadata, options, runtimeState)
+      if (result.skippedExpired) {
+        skippedExpiredCount++
+        continue
+      }
+      if (result.eventId) {
+        eventIdByConditionId.set(entry.condition.id, result.eventId)
+      }
+      translationSourceChanged ||= result.translationSourceChanged
+      if (result.eventIdForStatusUpdate && result.changed) {
+        eventIdsNeedingStatusUpdate.add(result.eventIdForStatusUpdate)
+      }
+      for (const eventId of result.eventIdsForCacheInvalidation) {
+        eventIdsNeedingCacheInvalidation.add(eventId)
+      }
+      for (const seriesSlug of result.seriesSlugsForCacheInvalidation) {
+        seriesSlugsNeedingCacheInvalidation.add(seriesSlug)
+      }
+      shouldInvalidateListCache ||= result.listAffectingChange
+      shouldInvalidateSitemap ||= result.urlSetChanged
+      processedCount++
+    } catch (error: any) {
+      console.error(`❌ Error ingesting external market ${entry.condition.id}:`, error)
+      errors.push({ conditionId: entry.condition.id, error: error?.message ?? String(error) })
+    }
+  }
+
+  if (eventIdsNeedingStatusUpdate.size > 0) {
+    const changedEventIds = await updateEventStatusesFromMarketsBatch(Array.from(eventIdsNeedingStatusUpdate))
+    for (const changedEventId of changedEventIds) {
+      eventIdsNeedingCacheInvalidation.add(changedEventId)
+    }
+    if (changedEventIds.length > 0) {
+      shouldInvalidateListCache = true
+      shouldInvalidateSitemap = true
+    }
+  }
+
+  if (
+    eventIdsNeedingCacheInvalidation.size > 0 ||
+    seriesSlugsNeedingCacheInvalidation.size > 0 ||
+    shouldInvalidateListCache ||
+    shouldInvalidateSitemap
+  ) {
+    await invalidateEventCaches(Array.from(eventIdsNeedingCacheInvalidation), {
+      includeList: shouldInvalidateListCache,
+      includeSitemap: shouldInvalidateSitemap,
+      seriesSlugs: Array.from(seriesSlugsNeedingCacheInvalidation),
+    })
+  }
+
+  if (translationSourceChanged && Date.now() < options.deadlineMs - TRANSLATION_TRIGGER_RESERVE_MS) {
+    await triggerTranslationEnqueue()
+  }
+
+  return { processedCount, skippedExpiredCount, eventIdByConditionId, errors, timeLimitReached }
+}
+
 function resolveMinCreationTimestamp(nowMs = Date.now()) {
   return Math.floor(nowMs / 1000) - INITIAL_MARKET_LOOKBACK_SECONDS
 }
@@ -897,13 +997,23 @@ async function processMarket(
   options: SyncOptions,
   runtimeState: SyncRuntimeState,
 ): Promise<ProcessMarketResult> {
-  const timestamps = getMarketTimestamps(market)
   if (!market.metadataHash) {
     throw new Error(`Market ${market.id} missing required metadataHash field`)
   }
   const metadata = await fetchMetadata(market.metadataHash)
+  return await processMarketWithMetadata(market, metadata, options, runtimeState)
+}
+
+async function processMarketWithMetadata(
+  market: SubgraphCondition,
+  metadata: any,
+  options: SyncOptions,
+  runtimeState: SyncRuntimeState,
+): Promise<ProcessMarketResult> {
+  const timestamps = getMarketTimestamps(market)
   if (isMarketMetadataExpired(metadata) && !(await hasStoredMarket(market.id))) {
     return {
+      eventId: null,
       eventIdForStatusUpdate: null,
       eventIdsForCacheInvalidation: [],
       seriesSlugsForCacheInvalidation: [],
@@ -952,6 +1062,7 @@ async function processMarket(
   }
 
   return {
+    eventId: eventResult.eventId,
     eventIdForStatusUpdate: changed ? marketResult.eventIdForStatusUpdate : null,
     eventIdsForCacheInvalidation: changed ? Array.from(eventIdsForCacheInvalidation) : [],
     seriesSlugsForCacheInvalidation: changed ? eventResult.seriesSlugsForCacheInvalidation : [],

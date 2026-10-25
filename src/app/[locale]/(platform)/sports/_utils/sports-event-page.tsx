@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation'
 
 import type { SportsVertical } from '@/lib/sports-vertical'
 
+import EventVenueProvider from '@/app/[locale]/(platform)/_providers/EventVenueProvider'
 import EventMarketChannelProvider from '@/app/[locale]/(platform)/event/[slug]/_components/EventMarketChannelProvider'
 import SportsEventCenter from '@/app/[locale]/(platform)/sports/_components/SportsEventCenter'
 import {
@@ -168,19 +169,21 @@ export async function renderSportsVerticalEventPage({
         site={runtimeTheme.site}
         faqItems={faqItems}
       />
-      <EventMarketChannelProvider markets={allMarkets}>
-        <SportsEventCenter
-          card={targetCard}
-          marketViewCards={targetGroup.marketViewCards}
-          sportSlug={resolvedSportSlug}
-          sportLabel={sportLabel}
-          faqItems={faqItems}
-          initialMarketViewKey={resolveSportsEventMarketViewKey(canonicalEventSlug)}
-          marketContextEnabled={marketContextEnabled}
-          vertical={vertical}
-          key={`is-bookmarked-${targetCard.event.is_bookmarked}`}
-        />
-      </EventMarketChannelProvider>
+      <EventVenueProvider venue={targetCard.event.venue}>
+        <EventMarketChannelProvider markets={allMarkets}>
+          <SportsEventCenter
+            card={targetCard}
+            marketViewCards={targetGroup.marketViewCards}
+            sportSlug={resolvedSportSlug}
+            sportLabel={sportLabel}
+            faqItems={faqItems}
+            initialMarketViewKey={resolveSportsEventMarketViewKey(canonicalEventSlug)}
+            marketContextEnabled={marketContextEnabled}
+            vertical={vertical}
+            key={`is-bookmarked-${targetCard.event.is_bookmarked}`}
+          />
+        </EventMarketChannelProvider>
+      </EventVenueProvider>
     </>
   )
 }
@@ -291,21 +294,23 @@ export async function renderSportsVerticalEventMarketPage({
         site={runtimeTheme.site}
         faqItems={faqItems}
       />
-      <EventMarketChannelProvider markets={allMarkets}>
-        <SportsEventCenter
-          card={targetCard}
-          marketViewCards={targetGroup.marketViewCards}
-          relatedCards={relatedCards}
-          sportSlug={resolvedSportSlug}
-          sportLabel={sportLabel}
-          faqItems={faqItems}
-          initialMarketSlug={market}
-          initialMarketViewKey={resolveSportsEventMarketViewKey(canonicalEventSlug)}
-          marketContextEnabled={marketContextEnabled}
-          vertical={vertical}
-          key={`is-bookmarked-${targetCard.event.is_bookmarked}`}
-        />
-      </EventMarketChannelProvider>
+      <EventVenueProvider venue={targetCard.event.venue}>
+        <EventMarketChannelProvider markets={allMarkets}>
+          <SportsEventCenter
+            card={targetCard}
+            marketViewCards={targetGroup.marketViewCards}
+            relatedCards={relatedCards}
+            sportSlug={resolvedSportSlug}
+            sportLabel={sportLabel}
+            faqItems={faqItems}
+            initialMarketSlug={market}
+            initialMarketViewKey={resolveSportsEventMarketViewKey(canonicalEventSlug)}
+            marketContextEnabled={marketContextEnabled}
+            vertical={vertical}
+            key={`is-bookmarked-${targetCard.event.is_bookmarked}`}
+          />
+        </EventMarketChannelProvider>
+      </EventVenueProvider>
     </>
   )
 }

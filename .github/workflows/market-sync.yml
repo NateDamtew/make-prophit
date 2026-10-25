@@ -60,6 +60,18 @@ jobs:
           done
           echo "events: processed $total row(s) this run"
 
+      - name: Sync curated Polymarket markets
+        run: |
+          for i in $(seq 1 4); do
+            code=$(curl -sS -m 300 -o resp.json -w '%{http_code}' \
+              -H "Authorization: Bearer $CRON_SECRET" \
+              "$BASE_URL/api/sync/polymarket") || true
+            echo "polymarket run $i (HTTP $code): $(cat resp.json)"
+            more=$(grep -oE '"timeLimitReached":(true|false)' resp.json | head -1 | cut -d: -f2)
+            [ "$more" = "true" ] || break
+            sleep 2
+          done
+
       - name: Sync resolutions
         run: |
           code=$(curl -sS -m 90 -o resp.json -w '%{http_code}' \
