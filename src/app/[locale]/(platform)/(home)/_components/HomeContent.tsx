@@ -9,6 +9,7 @@ import FaqStructuredData from '@/components/seo/FaqStructuredData'
 import { getRootLocale } from '@/i18n/root-locale'
 import { cacheTags } from '@/lib/cache-tags'
 import { buildTranslatedCategoryFaqItems } from '@/lib/category-faq-server'
+import { slimEventForCard } from '@/lib/event-card-payload'
 import { listHomeEventsPage } from '@/lib/home-events-page'
 import { getHomeFeaturedSideCard, listHomeFeaturedEvents, listHomeFeaturedHotTopics } from '@/lib/home-featured-events'
 import { DEFAULT_HOME_FEATURED_SETTINGS } from '@/lib/home-featured-settings'
@@ -155,7 +156,8 @@ export default async function HomeContent({
           initialFeaturedHotTopics={initialFeaturedHotTopics}
           initialFeaturedSideCard={initialFeaturedSideCard}
           initialHomeFeed={initialHomeFeed}
-          initialEvents={initialEvents}
+          // The home feed renders its own small cards, so the full list is only sent where the grid shows it.
+          initialEvents={initialHomeFeed ? [] : initialEvents.map((event) => slimEventForCard(event))}
           initialHasMore={initialHasMore}
           initialCurrentTimestamp={initialCurrentTimestamp}
           initialTag={initialTagSlug}
