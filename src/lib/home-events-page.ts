@@ -4,6 +4,7 @@ import type { Event } from '@/types'
 
 import { EventRepository } from '@/lib/db/queries/event'
 import { filterHomeEvents, HOME_EVENTS_PAGE_SIZE, isSportsPrimaryHomeEvent } from '@/lib/home-events'
+import { timeStep } from '@/lib/perf-timing'
 
 const HOME_EVENTS_QUERY_BATCH_SIZE = 128
 
@@ -55,25 +56,27 @@ async function loadHomeEventBatches({
   const accumulatedEvents = [...initialEvents]
 
   while (true) {
-    const { data: rawEvents, error } = await EventRepository.listEvents({
-      tag,
-      mainTag,
-      search,
-      sortBy,
-      userId,
-      bookmarked,
-      frequency,
-      status,
-      offset: rawOffset,
-      limit: HOME_EVENTS_QUERY_BATCH_SIZE,
-      locale,
-      sportsSportSlug,
-      sportsSection,
-      hideSports,
-      hideCrypto,
-      hideEarnings,
-      excludeSportsAuxiliary: true,
-    })
+    const { data: rawEvents, error } = await timeStep(`home batch (${tag}, offset ${rawOffset})`, () =>
+      EventRepository.listEvents({
+        tag,
+        mainTag,
+        search,
+        sortBy,
+        userId,
+        bookmarked,
+        frequency,
+        status,
+        offset: rawOffset,
+        limit: HOME_EVENTS_QUERY_BATCH_SIZE,
+        locale,
+        sportsSportSlug,
+        sportsSection,
+        hideSports,
+        hideCrypto,
+        hideEarnings,
+        excludeSportsAuxiliary: true,
+      }),
+    )
 
     if (error) {
       return { data: [], error }

@@ -1997,7 +1997,7 @@ export const EventRepository = {
     return await runQuery(async () => {
       const safeLimit = normalizeEventListLimit(limit)
       const validOffset = normalizeEventListOffset(offset)
-      const sportsSlugResolver = await getSportsSlugResolverFromDb()
+      const sportsSlugResolver = await timeStep('list sports slug resolver', () => getSportsSlugResolverFromDb())
       const normalizedRequestedSportsSportSlug = sportsSportSlug.trim().toLowerCase()
 
       const whereConditions: SQL<unknown>[] = []
@@ -2243,13 +2243,17 @@ export const EventRepository = {
       } else if ((tag === 'trending' && !sortBy) || sortBy === 'trending') {
         const trendingVolumeOrder = buildTrendingVolumeOrder()
 
-        const trendingEventIds = await db
-          .select({ id: events.id })
-          .from(events)
-          .where(baseWhere)
-          .orderBy(desc(trendingVolumeOrder), desc(events.created_at))
-          .limit(safeLimit)
-          .offset(validOffset)
+        const trendingEventIds = await timeStep(
+          `list ids query (trending, offset ${validOffset}, limit ${safeLimit})`,
+          () =>
+            db
+              .select({ id: events.id })
+              .from(events)
+              .where(baseWhere)
+              .orderBy(desc(trendingVolumeOrder), desc(events.created_at))
+              .limit(safeLimit)
+              .offset(validOffset),
+        )
 
         if (trendingEventIds.length === 0) {
           return { data: [], error: null }
@@ -2258,32 +2262,34 @@ export const EventRepository = {
         const orderedIds = trendingEventIds.map((event) => event.id)
         const orderIndex = new Map(orderedIds.map((id, index) => [id, index]))
 
-        const trendingData = (await db.query.events.findMany({
-          where: {
-            RAW: (table) => mapEventColumnsToRelationAlias(and(baseWhere, inArray(table.id, orderedIds))!, table),
-          },
-          with: {
-            markets: {
-              with: {
-                sports: true,
-                condition: {
-                  with: { outcomes: true },
+        const trendingData = (await timeStep(`list rows query (${orderedIds.length} events)`, () =>
+          db.query.events.findMany({
+            where: {
+              RAW: (table) => mapEventColumnsToRelationAlias(and(baseWhere, inArray(table.id, orderedIds))!, table),
+            },
+            with: {
+              markets: {
+                with: {
+                  sports: true,
+                  condition: {
+                    with: { outcomes: true },
+                  },
                 },
               },
-            },
 
-            eventTags: {
-              with: { tag: true },
-            },
-            sports: true,
-
-            ...(userId && {
-              bookmarks: {
-                where: { RAW: (table) => eq(table.user_id, userId) },
+              eventTags: {
+                with: { tag: true },
               },
-            }),
-          },
-        })) as DrizzleEventResult[]
+              sports: true,
+
+              ...(userId && {
+                bookmarks: {
+                  where: { RAW: (table) => eq(table.user_id, userId) },
+                },
+              }),
+            },
+          }),
+        )) as DrizzleEventResult[]
 
         eventsData = trendingData.sort((left, right) => {
           const leftIndex = orderIndex.get(left.id) ?? Number.MAX_SAFE_INTEGER
@@ -2308,13 +2314,17 @@ export const EventRepository = {
           }
         })()
 
-        const sortedEventIds = await db
-          .select({ id: events.id })
-          .from(events)
-          .where(baseWhere)
-          .orderBy(...orderByClause)
-          .limit(safeLimit)
-          .offset(validOffset)
+        const sortedEventIds = await timeStep(
+          `list ids query (tag ${tag || mainTag || '-'}, sort ${sortBy ?? 'default'}, offset ${validOffset}, limit ${safeLimit})`,
+          () =>
+            db
+              .select({ id: events.id })
+              .from(events)
+              .where(baseWhere)
+              .orderBy(...orderByClause)
+              .limit(safeLimit)
+              .offset(validOffset),
+        )
 
         if (sortedEventIds.length === 0) {
           return { data: [], error: null }
@@ -2323,32 +2333,34 @@ export const EventRepository = {
         const orderedIds = sortedEventIds.map((event) => event.id)
         const orderIndex = new Map(orderedIds.map((id, index) => [id, index]))
 
-        const sortedData = (await db.query.events.findMany({
-          where: {
-            RAW: (table) => mapEventColumnsToRelationAlias(and(baseWhere, inArray(table.id, orderedIds))!, table),
-          },
-          with: {
-            markets: {
-              with: {
-                sports: true,
-                condition: {
-                  with: { outcomes: true },
+        const sortedData = (await timeStep(`list rows query (${orderedIds.length} events)`, () =>
+          db.query.events.findMany({
+            where: {
+              RAW: (table) => mapEventColumnsToRelationAlias(and(baseWhere, inArray(table.id, orderedIds))!, table),
+            },
+            with: {
+              markets: {
+                with: {
+                  sports: true,
+                  condition: {
+                    with: { outcomes: true },
+                  },
                 },
               },
-            },
 
-            eventTags: {
-              with: { tag: true },
-            },
-            sports: true,
-
-            ...(userId && {
-              bookmarks: {
-                where: { RAW: (table) => eq(table.user_id, userId) },
+              eventTags: {
+                with: { tag: true },
               },
-            }),
-          },
-        })) as DrizzleEventResult[]
+              sports: true,
+
+              ...(userId && {
+                bookmarks: {
+                  where: { RAW: (table) => eq(table.user_id, userId) },
+                },
+              }),
+            },
+          }),
+        )) as DrizzleEventResult[]
 
         eventsData = sortedData.sort((left, right) => {
           const leftIndex = orderIndex.get(left.id) ?? Number.MAX_SAFE_INTEGER
@@ -2357,13 +2369,17 @@ export const EventRepository = {
         })
       }
 
-      const eventsWithMarkets = await hydrateEventListResults({
-        eventsData,
-        locale,
-        skipLivePricing,
-        sportsSlugResolver,
-        userId,
-      })
+      const eventsWithMarkets = await timeStep(
+        `list hydrate (${eventsData.length} events, ${eventsData.reduce((sum, event) => sum + (event.markets?.length ?? 0), 0)} markets)`,
+        () =>
+          hydrateEventListResults({
+            eventsData,
+            locale,
+            skipLivePricing,
+            sportsSlugResolver,
+            userId,
+          }),
+      )
 
       return { data: eventsWithMarkets, error: null }
     })
