@@ -7,6 +7,7 @@ import { useExtracted } from 'next-intl'
 
 import type { HomeFeedDirection } from '@/lib/home-feed-types'
 
+import EventIconImage from '@/components/EventIconImage'
 import { useOutcomeLabel } from '@/hooks/useOutcomeLabel'
 import { Link } from '@/i18n/navigation'
 import { formatVolume } from '@/lib/formatters'
@@ -118,9 +119,23 @@ export function formatChanceLabel(chance: number | null) {
 
 interface HomeFeedTickerTileProps {
   label: string | null
+  /** The event's own icon; the text ticker is only the fallback. */
+  iconUrl?: string | null
 }
 
-export function HomeFeedTickerTile({ label }: HomeFeedTickerTileProps) {
+export function HomeFeedTickerTile({ label, iconUrl }: HomeFeedTickerTileProps) {
+  if (iconUrl) {
+    return (
+      <EventIconImage
+        src={iconUrl}
+        alt=""
+        sizes="40px"
+        containerClassName="size-10 shrink-0 rounded-[10px] bg-muted"
+        imageClassName="object-cover"
+      />
+    )
+  }
+
   return (
     <span
       className="flex size-10 shrink-0 items-center justify-center rounded-[10px] bg-muted text-[11px] font-bold tracking-[0.02em]"

@@ -72,6 +72,12 @@ function isSportsGame(event: GammaEvent) {
   return Boolean(event.gameId || (event.teams && event.teams.length > 0 && event.startTime))
 }
 
+/** Polymarket's sport code (nba, epl, ucl…), which is what Kuest stores as the sport slug. */
+function resolveSportCode(event: GammaEvent) {
+  const sport = typeof event.sport === 'string' ? event.sport : event.sport?.sport
+  return sport?.trim() || event.teams?.find((team) => team.league)?.league || null
+}
+
 function buildSportsTeams(event: GammaEvent) {
   return (event.teams ?? []).map((team) => ({
     name: team.name ?? null,
@@ -79,7 +85,8 @@ function buildSportsTeams(event: GammaEvent) {
     record: team.record ?? null,
     color: team.color ?? null,
     host_status: team.ordering ?? null,
-    logo_url: team.logo ?? null,
+    // The sync copies `logo` into our storage and fills logo_url itself (it drops an incoming logo_url).
+    logo: team.logo ?? null,
   }))
 }
 
@@ -87,7 +94,8 @@ function buildSportsMetadata(event: GammaEvent, market: GammaMarket) {
   if (!isSportsGame(event)) {
     return undefined
   }
-  const leagueSlug = event.teams?.find((team) => team.league)?.league ?? event.sport ?? null
+  const sportCode = resolveSportCode(event)
+  const leagueSlug = event.teams?.find((team) => team.league)?.league ?? sportCode
   const series = event.series?.[0]
   return {
     event: {
@@ -100,7 +108,7 @@ function buildSportsMetadata(event: GammaEvent, market: GammaMarket) {
       series_slug: event.seriesSlug ?? series?.slug ?? null,
       series_id: series?.id ?? null,
       series_recurrence: series?.recurrence ?? null,
-      sport_slug: event.sport ?? leagueSlug,
+      sport_slug: sportCode,
       league_slug: leagueSlug,
       teams: buildSportsTeams(event),
       score: event.score ?? null,

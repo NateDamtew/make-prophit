@@ -179,7 +179,14 @@ describe('home-feed-sections', () => {
     expect(feed.topStories.map((card) => card.id)).toEqual(['brazil', 'lid', 'emmys'])
     expect(feed.finance.map((card) => card.id)).toEqual(['gold'])
     expect(feed.politics.map((card) => card.id)).toEqual(['approval'])
-    expect(feed.liveNow.map((item) => item.id)).toEqual(['gold'])
+    // Live items lead the strip; the busiest remaining markets follow as trending.
+    expect(feed.liveNow.map((item) => [item.id, item.isLive])).toEqual([
+      ['gold', true],
+      ['brazil', false],
+      ['lid', false],
+      ['emmys', false],
+      ['approval', false],
+    ])
     expect(feed.mostTraded.map((item) => item.id)).toEqual(['brazil', 'lid', 'emmys', 'gold', 'approval'])
     expect(feed.breakingNews).toHaveLength(3)
     expect(feed.breakingNews[0]?.change).toBeNull()
