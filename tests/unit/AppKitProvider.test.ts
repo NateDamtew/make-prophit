@@ -1,5 +1,5 @@
 import { act, render, screen, waitFor } from '@testing-library/react'
-import { describe, expect, it, mock } from 'bun:test'
+import { beforeEach, describe, expect, it, mock } from 'bun:test'
 import * as React from 'react'
 
 import { hoisted } from '../bun-test-helpers'
@@ -14,6 +14,7 @@ const mocks = hoisted(() => ({
   setShowAuthFlow: mock(),
   handleLogOut: mock(),
   setShowLinkNewWalletModal: mock(),
+  user: null as { id: string } | null,
 }))
 
 void mock.module('@dynamic-labs/sdk-react-core', () => ({
@@ -64,6 +65,12 @@ void mock.module('@/hooks/usePublicRuntimeConfig', () => ({
 
 void mock.module('wagmi', () => ({
   WagmiProvider: ({ children }: any) => children,
+  useConfig: () => ({ state: {} }),
+}))
+
+void mock.module('@/stores/useUser', () => ({
+  mergeSessionUserState: (_previous: unknown, user: unknown) => user,
+  useUser: Object.assign(() => mocks.user, { setState: mock() }),
 }))
 
 void mock.module('next-themes', () => ({
@@ -74,7 +81,7 @@ void mock.module('next-intl', () => ({
   useExtracted: () => (value: string) => value,
 }))
 
-// Dynamic mounts client-only after hydration — force the hydrated branch.
+// The wallet layer mounts client-only after hydration — force the hydrated branch.
 void mock.module('@/hooks/useHasHydrated', () => ({
   useHasHydrated: () => true,
 }))
@@ -102,89 +109,101 @@ void mock.module('wagmi/actions', () => ({
   signMessage: mock(),
 }))
 
+function renderWithConsumer(
+  AppKitProvider: React.ComponentType<{ children: React.ReactNode }>,
+  ctx: React.Context<any>,
+) {
+  const state: { latestValue: any } = { latestValue: null }
+  render(
+    React.createElement(
+      AppKitProvider,
+      null,
+      React.createElement(ReadyConsumer, {
+        ctx,
+        onValue: (value) => {
+          state.latestValue = value
+        },
+      }),
+    ),
+  )
+  return state
+}
+
 describe('appKitProvider (Dynamic)', () => {
-  it('provides isReady: true via AppKitContext', async () => {
+  beforeEach(() => {
+    mocks.user = null
+    mocks.setShowAuthFlow.mockReset()
+  })
+
+  it('loads the wallet layer right away for a signed-in user and provides isReady: true', async () => {
+    mocks.user = { id: 'user-1' }
     const { AppKitContext } = await import('@/hooks/useAppKit')
     const AppKitProvider = (await import('@/providers/AppKitProvider')).default
 
-    let latestValue: any = null
-
-    render(
-      React.createElement(
-        AppKitProvider,
-        null,
-        React.createElement(ReadyConsumer, {
-          ctx: AppKitContext,
-          onValue: (v) => {
-            latestValue = v
-          },
-        }),
-      ),
-    )
+    const state = renderWithConsumer(AppKitProvider, AppKitContext)
 
     await waitFor(() => {
       expect(screen.getByTestId('ready')).toHaveTextContent('yes')
-      expect(latestValue?.isReady).toBe(true)
+      expect(state.latestValue?.isReady).toBe(true)
     })
   })
 
-  it('calls setShowAuthFlow when open() is called', async () => {
+  it('loads the wallet layer on open() before it is ready, then opens the auth flow', async () => {
     const { AppKitContext } = await import('@/hooks/useAppKit')
     const AppKitProvider = (await import('@/providers/AppKitProvider')).default
 
-    let latestValue: any = null
+    const state = renderWithConsumer(AppKitProvider, AppKitContext)
+    expect(state.latestValue?.isReady).toBe(false)
 
-    render(
-      React.createElement(
-        AppKitProvider,
-        null,
-        React.createElement(ReadyConsumer, {
-          ctx: AppKitContext,
-          onValue: (v) => {
-            latestValue = v
-          },
-        }),
-      ),
-    )
+    // open() waits for the layer to render, which act() would hold back until
+    // its callback returns, so start it inside act() and wait outside.
+    await act(async () => {
+      void state.latestValue.open()
+    })
 
     await waitFor(() => {
-      expect(latestValue?.isReady).toBe(true)
+      expect(mocks.setShowAuthFlow).toHaveBeenCalledWith(true)
     })
-
-    await act(async () => {
-      await latestValue.open()
-    })
-
-    expect(mocks.setShowAuthFlow).toHaveBeenCalledWith(true)
+    expect(state.latestValue?.isReady).toBe(true)
   })
 
   it('calls setShowAuthFlow(false) when close() is called', async () => {
+    mocks.user = { id: 'user-1' }
     const { AppKitContext } = await import('@/hooks/useAppKit')
     const AppKitProvider = (await import('@/providers/AppKitProvider')).default
 
-    let latestValue: any = null
-
-    render(
-      React.createElement(
-        AppKitProvider,
-        null,
-        React.createElement(ReadyConsumer, {
-          ctx: AppKitContext,
-          onValue: (v) => {
-            latestValue = v
-          },
-        }),
-      ),
-    )
+    const state = renderWithConsumer(AppKitProvider, AppKitContext)
 
     await waitFor(() => {
-      expect(latestValue?.isReady).toBe(true)
+      expect(state.latestValue?.isReady).toBe(true)
     })
 
     await act(async () => {
-      await latestValue.close()
+      await state.latestValue.close()
     })
 
     expect(mocks.setShowAuthFlow).toHaveBeenCalledWith(false)
+  })
+
+  it('keeps the page mounted when the wallet layer loads', async () => {
+    mocks.user = { id: 'user-1' }
+    const { AppKitContext } = await import('@/hooks/useAppKit')
+    const AppKitProvider = (await import('@/providers/AppKitProvider')).default
+    const onMount = mock()
+
+    function MountCounter() {
+      const value = React.use(AppKitContext)
+      React.useEffect(() => {
+        onMount()
+      }, [])
+      return React.createElement('div', { 'data-testid': 'ready' }, value.isReady ? 'yes' : 'no')
+    }
+
+    render(React.createElement(AppKitProvider, null, React.createElement(MountCounter)))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('ready')).toHaveTextContent('yes')
+    })
+    expect(onMount).toHaveBeenCalledTimes(1)
   })
 })

@@ -1,391 +1,175 @@
 'use client'
 
-import type { Wallet } from '@dynamic-labs/sdk-react-core'
 import type { ReactNode } from 'react'
-import type { Config } from 'wagmi'
 
-import { EthereumWalletConnectors } from '@dynamic-labs/ethereum'
-import {
-  DynamicContextProvider,
-  useConnectWithOtp,
-  useDynamicContext,
-  useDynamicModals,
-  useUserWallets,
-} from '@dynamic-labs/sdk-react-core'
-import { DynamicWagmiConnector } from '@dynamic-labs/wagmi-connector'
 import { useExtracted } from 'next-intl'
-import { Component, useEffect, useMemo, useState } from 'react'
-import { createSiweMessage } from 'viem/siwe'
+import { Component, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { WagmiProvider } from 'wagmi'
 
-import type { AppKitValue, TonTxMessage } from '@/hooks/useAppKit'
-import type { User } from '@/types'
+import type { AppKitValue } from '@/hooks/useAppKit'
 
 import { SignaturePromptHost } from '@/components/SignaturePromptHost'
-import { toast } from '@/components/ui/toast'
 import { AppKitContext, defaultAppKitValue } from '@/hooks/useAppKit'
 import { useHasHydrated } from '@/hooks/useHasHydrated'
 import { useIsTma } from '@/hooks/useIsTma'
-import { usePublicRuntimeConfig } from '@/hooks/usePublicRuntimeConfig'
-import { createDynamicWagmiConfig, defaultNetwork } from '@/lib/appkit'
-import { authClient } from '@/lib/auth-client'
+import { createDynamicWagmiConfig } from '@/lib/appkit'
 import { IS_BROWSER } from '@/lib/constants'
 import { signOutAndRedirect } from '@/lib/logout'
-import { clearBrowserStorage, clearNonHttpOnlyCookies } from '@/lib/utils'
-import { mergeSessionUserState, useUser } from '@/stores/useUser'
+import { useUser } from '@/stores/useUser'
 
-// Stable wagmi config — created once per module load.
+// Stable wagmi config — created once per module load. The wallet layer's
+// DynamicWagmiConnector registers Dynamic's wallets on this same config.
 const wagmiConfig = createDynamicWagmiConfig()
-const activeWagmiConfig: Config = wagmiConfig
 
-function getConnectedAccount(): { address: `0x${string}` | undefined; chainId: number } {
-  const state = activeWagmiConfig?.state
-  const current = state?.current
-  const connection = current ? state.connections.get(current) : undefined
-  const address = connection?.accounts?.[0]
-  const chainId = connection?.chainId ?? state?.chainId ?? defaultNetwork.id
-  return { address, chainId }
-}
+// The Dynamic SDK and its wallet connectors are most of the site's JavaScript.
+// Loading them as their own chunk keeps them out of the bundle every page needs
+// before it can hydrate.
+const DynamicWalletLayer = lazy(() => import('@/providers/DynamicWalletLayer'))
 
-function isEmbeddedWallet(wallet: Wallet | null): boolean {
-  return Boolean((wallet?.connector as { isEmbeddedWallet?: boolean } | undefined)?.isEmbeddedWallet)
-}
-
-// TON wallets are detected by their chain literal (from Dynamic's Chains union)
-// so this provider stays web-safe and never imports the heavy `@dynamic-labs/ton`.
-const TON_CHAIN = 'TON'
-
-interface TonCapableConnector {
-  sendTransaction?: (request: { validUntil: number; messages: TonTxMessage[] }) => Promise<string>
-}
-
-function findTonWallet(wallets: readonly Wallet[]): Wallet | null {
-  return wallets.find((wallet) => wallet.chain === TON_CHAIN) ?? null
-}
-
-function clearWalletState() {
-  if (!IS_BROWSER) {
-    return
-  }
-  clearBrowserStorage()
-  clearNonHttpOnlyCookies()
-}
-
-async function isCurrentRegionBlocked() {
-  try {
-    const response = await fetch('/api/geoblock-status', {
-      cache: 'no-store',
-      headers: { accept: 'application/json' },
-    })
-    if (!response.ok) {
-      return false
-    }
-    const payload = (await response.json()) as { blocked?: boolean }
-    return payload?.blocked === true
-  } catch {
-    return false
-  }
-}
+// Visitors without a session only need the wallet SDK to log in. Load it once
+// the page has finished loading and the browser is idle (or on the first
+// open()), so it doesn't compete with the page's own content.
+const IDLE_WALLET_LOAD_TIMEOUT_MS = 3000
 
 /**
- * Drives the better-auth SIWE handshake after Dynamic reports a connected
- * wallet. Uses the wallet's actual connected chainId for both nonce and verify
- * so the server-side nonce key matches (see CLAUDE.md — never force a chain
- * switch for sign-in).
+ * Tags any error thrown while loading or running the Dynamic layer with a
+ * clear, greppable prefix so production wallet-stack failures are
+ * identifiable. The page is not inside this boundary, so a failure leaves it up
+ * with the wallet stack inert instead of unwinding to the root error page.
  */
-async function driveSIWEHandshake(primaryWallet: Wallet, siteUrl: string): Promise<boolean> {
-  const address = primaryWallet.address as `0x${string}` | undefined
-  if (!address) {
-    return false
+class DynamicErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false }
+
+  static getDerivedStateFromError() {
+    return { failed: true }
   }
 
-  const { chainId } = getConnectedAccount()
-
-  try {
-    const session = await authClient.getSession()
-    const sessionAddress = (session?.data?.user as any)?.address as string | undefined
-    if (sessionAddress?.toLowerCase() === address.toLowerCase()) {
-      const user = session.data?.user
-      if (user) {
-        useUser.setState((previous) => mergeSessionUserState(previous, user as unknown as User))
-      }
-      return true
-    }
-  } catch {
-    // no session yet — continue
-  }
-
-  try {
-    // better-auth 1.7: the nonce endpoint takes no body; the wallet address and
-    // chain ID are read from the signed message at verify time instead.
-    const { data: nonceData, error: nonceError } = await authClient.siwe.nonce()
-    const nonce = nonceData?.nonce
-    if (!nonce) {
-      // Without a server-issued nonce, verification can never succeed (the
-      // server compares against its stored nonce) — abort loudly instead of
-      // signing a message that is guaranteed to fail. A 403 here usually means
-      // the current origin is missing from better-auth trustedOrigins.
-      console.warn('[SIWE] nonce request failed — aborting handshake:', nonceError ?? 'empty response')
-      return false
-    }
-
-    const message = createSiweMessage({
-      domain: new URL(siteUrl).host,
-      address,
-      statement: 'Please sign with your account',
-      uri: typeof window !== 'undefined' ? window.location.origin : siteUrl,
-      version: '1',
-      chainId,
-      nonce,
-    })
-
-    // Sign with the wallet itself (not the wagmi action) so this works for
-    // embedded/social wallets too — at onAuthSuccess they aren't wired into
-    // wagmi yet, but Dynamic's Wallet can always sign.
-    const signature = await primaryWallet.signMessage(message)
-    if (!signature) {
-      console.warn('[SIWE] wallet returned no signature')
-      return false
-    }
-
-    // The connected chainId is carried inside `message` (see createSiweMessage
-    // above) — the server derives address + chain from it.
-    const { data: verifyData, error: verifyError } = await authClient.siwe.verify({
-      message,
-      signature,
-    })
-
-    if (!verifyData?.success) {
-      // Surface the server's rejection reason — a silent failure here leaves
-      // the user "connected" in Dynamic but with no Prophit session.
-      console.warn('[SIWE] verify rejected:', verifyError ?? verifyData ?? 'empty response')
-      return false
-    }
-
-    const session = await authClient.getSession()
-    const user = session?.data?.user
-    if (user) {
-      useUser.setState((previous) => mergeSessionUserState(previous, user as unknown as User))
-      console.warn('[SIWE] handshake complete — session created for', address)
-      return true
-    }
-    console.warn('[SIWE] verify succeeded but no session returned — check cookies/baseURL')
-    return false
-  } catch (error) {
-    console.warn('[SIWE] handshake failed:', error)
-    return false
-  }
-}
-
-/**
- * Tags any error thrown inside the Dynamic provider subtree with a clear,
- * greppable prefix so production wallet-stack failures are identifiable.
- */
-class DynamicErrorBoundary extends Component<{ children: ReactNode }> {
   componentDidCatch(error: Error, info: { componentStack?: string | null }) {
     console.error('[AppKitProvider] Dynamic provider crashed:', error.message, info.componentStack)
   }
 
   render() {
-    return this.props.children
+    return this.state.failed ? null : this.props.children
   }
 }
 
-/**
- * The single place that touches Dynamic hooks. Reads Dynamic + wagmi state and
- * publishes it through our own AppKitContext, so every other consumer in the
- * app reads a stable context (with safe SSR defaults) and never calls Dynamic
- * hooks directly. This lets us mount Dynamic client-only without consumers
- * throwing during SSR / first paint.
- */
-function AppKitBridge({
-  children,
-  regionBlockedMessage,
-  hasAuthenticatedUser,
-}: {
-  children: ReactNode
-  regionBlockedMessage: string
-  hasAuthenticatedUser: boolean
-}) {
-  const { setShowAuthFlow, handleLogOut, primaryWallet, user: dynamicUser } = useDynamicContext()
-  const { siteUrl } = usePublicRuntimeConfig()
-  const dynamicUserEmail = typeof dynamicUser?.email === 'string' ? dynamicUser.email : undefined
-  const { setShowLinkNewWalletModal } = useDynamicModals()
-  const { connectWithEmail, verifyOneTimePassword } = useConnectWithOtp()
-  const userWallets = useUserWallets()
-  const tonWallet = useMemo(() => findTonWallet(userWallets), [userWallets])
+function whenPageIdle(callback: () => void) {
+  let idleHandle: number | undefined
+  let timeoutHandle: number | undefined
 
-  const value = useMemo<AppKitValue>(
-    () => ({
-      open: async () => {
-        if (!hasAuthenticatedUser && (await isCurrentRegionBlocked())) {
-          toast.warning(regionBlockedMessage)
-          return
-        }
-        // Dynamic still holds a wallet but there is no Prophit session (an
-        // earlier SIWE verify failed). Dynamic won't reopen its auth flow for
-        // an already-authenticated user, so the button would silently do
-        // nothing: retry the handshake, and if that still fails, drop the
-        // stale Dynamic login so the user can start over.
-        if (primaryWallet && !hasAuthenticatedUser) {
-          if (await driveSIWEHandshake(primaryWallet, siteUrl)) {
-            return
-          }
-          try {
-            await handleLogOut()
-          } catch {
-            // fall through to a fresh auth flow regardless
-          }
-        }
-        setShowAuthFlow(true)
-      },
-      close: async () => {
-        setShowAuthFlow(false)
-      },
-      isReady: true,
-      isEmbedded: isEmbeddedWallet(primaryWallet),
-      walletName: primaryWallet?.connector?.name ?? undefined,
-      walletEmail: dynamicUserEmail,
-      // Log out of BOTH layers: Dynamic (wallet) and better-auth (our session).
-      // Dynamic's handleLogOut alone leaves the better-auth cookie alive, so the
-      // user stays logged in after reload — signOutAndRedirect kills it + redirects.
-      logout: async () => {
-        try {
-          await handleLogOut()
-        } catch {
-          // ignore — still clear better-auth below
-        }
-        await signOutAndRedirect({ currentPathname: IS_BROWSER ? window.location.pathname : '/' })
-      },
-      tonWalletAddress: tonWallet?.address,
-      connectTonWallet: () => {
-        setShowLinkNewWalletModal(true)
-      },
-      sendTonTransaction: async (messages: TonTxMessage[], validUntilSeconds = 600) => {
-        if (!tonWallet) {
-          throw new Error('No TON wallet connected')
-        }
-        const connector = tonWallet.connector as unknown as TonCapableConnector
-        if (typeof connector.sendTransaction !== 'function') {
-          throw new TypeError('Connected TON wallet cannot send transactions')
-        }
-        return connector.sendTransaction({
-          validUntil: Math.floor(Date.now() / 1000) + validUntilSeconds,
-          messages,
-        })
-      },
-      sendEmailOtp: async (email: string) => {
-        await connectWithEmail(email)
-      },
-      verifyEmailOtp: async (code: string) => {
-        await verifyOneTimePassword(code)
-      },
-    }),
-    [
-      hasAuthenticatedUser,
-      regionBlockedMessage,
-      siteUrl,
-      setShowAuthFlow,
-      handleLogOut,
-      primaryWallet,
-      dynamicUserEmail,
-      tonWallet,
-      setShowLinkNewWalletModal,
-      connectWithEmail,
-      verifyOneTimePassword,
-    ],
-  )
+  function scheduleIdle() {
+    if (typeof window.requestIdleCallback === 'function') {
+      idleHandle = window.requestIdleCallback(callback, { timeout: IDLE_WALLET_LOAD_TIMEOUT_MS })
+    } else {
+      timeoutHandle = window.setTimeout(callback, IDLE_WALLET_LOAD_TIMEOUT_MS)
+    }
+  }
 
-  return <AppKitContext value={value}>{children}</AppKitContext>
-}
+  if (document.readyState === 'complete') {
+    scheduleIdle()
+  } else {
+    window.addEventListener('load', scheduleIdle, { once: true })
+  }
 
-/**
- * Pre-hydration context: wallet stack is inert, logout still works via
- * better-auth. Lets the page render server-side without mounting Dynamic.
- */
-const ssrAppKitValue: AppKitValue = {
-  ...defaultAppKitValue,
-  logout: async () => {
-    await signOutAndRedirect({ currentPathname: IS_BROWSER ? window.location.pathname : '/' })
-  },
+  return () => {
+    window.removeEventListener('load', scheduleIdle)
+    if (idleHandle !== undefined) {
+      window.cancelIdleCallback(idleHandle)
+    }
+    if (timeoutHandle !== undefined) {
+      window.clearTimeout(timeoutHandle)
+    }
+  }
 }
 
 export default function AppKitProvider({ children }: { children: ReactNode }) {
   const t = useExtracted()
-  const { dynamicEnvId, siteUrl } = usePublicRuntimeConfig()
   const hasHydrated = useHasHydrated()
   const isTma = useIsTma()
   const currentUser = useUser()
+  const hasAuthenticatedUser = Boolean(currentUser?.id)
 
-  // TON wallet connect is a Telegram-Mini-App-only feature. We load the (large)
-  // TON SDK via a dynamic import gated on `isTma`, so it never ships in the web
-  // bundle — web users keep the exact same synchronous mount path.
-  const [tonConnectors, setTonConnectors] = useState<readonly (typeof EthereumWalletConnectors)[]>([])
-  useEffect(() => {
-    if (!isTma) {
-      return
-    }
-    let cancelled = false
-    void import('@dynamic-labs/ton').then((mod) => {
-      if (!cancelled) {
-        setTonConnectors([mod.TonWalletConnectors as unknown as typeof EthereumWalletConnectors])
-      }
-    })
-    return () => {
-      cancelled = true
-    }
-  }, [isTma])
-
-  const settings = useMemo(
-    () => ({
-      environmentId: dynamicEnvId,
-      walletConnectors: [EthereumWalletConnectors, ...tonConnectors],
-      events: {
-        onAuthSuccess: async ({ primaryWallet }: { primaryWallet: Wallet | null }) => {
-          if (primaryWallet) {
-            await driveSIWEHandshake(primaryWallet, siteUrl)
-          }
-        },
-        // Fires for any Dynamic logout (explicit or session-expiry). Just clear
-        // local state reactively — the explicit logout() handles better-auth +
-        // navigation, so reloading here would race ahead of that signOut.
-        onLogout: () => {
-          clearWalletState()
-          useUser.setState(null)
-        },
-      },
-    }),
-    [dynamicEnvId, siteUrl, tonConnectors],
-  )
+  const [walletLoadRequested, setWalletLoadRequested] = useState(false)
+  const [walletValue, setWalletValue] = useState<AppKitValue | null>(null)
+  const walletValueRef = useRef<AppKitValue | null>(null)
+  const pendingWalletRequests = useRef<Array<(value: AppKitValue) => void>>([])
 
   // Dynamic's internal widgets are not compatible with cacheComponents'
-  // streaming hydration, so we only mount Dynamic on the client after hydration.
-  // Before that, the app renders normally against inert wallet defaults.
-  // Inside the TMA we also wait for the TON connectors to load, so Dynamic
-  // initializes once with the full connector set rather than re-initializing.
-  if (!hasHydrated || (isTma && tonConnectors.length === 0)) {
-    return (
-      <WagmiProvider config={wagmiConfig}>
-        <AppKitContext value={ssrAppKitValue}>{children}</AppKitContext>
-      </WagmiProvider>
-    )
-  }
+  // streaming hydration, so the wallet layer only mounts on the client after
+  // hydration. Signed-in users (and the TMA) need it straight away.
+  const shouldLoadWallet = hasHydrated && (walletLoadRequested || hasAuthenticatedUser || isTma)
 
+  useEffect(() => {
+    if (!hasHydrated || shouldLoadWallet) {
+      return
+    }
+    return whenPageIdle(() => setWalletLoadRequested(true))
+  }, [hasHydrated, shouldLoadWallet])
+
+  const handleWalletValue = useCallback((value: AppKitValue) => {
+    walletValueRef.current = value
+    setWalletValue(value)
+    for (const resolve of pendingWalletRequests.current.splice(0)) {
+      resolve(value)
+    }
+  }, [])
+
+  const whenWalletReady = useCallback(() => {
+    if (walletValueRef.current) {
+      return Promise.resolve(walletValueRef.current)
+    }
+    setWalletLoadRequested(true)
+    return new Promise<AppKitValue>((resolve) => {
+      pendingWalletRequests.current.push(resolve)
+    })
+  }, [])
+
+  // Until the wallet layer has loaded: the wallet stack is inert, logout still
+  // works via better-auth, and anything that needs the wallet loads it first.
+  const loadingAppKitValue = useMemo<AppKitValue>(
+    () => ({
+      ...defaultAppKitValue,
+      open: async (options) => {
+        const value = await whenWalletReady()
+        await value.open(options)
+      },
+      logout: async () => {
+        await signOutAndRedirect({ currentPathname: IS_BROWSER ? window.location.pathname : '/' })
+      },
+      connectTonWallet: () => {
+        void whenWalletReady().then((value) => value.connectTonWallet())
+      },
+      sendEmailOtp: async (email) => {
+        const value = await whenWalletReady()
+        await value.sendEmailOtp(email)
+      },
+      verifyEmailOtp: async (code) => {
+        const value = await whenWalletReady()
+        await value.verifyEmailOtp(code)
+      },
+    }),
+    [whenWalletReady],
+  )
+
+  // The page stays at the same place in the tree whether or not the wallet
+  // layer has loaded, so loading it never remounts the page.
   return (
-    <DynamicErrorBoundary>
-      <DynamicContextProvider settings={settings}>
-        <WagmiProvider config={wagmiConfig}>
-          <DynamicWagmiConnector>
-            <AppKitBridge
+    <WagmiProvider config={wagmiConfig}>
+      <AppKitContext value={walletValue ?? loadingAppKitValue}>
+        {children}
+        <SignaturePromptHost />
+      </AppKitContext>
+      {shouldLoadWallet && (
+        <DynamicErrorBoundary>
+          <Suspense fallback={null}>
+            <DynamicWalletLayer
+              hasAuthenticatedUser={hasAuthenticatedUser}
               regionBlockedMessage={t('This platform is not currently available in your region.')}
-              hasAuthenticatedUser={Boolean(currentUser?.id)}
-            >
-              {children}
-              <SignaturePromptHost />
-            </AppKitBridge>
-          </DynamicWagmiConnector>
-        </WagmiProvider>
-      </DynamicContextProvider>
-    </DynamicErrorBoundary>
+              onValueChange={handleWalletValue}
+            />
+          </Suspense>
+        </DynamicErrorBoundary>
+      )}
+    </WagmiProvider>
   )
 }

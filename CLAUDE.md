@@ -51,9 +51,9 @@ When adding trusted domains (e.g., subdomains), add them to `trustedOrigins` in 
 **SIWE sign-in rules — do not break these:**
 
 - `verifyMessage` in `src/lib/auth.ts` uses **pure ECDSA** (`viemVerifyMessage`) as the primary path. Do NOT replace this with WalletConnect RPC as the primary — WalletConnect RPC requires domain allowlisting in WalletConnect Cloud and breaks in production. The RPC is only kept as a fallback for smart contract wallets (EIP-1271); it still reads `REOWN_APPKIT_PROJECT_ID`.
-- `driveSIWEHandshake` in `src/providers/AppKitProvider.tsx` reads the wallet's **actual connected chainId** (`getConnectedAccount`) for both nonce and verify. Do NOT hardcode `defaultNetwork.id` — forcing a chain switch before sign-in breaks Metamask, Binance Wallet, and any wallet not already on Polygon. Chain restriction is for trading, not authentication.
+- `driveSIWEHandshake` in `src/providers/DynamicWalletLayer.tsx` reads the wallet's **actual connected chainId** (`getConnectedAccount`) for both nonce and verify. Do NOT hardcode `defaultNetwork.id` — forcing a chain switch before sign-in breaks Metamask, Binance Wallet, and any wallet not already on Polygon. Chain restriction is for trading, not authentication.
 - SIWE is signed with `primaryWallet.signMessage()` (Dynamic Wallet), NOT the wagmi `signMessage` action — embedded/social wallets aren't in wagmi yet at `onAuthSuccess`.
-- `AppKitProvider` mounts `DynamicContextProvider` **client-only** (gated on `useHasHydrated`) because `cacheComponents` streaming hydration crashes Dynamic's internal widgets. All consumers read our own `AppKitContext` (via `AppKitBridge`) — never call Dynamic hooks directly in app code.
+- `AppKitProvider` mounts `DynamicContextProvider` **client-only** (gated on `useHasHydrated`) because `cacheComponents` streaming hydration crashes Dynamic's internal widgets. The Dynamic SDK lives in `src/providers/DynamicWalletLayer.tsx`, which `AppKitProvider` lazy-loads after hydration (right away for signed-in users, otherwise when the page is idle or on the first `open()`) as a sibling of the page, so loading it never remounts the page. All consumers read our own `AppKitContext` (via `AppKitBridge`) — never call Dynamic hooks directly in app code, and never import `@dynamic-labs/*` outside the wallet layer (it would pull the SDK back into every page's bundle).
 - Logout must clear **both** layers: Dynamic `handleLogOut` + better-auth `signOutAndRedirect`. Dynamic logout alone leaves the better-auth session alive.
 
 ### Database
@@ -81,7 +81,7 @@ Platform operator keys (`KUEST_API_KEY`, `KUEST_API_SECRET`, `KUEST_PASSPHRASE`,
 
 ### Providers & State
 
-- `AppKitProvider` — Dynamic.xyz (`DynamicContextProvider` + `DynamicWagmiConnector`) + wagmi + SIWE. Mounted client-only after hydration; exposes a stable `AppKitContext` so consumers don't touch Dynamic hooks. (Name kept from the old Reown provider to avoid churn across ~30 call sites.)
+- `AppKitProvider` — wagmi + a lazy-loaded Dynamic.xyz wallet layer (`DynamicWalletLayer`: `DynamicContextProvider` + `DynamicWagmiConnector` + SIWE). Mounted client-only after hydration; exposes a stable `AppKitContext` so consumers don't touch Dynamic hooks. (Name kept from the old Reown provider to avoid churn across ~30 call sites.)
 - `TradingOnboardingProvider` — Multi-step onboarding (username → email → enable trading → approve tokens → auto-redeem).
 - `AppProviders` — React Query + Zustand + Theme.
 - `SiteIdentityProvider` — White-label branding context.
