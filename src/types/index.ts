@@ -348,6 +348,8 @@ export interface Market {
   updated_at: string
   price: number
   probability: number
+  /** No live price at all (Polymarket market with no order book or trades): show it as unpriced, never 50%. */
+  price_unavailable?: boolean
   outcomes: Outcome[]
   condition: Condition
 }

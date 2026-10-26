@@ -1,3 +1,5 @@
+import { isPolymarketClobUrl } from '@/lib/polymarket/endpoints'
+
 export interface PriceHistoryPoint {
   t: number
   p: number
@@ -49,6 +51,18 @@ function normalizePriceHistoryPoints(points: unknown): PriceHistoryPoint[] {
     })
 }
 
+/**
+ * Polymarket's batch history rejects the startTs/endTs spans Kuest accepts
+ * ("the time component is mandatory" / "interval is too long") and failed the
+ * whole chart; it takes an interval instead, 'all' meaning since listing.
+ */
+function adaptFiltersForClob(clobUrl: string, filters: RangeFilters): RangeFilters {
+  if (!isPolymarketClobUrl(clobUrl)) {
+    return filters
+  }
+  return { fidelity: filters.fidelity, interval: filters.interval ?? 'all' }
+}
+
 export function buildBatchPriceHistoryRequestBody(tokenIds: string[], filters: RangeFilters) {
   const requestBody: Record<string, unknown> = {
     markets: tokenIds,
@@ -93,7 +107,7 @@ export async function fetchBatchPriceHistoryByTokenIds(
           Accept: 'application/json',
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(buildBatchPriceHistoryRequestBody(tokenIdChunk, filters)),
+        body: JSON.stringify(buildBatchPriceHistoryRequestBody(tokenIdChunk, adaptFiltersForClob(clobUrl, filters))),
       })
 
       if (!response.ok) {
