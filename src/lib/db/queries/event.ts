@@ -81,6 +81,7 @@ import {
 import { buildPublicEventListVisibilityCondition, HIDE_FROM_NEW_TAG_SLUG } from '@/lib/event-visibility'
 import { resolveSportsSection } from '@/lib/events-routing'
 import { resolveDisplayPrice } from '@/lib/market-chance'
+import { timeStep } from '@/lib/perf-timing'
 import { fetchPolymarketLastTradePrices } from '@/lib/polymarket/clob-prices'
 import { isListedPolymarketMarket } from '@/lib/polymarket/curation'
 import { normalizeEventVenue } from '@/lib/polymarket/endpoints'
@@ -1865,7 +1866,9 @@ async function hydrateEventListResults({
     ),
   )
   const eventIds = eventsData.map((event) => event.id)
-  const sportsVolumeGroupKeyByEventId = await getSportsVolumeGroupKeysByEventId(eventIds)
+  const sportsVolumeGroupKeyByEventId = await timeStep('list sports group keys', () =>
+    getSportsVolumeGroupKeysByEventId(eventIds),
+  )
   const sportsVolumeGroupKeysForAggregation = Array.from(new Set(sportsVolumeGroupKeyByEventId.values()))
   const [
     priceMap,
@@ -1878,17 +1881,21 @@ async function hydrateEventListResults({
   ] = await Promise.all([
     skipLivePricing
       ? Promise.resolve(new Map<string, OutcomePrices>())
-      : fetchOutcomePrices(tokensForPricing, { polymarketTokenIds: listPolymarketTokenIds }),
+      : timeStep(`list prices: ${tokensForPricing.length} tokens (${listPolymarketTokenIds.size} polymarket)`, () =>
+          fetchOutcomePrices(tokensForPricing, { polymarketTokenIds: listPolymarketTokenIds }),
+        ),
     skipLivePricing
       ? Promise.resolve(new Map<string, number>())
-      : fetchLastTradePrices(tokensForPricing, listPolymarketTokenIds),
-    getLocalizedTagNamesById(tagIds, locale),
-    getLocalizedEventTitlesById(eventIds, locale),
-    getLocalizedEventAdditionalContextsById(eventIds, locale),
-    getLocalizedEventRulesById(eventIds, locale),
-    getSportsAggregatedVolumesByGroupKey(sportsVolumeGroupKeysForAggregation),
+      : timeStep(`list last trades: ${tokensForPricing.length} tokens`, () =>
+          fetchLastTradePrices(tokensForPricing, listPolymarketTokenIds),
+        ),
+    timeStep('list tag names', () => getLocalizedTagNamesById(tagIds, locale)),
+    timeStep('list titles', () => getLocalizedEventTitlesById(eventIds, locale)),
+    timeStep('list contexts', () => getLocalizedEventAdditionalContextsById(eventIds, locale)),
+    timeStep('list rules', () => getLocalizedEventRulesById(eventIds, locale)),
+    timeStep('list sports volumes', () => getSportsAggregatedVolumesByGroupKey(sportsVolumeGroupKeysForAggregation)),
   ])
-  const liveChartSeriesSlugs = await getEnabledLiveChartSeriesSlugs()
+  const liveChartSeriesSlugs = await timeStep('list live chart slugs', () => getEnabledLiveChartSeriesSlugs())
 
   return eventsData
     .filter((event) => event.markets?.length > 0)
