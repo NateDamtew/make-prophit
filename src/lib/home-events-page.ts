@@ -63,7 +63,9 @@ async function loadHomeEventBatches({
   let rawOffset = Math.max(0, offset)
   const accumulatedEvents = [...initialEvents]
 
-  const maxBatches = Math.ceil(visibleTarget / HOME_EVENTS_QUERY_BATCH_SIZE) + HOME_EVENTS_MAX_EXTRA_BATCHES
+  const maxBatches =
+    Math.ceil(Math.max(0, visibleTarget - initialEvents.length) / HOME_EVENTS_QUERY_BATCH_SIZE) +
+    HOME_EVENTS_MAX_EXTRA_BATCHES
   for (let batchIndex = 0; batchIndex < maxBatches; batchIndex++) {
     const { data: rawEvents, error } = await timeStep(`home batch (${tag}, offset ${rawOffset})`, () =>
       EventRepository.listEvents({
