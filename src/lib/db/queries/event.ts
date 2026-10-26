@@ -96,6 +96,56 @@ import { resolveCanonicalSportsSportSlug, resolveSportsSportSlugQueryCandidates 
 import { getPublicAssetUrl } from '@/lib/storage'
 
 const DEFAULT_EVENT_LIST_LIMIT = 32
+
+/**
+ * Card lists (home feed, category grids) never show rules, resolution sources or the
+ * imported metadata document. For Polymarket markets that document repeats the market
+ * description and the whole event's rules, so loading it for thousands of markets took
+ * the home page's event lists 3–12 s each. `cardPayload` lists leave these columns out.
+ */
+const EVENT_CARD_EXCLUDED_COLUMNS = { rules: false, additional_context: false } as const
+const MARKET_CARD_EXCLUDED_COLUMNS = {
+  metadata: false,
+  market_rules: false,
+  resolution_source: false,
+  resolution_source_url: false,
+} as const
+const MARKET_SPORTS_CARD_EXCLUDED_COLUMNS = { sports_source_payload: false } as const
+
+/** Metadata keys cards read (labels, mention counts) and the order/archive flags the mapper reads. */
+const CARD_METADATA_KEY_PATTERN =
+  '^(short_title|acceptingOrders|accepting_orders|archived|(tweets?|mentions?)_?count|(tweets?|mentions?)Count)$'
+const METADATA_STATUS_KEY_PATTERN = '^(acceptingOrders|accepting_orders|archived)$'
+
+function pickJsonKeys(source: SQL, keyPattern: string) {
+  return sql`(SELECT jsonb_object_agg(picked.key, picked.value) FROM jsonb_each(CASE WHEN jsonb_typeof(${source}) = 'object' THEN ${source} ELSE '{}'::jsonb END) AS picked WHERE picked.key ~ ${keyPattern})`
+}
+
+/** The card-relevant part of a market's metadata text, built in Postgres so the full document never leaves it. */
+function buildCardMetadataSql(metadata: Column) {
+  // The column is jsonb in the database (text in the schema); going through text works for either.
+  const document = sql`(CASE WHEN pg_input_is_valid(${metadata}::text, 'jsonb') THEN ${metadata}::text::jsonb END)`
+  return sql<Record<string, unknown> | null>`CASE WHEN ${document} IS NULL THEN NULL ELSE jsonb_strip_nulls(
+    COALESCE(${pickJsonKeys(document, CARD_METADATA_KEY_PATTERN)}, '{}'::jsonb)
+    || jsonb_build_object(
+      'event', ${pickJsonKeys(sql`${document} -> 'event'`, METADATA_STATUS_KEY_PATTERN)},
+      'sports', jsonb_build_object(
+        'market', ${pickJsonKeys(sql`${document} #> '{sports,market}'`, METADATA_STATUS_KEY_PATTERN)},
+        'event', ${pickJsonKeys(sql`${document} #> '{sports,event}'`, METADATA_STATUS_KEY_PATTERN)}
+      )
+    )
+  ) END`
+}
+
+/** Card lists load `card_metadata` in place of the metadata document; the mapper reads it as `metadata`. */
+function applyCardMetadata(eventsData: DrizzleEventResult[]) {
+  for (const event of eventsData) {
+    for (const market of (event.markets ?? []) as Array<Record<string, unknown>>) {
+      market.metadata = market.card_metadata ?? null
+      delete market.card_metadata
+    }
+  }
+}
 const DEFAULT_SPORTS_FEED_EVENT_LIMIT = 128
 const MAX_SPORTS_FEED_EVENT_LIMIT = 256
 const SPORTS_FEED_EVENT_QUERY_CACHE_VERSION = 2
@@ -404,6 +454,8 @@ interface ListEventsProps {
   sportsSportSlug?: string
   sportsSection?: 'games' | 'props' | ''
   sportsVertical?: SportsVertical | ''
+  /** Leave out what cards never show (see EVENT_CARD_EXCLUDED_COLUMNS). */
+  cardPayload?: boolean
 }
 
 type SportsFeedMode = 'liveAndSoon' | 'soon'
@@ -1989,6 +2041,7 @@ export const EventRepository = {
     sportsSportSlug = '',
     sportsSection = '',
     sportsVertical = '',
+    cardPayload = false,
   }: ListEventsProps): Promise<QueryResult<Event[]>> {
     'use cache'
     cacheTag(cacheTags.events(userId || 'guest'))
@@ -2156,10 +2209,13 @@ export const EventRepository = {
           where: {
             RAW: (table) => mapEventColumnsToRelationAlias(and(baseWhere, inArray(table.id, orderedIds))!, table),
           },
+          columns: cardPayload ? EVENT_CARD_EXCLUDED_COLUMNS : undefined,
           with: {
             markets: {
+              columns: cardPayload ? MARKET_CARD_EXCLUDED_COLUMNS : undefined,
+              extras: cardPayload ? { card_metadata: (table) => buildCardMetadataSql(table.metadata) } : undefined,
               with: {
-                sports: true,
+                sports: cardPayload ? { columns: MARKET_SPORTS_CARD_EXCLUDED_COLUMNS } : true,
                 condition: {
                   with: { outcomes: true },
                 },
@@ -2212,10 +2268,13 @@ export const EventRepository = {
           where: {
             RAW: (table) => mapEventColumnsToRelationAlias(and(baseWhere, inArray(table.id, orderedIds))!, table),
           },
+          columns: cardPayload ? EVENT_CARD_EXCLUDED_COLUMNS : undefined,
           with: {
             markets: {
+              columns: cardPayload ? MARKET_CARD_EXCLUDED_COLUMNS : undefined,
+              extras: cardPayload ? { card_metadata: (table) => buildCardMetadataSql(table.metadata) } : undefined,
               with: {
-                sports: true,
+                sports: cardPayload ? { columns: MARKET_SPORTS_CARD_EXCLUDED_COLUMNS } : true,
                 condition: {
                   with: { outcomes: true },
                 },
@@ -2267,10 +2326,13 @@ export const EventRepository = {
             where: {
               RAW: (table) => mapEventColumnsToRelationAlias(and(baseWhere, inArray(table.id, orderedIds))!, table),
             },
+            columns: cardPayload ? EVENT_CARD_EXCLUDED_COLUMNS : undefined,
             with: {
               markets: {
+                columns: cardPayload ? MARKET_CARD_EXCLUDED_COLUMNS : undefined,
+                extras: cardPayload ? { card_metadata: (table) => buildCardMetadataSql(table.metadata) } : undefined,
                 with: {
-                  sports: true,
+                  sports: cardPayload ? { columns: MARKET_SPORTS_CARD_EXCLUDED_COLUMNS } : true,
                   condition: {
                     with: { outcomes: true },
                   },
@@ -2338,10 +2400,13 @@ export const EventRepository = {
             where: {
               RAW: (table) => mapEventColumnsToRelationAlias(and(baseWhere, inArray(table.id, orderedIds))!, table),
             },
+            columns: cardPayload ? EVENT_CARD_EXCLUDED_COLUMNS : undefined,
             with: {
               markets: {
+                columns: cardPayload ? MARKET_CARD_EXCLUDED_COLUMNS : undefined,
+                extras: cardPayload ? { card_metadata: (table) => buildCardMetadataSql(table.metadata) } : undefined,
                 with: {
-                  sports: true,
+                  sports: cardPayload ? { columns: MARKET_SPORTS_CARD_EXCLUDED_COLUMNS } : true,
                   condition: {
                     with: { outcomes: true },
                   },
@@ -2367,6 +2432,10 @@ export const EventRepository = {
           const rightIndex = orderIndex.get(right.id) ?? Number.MAX_SAFE_INTEGER
           return leftIndex - rightIndex
         })
+      }
+
+      if (cardPayload) {
+        applyCardMetadata(eventsData)
       }
 
       const eventsWithMarkets = await timeStep(
@@ -4077,6 +4146,7 @@ export const EventRepository = {
     slugs: string[],
     userId: string = '',
     locale: SupportedLocale = DEFAULT_LOCALE,
+    { cardPayload = false }: { cardPayload?: boolean } = {},
   ): Promise<QueryResult<Event[]>> {
     return runQuery(async () => {
       const normalizedSlugs = Array.from(new Set(slugs.map((slug) => slug.trim()).filter(Boolean)))
@@ -4088,10 +4158,13 @@ export const EventRepository = {
         where: {
           RAW: (table) => and(inArray(table.slug, normalizedSlugs), eq(table.is_hidden, false))!,
         },
+        columns: cardPayload ? EVENT_CARD_EXCLUDED_COLUMNS : undefined,
         with: {
           markets: {
+            columns: cardPayload ? MARKET_CARD_EXCLUDED_COLUMNS : undefined,
+            extras: cardPayload ? { card_metadata: (table) => buildCardMetadataSql(table.metadata) } : undefined,
             with: {
-              sports: true,
+              sports: cardPayload ? { columns: MARKET_SPORTS_CARD_EXCLUDED_COLUMNS } : true,
               condition: {
                 with: { outcomes: true },
               },
@@ -4111,6 +4184,9 @@ export const EventRepository = {
 
       if (eventResults.length === 0) {
         return { data: [], error: null }
+      }
+      if (cardPayload) {
+        applyCardMetadata(eventResults)
       }
 
       const hydratedEventResults = await Promise.all(eventResults.map(hydrateSportsAuxiliaryEventContext))

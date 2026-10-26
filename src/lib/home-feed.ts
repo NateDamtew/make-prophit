@@ -46,6 +46,7 @@ async function loadHomeFeedPool({ currentTimestamp, locale, tag, sportsSection =
       offset: 0,
       limit: HOME_FEED_POOL_SIZE,
       locale,
+      cardPayload: true,
     })
 
     if (error) {
