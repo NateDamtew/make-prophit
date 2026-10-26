@@ -25,6 +25,7 @@ import type {
 } from '@/types'
 
 import IntentPrefetchLink from '@/app/[locale]/(platform)/_components/IntentPrefetchLink'
+import EventVenueProvider from '@/app/[locale]/(platform)/_providers/EventVenueProvider'
 import EventBookmark from '@/app/[locale]/(platform)/event/[slug]/_components/EventBookmark'
 import EventMarketChannelProvider from '@/app/[locale]/(platform)/event/[slug]/_components/EventMarketChannelProvider'
 import EventShare from '@/app/[locale]/(platform)/event/[slug]/_components/EventShare'
@@ -2197,48 +2198,51 @@ function FeaturedSlide({
       )}
     >
       {shouldRenderChart && (
-        <EventMarketChannelProvider markets={chartEvent.markets}>
-          {shouldRenderLiveSeriesChart && item.liveChartConfig ? (
-            <HomeEventLiveSeriesChart
-              event={chartEvent}
-              isMobile={isMobile}
-              seriesEvents={item.seriesEvents}
-              config={item.liveChartConfig}
-              chartWidth={liveChartWidth}
-              chartHeightOffset={HOME_FEATURED_CHART_HEIGHT_OFFSET}
-              showSeriesControls={false}
-              showAreaFill={false}
-              showCurrentPriceGuide={false}
-              compactBitcoinHeaderPrices
-              preserveSeriesContinuity
-              showLiveMarketLink={false}
-              featuredChartLayout
-            />
-          ) : item.kind === 'sports' && sportsGraphCard && sportsGraphSelection ? (
-            <HomeSportsGameGraph
-              card={sportsGraphCard}
-              selectedMarketType={sportsGraphSelection.selectedMarketType}
-              selectedConditionId={sportsGraphSelection.selectedConditionId}
-              defaultTimeRange="ALL"
-              chartHeightOffset={HOME_FEATURED_CHART_HEIGHT_OFFSET}
-              variant="sportsEventHero"
-              showControls={false}
-            />
-          ) : (
-            <HomeEventChart
-              event={chartEvent}
-              isMobile={isMobile}
-              showControls={false}
-              showSeriesNavigation={false}
-              showWatermark={false}
-              legendVariant="card"
-              chartWidth={chartContainerWidth}
-              chartHeight={HOME_FEATURED_CHART_HEIGHT}
-              isSingleMarketOverride={isSingleMarket}
-              forceVisible
-            />
-          )}
-        </EventMarketChannelProvider>
+        // Polymarket events read Polymarket's price history and live prices; Kuest has none for them.
+        <EventVenueProvider venue={chartEvent.venue}>
+          <EventMarketChannelProvider markets={chartEvent.markets}>
+            {shouldRenderLiveSeriesChart && item.liveChartConfig ? (
+              <HomeEventLiveSeriesChart
+                event={chartEvent}
+                isMobile={isMobile}
+                seriesEvents={item.seriesEvents}
+                config={item.liveChartConfig}
+                chartWidth={liveChartWidth}
+                chartHeightOffset={HOME_FEATURED_CHART_HEIGHT_OFFSET}
+                showSeriesControls={false}
+                showAreaFill={false}
+                showCurrentPriceGuide={false}
+                compactBitcoinHeaderPrices
+                preserveSeriesContinuity
+                showLiveMarketLink={false}
+                featuredChartLayout
+              />
+            ) : item.kind === 'sports' && sportsGraphCard && sportsGraphSelection ? (
+              <HomeSportsGameGraph
+                card={sportsGraphCard}
+                selectedMarketType={sportsGraphSelection.selectedMarketType}
+                selectedConditionId={sportsGraphSelection.selectedConditionId}
+                defaultTimeRange="ALL"
+                chartHeightOffset={HOME_FEATURED_CHART_HEIGHT_OFFSET}
+                variant="sportsEventHero"
+                showControls={false}
+              />
+            ) : (
+              <HomeEventChart
+                event={chartEvent}
+                isMobile={isMobile}
+                showControls={false}
+                showSeriesNavigation={false}
+                showWatermark={false}
+                legendVariant="card"
+                chartWidth={chartContainerWidth}
+                chartHeight={HOME_FEATURED_CHART_HEIGHT}
+                isSingleMarketOverride={isSingleMarket}
+                forceVisible
+              />
+            )}
+          </EventMarketChannelProvider>
+        </EventVenueProvider>
       )}
     </div>
   )

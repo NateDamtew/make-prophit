@@ -81,8 +81,9 @@ import {
 import { buildPublicEventListVisibilityCondition, HIDE_FROM_NEW_TAG_SLUG } from '@/lib/event-visibility'
 import { resolveSportsSection } from '@/lib/events-routing'
 import { resolveDisplayPrice } from '@/lib/market-chance'
+import { fetchPolymarketLastTradePrices } from '@/lib/polymarket/clob-prices'
 import { isListedPolymarketMarket } from '@/lib/polymarket/curation'
-import { normalizeEventVenue, POLYMARKET_ENDPOINTS } from '@/lib/polymarket/endpoints'
+import { normalizeEventVenue } from '@/lib/polymarket/endpoints'
 import { resolvePublicRuntimeEnv } from '@/lib/public-runtime-config.shared'
 import {
   isSportsAuxiliaryEventSlug,
@@ -330,10 +331,8 @@ async function fetchLastTradePrices(
       resolveClobUrl(resolvePublicRuntimeEnv(process.env).clobUrl),
       tokenIds.filter((tokenId) => !polymarketTokenIds.has(tokenId)),
     ),
-    fetchLastTradePricesFrom(
-      POLYMARKET_ENDPOINTS.clob,
-      tokenIds.filter((tokenId) => polymarketTokenIds.has(tokenId)),
-    ),
+    // Chunked to Polymarket's 500-token cap; one oversized request used to fail for every token.
+    fetchPolymarketLastTradePrices(tokenIds.filter((tokenId) => polymarketTokenIds.has(tokenId))),
   ])
   for (const [tokenId, price] of polymarketTrades) {
     kuestTrades.set(tokenId, price)
@@ -1042,6 +1041,10 @@ function eventResource(
     normalizeEventVenue(event.venue) === 'polymarket' ? event.markets.filter(isListedPolymarketMarket) : []
   const listedMarkets = polymarketListedMarkets.length > 0 ? polymarketListedMarkets : event.markets
 
+  const isPolymarketEvent = normalizeEventVenue(event.venue) === 'polymarket'
+  // Prices were looked up for this batch (lists with skipped live pricing stay as they were).
+  const livePricingRan = priceMap.size > 0 || lastTradeMap.size > 0
+
   const marketsWithDerivedValues = listedMarkets.map((market: any) => {
     const rawOutcomes = (market.condition?.outcomes || []) as Array<typeof outcomes.$inferSelect>
     const normalizedOutcomes = rawOutcomes.map((outcome) => {
@@ -1057,7 +1060,13 @@ function eventResource(
       }
     })
 
-    const marketDisplayPrice = resolveMarketDisplayPrice(normalizedOutcomes)
+    // Polymarket returns nothing for a token with no order book and no trades. Such a market is
+    // unpriced: it must not borrow the 50% fallback that suits a brand-new Kuest market.
+    const hasLivePrice = normalizedOutcomes.some(
+      (outcome) => outcome.buy_price != null || outcome.sell_price != null || outcome.last_trade_price != null,
+    )
+    const isUnpriced = isPolymarketEvent && livePricingRan && !hasLivePrice
+    const marketDisplayPrice = isUnpriced ? 0 : resolveMarketDisplayPrice(normalizedOutcomes)
     const probability = marketDisplayPrice * 100
     const normalizedCurrentVolume24h = Number(market.volume_24h || 0)
     const normalizedTotalVolume = Number(market.volume || 0)
@@ -1083,6 +1092,7 @@ function eventResource(
       title: market.short_title || market.title,
       probability,
       price: marketDisplayPrice,
+      ...(isUnpriced ? { price_unavailable: true } : {}),
       volume: normalizedTotalVolume,
       volume_24h: normalizedCurrentVolume24h,
       outcomes: normalizedOutcomes,

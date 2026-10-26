@@ -2,6 +2,8 @@
 
 import { useQuery } from '@tanstack/react-query'
 
+import { isPolymarketClobUrl } from '@/lib/polymarket/endpoints'
+
 interface UseCardPriceHistoryArgs {
   tokenId: string
   createdAtIso: string
@@ -90,8 +92,13 @@ async function fetchPriceHistory({
   const url = new URL(`${clobUrl}/prices-history`)
   url.searchParams.set('market', tokenId)
   url.searchParams.set('fidelity', fidelityForSpan(ageSec).toString())
-  url.searchParams.set('startTs', createdSec.toString())
-  url.searchParams.set('endTs', endSec.toString())
+  if (isPolymarketClobUrl(clobUrl)) {
+    // Polymarket rejects long startTs/endTs spans; 'all' is the whole history since listing.
+    url.searchParams.set('interval', 'all')
+  } else {
+    url.searchParams.set('startTs', createdSec.toString())
+    url.searchParams.set('endTs', endSec.toString())
+  }
 
   const response = await fetch(url.toString(), {
     signal: AbortSignal.timeout(4000),

@@ -20,9 +20,12 @@ function hasFiniteNumber(value: unknown) {
 }
 
 export function hasHomeCardMarketChance(
-  market: Pick<Market, 'volume' | 'volume_24h' | 'condition' | 'outcomes'> | null | undefined,
+  market: Pick<Market, 'volume' | 'volume_24h' | 'condition' | 'outcomes' | 'price_unavailable'> | null | undefined,
   priceOverride?: number | null,
 ) {
+  if (market?.price_unavailable) {
+    return hasFiniteNumber(priceOverride)
+  }
   return (
     hasFiniteNumber(priceOverride) ||
     hasPositiveNumber(market?.volume) ||

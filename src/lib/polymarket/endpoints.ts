@@ -15,6 +15,10 @@ export const POLYMARKET_ENDPOINTS = {
 
 export type EventVenue = 'kuest' | 'polymarket'
 
+export function isPolymarketClobUrl(url: string | null | undefined) {
+  return Boolean(url) && url!.replace(/\/+$/, '') === POLYMARKET_ENDPOINTS.clob
+}
+
 export function normalizeEventVenue(value: unknown): EventVenue {
   return value === 'polymarket' ? 'polymarket' : 'kuest'
 }

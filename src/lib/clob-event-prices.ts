@@ -1,5 +1,5 @@
 import { resolveClobUrl } from '@/lib/clob'
-import { POLYMARKET_ENDPOINTS } from '@/lib/polymarket/endpoints'
+import { fetchPolymarketOutcomePrices } from '@/lib/polymarket/clob-prices'
 import { resolvePublicRuntimeEnv } from '@/lib/public-runtime-config.shared'
 
 export interface OutcomePrices {
@@ -132,10 +132,8 @@ export async function fetchOutcomePrices(
       resolveClobUrl(resolvePublicRuntimeEnv(process.env).clobUrl),
       tokenIds.filter((tokenId) => !polymarketTokenIds.has(tokenId)),
     ),
-    fetchOutcomePricesFrom(
-      POLYMARKET_ENDPOINTS.clob,
-      tokenIds.filter((tokenId) => polymarketTokenIds.has(tokenId)),
-    ),
+    // Polymarket's /prices differs from Kuest's (one side per entry, BUY = bid, 500-entry cap).
+    fetchPolymarketOutcomePrices(tokenIds.filter((tokenId) => polymarketTokenIds.has(tokenId))),
   ])
   for (const [tokenId, prices] of polymarketPrices) {
     kuestPrices.set(tokenId, prices)

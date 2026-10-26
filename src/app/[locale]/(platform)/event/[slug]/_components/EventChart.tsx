@@ -189,7 +189,16 @@ function EventChartComponent({
     [event.markets],
   )
   const topMarketIds = useMemo(() => getTopMarketIds(marketSnapshot, maxSeriesCount), [marketSnapshot, maxSeriesCount])
-  const fallbackMarketIds = useMemo(() => allMarketIds.slice(0, maxSeriesCount), [allMarketIds, maxSeriesCount])
+  // Used until price history arrives: the highest priced markets, never unpriced placeholders first.
+  const fallbackMarketIds = useMemo(
+    () =>
+      [...event.markets]
+        .filter((market) => Boolean(market.condition_id) && !market.price_unavailable)
+        .sort((left, right) => (Number(right.price) || 0) - (Number(left.price) || 0))
+        .slice(0, maxSeriesCount)
+        .map((market) => market.condition_id),
+    [event.markets, maxSeriesCount],
+  )
   const defaultMarketIds = useMemo(
     () =>
       sportsMoneylineMarketIds.length > 1
