@@ -22,6 +22,7 @@ export default function HomeFeaturedEventRow({
   onManageContext,
   onContextModeChange,
   onEnabledChange,
+  onKeep,
 }: {
   item: HomeFeaturedEventAdminItem
   index: number
@@ -33,6 +34,8 @@ export default function HomeFeaturedEventRow({
   onManageContext: (index: number) => void
   onContextModeChange: (index: number, mode: HomeFeaturedContextMode) => void
   onEnabledChange: (index: number, enabled: boolean) => void
+  /** Turns an automatic pick into the admin's own, so the refresh never replaces it. */
+  onKeep?: (index: number) => void
 }) {
   const t = useExtracted()
 
@@ -43,7 +46,31 @@ export default function HomeFeaturedEventRow({
       </div>
 
       <div className="min-w-0">
-        <p className="truncate text-sm font-medium">{item.title}</p>
+        <div className="flex min-w-0 items-center gap-2">
+          <p className="truncate text-sm font-medium">{item.title}</p>
+          {item.source === 'ai' ? (
+            <span
+              className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground"
+              title={t(
+                'Picked automatically and refreshed with each market sync. Remove it and it will not come back.',
+              )}
+            >
+              {t('Auto')}
+            </span>
+          ) : null}
+          {item.source === 'ai' && onKeep ? (
+            <Button
+              type="button"
+              variant="link"
+              size="sm"
+              className="h-auto shrink-0 p-0 text-xs"
+              onClick={() => onKeep(index)}
+              disabled={disabled}
+            >
+              {t('Keep')}
+            </Button>
+          ) : null}
+        </div>
         <p className="truncate text-sm text-muted-foreground">
           {item.targetType === 'series' ? `${t('Series')} · ${item.seriesSlug}` : item.slug}
         </p>

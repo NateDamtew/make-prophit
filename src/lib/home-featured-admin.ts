@@ -6,6 +6,8 @@ import type { HomeFeaturedContextMode, HomeFeaturedSettings } from '@/types'
 
 import { DEFAULT_LOCALE, SUPPORTED_LOCALES } from '@/i18n/locales'
 import {
+  HOME_FEATURED_AUTO_FILL_KEY,
+  HOME_FEATURED_AUTO_MIX_KEY,
   HOME_FEATURED_COMMENT_BLACKLIST_KEY,
   HOME_FEATURED_DEFAULT_CONTEXT_MODE_KEY,
   HOME_FEATURED_ENABLED_KEY,
@@ -180,6 +182,8 @@ export function buildHomeFeaturedSettingsUpdateRows(settings: HomeFeaturedSettin
   return [
     { group: HOME_FEATURED_SETTINGS_GROUP, key: HOME_FEATURED_ENABLED_KEY, value: String(settings.enabled) },
     { group: HOME_FEATURED_SETTINGS_GROUP, key: HOME_FEATURED_USE_AI_KEY, value: String(settings.useAi) },
+    { group: HOME_FEATURED_SETTINGS_GROUP, key: HOME_FEATURED_AUTO_FILL_KEY, value: String(settings.autoFill) },
+    { group: HOME_FEATURED_SETTINGS_GROUP, key: HOME_FEATURED_AUTO_MIX_KEY, value: JSON.stringify(settings.autoMix) },
     { group: HOME_FEATURED_SETTINGS_GROUP, key: HOME_FEATURED_MAX_CARDS_KEY, value: String(settings.maxCards) },
     {
       group: HOME_FEATURED_SETTINGS_GROUP,

@@ -974,7 +974,9 @@ async function resolveHomeFeaturedTargets(
 ): Promise<HomeFeaturedResolvedTarget[]> {
   let configuredTargets: HomeFeaturedResolvedTarget[] = []
 
-  if (settings.enabled) {
+  // Auto-filled picks live in the same list, so it is used whenever either source is on.
+  const useConfiguredList = settings.enabled || settings.autoFill
+  if (useConfiguredList) {
     const { data, error } = await HomeFeaturedEventsRepository.resolvePublicTargets(settings.maxCards)
     if (error) {
       console.error('Failed to resolve home featured targets', error)
@@ -983,7 +985,7 @@ async function resolveHomeFeaturedTargets(
   }
 
   const mode = resolveHomeFeaturedTargetMode({
-    enabled: settings.enabled,
+    enabled: useConfiguredList,
     configuredTargetCount: configuredTargets.length,
   })
 

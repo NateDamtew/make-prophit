@@ -124,6 +124,8 @@ function AdminGeneralSettingsFormInner({
   const initialHomeFeaturedEnabled = resolvedInitialHomeFeaturedSettings.enabled
   const initialHomeFeaturedUseAi = resolvedInitialHomeFeaturedSettings.useAi
   const initialHomeFeaturedMaxCards = resolvedInitialHomeFeaturedSettings.maxCards
+  const initialHomeFeaturedAutoFill = resolvedInitialHomeFeaturedSettings.autoFill
+  const initialHomeFeaturedAutoMix = resolvedInitialHomeFeaturedSettings.autoMix
   const initialHomeFeaturedDefaultContextMode = resolvedInitialHomeFeaturedSettings.defaultContextMode
   const initialHomeFeaturedNewsSources = resolvedInitialHomeFeaturedSettings.newsSources
   const initialHomeFeaturedCommentBlacklist = resolvedInitialHomeFeaturedSettings.commentBlacklist
@@ -197,6 +199,8 @@ function AdminGeneralSettingsFormInner({
   const [homeFeaturedEnabled, setHomeFeaturedEnabled] = useState(initialHomeFeaturedEnabled)
   const [homeFeaturedUseAi, setHomeFeaturedUseAi] = useState(initialHomeFeaturedUseAi)
   const [homeFeaturedMaxCards, setHomeFeaturedMaxCards] = useState(initialHomeFeaturedMaxCards)
+  const [homeFeaturedAutoFill, setHomeFeaturedAutoFill] = useState(initialHomeFeaturedAutoFill)
+  const [homeFeaturedAutoMix, setHomeFeaturedAutoMix] = useState(initialHomeFeaturedAutoMix)
   const [homeFeaturedDefaultContextMode, setHomeFeaturedDefaultContextMode] = useState(
     initialHomeFeaturedDefaultContextMode,
   )
@@ -422,6 +426,8 @@ function AdminGeneralSettingsFormInner({
       <input type="hidden" name="home_featured_enabled" value={String(homeFeaturedEnabled)} />
       <input type="hidden" name="home_featured_use_ai" value={String(homeFeaturedUseAi)} />
       <input type="hidden" name="home_featured_max_cards" value={String(homeFeaturedMaxCards)} />
+      <input type="hidden" name="home_featured_auto_fill" value={String(homeFeaturedAutoFill)} />
+      <input type="hidden" name="home_featured_auto_mix" value={JSON.stringify(homeFeaturedAutoMix)} />
       <input type="hidden" name="home_featured_default_context_mode" value={homeFeaturedDefaultContextMode} />
       <input type="hidden" name="home_featured_news_sources" value={homeFeaturedNewsSources} />
       <input type="hidden" name="home_featured_comment_blacklist" value={homeFeaturedCommentBlacklist} />
@@ -532,6 +538,10 @@ function AdminGeneralSettingsFormInner({
           onUseAiChange={setHomeFeaturedUseAi}
           maxCards={homeFeaturedMaxCards}
           onMaxCardsChange={setHomeFeaturedMaxCards}
+          autoFill={homeFeaturedAutoFill}
+          onAutoFillChange={setHomeFeaturedAutoFill}
+          autoMix={homeFeaturedAutoMix}
+          onAutoMixChange={setHomeFeaturedAutoMix}
           defaultContextMode={homeFeaturedDefaultContextMode}
           onDefaultContextModeChange={setHomeFeaturedDefaultContextMode}
           newsSources={homeFeaturedNewsSources}

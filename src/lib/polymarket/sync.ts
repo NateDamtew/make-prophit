@@ -27,7 +27,6 @@ import { updateOutcomePayoutsFromResolutionPrice } from '@/lib/resolution-payout
  */
 
 const DEFAULT_MAX_EVENTS_PER_TAG = 40
-const PIN_SOURCE = 'polymarket-curation'
 const VOLUME_CHUNK_SIZE = 200
 const LOOKUP_CHUNK_SIZE = 500
 /** Unchanged markets still re-import this often, as a safety net. */
@@ -232,34 +231,40 @@ async function hideCoveredMirrors(visibleConditionIds: Set<string>) {
   return covered.map(([, entry]) => entry.slug)
 }
 
-async function syncPins(pinnedEventIds: string[], options: { removeStale: boolean }) {
-  if (options.removeStale) {
-    await db
-      .delete(home_featured_events)
-      .where(
-        and(
-          eq(home_featured_events.source, PIN_SOURCE),
-          pinnedEventIds.length > 0 ? notInArray(home_featured_events.event_id, pinnedEventIds) : undefined,
-        ),
-      )
-  }
+/**
+ * Pinned Polymarket events join the home hero as the admin's own picks
+ * (source 'manual', the only values the table accepts besides 'ai'). An auto
+ * pick for the same event becomes manual. Nothing is removed here: unpinning
+ * leaves the hero alone, and picks are taken out in the featured-markets admin.
+ */
+async function syncPins(pinnedEventIds: string[]) {
   if (pinnedEventIds.length === 0) {
     return 0
   }
   const existing = await db
-    .select({ event_id: home_featured_events.event_id })
+    .select({ event_id: home_featured_events.event_id, source: home_featured_events.source })
     .from(home_featured_events)
     .where(inArray(home_featured_events.event_id, pinnedEventIds))
+  const autoEventIds = existing.filter((row) => row.source !== 'manual').map((row) => row.event_id!)
+  if (autoEventIds.length > 0) {
+    await db
+      .update(home_featured_events)
+      .set({ source: 'manual', updated_at: new Date() })
+      .where(inArray(home_featured_events.event_id, autoEventIds))
+  }
   const existingIds = new Set(existing.map((row) => row.event_id))
   const toInsert = pinnedEventIds.filter((id) => !existingIds.has(id))
   if (toInsert.length > 0) {
+    const [{ maxRank }] = await db
+      .select({ maxRank: sql<number>`coalesce(max(${home_featured_events.rank}), -1)` })
+      .from(home_featured_events)
     await db.insert(home_featured_events).values(
       toInsert.map((eventId, index) => ({
         target_type: 'event',
         event_id: eventId,
         enabled: true,
-        rank: index,
-        source: PIN_SOURCE,
+        rank: Number(maxRank) + 1 + index,
+        source: 'manual',
       })),
     )
   }
@@ -472,8 +477,7 @@ export async function runPolymarketSync(options: { deadlineMs: number }): Promis
     .filter((id) => decisions.get(id)!.pinned)
     .map((id) => prophitEventIdByGammaId.get(id))
     .filter((id): id is string => Boolean(id))
-  // A run cut short has not mapped every pinned event yet, so it only adds pins.
-  const pinned = await syncPins(pinnedEventIds, { removeStale: !ingest.timeLimitReached })
+  const pinned = await syncPins(pinnedEventIds)
 
   if (changedSlugs.size > 0 || resolved > 0 || pinned > 0) {
     invalidateEventSlugs(Array.from(changedSlugs))

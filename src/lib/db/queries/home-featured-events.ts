@@ -27,7 +27,14 @@ import { settings } from '@/lib/db/schema/settings/tables'
 import { runQuery } from '@/lib/db/utils/run-query'
 import { db } from '@/lib/drizzle'
 import { buildPublicEventListVisibilityCondition } from '@/lib/event-visibility'
-import { HOME_FEATURED_NEWS_LIMIT, HOME_FEATURED_NEWS_TTL_MS } from '@/lib/home-featured-settings'
+import {
+  HOME_FEATURED_AUTO_DISMISSED_KEY,
+  HOME_FEATURED_AUTO_DISMISSED_LIMIT,
+  HOME_FEATURED_NEWS_LIMIT,
+  HOME_FEATURED_NEWS_TTL_MS,
+  HOME_FEATURED_SETTINGS_GROUP,
+  parseHomeFeaturedAutoDismissed,
+} from '@/lib/home-featured-settings'
 import { getPublicAssetUrl } from '@/lib/storage'
 
 export interface HomeFeaturedResolvedTarget {
@@ -264,6 +271,45 @@ async function replaceContextItemsInTransaction(
       })),
     )
     .returning()
+}
+
+/**
+ * Auto picks (source 'ai') that an admin save drops are remembered, so the
+ * automatic fill does not put them back. Newest first, capped.
+ */
+async function recordDismissedAutoPicksInTransaction(
+  tx: HomeFeaturedTransaction,
+  items: ReplaceHomeFeaturedEventsInput[],
+) {
+  const keptEventIds = new Set(items.map((item) => item.eventId).filter((id): id is string => Boolean(id)))
+  const autoRows = await tx
+    .select({ event_id: home_featured_events.event_id })
+    .from(home_featured_events)
+    .where(and(eq(home_featured_events.source, 'ai'), isNotNull(home_featured_events.event_id)))
+  const removedIds = autoRows
+    .map((row) => row.event_id)
+    .filter((id): id is string => Boolean(id) && !keptEventIds.has(id!))
+  if (removedIds.length === 0) {
+    return
+  }
+
+  const [current] = await tx
+    .select({ value: settings.value })
+    .from(settings)
+    .where(and(eq(settings.group, HOME_FEATURED_SETTINGS_GROUP), eq(settings.key, HOME_FEATURED_AUTO_DISMISSED_KEY)))
+    .limit(1)
+  const merged = Array.from(new Set([...removedIds, ...parseHomeFeaturedAutoDismissed(current?.value)])).slice(
+    0,
+    HOME_FEATURED_AUTO_DISMISSED_LIMIT,
+  )
+  await tx
+    .insert(settings)
+    .values({
+      group: HOME_FEATURED_SETTINGS_GROUP,
+      key: HOME_FEATURED_AUTO_DISMISSED_KEY,
+      value: JSON.stringify(merged),
+    })
+    .onConflictDoUpdate({ target: [settings.group, settings.key], set: { value: sql`EXCLUDED.value` } })
 }
 
 async function replaceFeaturedEventsInTransaction(
@@ -818,6 +864,7 @@ export const HomeFeaturedEventsRepository = {
             })
         }
 
+        await recordDismissedAutoPicksInTransaction(tx, items)
         await replaceFeaturedEventsInTransaction(tx, items)
 
         if (termsOfServiceTranslations) {

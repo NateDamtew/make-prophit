@@ -56,13 +56,16 @@ function normalizeSeriesSlug(event: Event) {
 /**
  * Picks up to `limit` live Up/Down events: live-chart series first, then by
  * 24h volume, then by total volume. One event per series, no duplicates.
+ * With no live Up/Down event at all it takes the busiest active markets, so
+ * the hero is never left empty.
  */
 export function selectHomeFeaturedFallbackEvents(events: Event[], limit = HOME_FEATURED_FALLBACK_LIMIT): Event[] {
   const seenIds = new Set<string>()
   const seenSeries = new Set<string>()
+  const liveUpDown = events.filter((event) => isLiveUpDownEvent(event))
+  const pool = liveUpDown.length > 0 ? liveUpDown : events.filter((event) => !isEventResolvedLike(event))
 
-  return events
-    .filter((event) => isLiveUpDownEvent(event))
+  return pool
     .map((event, index) => ({ event, index, volume24h: sumVolume24h(event) }))
     .sort(
       (left, right) =>

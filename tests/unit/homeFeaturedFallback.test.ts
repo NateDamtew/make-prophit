@@ -68,8 +68,9 @@ describe('home-featured-fallback', () => {
     expect(selected.map((event) => event.id)).toEqual(['eth-new', 'btc', 'busy'])
   })
 
-  it('returns nothing when no live Up/Down event exists', () => {
-    expect(selectHomeFeaturedFallbackEvents([buildEvent('yesno', { outcomeLabels: ['Yes', 'No'] })])).toEqual([])
+  it('falls back to the busiest markets when no live Up/Down event exists, so the hero is never empty', () => {
+    const yesNo = buildEvent('yesno', { outcomeLabels: ['Yes', 'No'] })
+    expect(selectHomeFeaturedFallbackEvents([yesNo]).map((event) => event.id)).toEqual([yesNo.id])
   })
 
   it('uses the fallback whenever the configured list yields no targets', () => {
