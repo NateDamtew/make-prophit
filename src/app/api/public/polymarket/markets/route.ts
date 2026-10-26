@@ -7,7 +7,7 @@ import { listPublicPolymarketCatalogue } from '@/lib/polymarket/public-catalogue
  * with live prices and results, for the daily-call points game.
  *
  *   ?status=open|resolved|all   (default open)
- *   ?ids=<eventId>,<eventId>    only these events (any status)
+ *   ?ids=<eventId>,<eventId>    only these events (any status, hidden ones included)
  *   ?updatedSince=<ISO date>    only events changed since then
  *   ?limit=<n>                  up to 200
  */

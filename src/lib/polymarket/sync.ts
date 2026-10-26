@@ -12,7 +12,7 @@ import { conditions, events, home_featured_events, markets } from '@/lib/db/sche
 import { db } from '@/lib/drizzle'
 import { buildCurationIndex, decideEvent } from '@/lib/polymarket/curation'
 import { getGammaEventsByIds, listGammaEvents, toGammaNumber } from '@/lib/polymarket/gamma'
-import { buildExternalMarketEntries, resolveSettledPrice } from '@/lib/polymarket/metadata-adapter'
+import { buildExternalMarketEntries, collectSettledMarkets } from '@/lib/polymarket/metadata-adapter'
 import { updateOutcomePayoutsFromResolutionPrice } from '@/lib/resolution-payout-sync'
 
 /**
@@ -146,28 +146,48 @@ async function applyVolumes(decisions: Map<string, CurationDecision>) {
   }
 }
 
-async function applyResolutions(decisions: Map<string, CurationDecision>, deadlineMs: number) {
+/**
+ * Results for every imported event Gamma returned this run, hidden ones included:
+ * hidden events are not re-imported, yet picks and positions on them still need
+ * to settle. Updates are no-ops for markets that were never imported.
+ */
+async function applyResolutions(candidates: Map<string, GammaEvent>, deadlineMs: number) {
+  const { settled, fullySettledEventIds } = collectSettledMarkets(candidates.values())
   let resolved = 0
-  for (const decision of decisions.values()) {
-    for (const market of decision.markets) {
-      // Settled markets are picked up again on the next run.
-      if (Date.now() >= deadlineMs) {
-        return resolved
-      }
-      const price = resolveSettledPrice(market)
-      if (price == null) {
-        continue
-      }
-      await db
-        .update(conditions)
-        .set({ resolved: true, resolution_status: 'resolved', resolution_price: String(price) })
-        .where(eq(conditions.id, market.conditionId))
-      if (await updateOutcomePayoutsFromResolutionPrice(market.conditionId, price)) {
-        resolved++
-      }
+  for (const market of settled) {
+    // Settled markets are picked up again on the next run.
+    if (Date.now() >= deadlineMs) {
+      return { resolved, slugs: [] }
+    }
+    await db
+      .update(conditions)
+      .set({ resolved: true, resolution_status: 'resolved', resolution_price: String(market.price) })
+      .where(eq(conditions.id, market.conditionId))
+    await db
+      .update(markets)
+      .set({ is_resolved: true, is_active: false })
+      .where(and(eq(markets.condition_id, market.conditionId), eq(markets.is_resolved, false)))
+    if (await updateOutcomePayoutsFromResolutionPrice(market.conditionId, market.price)) {
+      resolved++
     }
   }
-  return resolved
+
+  // Resolved events leave the refresh set, so a fully settled event is checked one last time.
+  const resolvedEvents =
+    fullySettledEventIds.length === 0
+      ? []
+      : await db
+          .update(events)
+          .set({ status: 'resolved', resolved_at: new Date() })
+          .where(
+            and(
+              eq(events.venue, 'polymarket'),
+              inArray(events.polymarket_event_id, fullySettledEventIds),
+              ne(events.status, 'resolved'),
+            ),
+          )
+          .returning({ slug: events.slug })
+  return { resolved, slugs: resolvedEvents.map((row) => row.slug) }
 }
 
 /** Hide Kuest mirrors whose every market now has a direct Polymarket counterpart on show. */
@@ -330,7 +350,11 @@ export async function runPolymarketSync(options: { deadlineMs: number }): Promis
 
   const visibleDecisions = new Map(visibleIds.map((id) => [id, decisions.get(id)!]))
   await applyVolumes(visibleDecisions)
-  const resolved = await applyResolutions(visibleDecisions, options.deadlineMs)
+  const resolution = await applyResolutions(candidates, options.deadlineMs)
+  const resolved = resolution.resolved
+  for (const slug of resolution.slugs) {
+    changedSlugs.add(slug)
+  }
 
   const visibleConditionIds = new Set(
     visibleIds.flatMap((id) => decisions.get(id)!.markets.map((market) => market.conditionId)),

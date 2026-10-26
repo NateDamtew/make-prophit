@@ -57,14 +57,20 @@ const MAX_EVENTS = 200
 export async function listPublicPolymarketCatalogue(
   query: PublicCatalogueQuery = {},
 ): Promise<PublicPolymarketEvent[]> {
-  const conditions = [eq(events.venue, 'polymarket'), eq(events.is_hidden, false)]
+  const conditions = [eq(events.venue, 'polymarket')]
+  const byId = Boolean(query.eventIds && query.eventIds.length > 0)
+  // Lookups by id include hidden events: picks placed before an admin hid an event
+  // must settle on its real result instead of looking like a voided market.
+  if (!byId) {
+    conditions.push(eq(events.is_hidden, false))
+  }
   if (query.status === 'open') {
     conditions.push(eq(events.status, 'active'))
   } else if (query.status === 'resolved') {
     conditions.push(eq(events.status, 'resolved'))
   }
-  if (query.eventIds && query.eventIds.length > 0) {
-    conditions.push(inArray(events.id, query.eventIds))
+  if (byId) {
+    conditions.push(inArray(events.id, query.eventIds!))
   }
   if (query.updatedSince) {
     conditions.push(gte(events.updated_at, query.updatedSince))

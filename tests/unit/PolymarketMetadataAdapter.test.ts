@@ -4,6 +4,7 @@ import type { GammaEvent, GammaMarket } from '@/lib/polymarket/gamma'
 
 import {
   buildExternalMarketEntries,
+  collectSettledMarkets,
   POLYMARKET_SOURCE_CREATOR,
   resolveSettledPrice,
   toProphitSlug,
@@ -88,5 +89,32 @@ describe('polymarket metadata adapter', () => {
     expect(resolveSettledPrice({ closed: true, outcomePrices: '["0","1"]' })).toBe(0)
     expect(resolveSettledPrice({ closed: true, outcomePrices: '["0.5","0.5"]' })).toBe(0.5)
     expect(resolveSettledPrice({ closed: true, outcomePrices: '["0.62","0.38"]' })).toBeNull()
+  })
+
+  it('collects settled markets and fully settled events, whatever their visibility', () => {
+    const settledGame: GammaEvent = {
+      ...game,
+      markets: [
+        { ...moneyline, closed: true, outcomePrices: '["0","1"]' },
+        { ...moneyline, conditionId: '0xdef', closed: true, outcomePrices: '["1","0"]' },
+      ],
+    }
+    const liveGame: GammaEvent = {
+      ...game,
+      id: '1208441',
+      markets: [
+        { ...moneyline, conditionId: '0x111', closed: true, outcomePrices: '["1","0"]' },
+        { ...moneyline, conditionId: '0x222', closed: false, outcomePrices: '["0.4","0.6"]' },
+      ],
+    }
+    const empty: GammaEvent = { ...game, id: '1208442', markets: [] }
+
+    const { settled, fullySettledEventIds } = collectSettledMarkets([settledGame, liveGame, empty])
+    expect(settled).toEqual([
+      { conditionId: '0xabc', price: 0 },
+      { conditionId: '0xdef', price: 1 },
+      { conditionId: '0x111', price: 1 },
+    ])
+    expect(fullySettledEventIds).toEqual(['1208440'])
   })
 })

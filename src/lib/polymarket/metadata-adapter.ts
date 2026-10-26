@@ -41,6 +41,31 @@ export function resolveSettledPrice(market: Pick<GammaMarket, 'closed' | 'outcom
   return isFinal ? prices[0] : null
 }
 
+/**
+ * Settled markets across Gamma events, plus the events whose every market has
+ * settled. Covers hidden events too, so their results still land.
+ */
+export function collectSettledMarkets(gammaEvents: Iterable<GammaEvent>) {
+  const settled: { conditionId: string; price: number }[] = []
+  const fullySettledEventIds: string[] = []
+  for (const event of gammaEvents) {
+    const eventMarkets = event.markets ?? []
+    let allSettled = eventMarkets.length > 0
+    for (const market of eventMarkets) {
+      const price = resolveSettledPrice(market)
+      if (price == null) {
+        allSettled = false
+        continue
+      }
+      settled.push({ conditionId: market.conditionId, price })
+    }
+    if (allSettled) {
+      fullySettledEventIds.push(String(event.id))
+    }
+  }
+  return { settled, fullySettledEventIds }
+}
+
 function isSportsGame(event: GammaEvent) {
   return Boolean(event.gameId || (event.teams && event.teams.length > 0 && event.startTime))
 }
