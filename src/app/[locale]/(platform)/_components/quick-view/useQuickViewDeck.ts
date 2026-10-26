@@ -4,10 +4,12 @@ import { useQuery } from '@tanstack/react-query'
 import { useLocale } from 'next-intl'
 import { useMemo } from 'react'
 
+import type { EventVenue } from '@/lib/polymarket/endpoints'
 import type { Event } from '@/types'
 
 import { OUTCOME_INDEX } from '@/lib/constants'
 import { fetchEventsApi } from '@/lib/events-api'
+import { normalizeEventVenue } from '@/lib/polymarket/endpoints'
 
 /**
  * A single binary market normalized into a swipe card.
@@ -52,6 +54,8 @@ export interface QuickViewCard {
   resolvedAtIso: string | null
   /** Flagged trending by the platform — drives the "Trending" badge. */
   isTrending: boolean
+  /** 'polymarket' cards price and trade on Polymarket's CLOB. */
+  venue: EventVenue
 }
 
 function toCents(price: number | null | undefined): number {
@@ -114,6 +118,7 @@ function pickBinaryMarket(event: Event): QuickViewCard | null {
     createdAtIso: candidate.created_at ?? event.created_at,
     resolvedAtIso: event.resolved_at ?? null,
     isTrending: event.is_trending === true,
+    venue: normalizeEventVenue(event.venue),
   }
 }
 

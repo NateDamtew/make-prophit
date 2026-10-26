@@ -11,7 +11,7 @@ import {
   VOLUME_SYNC_JOB_TYPE,
 } from '@/app/api/sync/volume/helpers'
 import { isCronAuthorized } from '@/lib/auth-cron'
-import { jobs, markets } from '@/lib/db/schema'
+import { events, jobs, markets } from '@/lib/db/schema'
 import { db } from '@/lib/drizzle'
 
 export const maxDuration = 60
@@ -73,6 +73,8 @@ async function loadVolumeJobCandidates(limit: number, refreshThreshold: Date, fa
       and(
         eq(markets.is_active, true),
         eq(markets.is_resolved, false),
+        // Polymarket-venue volume comes from Gamma (src/lib/polymarket/sync.ts), not the Kuest CLOB.
+        sql`NOT EXISTS (SELECT 1 FROM ${events} WHERE ${events.id} = ${markets.event_id} AND ${events.venue} = 'polymarket')`,
         or(
           isNull(jobs.id),
           and(eq(jobs.status, 'completed'), lt(jobs.updated_at, refreshThreshold)),

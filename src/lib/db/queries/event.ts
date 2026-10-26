@@ -81,6 +81,7 @@ import {
 import { buildPublicEventListVisibilityCondition, HIDE_FROM_NEW_TAG_SLUG } from '@/lib/event-visibility'
 import { resolveSportsSection } from '@/lib/events-routing'
 import { resolveDisplayPrice } from '@/lib/market-chance'
+import { normalizeEventVenue, POLYMARKET_ENDPOINTS } from '@/lib/polymarket/endpoints'
 import { resolvePublicRuntimeEnv } from '@/lib/public-runtime-config.shared'
 import {
   isSportsAuxiliaryEventSlug,
@@ -293,14 +294,60 @@ function resolveMarketDisplayPrice(
   return resolveOutcomeDisplayPrice(primaryOutcome) ?? 0.5
 }
 
-async function fetchLastTradePrices(tokenIds: string[]): Promise<Map<string, number>> {
+interface VenueTokenSource {
+  venue?: string | null
+  markets?: Array<{ condition?: { outcomes?: Array<{ token_id: string | null }> | null } | null }> | null
+}
+
+/** Outcome tokens of venue = 'polymarket' events, priced on Polymarket's CLOB instead of Kuest's. */
+function collectPolymarketTokenIds(events: VenueTokenSource[]): Set<string> {
+  const tokenIds = new Set<string>()
+  for (const event of events) {
+    if (normalizeEventVenue(event.venue) !== 'polymarket') {
+      continue
+    }
+    for (const market of event.markets ?? []) {
+      for (const outcome of market.condition?.outcomes ?? []) {
+        if (outcome.token_id) {
+          tokenIds.add(outcome.token_id)
+        }
+      }
+    }
+  }
+  return tokenIds
+}
+
+async function fetchLastTradePrices(
+  tokenIds: string[],
+  polymarketTokenIds: ReadonlySet<string> = new Set(),
+): Promise<Map<string, number>> {
+  if (polymarketTokenIds.size === 0) {
+    return await fetchLastTradePricesFrom(resolveClobUrl(resolvePublicRuntimeEnv(process.env).clobUrl), tokenIds)
+  }
+  const [kuestTrades, polymarketTrades] = await Promise.all([
+    fetchLastTradePricesFrom(
+      resolveClobUrl(resolvePublicRuntimeEnv(process.env).clobUrl),
+      tokenIds.filter((tokenId) => !polymarketTokenIds.has(tokenId)),
+    ),
+    fetchLastTradePricesFrom(
+      POLYMARKET_ENDPOINTS.clob,
+      tokenIds.filter((tokenId) => polymarketTokenIds.has(tokenId)),
+    ),
+  ])
+  for (const [tokenId, price] of polymarketTrades) {
+    kuestTrades.set(tokenId, price)
+  }
+  return kuestTrades
+}
+
+async function fetchLastTradePricesFrom(clobUrl: string, tokenIds: string[]): Promise<Map<string, number>> {
   const uniqueTokenIds = Array.from(new Set(tokenIds.filter(Boolean)))
 
   if (!uniqueTokenIds.length) {
     return new Map()
   }
 
-  const endpoint = `${resolveClobUrl(resolvePublicRuntimeEnv(process.env).clobUrl)}/last-trades-prices`
+  const endpoint = `${clobUrl}/last-trades-prices`
   const lastTradeMap = new Map<string, number>()
 
   try {
@@ -1106,6 +1153,8 @@ function eventResource(
     additional_context_updated_at: event.additional_context_updated_at?.toISOString?.() ?? null,
     show_market_icons: event.show_market_icons ?? true,
     is_polymarket_mirror: Boolean(event.is_polymarket_mirror),
+    venue: normalizeEventVenue(event.venue),
+    polymarket_event_id: event.polymarket_event_id ?? null,
     enable_neg_risk: Boolean(event.enable_neg_risk),
     neg_risk_augmented: Boolean(event.neg_risk_augmented),
     neg_risk: Boolean(event.neg_risk),
@@ -1177,6 +1226,7 @@ async function buildEventResource(
   sportsSlugResolver: SportsSlugResolver,
   locale: SupportedLocale = DEFAULT_LOCALE,
 ): Promise<Event> {
+  const polymarketTokenIds = collectPolymarketTokenIds([eventResult as VenueTokenSource])
   const outcomeTokenIds = (eventResult.markets ?? []).flatMap((market: any) =>
     (market.condition?.outcomes ?? []).map((outcome: any) => outcome.token_id).filter(Boolean),
   )
@@ -1197,8 +1247,8 @@ async function buildEventResource(
     localizedEventRulesById,
     liveChartSeriesSlugs,
   ] = await Promise.all([
-    fetchOutcomePrices(outcomeTokenIds),
-    fetchLastTradePrices(outcomeTokenIds),
+    fetchOutcomePrices(outcomeTokenIds, { polymarketTokenIds }),
+    fetchLastTradePrices(outcomeTokenIds, polymarketTokenIds),
     getLocalizedTagNamesById(tagIds, locale),
     getLocalizedEventTitlesById([eventResult.id], locale),
     getLocalizedEventAdditionalContextsById([eventResult.id], locale),
@@ -1781,6 +1831,7 @@ async function hydrateEventListResults({
   sportsSlugResolver: SportsSlugResolver
   userId?: string
 }) {
+  const listPolymarketTokenIds = collectPolymarketTokenIds(eventsData as VenueTokenSource[])
   const tokensForPricing = skipLivePricing
     ? []
     : eventsData.flatMap((event) =>
@@ -1809,8 +1860,12 @@ async function hydrateEventListResults({
     localizedEventRulesById,
     groupedSportsVolumesByGroupKey,
   ] = await Promise.all([
-    skipLivePricing ? Promise.resolve(new Map<string, OutcomePrices>()) : fetchOutcomePrices(tokensForPricing),
-    skipLivePricing ? Promise.resolve(new Map<string, number>()) : fetchLastTradePrices(tokensForPricing),
+    skipLivePricing
+      ? Promise.resolve(new Map<string, OutcomePrices>())
+      : fetchOutcomePrices(tokensForPricing, { polymarketTokenIds: listPolymarketTokenIds }),
+    skipLivePricing
+      ? Promise.resolve(new Map<string, number>())
+      : fetchLastTradePrices(tokensForPricing, listPolymarketTokenIds),
     getLocalizedTagNamesById(tagIds, locale),
     getLocalizedEventTitlesById(eventIds, locale),
     getLocalizedEventAdditionalContextsById(eventIds, locale),
@@ -4103,6 +4158,7 @@ export const EventRepository = {
 
       const hydratedGroupedEventsData = hydrateGroupedSportsAuxiliaryEventContexts(groupedEventsData)
 
+      const groupedPolymarketTokenIds = collectPolymarketTokenIds(hydratedGroupedEventsData as VenueTokenSource[])
       const tokensForPricing = hydratedGroupedEventsData.flatMap((event) =>
         (event.markets ?? []).flatMap((market) =>
           (market.condition?.outcomes ?? []).map((outcome) => outcome.token_id).filter(Boolean),
@@ -4127,8 +4183,8 @@ export const EventRepository = {
         localizedEventRulesById,
         groupedVolumesByGroupKey,
       ] = await Promise.all([
-        fetchOutcomePrices(tokensForPricing),
-        fetchLastTradePrices(tokensForPricing),
+        fetchOutcomePrices(tokensForPricing, { polymarketTokenIds: groupedPolymarketTokenIds }),
+        fetchLastTradePrices(tokensForPricing, groupedPolymarketTokenIds),
         getLocalizedTagNamesById(tagIds, locale),
         getLocalizedEventTitlesById(eventIds, locale),
         getLocalizedEventAdditionalContextsById(eventIds, locale),

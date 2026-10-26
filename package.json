@@ -44,6 +44,7 @@
     "@lifi/widget-provider-solana": "4.1.9",
     "@lifi/widget-provider-tron": "4.1.9",
     "@next/third-parties": "16.4.2",
+    "@polymarket/client": "0.14.0",
     "@polymarket/clob-client-v2": "1.2.0",
     "@sentry/nextjs": "11.7.0",
     "@sumsub/websdk": "2.9.0",

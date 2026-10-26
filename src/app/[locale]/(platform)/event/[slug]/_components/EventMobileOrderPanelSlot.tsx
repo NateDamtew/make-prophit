@@ -31,7 +31,8 @@ export default function EventMobileOrderPanelSlot({
   if (!isMobile || ledgerUser.isLoading) {
     return null
   }
-  if (ledgerUser.currency) {
+  // Polymarket-venue events trade from a Polymarket wallet, not the ledger balance.
+  if (ledgerUser.currency && event.venue !== 'polymarket') {
     return <EventOrderPanelLedgerGate currency={ledgerUser.currency} isMobile />
   }
 

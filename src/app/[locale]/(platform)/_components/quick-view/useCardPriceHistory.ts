@@ -8,6 +8,8 @@ interface UseCardPriceHistoryArgs {
   resolvedAtIso: string | null
   /** Only fetch when the card is the active/visible one. */
   enabled: boolean
+  /** CLOB base URL — Polymarket's for venue = 'polymarket' cards. */
+  clobUrl: string
 }
 
 export interface PricePoint {
@@ -23,7 +25,6 @@ export interface CardPriceHistory {
   deltaPercent: number
 }
 
-const CLOB_URL = process.env.CLOB_URL ?? 'https://clob.kuest.com'
 const MAX_POINTS = 28
 
 /**
@@ -71,6 +72,7 @@ async function fetchPriceHistory({
   tokenId,
   createdAtIso,
   resolvedAtIso,
+  clobUrl,
 }: Omit<UseCardPriceHistoryArgs, 'enabled'>): Promise<CardPriceHistory> {
   if (!tokenId) {
     return { points: [], deltaPercent: 0 }
@@ -85,7 +87,7 @@ async function fetchPriceHistory({
   const endSec = Math.max(createdSec + 60, Math.floor(nowMs / 1000))
   const ageSec = Math.max(0, endSec - createdSec)
 
-  const url = new URL(`${CLOB_URL}/prices-history`)
+  const url = new URL(`${clobUrl}/prices-history`)
   url.searchParams.set('market', tokenId)
   url.searchParams.set('fidelity', fidelityForSpan(ageSec).toString())
   url.searchParams.set('startTs', createdSec.toString())
@@ -122,12 +124,18 @@ async function fetchPriceHistory({
  * the user is swiping. Cached for 5 minutes via React Query so revisiting a
  * recently-seen card is instant.
  */
-export function useCardPriceHistory({ tokenId, createdAtIso, resolvedAtIso, enabled }: UseCardPriceHistoryArgs) {
+export function useCardPriceHistory({
+  tokenId,
+  createdAtIso,
+  resolvedAtIso,
+  enabled,
+  clobUrl,
+}: UseCardPriceHistoryArgs) {
   const query = useQuery({
-    queryKey: ['quick-view-history', tokenId],
-    enabled: enabled && Boolean(tokenId),
+    queryKey: ['quick-view-history', clobUrl, tokenId],
+    enabled: enabled && Boolean(tokenId) && Boolean(clobUrl),
     staleTime: 5 * 60 * 1000,
-    queryFn: () => fetchPriceHistory({ tokenId, createdAtIso, resolvedAtIso }),
+    queryFn: () => fetchPriceHistory({ tokenId, createdAtIso, resolvedAtIso, clobUrl }),
   })
 
   return {

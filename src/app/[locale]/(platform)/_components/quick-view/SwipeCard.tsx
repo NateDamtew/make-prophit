@@ -4,6 +4,8 @@ import { CalendarIcon, ChevronUpIcon, FlameIcon, SparklesIcon, TrendingUpIcon } 
 import { useCallback, useRef, useState } from 'react'
 
 import EventIconImage from '@/components/EventIconImage'
+import { usePublicRuntimeConfig } from '@/hooks/usePublicRuntimeConfig'
+import { POLYMARKET_ENDPOINTS } from '@/lib/polymarket/endpoints'
 import { cn } from '@/lib/utils'
 
 import type { QuickViewCard } from './useQuickViewDeck'
@@ -244,11 +246,13 @@ export default function SwipeCard({
   // Only the active card fetches its price history — keeps the deck cheap
   // when the user is swiping fast. React Query caches the result for 5 min,
   // so re-visiting a card is instant.
+  const { clobUrl: runtimeClobUrl } = usePublicRuntimeConfig()
   const { history, isLoading: isHistoryLoading } = useCardPriceHistory({
     tokenId: card.yesTokenId,
     createdAtIso: card.createdAtIso,
     resolvedAtIso: card.resolvedAtIso,
     enabled: active,
+    clobUrl: card.venue === 'polymarket' ? POLYMARKET_ENDPOINTS.clob : runtimeClobUrl,
   })
 
   return (

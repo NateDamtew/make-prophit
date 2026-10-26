@@ -4,6 +4,7 @@ import { getExtracted } from 'next-intl/server'
 import { io } from 'next/cache'
 import { cache, Suspense } from 'react'
 
+import PolymarketPortfolioSection from '@/app/[locale]/(platform)/portfolio/_components/PolymarketPortfolioSection'
 import PortfolioMarketsWonCard from '@/app/[locale]/(platform)/portfolio/_components/PortfolioMarketsWonCard'
 import {
   PortfolioOverviewSkeleton,
@@ -79,6 +80,8 @@ export default async function PortfolioPage() {
       <Suspense fallback={<PortfolioWinningsSkeleton />}>
         <PortfolioWinnings />
       </Suspense>
+
+      <PolymarketPortfolioSection />
 
       <Suspense
         fallback={

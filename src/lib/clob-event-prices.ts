@@ -1,4 +1,5 @@
 import { resolveClobUrl } from '@/lib/clob'
+import { POLYMARKET_ENDPOINTS } from '@/lib/polymarket/endpoints'
 import { resolvePublicRuntimeEnv } from '@/lib/public-runtime-config.shared'
 
 export interface OutcomePrices {
@@ -113,14 +114,43 @@ function applyPriceBatch(
   }
 }
 
-export async function fetchOutcomePrices(tokenIds: string[]): Promise<Map<string, OutcomePrices>> {
+/**
+ * Best bid/ask per token. Tokens in `polymarketTokenIds` (venue = 'polymarket'
+ * events) are priced on Polymarket's CLOB, the rest on Kuest's.
+ */
+export async function fetchOutcomePrices(
+  tokenIds: string[],
+  options: { polymarketTokenIds?: ReadonlySet<string> } = {},
+): Promise<Map<string, OutcomePrices>> {
+  const polymarketTokenIds = options.polymarketTokenIds
+  if (!polymarketTokenIds || polymarketTokenIds.size === 0) {
+    return await fetchOutcomePricesFrom(resolveClobUrl(resolvePublicRuntimeEnv(process.env).clobUrl), tokenIds)
+  }
+
+  const [kuestPrices, polymarketPrices] = await Promise.all([
+    fetchOutcomePricesFrom(
+      resolveClobUrl(resolvePublicRuntimeEnv(process.env).clobUrl),
+      tokenIds.filter((tokenId) => !polymarketTokenIds.has(tokenId)),
+    ),
+    fetchOutcomePricesFrom(
+      POLYMARKET_ENDPOINTS.clob,
+      tokenIds.filter((tokenId) => polymarketTokenIds.has(tokenId)),
+    ),
+  ])
+  for (const [tokenId, prices] of polymarketPrices) {
+    kuestPrices.set(tokenId, prices)
+  }
+  return kuestPrices
+}
+
+async function fetchOutcomePricesFrom(clobUrl: string, tokenIds: string[]): Promise<Map<string, OutcomePrices>> {
   const uniqueTokenIds = Array.from(new Set(tokenIds.filter(Boolean)))
 
   if (uniqueTokenIds.length === 0) {
     return new Map()
   }
 
-  const endpoint = `${resolveClobUrl(resolvePublicRuntimeEnv(process.env).clobUrl)}/prices`
+  const endpoint = `${clobUrl}/prices`
   const priceMap = new Map<string, OutcomePrices>()
   const missingTokenIds = new Set(uniqueTokenIds)
 

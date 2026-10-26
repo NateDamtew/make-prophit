@@ -3,6 +3,8 @@
 import { Loader2Icon, RotateCcwIcon, ShareIcon, WalletIcon, XIcon, ZapIcon } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
+import { usePolymarketTrading } from '@/app/[locale]/(platform)/_hooks/usePolymarketTrading'
+import { registerPolymarketTradingInterestAction } from '@/app/[locale]/(platform)/event/[slug]/_actions/polymarket-interest'
 import SiteLogoIcon from '@/components/SiteLogoIcon'
 import { Button } from '@/components/ui/button'
 import { toast } from '@/components/ui/toast'
@@ -13,6 +15,7 @@ import { useSiteIdentity } from '@/hooks/useSiteIdentity'
 import { authClient } from '@/lib/auth-client'
 import { OUTCOME_INDEX } from '@/lib/constants'
 import { shareOrCopy } from '@/lib/native-share'
+import { POLYMARKET_MIN_ORDER_USD } from '@/lib/polymarket/trading-client'
 import { cn } from '@/lib/utils'
 import { useUser } from '@/stores/useUser'
 
@@ -70,6 +73,7 @@ export default function QuickView({ open, onClose }: { open: boolean; onClose: (
   const hasBalance = (balance?.raw ?? 0) > 0
 
   const placeQuickTrade = usePlaceQuickTrade()
+  const polymarketTrading = usePolymarketTrading()
   const { cards, isLoading, isError, refetch } = useQuickViewDeck(open)
 
   const [index, setIndex] = useState(0)
@@ -127,6 +131,47 @@ export default function QuickView({ open, onClose }: { open: boolean; onClose: (
       return
     }
 
+    if (staged.card.venue === 'polymarket') {
+      const { card: pmCard, side: pmSide } = staged
+      if (!polymarketTrading.tradingEnabled) {
+        // Polymarket trading is not open for this account: record interest instead of an order.
+        const interest = await registerPolymarketTradingInterestAction(pmCard.eventId)
+        if ('error' in interest) {
+          toast.error('Could not save that', { description: interest.error })
+          return
+        }
+        toast.info('Trading Polymarket markets opens soon.', {
+          description: 'We’ll let you know when you can swipe to trade it.',
+        })
+        advance()
+        return
+      }
+      const isYesSide = pmSide === 'yes'
+      const priceCents = isYesSide ? pmCard.yesPriceCents : pmCard.noPriceCents
+      setIsPlacing(true)
+      try {
+        const response = await polymarketTrading.placeOrder({
+          tokenId: isYesSide ? pmCard.yesTokenId : pmCard.noTokenId,
+          side: 'buy',
+          amount: Math.max(stake, POLYMARKET_MIN_ORDER_USD),
+          limitPrice: Math.min(0.99, priceCents / 100 + 0.03),
+        })
+        if (response.ok) {
+          toast.success(`Bought ${isYesSide ? pmCard.yesLabel : pmCard.noLabel} · ${formatMoney(stake)}`, {
+            description: pmCard.title,
+          })
+          advance()
+        } else {
+          toast.error('Trade failed', { description: response.message })
+        }
+      } catch (error) {
+        toast.error('Trade failed', { description: error instanceof Error ? error.message : String(error) })
+      } finally {
+        setIsPlacing(false)
+      }
+      return
+    }
+
     if (!hasBalance) {
       toast.info('Add funds to start trading.', {
         description: 'Deposit to your wallet, then swipe to trade.',
@@ -164,7 +209,7 @@ export default function QuickView({ open, onClose }: { open: boolean; onClose: (
     }
     // 'not-ready' (onboarding opened) and 'cancelled' (signature dismissed)
     // leave the trade staged so the user can retry after resolving it.
-  }, [staged, isPlacing, isAuthenticated, hasBalance, openWallet, placeQuickTrade, stake, advance])
+  }, [staged, isPlacing, isAuthenticated, hasBalance, openWallet, placeQuickTrade, polymarketTrading, stake, advance])
 
   const visibleCards = useMemo(() => cards.slice(index, index + 3), [cards, index])
   const isDeckFinished = !isLoading && cards.length > 0 && index >= cards.length

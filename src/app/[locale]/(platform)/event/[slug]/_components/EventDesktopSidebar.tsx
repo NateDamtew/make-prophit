@@ -36,7 +36,7 @@ export default function EventDesktopSidebar({ event, initialMarket, initialOutco
       <div className="grid gap-6 lg:sticky lg:top-29 lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto">
         {ledgerUser.isLoading ? (
           <Skeleton className="h-80 w-full rounded-xl" />
-        ) : ledgerUser.currency ? (
+        ) : ledgerUser.currency && event.venue !== 'polymarket' ? (
           <EventOrderPanelLedgerGate currency={ledgerUser.currency} isMobile={false} />
         ) : (
           <>

@@ -8,6 +8,7 @@ import {
   BotIcon,
   CalendarIcon,
   ClipboardListIcon,
+  GlobeIcon,
   HandshakeIcon,
   HeartPulseIcon,
   LandmarkIcon,
@@ -73,6 +74,13 @@ export const ADMIN_NAV: AdminNavGroup[] = [
         href: '/admin/market-making',
         icon: HandshakeIcon,
         keywords: ['liquidity', 'sponsorship', 'mm', 'campaigns', 'polymarket import'],
+      },
+      {
+        id: 'polymarket',
+        label: 'Polymarket Markets',
+        href: '/admin/polymarket',
+        icon: GlobeIcon,
+        keywords: ['polymarket', 'curation', 'catalogue', 'leagues', 'builder'],
       },
       {
         id: 'community-reviews',

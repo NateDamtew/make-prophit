@@ -1,6 +1,7 @@
 import type { EventFaqItem } from '@/lib/event-faq'
 import type { Event, EventLiveChartConfig, EventSeriesEntry } from '@/types'
 
+import EventVenueProvider from '@/app/[locale]/(platform)/_providers/EventVenueProvider'
 import EventBackToTopButton from '@/app/[locale]/(platform)/event/[slug]/_components/EventBackToTopButton'
 import EventCategoryNote from '@/app/[locale]/(platform)/event/[slug]/_components/EventCategoryNote'
 import EventChartSection from '@/app/[locale]/(platform)/event/[slug]/_components/EventChartSection'
@@ -74,41 +75,43 @@ export default function EventContent({
   const selectedMarketTimelineOutcome = resolveTimelineOutcome(event, singleMarket)
 
   return (
-    <EventMarketChannelProvider markets={event.markets}>
-      <EventOrderStateSync event={event} marketSlug={marketSlug} />
-      <div className="grid gap-6 pt-5 pb-20 md:pb-0">
-        <div id="event-content-main" className={cn(shouldHideChart ? 'grid gap-2' : 'grid gap-3')}>
-          <EventCategoryNote event={event} />
-          <EventHeader event={event} />
+    <EventVenueProvider venue={event.venue}>
+      <EventMarketChannelProvider markets={event.markets}>
+        <EventOrderStateSync event={event} marketSlug={marketSlug} />
+        <div className="grid gap-6 pt-5 pb-20 md:pb-0">
+          <div id="event-content-main" className={cn(shouldHideChart ? 'grid gap-2' : 'grid gap-3')}>
+            <EventCategoryNote event={event} />
+            <EventHeader event={event} />
 
-          <div className={cn(shouldHideChart ? 'w-full' : 'min-h-96 w-full')}>
-            <EventChartSection event={event} seriesEvents={seriesEvents} liveChartConfig={liveChartConfig} />
+            <div className={cn(shouldHideChart ? 'w-full' : 'min-h-96 w-full')}>
+              <EventChartSection event={event} seriesEvents={seriesEvents} liveChartConfig={liveChartConfig} />
+            </div>
+
+            <div className="grid gap-6">
+              <EventMarketsSection event={event} liveChartConfig={liveChartConfig} />
+              <EventMarketContextSlot enabled={marketContextEnabled} event={event} />
+              <EventRules event={event} />
+              {event.total_markets_count === 1 && singleMarket && shouldDisplayResolutionTimeline(singleMarket) && (
+                <div className="rounded-xl border bg-background p-4">
+                  <ResolutionTimelinePanel
+                    market={singleMarket}
+                    settledUrl={null}
+                    outcomeOverride={selectedMarketTimelineOutcome}
+                    showLink={false}
+                  />
+                </div>
+              )}
+            </div>
+
+            <EventRelatedSlot event={event} placement="mobile" />
+            <EventTabsSection event={event} faqItems={faqItems} />
           </div>
-
-          <div className="grid gap-6">
-            <EventMarketsSection event={event} liveChartConfig={liveChartConfig} />
-            <EventMarketContextSlot enabled={marketContextEnabled} event={event} />
-            <EventRules event={event} />
-            {event.total_markets_count === 1 && singleMarket && shouldDisplayResolutionTimeline(singleMarket) && (
-              <div className="rounded-xl border bg-background p-4">
-                <ResolutionTimelinePanel
-                  market={singleMarket}
-                  settledUrl={null}
-                  outcomeOverride={selectedMarketTimelineOutcome}
-                  showLink={false}
-                />
-              </div>
-            )}
-          </div>
-
-          <EventRelatedSlot event={event} placement="mobile" />
-          <EventTabsSection event={event} faqItems={faqItems} />
         </div>
-      </div>
 
-      <EventDesktopSidebar event={event} initialMarket={initialMarket} initialOutcome={initialOutcome} />
-      <EventBackToTopButton />
-      <EventMobileOrderPanelSlot event={event} initialMarket={initialMarket} initialOutcome={initialOutcome} />
-    </EventMarketChannelProvider>
+        <EventDesktopSidebar event={event} initialMarket={initialMarket} initialOutcome={initialOutcome} />
+        <EventBackToTopButton />
+        <EventMobileOrderPanelSlot event={event} initialMarket={initialMarket} initialOutcome={initialOutcome} />
+      </EventMarketChannelProvider>
+    </EventVenueProvider>
   )
 }

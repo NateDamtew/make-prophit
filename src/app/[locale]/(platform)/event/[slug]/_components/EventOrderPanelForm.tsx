@@ -35,6 +35,7 @@ import {
   handleValidationError,
   useOrderFeedbackTranslate,
 } from '@/app/[locale]/(platform)/event/[slug]/_components/feedback'
+import PolymarketOrderPanel from '@/app/[locale]/(platform)/event/[slug]/_components/PolymarketOrderPanel'
 import { useEventOrderPanelOpenOrders } from '@/app/[locale]/(platform)/event/[slug]/_hooks/useEventOrderPanelOpenOrders'
 import { useEventOrderPanelPositions } from '@/app/[locale]/(platform)/event/[slug]/_hooks/useEventOrderPanelPositions'
 import { buildUserOpenOrdersQueryKey } from '@/app/[locale]/(platform)/event/[slug]/_hooks/useUserOpenOrdersQuery'
@@ -860,7 +861,22 @@ function useAwaitingResolutionRefresh(enabled: boolean) {
   )
 }
 
-export default function EventOrderPanelForm({
+/** Polymarket-venue events get their own panel; everything else is Kuest's order flow. */
+export default function EventOrderPanelForm(props: EventOrderPanelFormProps) {
+  if (props.event.venue === 'polymarket') {
+    return (
+      <PolymarketOrderPanel
+        event={props.event}
+        isMobile={props.isMobile}
+        initialMarket={props.initialMarket}
+        className={props.className}
+      />
+    )
+  }
+  return <KuestEventOrderPanelForm {...props} />
+}
+
+function KuestEventOrderPanelForm({
   event,
   isMobile,
   initialMarket = null,

@@ -9,6 +9,9 @@ export interface Event {
   additional_context_updated_at?: string | null
   show_market_icons: boolean
   is_polymarket_mirror?: boolean
+  /** 'polymarket' = imported from Gamma and priced on Polymarket's CLOB. */
+  venue?: 'kuest' | 'polymarket'
+  polymarket_event_id?: string | null
   enable_neg_risk?: boolean
   neg_risk_augmented?: boolean
   neg_risk?: boolean
