@@ -1,13 +1,22 @@
 import { getExtracted } from 'next-intl/server'
+import { connection } from 'next/server'
+import { Suspense } from 'react'
 
+import AdminPageSkeleton from '@/app/[locale]/admin/_components/AdminPageSkeleton'
 import AdminPolymarketCuration from '@/app/[locale]/admin/polymarket/_components/AdminPolymarketCuration'
 import { listPolymarketCurationRules } from '@/lib/db/queries/polymarket-curation'
 
 export const instant = false
 
+/** Rules are read per request (never at build time) so edits show immediately. */
+async function AdminPolymarketCurationContent() {
+  await connection()
+  const rules = await listPolymarketCurationRules()
+  return <AdminPolymarketCuration initialRules={rules} />
+}
+
 export default async function AdminPolymarketPage() {
   const t = await getExtracted()
-  const rules = await listPolymarketCurationRules()
 
   return (
     <section className="grid gap-4">
@@ -19,7 +28,9 @@ export default async function AdminPolymarketPage() {
           )}
         </p>
       </div>
-      <AdminPolymarketCuration initialRules={rules} />
+      <Suspense fallback={<AdminPageSkeleton />}>
+        <AdminPolymarketCurationContent />
+      </Suspense>
     </section>
   )
 }
