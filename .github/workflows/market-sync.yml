@@ -28,7 +28,8 @@ jobs:
     # never run on the upstream repo, only on forks
     if: github.repository != 'kuestcom/prediction-market'
     runs-on: ubuntu-24.04
-    timeout-minutes: 12
+    # events (up to 8 x 90s) + resolutions/volume + Polymarket (up to 3 x 300s)
+    timeout-minutes: 35
     env:
       BASE_URL: ${{ vars.SYNC_BASE_URL || 'https://beta.makeprophit.com' }}
       CRON_SECRET: ${{ secrets.CRON_SECRET }}
@@ -60,18 +61,6 @@ jobs:
           done
           echo "events: processed $total row(s) this run"
 
-      - name: Sync curated Polymarket markets
-        run: |
-          for i in $(seq 1 4); do
-            code=$(curl -sS -m 300 -o resp.json -w '%{http_code}' \
-              -H "Authorization: Bearer $CRON_SECRET" \
-              "$BASE_URL/api/sync/polymarket") || true
-            echo "polymarket run $i (HTTP $code): $(cat resp.json)"
-            more=$(grep -oE '"timeLimitReached":(true|false)' resp.json | head -1 | cut -d: -f2)
-            [ "$more" = "true" ] || break
-            sleep 2
-          done
-
       - name: Sync resolutions
         run: |
           code=$(curl -sS -m 90 -o resp.json -w '%{http_code}' \
@@ -85,3 +74,17 @@ jobs:
             -H "Authorization: Bearer $CRON_SECRET" \
             "$BASE_URL/api/sync/volume") || true
           echo "volume (HTTP $code): $(cat resp.json)"
+
+      # Last on purpose: a large Polymarket import (first run, daily refresh) can
+      # use the remaining time without delaying resolutions and volume above.
+      - name: Sync curated Polymarket markets
+        run: |
+          for i in $(seq 1 3); do
+            code=$(curl -sS -m 300 -o resp.json -w '%{http_code}' \
+              -H "Authorization: Bearer $CRON_SECRET" \
+              "$BASE_URL/api/sync/polymarket") || true
+            echo "polymarket run $i (HTTP $code): $(cat resp.json)"
+            more=$(grep -oE '"timeLimitReached":(true|false)' resp.json | head -1 | cut -d: -f2)
+            [ "$more" = "true" ] || break
+            sleep 2
+          done
