@@ -7,6 +7,10 @@ import { filterHomeEvents, HOME_EVENTS_PAGE_SIZE, isSportsPrimaryHomeEvent } fro
 import { timeStep } from '@/lib/perf-timing'
 
 const HOME_EVENTS_QUERY_BATCH_SIZE = 128
+// Recurring series can swap a listed instance for a later one, so a page may need more candidates
+// than it shows, but scanning the whole category took the home page 20+ s. Stop once the page is
+// full, after at most this many extra batches.
+const HOME_EVENTS_MAX_EXTRA_BATCHES = 2
 
 interface ListHomeEventsPageOptions {
   bookmarked: boolean
@@ -27,15 +31,18 @@ interface ListHomeEventsPageOptions {
   userId: string
 }
 
-interface LoadHomeEventCandidatesOptions extends Omit<ListHomeEventsPageOptions, 'currentTimestamp'> {}
+interface LoadHomeEventCandidatesOptions extends ListHomeEventsPageOptions {}
 
 interface LoadHomeEventBatchesOptions extends Omit<LoadHomeEventCandidatesOptions, 'offset'> {
   initialEvents?: Event[]
   offset: number
+  /** Stop loading once more than this many events survive home filtering. */
+  visibleTarget: number
 }
 
 async function loadHomeEventBatches({
   bookmarked,
+  currentTimestamp = null,
   frequency = 'all',
   hideCrypto = false,
   hideEarnings = false,
@@ -51,11 +58,15 @@ async function loadHomeEventBatches({
   status = 'active',
   tag,
   userId,
+  visibleTarget,
 }: LoadHomeEventBatchesOptions) {
   let rawOffset = Math.max(0, offset)
   const accumulatedEvents = [...initialEvents]
 
-  while (true) {
+  const maxBatches =
+    Math.ceil(Math.max(0, visibleTarget - initialEvents.length) / HOME_EVENTS_QUERY_BATCH_SIZE) +
+    HOME_EVENTS_MAX_EXTRA_BATCHES
+  for (let batchIndex = 0; batchIndex < maxBatches; batchIndex++) {
     const { data: rawEvents, error } = await timeStep(`home batch (${tag}, offset ${rawOffset})`, () =>
       EventRepository.listEvents({
         tag,
@@ -75,6 +86,7 @@ async function loadHomeEventBatches({
         hideCrypto,
         hideEarnings,
         excludeSportsAuxiliary: true,
+        cardPayload: true,
       }),
     )
 
@@ -93,6 +105,17 @@ async function loadHomeEventBatches({
       break
     }
 
+    const visibleCount = filterHomeEvents(accumulatedEvents, {
+      currentTimestamp,
+      hideSports,
+      hideCrypto,
+      hideEarnings,
+      status,
+    }).length
+    if (visibleCount > visibleTarget) {
+      break
+    }
+
     rawOffset += batch.length
   }
 
@@ -104,6 +127,7 @@ async function loadHomeEventBatches({
 
 async function loadHomeEventCandidates({
   bookmarked,
+  currentTimestamp = null,
   frequency = 'all',
   hideCrypto = false,
   hideEarnings = false,
@@ -143,6 +167,7 @@ async function loadHomeEventCandidates({
       excludeSportsAuxiliary: true,
       preferResolvedDateOrder: true,
       skipLivePricing: true,
+      cardPayload: true,
     })
 
     return {
@@ -177,6 +202,7 @@ async function loadHomeEventCandidates({
         excludeSportsAuxiliary: true,
         preferResolvedDateOrder: true,
         skipLivePricing: true,
+        cardPayload: true,
       })
 
       if (error) {
@@ -232,6 +258,7 @@ async function loadHomeEventCandidates({
       sportsSportSlug,
       sportsSection,
       excludeSportsAuxiliary: true,
+      cardPayload: true,
     })
 
     if (error) {
@@ -252,6 +279,7 @@ async function loadHomeEventCandidates({
 
     return loadHomeEventBatches({
       bookmarked,
+      currentTimestamp,
       frequency,
       hideCrypto,
       hideEarnings,
@@ -267,11 +295,13 @@ async function loadHomeEventCandidates({
       status,
       tag,
       userId,
+      visibleTarget: HOME_EVENTS_PAGE_SIZE,
     })
   }
 
   return loadHomeEventBatches({
     bookmarked,
+    currentTimestamp,
     frequency,
     hideCrypto,
     hideEarnings,
@@ -286,6 +316,7 @@ async function loadHomeEventCandidates({
     status,
     tag,
     userId,
+    visibleTarget: targetOffset + HOME_EVENTS_PAGE_SIZE,
   })
 }
 
@@ -313,6 +344,7 @@ export async function listHomeEventsPage({
 
   const { data: rawEvents, error } = await loadHomeEventCandidates({
     bookmarked,
+    currentTimestamp: resolvedCurrentTimestamp,
     frequency,
     hideCrypto,
     hideEarnings,

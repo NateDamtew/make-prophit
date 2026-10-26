@@ -348,7 +348,7 @@ async function loadHomeFeaturedEvents(eventSlugs: string[], locale: SupportedLoc
     return []
   }
 
-  const { data, error } = await EventRepository.getEventsBySlugs(normalizedSlugs, '', locale)
+  const { data, error } = await EventRepository.getEventsBySlugs(normalizedSlugs, '', locale, { cardPayload: true })
   if (error) {
     const fallbackEvents = await Promise.all(
       normalizedSlugs.map(async (requestedSlug) => {
@@ -943,6 +943,7 @@ async function loadHomeFeaturedFallbackPool(
       offset: 0,
       limit: HOME_FEATURED_FALLBACK_POOL_SIZE,
       locale,
+      cardPayload: true,
     })
     if (error) {
       console.error(`Failed to load home featured fallback pool "${tag}"`, error)

@@ -42,6 +42,7 @@ async function loadCategoryPool(category: string, locale: SupportedLocale, minVo
     offset: 0,
     limit: AUTO_POOL_SIZE,
     locale,
+    cardPayload: true,
   })
   if (error) {
     console.error(`Home featured auto-fill: could not load "${category}"`, error)

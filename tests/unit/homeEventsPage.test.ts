@@ -257,7 +257,8 @@ describe('listHomeEventsPage', () => {
     mocks.listEvents
       .mockResolvedValueOnce({ data: firstBatch, error: null })
       .mockResolvedValueOnce({ data: secondBatch, error: null })
-    mocks.filterHomeEvents.mockReturnValueOnce([...firstBatch, ...secondBatch])
+    // Most events are filtered out, so the first batch doesn't fill the page and a second one loads.
+    mocks.filterHomeEvents.mockImplementation((events: any[]) => events.slice(0, 10))
 
     const { listHomeEventsPage } = await import('@/lib/home-events-page')
     await listHomeEventsPage({
@@ -295,7 +296,7 @@ describe('listHomeEventsPage', () => {
     )
   })
 
-  it('keeps scanning active pages when recurring series can replace earlier events', async () => {
+  it('loads more candidates for recurring series until the page is full', async () => {
     const firstPage = Array.from({ length: initialPageSize }, (_, index) => ({
       id: `page-1-${index}`,
       ...(index === 0 ? { series_slug: 'series-1' } : {}),
@@ -309,7 +310,7 @@ describe('listHomeEventsPage', () => {
       .mockResolvedValueOnce({ data: secondBatch, error: null })
       .mockResolvedValueOnce({ data: thirdBatch, error: null })
 
-    mocks.filterHomeEvents.mockReturnValueOnce(visibleAfterAllBatches)
+    mocks.filterHomeEvents.mockImplementation(() => visibleAfterAllBatches)
 
     const { listHomeEventsPage } = await import('@/lib/home-events-page')
     const result = await listHomeEventsPage({
@@ -321,8 +322,10 @@ describe('listHomeEventsPage', () => {
       userId: '',
     })
 
-    expect(mocks.filterHomeEvents).toHaveBeenCalledTimes(1)
-    expect(mocks.listEvents).toHaveBeenCalledTimes(3)
+    // Once the first extra batch leaves more than a page of visible events, nothing more loads
+    // (the third, empty batch is never requested).
+    expect(mocks.filterHomeEvents).toHaveBeenCalledTimes(2)
+    expect(mocks.listEvents).toHaveBeenCalledTimes(2)
     expect(mocks.listEvents).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({
@@ -339,20 +342,41 @@ describe('listHomeEventsPage', () => {
         offset: initialPageSize,
       }),
     )
-    expect(mocks.listEvents).toHaveBeenNthCalledWith(
-      3,
-      expect.objectContaining({
-        excludeSportsAuxiliary: true,
-        limit: queryBatchSize,
-        offset: initialPageSize + queryBatchSize,
-      }),
-    )
     expect(result).toEqual({
       data: visibleAfterAllBatches.slice(0, 32),
       error: null,
       currentTimestamp: null,
       hasMore: true,
     })
+  })
+
+  it('stops after two extra batches even when the page is still short', async () => {
+    const firstPage = Array.from({ length: initialPageSize }, (_, index) => ({
+      id: `page-1-${index}`,
+      ...(index === 0 ? { series_slug: 'series-1' } : {}),
+    }))
+    function fullBatch(label: string) {
+      return Array.from({ length: queryBatchSize }, (_, index) => ({ id: `${label}-${index}` }))
+    }
+
+    mocks.listEvents
+      .mockResolvedValueOnce({ data: firstPage, error: null })
+      .mockResolvedValueOnce({ data: fullBatch('batch-2'), error: null })
+      .mockResolvedValueOnce({ data: fullBatch('batch-3'), error: null })
+      .mockResolvedValueOnce({ data: fullBatch('batch-4'), error: null })
+    mocks.filterHomeEvents.mockImplementation((events: any[]) => events.slice(0, 5))
+
+    const { listHomeEventsPage } = await import('@/lib/home-events-page')
+    await listHomeEventsPage({
+      bookmarked: false,
+      locale: 'en',
+      mainTag: 'trending',
+      status: 'active',
+      tag: 'trending',
+      userId: '',
+    })
+
+    expect(mocks.listEvents).toHaveBeenCalledTimes(3)
   })
 
   it('forwards sortBy to the events repository', async () => {
