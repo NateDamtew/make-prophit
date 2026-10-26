@@ -264,9 +264,18 @@ export interface HomeFeaturedSideCardSettings extends HomeFeaturedSideCardSlide 
   slides: HomeFeaturedSideCardSlide[]
 }
 
+/** One slice of the automatic hero mix: how many busiest markets to take from a category ('trending' = everything). */
+export interface HomeFeaturedAutoMixEntry {
+  category: string
+  count: number
+}
+
 export interface HomeFeaturedSettings {
   enabled: boolean
   useAi: boolean
+  /** Fill the hero's free slots with the busiest markets per `autoMix`, refreshed on every market sync. */
+  autoFill: boolean
+  autoMix: HomeFeaturedAutoMixEntry[]
   maxCards: number
   defaultContextMode: HomeFeaturedContextMode
   newsSources: string[]

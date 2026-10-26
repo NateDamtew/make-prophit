@@ -1,6 +1,7 @@
 'use client'
 
 import { useExtracted } from 'next-intl'
+import { useState } from 'react'
 
 import type { HomeFeedMarketCard } from '@/lib/home-feed-types'
 
@@ -35,28 +36,47 @@ function CardTitle({ card, className }: CardProps & { className?: string }) {
   )
 }
 
+/** Wider than this, an image fills the frame; squarer images (logos, seals) are shown whole instead of cut in half. */
+const STORY_IMAGE_FILL_MIN_ASPECT = 1.3
+
+function StoryHeaderImage({ src }: { src: string }) {
+  const [fit, setFit] = useState<'cover' | 'contain'>('cover')
+  const sizes = '(min-width: 1024px) 320px, 100vw'
+
+  return (
+    <>
+      {fit === 'contain' ? (
+        <EventIconImage
+          src={src}
+          alt=""
+          aria-hidden="true"
+          sizes={sizes}
+          containerClassName="absolute inset-0 scale-125 opacity-60 blur-2xl"
+          imageClassName="object-cover"
+        />
+      ) : null}
+      <EventIconImage
+        src={src}
+        alt=""
+        sizes={sizes}
+        containerClassName="absolute inset-0"
+        imageClassName={fit === 'cover' ? 'object-cover' : 'object-contain'}
+        onLoad={(event) => {
+          const image = event.currentTarget
+          if (image.naturalWidth > 0 && image.naturalHeight > 0) {
+            setFit(image.naturalWidth / image.naturalHeight >= STORY_IMAGE_FILL_MIN_ASPECT ? 'cover' : 'contain')
+          }
+        }}
+      />
+    </>
+  )
+}
+
 function StoryHeader({ card }: CardProps) {
   return (
     <div className="relative h-36 overflow-hidden bg-muted">
       {card.iconUrl ? (
-        <>
-          {/* Event images come in every shape (mostly square); show all of it over a blurred fill of itself. */}
-          <EventIconImage
-            src={card.iconUrl}
-            alt=""
-            aria-hidden="true"
-            sizes="(min-width: 1024px) 320px, 100vw"
-            containerClassName="absolute inset-0 scale-125 opacity-60 blur-2xl"
-            imageClassName="object-cover"
-          />
-          <EventIconImage
-            src={card.iconUrl}
-            alt=""
-            sizes="(min-width: 1024px) 320px, 100vw"
-            containerClassName="absolute inset-0"
-            imageClassName="object-contain"
-          />
-        </>
+        <StoryHeaderImage src={card.iconUrl} />
       ) : (
         <svg
           viewBox="0 0 400 112"

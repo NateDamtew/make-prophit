@@ -16,6 +16,7 @@ import { useExtracted } from 'next-intl'
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 
 import type {
+  HomeFeaturedAutoMixEntry,
   HomeFeaturedContextItem,
   HomeFeaturedContextMode,
   HomeFeaturedEventAdminItem,
@@ -51,7 +52,11 @@ import { useIsMobile } from '@/hooks/useIsMobile'
 import { formatDollarValueLabel } from '@/lib/formatters'
 import { localizeHomeEventCardTitle } from '@/lib/home-featured-localization'
 import { serializeHomeFeaturedEventsForSave } from '@/lib/home-featured-payload'
-import { HOME_FEATURED_NEWS_LIMIT } from '@/lib/home-featured-settings'
+import {
+  HOME_FEATURED_AUTO_MIX_CATEGORIES,
+  HOME_FEATURED_MAX_CARDS_LIMIT,
+  HOME_FEATURED_NEWS_LIMIT,
+} from '@/lib/home-featured-settings'
 import { cn } from '@/lib/utils'
 
 import HomeFeaturedAdminPreviewImage from './HomeFeaturedAdminPreviewImage'
@@ -87,6 +92,10 @@ interface HomeFeaturedMarketsSectionProps {
   onUseAiChange: (value: boolean) => void
   maxCards: number
   onMaxCardsChange: (value: number) => void
+  autoFill: boolean
+  onAutoFillChange: (value: boolean) => void
+  autoMix: HomeFeaturedAutoMixEntry[]
+  onAutoMixChange: (value: HomeFeaturedAutoMixEntry[]) => void
   defaultContextMode: HomeFeaturedContextMode
   onDefaultContextModeChange: (value: HomeFeaturedContextMode) => void
   newsSources: string
@@ -517,12 +526,108 @@ function HomeFeaturedSelectionDialog({
   )
 }
 
+/** Auto-fill switch plus how many busiest markets to take from each category. */
+function HomeFeaturedAutoMixFields({
+  disabled,
+  maxCards,
+  autoFill,
+  autoMix,
+  onAutoFillChange,
+  onAutoMixChange,
+}: {
+  disabled: boolean
+  maxCards: number
+  autoFill: boolean
+  autoMix: HomeFeaturedAutoMixEntry[]
+  onAutoFillChange: (value: boolean) => void
+  onAutoMixChange: (value: HomeFeaturedAutoMixEntry[]) => void
+}) {
+  const t = useExtracted()
+  const categoryLabels: Record<(typeof HOME_FEATURED_AUTO_MIX_CATEGORIES)[number], string> = {
+    trending: t('Busiest overall'),
+    sports: t('Sports'),
+    politics: t('Politics'),
+    crypto: t('Crypto'),
+    finance: t('Finance'),
+    tech: t('Tech'),
+    geopolitics: t('Geopolitics'),
+    economy: t('Economy'),
+    culture: t('Culture'),
+    world: t('World'),
+    elections: t('Elections'),
+  }
+  const countByCategory = new Map(autoMix.map((entry) => [entry.category, entry.count]))
+  const total = autoMix.reduce((sum, entry) => sum + entry.count, 0)
+
+  function setCount(category: string, count: number) {
+    const next = HOME_FEATURED_AUTO_MIX_CATEGORIES.map((key) => ({
+      category: key as string,
+      count: key === category ? count : (countByCategory.get(key) ?? 0),
+    })).filter((entry) => entry.count > 0)
+    onAutoMixChange(next)
+  }
+
+  return (
+    <fieldset className="grid gap-3 rounded-lg border p-3">
+      <legend className="px-1 text-sm font-medium">{t('Automatic picks')}</legend>
+      <div className="flex items-center justify-between gap-3 rounded-md bg-muted/50 p-3">
+        <Label htmlFor="home-featured-auto-fill" className="cursor-pointer">
+          {t('Fill empty slots with the busiest markets')}
+        </Label>
+        <Switch
+          id="home-featured-auto-fill"
+          checked={autoFill}
+          onCheckedChange={onAutoFillChange}
+          disabled={disabled}
+        />
+      </div>
+      <p className="text-xs text-muted-foreground">
+        {t(
+          'Your own picks always come first. Free slots are refilled after every market sync from this mix; a category that runs short is topped up from the busiest markets. Removed picks never come back.',
+        )}
+      </p>
+      <div className="grid gap-2 sm:grid-cols-3">
+        {HOME_FEATURED_AUTO_MIX_CATEGORIES.map((category) => (
+          <div key={category} className="flex items-center justify-between gap-2 rounded-md border px-3 py-2">
+            <Label htmlFor={`home-featured-auto-mix-${category}`} className="text-sm">
+              {categoryLabels[category]}
+            </Label>
+            <Input
+              id={`home-featured-auto-mix-${category}`}
+              type="number"
+              min={0}
+              max={HOME_FEATURED_MAX_CARDS_LIMIT}
+              className="h-8 w-16"
+              value={countByCategory.get(category) ?? 0}
+              onChange={(event) =>
+                setCount(
+                  category,
+                  Math.min(HOME_FEATURED_MAX_CARDS_LIMIT, Math.max(0, Number(event.target.value) || 0)),
+                )
+              }
+              disabled={disabled || !autoFill}
+            />
+          </div>
+        ))}
+      </div>
+      <p className="text-xs text-muted-foreground">
+        {t('{total} in the mix · up to {maxCards} cards on the hero', {
+          total: String(total),
+          maxCards: String(maxCards),
+        })}
+      </p>
+    </fieldset>
+  )
+}
+
 function HomeFeaturedSettingsDialog({
   isMobile,
   open,
   disabled,
   useAi,
   maxCards,
+  autoFill,
+  autoMix,
   defaultContextMode,
   newsSources,
   commentBlacklist,
@@ -531,6 +636,8 @@ function HomeFeaturedSettingsDialog({
   includeNewEvents,
   onOpenChange,
   onMaxCardsChange,
+  onAutoFillChange,
+  onAutoMixChange,
   onDefaultContextModeChange,
   onNewsSourcesChange,
   onCommentBlacklistChange,
@@ -543,6 +650,8 @@ function HomeFeaturedSettingsDialog({
   disabled: boolean
   useAi: boolean
   maxCards: number
+  autoFill: boolean
+  autoMix: HomeFeaturedAutoMixEntry[]
   defaultContextMode: HomeFeaturedContextMode
   newsSources: string
   commentBlacklist: string
@@ -551,6 +660,8 @@ function HomeFeaturedSettingsDialog({
   includeNewEvents: boolean
   onOpenChange: (open: boolean) => void
   onMaxCardsChange: (value: number) => void
+  onAutoFillChange: (value: boolean) => void
+  onAutoMixChange: (value: HomeFeaturedAutoMixEntry[]) => void
   onDefaultContextModeChange: (value: HomeFeaturedContextMode) => void
   onNewsSourcesChange: (value: string) => void
   onCommentBlacklistChange: (value: string) => void
@@ -582,9 +693,11 @@ function HomeFeaturedSettingsDialog({
               id="home-featured-max-cards"
               type="number"
               min={1}
-              max={8}
+              max={HOME_FEATURED_MAX_CARDS_LIMIT}
               value={maxCards}
-              onChange={(event) => onMaxCardsChange(Math.min(8, Math.max(1, Number(event.target.value) || 1)))}
+              onChange={(event) =>
+                onMaxCardsChange(Math.min(HOME_FEATURED_MAX_CARDS_LIMIT, Math.max(1, Number(event.target.value) || 1)))
+              }
               disabled={disabled}
             />
           </div>
@@ -627,6 +740,15 @@ function HomeFeaturedSettingsDialog({
             </div>
           </div>
         </div>
+
+        <HomeFeaturedAutoMixFields
+          disabled={disabled || useAi}
+          maxCards={maxCards}
+          autoFill={autoFill}
+          autoMix={autoMix}
+          onAutoFillChange={onAutoFillChange}
+          onAutoMixChange={onAutoMixChange}
+        />
 
         <fieldset className="grid gap-3 rounded-lg border p-3">
           <legend className="px-1 text-sm font-medium">{t('Automatic filters')}</legend>
@@ -935,6 +1057,10 @@ export default function HomeFeaturedMarketsSection({
   onUseAiChange,
   maxCards,
   onMaxCardsChange,
+  autoFill,
+  onAutoFillChange,
+  autoMix,
+  onAutoMixChange,
   defaultContextMode,
   onDefaultContextModeChange,
   newsSources,
@@ -978,7 +1104,7 @@ export default function HomeFeaturedMarketsSection({
         return previous
       }
 
-      return [...previous, item].slice(0, 8)
+      return [...previous, item].slice(0, HOME_FEATURED_MAX_CARDS_LIMIT)
     })
   }
 
@@ -1001,6 +1127,8 @@ export default function HomeFeaturedMarketsSection({
             settings: {
               enabled,
               useAi,
+              autoFill,
+              autoMix,
               maxCards,
               defaultContextMode,
               newsSources,
@@ -1189,6 +1317,7 @@ export default function HomeFeaturedMarketsSection({
                   onEnabledChange={(targetIndex, nextEnabled) =>
                     updateItem(targetIndex, (current) => ({ ...current, enabled: nextEnabled }))
                   }
+                  onKeep={(targetIndex) => updateItem(targetIndex, (current) => ({ ...current, source: 'manual' }))}
                 />
               ))}
             </div>
@@ -1212,6 +1341,8 @@ export default function HomeFeaturedMarketsSection({
         disabled={disabled}
         useAi={useAi}
         maxCards={maxCards}
+        autoFill={autoFill}
+        autoMix={autoMix}
         defaultContextMode={defaultContextMode}
         newsSources={newsSources}
         commentBlacklist={commentBlacklist}
@@ -1220,6 +1351,8 @@ export default function HomeFeaturedMarketsSection({
         includeNewEvents={includeNewEvents}
         onOpenChange={setSettingsDialogOpen}
         onMaxCardsChange={onMaxCardsChange}
+        onAutoFillChange={onAutoFillChange}
+        onAutoMixChange={onAutoMixChange}
         onDefaultContextModeChange={onDefaultContextModeChange}
         onNewsSourcesChange={onNewsSourcesChange}
         onCommentBlacklistChange={onCommentBlacklistChange}

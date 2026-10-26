@@ -1,4 +1,5 @@
 import type {
+  HomeFeaturedAutoMixEntry,
   HomeFeaturedContextMode,
   HomeFeaturedSettings,
   HomeFeaturedSideCardIcon,
@@ -13,6 +14,10 @@ export const HOME_FEATURED_SETTINGS_GROUP = 'home_featured'
 export const HOME_FEATURED_ENABLED_KEY = 'enabled'
 export const HOME_FEATURED_USE_AI_KEY = 'use_ai'
 export const HOME_FEATURED_MAX_CARDS_KEY = 'max_cards'
+export const HOME_FEATURED_AUTO_FILL_KEY = 'auto_fill'
+export const HOME_FEATURED_AUTO_MIX_KEY = 'auto_mix_v1'
+/** Auto picks the admin removed; the auto-fill never brings them back. Written by the save path, not the form. */
+export const HOME_FEATURED_AUTO_DISMISSED_KEY = 'auto_dismissed_event_ids'
 export const HOME_FEATURED_DEFAULT_CONTEXT_MODE_KEY = 'default_context_mode'
 export const HOME_FEATURED_NEWS_SOURCES_KEY = 'news_sources'
 export const HOME_FEATURED_COMMENT_BLACKLIST_KEY = 'comment_blacklist'
@@ -32,6 +37,73 @@ export const HOME_FEATURED_SIDE_CARD_SLIDES_KEY = 'side_card_slides_v1'
 export const HOME_FEATURED_NEWS_LIMIT = 5
 export const HOME_FEATURED_NEWS_TTL_MS = 2 * 60 * 60 * 1000
 export const HOME_FEATURED_SIDE_CARD_MAX_SLIDES = 8
+export const HOME_FEATURED_MAX_CARDS_LIMIT = 10
+export const HOME_FEATURED_AUTO_DISMISSED_LIMIT = 200
+
+/** Categories the automatic hero mix can draw from; 'trending' means the busiest markets overall. */
+export const HOME_FEATURED_AUTO_MIX_CATEGORIES = [
+  'trending',
+  'sports',
+  'politics',
+  'crypto',
+  'finance',
+  'tech',
+  'geopolitics',
+  'economy',
+  'culture',
+  'world',
+  'elections',
+] as const
+
+export const DEFAULT_HOME_FEATURED_AUTO_MIX: HomeFeaturedAutoMixEntry[] = [
+  { category: 'trending', count: 4 },
+  { category: 'sports', count: 2 },
+  { category: 'politics', count: 2 },
+  { category: 'crypto', count: 1 },
+  { category: 'finance', count: 1 },
+]
+
+/** Known categories only, one entry each, counts 0–10; entries with 0 are dropped. */
+export function parseHomeFeaturedAutoMix(value: unknown): HomeFeaturedAutoMixEntry[] | null {
+  let raw = value
+  if (typeof raw === 'string') {
+    try {
+      raw = JSON.parse(raw)
+    } catch {
+      return null
+    }
+  }
+  if (!Array.isArray(raw)) {
+    return null
+  }
+
+  const seen = new Set<string>()
+  const entries: HomeFeaturedAutoMixEntry[] = []
+  for (const item of raw) {
+    const category = typeof item?.category === 'string' ? item.category.trim().toLowerCase() : ''
+    const count = Math.floor(Number(item?.count))
+    if (
+      !(HOME_FEATURED_AUTO_MIX_CATEGORIES as readonly string[]).includes(category) ||
+      seen.has(category) ||
+      !Number.isFinite(count) ||
+      count <= 0
+    ) {
+      continue
+    }
+    seen.add(category)
+    entries.push({ category, count: Math.min(count, HOME_FEATURED_MAX_CARDS_LIMIT) })
+  }
+  return entries
+}
+
+export function parseHomeFeaturedAutoDismissed(value: string | undefined): string[] {
+  try {
+    const parsed = value ? JSON.parse(value) : []
+    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string' && id.length > 0) : []
+  } catch {
+    return []
+  }
+}
 
 const HOME_FEATURED_CONTEXT_MODES: HomeFeaturedContextMode[] = ['auto', 'news', 'comments', 'hidden']
 export const HOME_FEATURED_SIDE_CARD_ICONS: HomeFeaturedSideCardIcon[] = [
@@ -118,7 +190,9 @@ const DEFAULT_HOME_FEATURED_SIDE_CARD_SLIDE: HomeFeaturedSideCardSlide = {
 export const DEFAULT_HOME_FEATURED_SETTINGS: HomeFeaturedSettings = {
   enabled: false,
   useAi: false,
-  maxCards: 6,
+  autoFill: true,
+  autoMix: DEFAULT_HOME_FEATURED_AUTO_MIX,
+  maxCards: HOME_FEATURED_MAX_CARDS_LIMIT,
   defaultContextMode: 'auto',
   newsSources: [],
   commentBlacklist: [],
@@ -445,7 +519,14 @@ export function getHomeFeaturedSettingsFromSettings(allSettings?: SettingsMap): 
   return {
     enabled: parseBoolean(settings?.[HOME_FEATURED_ENABLED_KEY]?.value, defaults.enabled),
     useAi: parseBoolean(settings?.[HOME_FEATURED_USE_AI_KEY]?.value, defaults.useAi),
-    maxCards: parseInteger(settings?.[HOME_FEATURED_MAX_CARDS_KEY]?.value, defaults.maxCards, 1, 8),
+    autoFill: parseBoolean(settings?.[HOME_FEATURED_AUTO_FILL_KEY]?.value, defaults.autoFill),
+    autoMix: parseHomeFeaturedAutoMix(settings?.[HOME_FEATURED_AUTO_MIX_KEY]?.value) ?? defaults.autoMix,
+    maxCards: parseInteger(
+      settings?.[HOME_FEATURED_MAX_CARDS_KEY]?.value,
+      defaults.maxCards,
+      1,
+      HOME_FEATURED_MAX_CARDS_LIMIT,
+    ),
     defaultContextMode: parseContextMode(
       settings?.[HOME_FEATURED_DEFAULT_CONTEXT_MODE_KEY]?.value,
       defaults.defaultContextMode,
@@ -473,6 +554,8 @@ export function getHomeFeaturedSettingsFromSettings(allSettings?: SettingsMap): 
 export function validateHomeFeaturedSettingsInput(input: {
   enabled: string
   useAi: string
+  autoFill?: string
+  autoMixJson?: string
   maxCards: string
   defaultContextMode: string
   newsSources: string
@@ -491,7 +574,13 @@ export function validateHomeFeaturedSettingsInput(input: {
   sideCardSlidesJson?: string
 }): { data: HomeFeaturedSettings; error: null } | { data: null; error: string } {
   const defaultContextMode = parseContextMode(input.defaultContextMode, 'auto')
-  const maxCards = parseInteger(input.maxCards, DEFAULT_HOME_FEATURED_SETTINGS.maxCards, 1, 8)
+  const maxCards = parseInteger(
+    input.maxCards,
+    DEFAULT_HOME_FEATURED_SETTINGS.maxCards,
+    1,
+    HOME_FEATURED_MAX_CARDS_LIMIT,
+  )
+  const autoMix = parseHomeFeaturedAutoMix(input.autoMixJson) ?? DEFAULT_HOME_FEATURED_SETTINGS.autoMix
   const minVolume24h = parseNumber(input.minVolume24h, 0, 0, 1_000_000_000)
   const newsSources = parseNewsSourcesInput(input.newsSources)
   const commentBlacklist = parseCommentBlacklistInput(input.commentBlacklist)
@@ -522,6 +611,8 @@ export function validateHomeFeaturedSettingsInput(input: {
     data: {
       enabled: parseBoolean(input.enabled, false),
       useAi: parseBoolean(input.useAi, false),
+      autoFill: parseBoolean(input.autoFill, DEFAULT_HOME_FEATURED_SETTINGS.autoFill),
+      autoMix,
       maxCards,
       defaultContextMode,
       newsSources,

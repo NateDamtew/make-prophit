@@ -59,6 +59,8 @@ async function persistDraftPayload(payload: Record<string, unknown> | null) {
     const validated = validateHomeFeaturedSettingsInput({
       enabled: readStringPayloadValue(settingsRecord.enabled),
       useAi: readStringPayloadValue(settingsRecord.useAi),
+      autoFill: settingsRecord.autoFill === undefined ? undefined : readStringPayloadValue(settingsRecord.autoFill),
+      autoMixJson: Array.isArray(settingsRecord.autoMix) ? JSON.stringify(settingsRecord.autoMix) : undefined,
       maxCards: readStringPayloadValue(settingsRecord.maxCards),
       defaultContextMode: readStringPayloadValue(settingsRecord.defaultContextMode),
       newsSources: readStringPayloadValue(settingsRecord.newsSources),

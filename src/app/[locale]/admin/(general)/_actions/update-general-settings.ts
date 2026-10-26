@@ -727,6 +727,8 @@ async function updateGeneralSettingsActionImpl(
   const homeFeaturedEnabledRaw = formData.get('home_featured_enabled')
   const homeFeaturedUseAiRaw = formData.get('home_featured_use_ai')
   const homeFeaturedMaxCardsRaw = formData.get('home_featured_max_cards')
+  const homeFeaturedAutoFillRaw = formData.get('home_featured_auto_fill')
+  const homeFeaturedAutoMixRaw = formData.get('home_featured_auto_mix')
   const homeFeaturedDefaultContextModeRaw = formData.get('home_featured_default_context_mode')
   const homeFeaturedNewsSourcesRaw = formData.get('home_featured_news_sources')
   const homeFeaturedCommentBlacklistRaw = formData.get('home_featured_comment_blacklist')
@@ -855,6 +857,8 @@ async function updateGeneralSettingsActionImpl(
     const validatedHomeFeatured = validateHomeFeaturedSettingsInput({
       enabled: typeof homeFeaturedEnabledRaw === 'string' ? homeFeaturedEnabledRaw : '',
       useAi: typeof homeFeaturedUseAiRaw === 'string' ? homeFeaturedUseAiRaw : '',
+      autoFill: typeof homeFeaturedAutoFillRaw === 'string' ? homeFeaturedAutoFillRaw : undefined,
+      autoMixJson: typeof homeFeaturedAutoMixRaw === 'string' ? homeFeaturedAutoMixRaw : undefined,
       maxCards: typeof homeFeaturedMaxCardsRaw === 'string' ? homeFeaturedMaxCardsRaw : '',
       defaultContextMode:
         typeof homeFeaturedDefaultContextModeRaw === 'string' ? homeFeaturedDefaultContextModeRaw : '',
@@ -1178,6 +1182,14 @@ async function updateGeneralSettingsActionImpl(
       if (regenerateResult.error) {
         console.warn('Featured markets were saved, but automatic regeneration failed:', regenerateResult.error)
       }
+    })
+  }
+
+  if (validatedHomeFeaturedData?.autoFill && !validatedHomeFeaturedData.useAi) {
+    await runOptionalGeneralSettingsTask('refill featured markets', async () => {
+      const locale = await resolveCurrentLocale(getLocaleOverride(formData))
+      const { refreshHomeFeaturedAutoPicks } = await import('@/lib/home-featured-auto')
+      await refreshHomeFeaturedAutoPicks(locale)
     })
   }
 

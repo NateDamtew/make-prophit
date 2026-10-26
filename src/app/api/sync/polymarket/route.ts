@@ -1,3 +1,4 @@
+import { refreshHomeFeaturedAutoPicks } from '@/lib/home-featured-auto'
 import { runPolymarketSync } from '@/lib/polymarket/sync'
 import {
   buildCronErrorResponse,
@@ -36,7 +37,13 @@ export async function GET(request: Request) {
         totalProcessed: summary.imported,
       })
 
-      return { success: true, ...summary }
+      // Keep the home hero full with the configured category mix (also covers Kuest markets).
+      const featured = await refreshHomeFeaturedAutoPicks().catch((error: unknown) => {
+        console.error('Home featured auto-fill failed', error)
+        return null
+      })
+
+      return { success: true, ...summary, featuredAutoPicks: featured }
     },
     onError: async (error) => {
       await updateSyncStatus({
