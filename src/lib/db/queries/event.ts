@@ -81,6 +81,7 @@ import {
 import { buildPublicEventListVisibilityCondition, HIDE_FROM_NEW_TAG_SLUG } from '@/lib/event-visibility'
 import { resolveSportsSection } from '@/lib/events-routing'
 import { resolveDisplayPrice } from '@/lib/market-chance'
+import { isListedPolymarketMarket } from '@/lib/polymarket/curation'
 import { normalizeEventVenue, POLYMARKET_ENDPOINTS } from '@/lib/polymarket/endpoints'
 import { resolvePublicRuntimeEnv } from '@/lib/public-runtime-config.shared'
 import {
@@ -1036,7 +1037,12 @@ function eventResource(
       name: localizedTagNamesById.get(tag.id) ?? tag.name,
     }))
 
-  const marketsWithDerivedValues = event.markets.map((market: any) => {
+  // Polymarket placeholder slots stay out of listings; an event left with none keeps its markets.
+  const polymarketListedMarkets =
+    normalizeEventVenue(event.venue) === 'polymarket' ? event.markets.filter(isListedPolymarketMarket) : []
+  const listedMarkets = polymarketListedMarkets.length > 0 ? polymarketListedMarkets : event.markets
+
+  const marketsWithDerivedValues = listedMarkets.map((market: any) => {
     const rawOutcomes = (market.condition?.outcomes || []) as Array<typeof outcomes.$inferSelect>
     const normalizedOutcomes = rawOutcomes.map((outcome) => {
       const outcomePrice = outcome.token_id ? priceMap.get(outcome.token_id) : undefined

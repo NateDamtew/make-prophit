@@ -11,7 +11,7 @@ import { cacheTags } from '@/lib/cache-tags'
 import { listPolymarketCurationRules } from '@/lib/db/queries/polymarket-curation'
 import { conditions, events, home_featured_events, markets, polymarket_market_sync_state } from '@/lib/db/schema'
 import { db } from '@/lib/drizzle'
-import { buildCurationIndex, decideEvent } from '@/lib/polymarket/curation'
+import { buildCurationIndex, decideEvent, isPlaceholderMarket } from '@/lib/polymarket/curation'
 import { getGammaEventsByIds, listGammaEvents, toGammaNumber } from '@/lib/polymarket/gamma'
 import {
   buildExternalMarketEntries,
@@ -41,6 +41,8 @@ export interface PolymarketSyncSummary {
   hidden: number
   shown: number
   resolved: number
+  /** Polymarket placeholder slots ("Team A", "Other") imported earlier and now switched off. */
+  placeholdersHidden: number
   mirrorsHidden: number
   pinned: number
   errors: { ref: string; error: string }[]
@@ -197,6 +199,38 @@ async function applyResolutions(candidates: Map<string, GammaEvent>, deadlineMs:
           )
           .returning({ slug: events.slug })
   return { resolved, slugs: resolvedEvents.map((row) => row.slug) }
+}
+
+/**
+ * Switches off markets imported before placeholders were skipped. Inactive markets
+ * of Polymarket events are left out of event listings; once Polymarket launches
+ * the slot, curation picks it up and the import marks it active again.
+ */
+async function deactivatePlaceholderMarkets(candidates: Map<string, GammaEvent>) {
+  const conditionIds = Array.from(candidates.values()).flatMap((event) =>
+    (event.markets ?? []).filter(isPlaceholderMarket).map((market) => market.conditionId),
+  )
+  const eventIds = new Set<string>()
+  let count = 0
+  for (const ids of chunked(conditionIds.filter(Boolean), LOOKUP_CHUNK_SIZE)) {
+    const rows = await db
+      .update(markets)
+      .set({ is_active: false })
+      .where(and(inArray(markets.condition_id, ids), eq(markets.is_active, true), eq(markets.is_resolved, false)))
+      .returning({ event_id: markets.event_id })
+    count += rows.length
+    for (const row of rows) {
+      eventIds.add(row.event_id)
+    }
+  }
+  if (count === 0) {
+    return { count, slugs: [] }
+  }
+  const slugRows = await db
+    .select({ slug: events.slug })
+    .from(events)
+    .where(inArray(events.id, Array.from(eventIds)))
+  return { count, slugs: slugRows.map((row) => row.slug) }
 }
 
 /** Hide Kuest mirrors whose every market now has a direct Polymarket counterpart on show. */
@@ -459,6 +493,10 @@ export async function runPolymarketSync(options: { deadlineMs: number }): Promis
 
   const visibleDecisions = new Map(visibleIds.map((id) => [id, decisions.get(id)!]))
   await applyVolumes(visibleDecisions)
+  const placeholders = await deactivatePlaceholderMarkets(candidates)
+  for (const slug of placeholders.slugs) {
+    changedSlugs.add(slug)
+  }
   const resolution = await applyResolutions(candidates, options.deadlineMs)
   const resolved = resolution.resolved
   for (const slug of resolution.slugs) {
@@ -491,6 +529,7 @@ export async function runPolymarketSync(options: { deadlineMs: number }): Promis
     hidden: hiddenRows.length,
     shown,
     resolved,
+    placeholdersHidden: placeholders.count,
     mirrorsHidden: mirrorSlugs.length,
     pinned,
     errors,

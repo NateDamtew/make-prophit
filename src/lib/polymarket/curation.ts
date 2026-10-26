@@ -97,8 +97,25 @@ function eventPassesFilters(event: GammaEvent, filters: PolymarketCurationFilter
   return true
 }
 
+/**
+ * Polymarket pre-creates spare slots in multi-outcome events ("Team A", "Player B",
+ * "Other") and keeps them `active: false`, unpriced and untraded until one is
+ * launched as a real outcome. Launched and resolved markets stay `active: true`.
+ */
+export function isPlaceholderMarket(market: Pick<GammaMarket, 'active'>) {
+  return market.active === false
+}
+
+/**
+ * Whether a stored market of a Polymarket event is listed. Unresolved inactive ones
+ * are placeholder slots (switched off by the sync) or archived: never priced or traded.
+ */
+export function isListedPolymarketMarket(market: { is_active?: boolean | null; is_resolved?: boolean | null }) {
+  return market.is_active !== false || Boolean(market.is_resolved)
+}
+
 function isListableMarket(market: GammaMarket) {
-  return !market.archived && Boolean(market.conditionId) && Boolean(market.clobTokenIds)
+  return !market.archived && !isPlaceholderMarket(market) && Boolean(market.conditionId) && Boolean(market.clobTokenIds)
 }
 
 export function decideEvent(event: GammaEvent, index: CurationIndex, nowMs = Date.now()): CurationDecision {

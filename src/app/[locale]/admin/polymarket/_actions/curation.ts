@@ -14,7 +14,7 @@ import {
   upsertPolymarketCurationRule,
 } from '@/lib/db/queries/polymarket-curation'
 import { UserRepository } from '@/lib/db/queries/user'
-import { buildCurationIndex, decideEvent } from '@/lib/polymarket/curation'
+import { buildCurationIndex, decideEvent, isPlaceholderMarket } from '@/lib/polymarket/curation'
 import {
   getGammaTagById,
   getGammaTagBySlug,
@@ -194,7 +194,7 @@ function toBrowsedEvent(event: GammaEvent, rules: CurationRule[]): BrowsedEvent 
     pinned: decision.pinned,
     reason: decision.reason,
     markets: (event.markets ?? [])
-      .filter((market) => !market.archived && !market.closed)
+      .filter((market) => !market.archived && !market.closed && !isPlaceholderMarket(market))
       .map((market) => ({
         conditionId: market.conditionId,
         title: market.groupItemTitle?.trim() || market.question,
