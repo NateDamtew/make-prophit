@@ -36,6 +36,7 @@ interface LoadHomeEventCandidatesOptions extends ListHomeEventsPageOptions {}
 interface LoadHomeEventBatchesOptions extends Omit<LoadHomeEventCandidatesOptions, 'offset'> {
   initialEvents?: Event[]
   offset: number
+  skipLivePricing?: boolean
   /** Stop loading once more than this many events survive home filtering. */
   visibleTarget: number
 }
@@ -52,6 +53,7 @@ async function loadHomeEventBatches({
   mainTag,
   offset,
   search = '',
+  skipLivePricing = false,
   sortBy,
   sportsSection = '',
   sportsSportSlug = '',
@@ -72,6 +74,7 @@ async function loadHomeEventBatches({
         tag,
         mainTag,
         search,
+        skipLivePricing,
         sortBy,
         userId,
         bookmarked,
@@ -277,7 +280,10 @@ async function loadHomeEventCandidates({
       }
     }
 
-    return loadHomeEventBatches({
+    // Series selection uses event dates and resolution state, not live prices.
+    // Price only the cards that survive the full scan on the public landing pages.
+    const skipIntermediateLivePricing = !bookmarked && !userId && (tag === 'trending' || tag === 'crypto')
+    const result = await loadHomeEventBatches({
       bookmarked,
       currentTimestamp,
       frequency,
@@ -289,6 +295,7 @@ async function loadHomeEventCandidates({
       mainTag,
       offset: candidates.length,
       search,
+      skipLivePricing: skipIntermediateLivePricing,
       sortBy,
       sportsSection,
       sportsSportSlug,
@@ -297,6 +304,10 @@ async function loadHomeEventCandidates({
       userId,
       visibleTarget: HOME_EVENTS_PAGE_SIZE,
     })
+    return {
+      ...result,
+      initiallyPricedEventIds: skipIntermediateLivePricing ? new Set(candidates.map((event) => event.id)) : null,
+    }
   }
 
   return loadHomeEventBatches({
@@ -342,7 +353,7 @@ export async function listHomeEventsPage({
   const resolvedCurrentTimestamp = currentTimestamp ?? null
   const hasHomeVisibilityFilters = hideSports || hideCrypto || hideEarnings
 
-  const { data: rawEvents, error } = await loadHomeEventCandidates({
+  const candidatesResult = await loadHomeEventCandidates({
     bookmarked,
     currentTimestamp: resolvedCurrentTimestamp,
     frequency,
@@ -360,6 +371,7 @@ export async function listHomeEventsPage({
     tag,
     userId,
   })
+  const { data: rawEvents, error } = candidatesResult
 
   if (error) {
     return { data: [], error, currentTimestamp: resolvedCurrentTimestamp ?? null, hasMore: false }
@@ -382,8 +394,48 @@ export async function listHomeEventsPage({
   const pageStart = status === 'resolved' && !hasHomeVisibilityFilters ? 0 : targetOffset
   const pageEnd = pageStart + HOME_EVENTS_PAGE_SIZE
 
+  let pageEvents = visibleEvents.slice(pageStart, pageEnd)
+  const initiallyPricedEventIds =
+    'initiallyPricedEventIds' in candidatesResult ? candidatesResult.initiallyPricedEventIds : null
+  const eventsNeedingPrices = initiallyPricedEventIds
+    ? pageEvents.filter((event) => !initiallyPricedEventIds.has(event.id))
+    : []
+  if (eventsNeedingPrices.length > 0) {
+    const { data: refreshedEvents, error: refreshError } = await timeStep(
+      `home price refresh (${tag}, ${eventsNeedingPrices.length} events)`,
+      () =>
+        EventRepository.getEventsBySlugs(
+          eventsNeedingPrices.map((event) => event.slug),
+          userId,
+          locale,
+          {
+            bookmarked,
+            excludeSportsAuxiliary: true,
+            frequency,
+            hideCrypto,
+            hideEarnings,
+            hideSports,
+            mainTag,
+            search,
+            sortBy,
+            sportsSection,
+            sportsSportSlug,
+            status,
+            tag,
+          },
+          { cardPayload: true },
+        ),
+    )
+    const refreshedById = new Map((refreshError ? [] : (refreshedEvents ?? [])).map((event) => [event.id, event]))
+    // A selected event may have become a draft or hidden since the cached scan.
+    // Never restore an ineligible event from that scan if the fresh query omits it.
+    pageEvents = pageEvents
+      .filter((event) => initiallyPricedEventIds?.has(event.id) || refreshedById.has(event.id))
+      .map((event) => refreshedById.get(event.id) ?? event)
+  }
+
   return {
-    data: visibleEvents.slice(pageStart, pageEnd),
+    data: pageEvents,
     error: null,
     currentTimestamp: resolvedCurrentTimestamp ?? null,
     hasMore: visibleEvents.length > pageEnd,

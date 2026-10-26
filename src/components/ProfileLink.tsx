@@ -36,6 +36,8 @@ interface ProfileLinkProps {
   date?: string
   children?: ReactNode
   inlineContent?: ReactNode
+  inlineRowClassName?: string
+  inlineTriggerClassName?: string
   trailing?: ReactNode
   containerClassName?: string
   usernameMaxWidthClassName?: string
@@ -55,7 +57,7 @@ function useAvatarFallbackStyle(showPlaceholder: boolean, avatarSeed: string) {
 }
 
 function useProfileTooltipStats(user: ProfileLinkProps['user']) {
-  const { dataUrl, userPnlUrl } = usePublicRuntimeConfig()
+  const { dataUrl } = usePublicRuntimeConfig()
   const [shouldLoad, setShouldLoad] = useState(false)
   const statsAddress = useMemo(
     () => user.deposit_wallet_address ?? user.address,
@@ -63,14 +65,13 @@ function useProfileTooltipStats(user: ProfileLinkProps['user']) {
   )
   const normalizedStatsAddress = statsAddress?.trim().toLowerCase() ?? ''
   const statsQuery = useQuery({
-    queryKey: ['profile-link-stats', dataUrl, userPnlUrl, normalizedStatsAddress],
+    queryKey: ['profile-link-stats', dataUrl, normalizedStatsAddress],
     queryFn: ({ signal }) =>
       fetchProfileLinkStats(normalizedStatsAddress, {
         dataApiUrl: dataUrl,
-        userPnlUrl,
         signal,
       }),
-    enabled: shouldLoad && Boolean(normalizedStatsAddress && dataUrl && userPnlUrl),
+    enabled: shouldLoad && Boolean(normalizedStatsAddress && dataUrl),
     staleTime: 2_000,
     gcTime: 15 * 60 * 1_000,
     retry: 1,
@@ -101,6 +102,8 @@ export default function ProfileLink({
   date,
   children,
   inlineContent,
+  inlineRowClassName: inlineRowClassNameOverride,
+  inlineTriggerClassName,
   trailing,
   containerClassName,
   usernameMaxWidthClassName,
@@ -119,9 +122,7 @@ export default function ProfileLink({
   const isInline = layout === 'inline'
   const isStacked = layout === 'stacked'
   const inlineBody = inlineContent ?? children
-  const inlineRowClassName = `
-    flex min-w-0 flex-wrap items-center gap-1 text-foreground
-  `
+  const inlineRowClassName = cn('flex min-w-0 flex-wrap items-center gap-1 text-foreground', inlineRowClassNameOverride)
   const resolvedUsernameMaxWidth =
     usernameMaxWidthClassName ?? (isInline ? 'max-w-40 sm:max-w-56 lg:max-w-72' : 'max-w-32 lg:max-w-64')
   const usernameLinkClassName = cn(
@@ -201,7 +202,7 @@ export default function ProfileLink({
   )
 
   const triggerContent = (
-    <div className="inline-flex min-w-0 items-center gap-3">
+    <div className={cn('inline-flex min-w-0 items-center gap-3', isInline && inlineTriggerClassName)}>
       {avatarNode}
       {usernameNode}
     </div>

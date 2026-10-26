@@ -792,7 +792,7 @@ async function run(): Promise<void> {
       }
 
       try {
-        reserved.release()
+        await reserved.release()
       } catch (error) {
         console.error('Failed to release reserved connection:', error)
       }

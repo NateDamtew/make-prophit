@@ -348,7 +348,9 @@ async function loadHomeFeaturedEvents(eventSlugs: string[], locale: SupportedLoc
     return []
   }
 
-  const { data, error } = await EventRepository.getEventsBySlugs(normalizedSlugs, '', locale, { cardPayload: true })
+  const { data, error } = await EventRepository.getEventsBySlugs(normalizedSlugs, '', locale, undefined, {
+    cardPayload: true,
+  })
   if (error) {
     const fallbackEvents = await Promise.all(
       normalizedSlugs.map(async (requestedSlug) => {
