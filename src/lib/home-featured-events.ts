@@ -32,6 +32,7 @@ import { SettingsRepository } from '@/lib/db/queries/settings'
 import { event_tags, events, markets, tag_translations, tags } from '@/lib/db/schema/events/tables'
 import { runQuery } from '@/lib/db/utils/run-query'
 import { db } from '@/lib/drizzle'
+import { slimEventForCard, slimMarketForCard } from '@/lib/event-card-payload'
 import { buildPublicEventListVisibilityCondition } from '@/lib/event-visibility'
 import { resolveEventPagePath } from '@/lib/events-routing'
 import { formatDollarValueLabel } from '@/lib/formatters'
@@ -913,6 +914,8 @@ async function resolveContextItems(input: {
 }
 
 const HOME_FEATURED_FALLBACK_POOL_SIZE = 24
+/** Hero cards show at most a handful of outcomes; the chart and links need no more markets than this. */
+const HERO_CARD_MAX_MARKETS = 12
 const HOME_FEATURED_FALLBACK_POOL_TAGS = ['crypto', 'finance', 'trending'] as const
 
 async function loadHomeFeaturedFallbackPool(
@@ -1083,6 +1086,8 @@ export async function listHomeFeaturedEvents(
       const mode = resolveEffectiveContextMode(target.contextMode, settings.defaultContextMode)
       const temporal = resolveTemporalStatus(event, locale)
       const liveSeries = liveSeriesByEventId.get(event.id)
+      const primaryMarkets = buildPrimaryMarkets(event, kind)
+      const topOutcomes = buildTopOutcomes(event, kind)
 
       return {
         featuredId: target.featuredId,
@@ -1091,9 +1096,22 @@ export async function listHomeFeaturedEvents(
         rank: target.rank,
         contextMode: mode,
         kind,
-        event,
-        primaryMarkets: buildPrimaryMarkets(event, kind),
-        topOutcomes: buildTopOutcomes(event, kind),
+        // Serialised into the home page: no rules or metadata documents, and big
+        // futures capped to the markets the card shows (sports buttons need them all).
+        event: slimEventForCard(
+          event,
+          kind === 'sports'
+            ? {}
+            : {
+                maxMarkets: HERO_CARD_MAX_MARKETS,
+                keepConditionIds: [
+                  ...primaryMarkets.map((market) => market.condition_id),
+                  ...topOutcomes.map((outcome) => outcome.conditionId),
+                ],
+              },
+        ),
+        primaryMarkets: primaryMarkets.map(slimMarketForCard),
+        topOutcomes,
         contextItems: await resolveContextItems({
           event,
           targetType: target.targetType,

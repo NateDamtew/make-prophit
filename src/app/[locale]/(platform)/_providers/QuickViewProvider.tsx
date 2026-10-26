@@ -2,11 +2,14 @@
 
 import type { ReactNode } from 'react'
 
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
+import dynamic from 'next/dynamic'
+import { createContext, useCallback, useContext, useState } from 'react'
 
-import QuickView from '@/app/[locale]/(platform)/_components/quick-view/QuickView'
-
-const AUTO_SHOWN_SESSION_KEY = 'quickview_autoshown'
+// Flash Trade only runs when someone opens it: its code is not part of the page
+// bundle and its cards are fetched on that first open, never during page load.
+const QuickView = dynamic(() => import('@/app/[locale]/(platform)/_components/quick-view/QuickView'), {
+  ssr: false,
+})
 
 interface QuickViewContextValue {
   openQuickView: () => void
@@ -22,47 +25,18 @@ export function useQuickView() {
 
 export function QuickViewProvider({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false)
-  const autoOpenCheckedRef = useRef(false)
+  const [mounted, setMounted] = useState(false)
 
-  // Auto-open once per browser session (tab). Refreshes/SPA navigations within
-  // the same session won't re-trigger it, so it shows on a fresh visit without
-  // hijacking every navigation. Dismissible at any time.
-  useEffect(() => {
-    if (autoOpenCheckedRef.current) {
-      return
-    }
-    autoOpenCheckedRef.current = true
-
-    let alreadyShown = false
-    try {
-      alreadyShown = sessionStorage.getItem(AUTO_SHOWN_SESSION_KEY) === 'true'
-    } catch {
-      alreadyShown = false
-    }
-
-    if (alreadyShown) {
-      return
-    }
-
-    const timeout = window.setTimeout(() => {
-      try {
-        sessionStorage.setItem(AUTO_SHOWN_SESSION_KEY, 'true')
-      } catch {
-        // ignore persistence failures
-      }
-      setOpen(true)
-    }, 700)
-
-    return () => window.clearTimeout(timeout)
+  const openQuickView = useCallback(() => {
+    setMounted(true)
+    setOpen(true)
   }, [])
-
-  const openQuickView = useCallback(() => setOpen(true), [])
   const close = useCallback(() => setOpen(false), [])
 
   return (
     <QuickViewContext.Provider value={{ openQuickView }}>
       {children}
-      <QuickView open={open} onClose={close} />
+      {mounted ? <QuickView open={open} onClose={close} /> : null}
     </QuickViewContext.Provider>
   )
 }
