@@ -121,7 +121,8 @@ function truncateSummary(value: string | null) {
  */
 async function loadCachedTopStories(country: string, language: string, limit: number): Promise<HomeNewsStory[]> {
   'use cache'
-  cacheLife({ stale: 900, revalidate: 3_600, expire: 14_400 })
+  // Refreshed hourly; when the API fails (quota, outage) the last good stories keep showing for up to two days.
+  cacheLife({ stale: 900, revalidate: 3_600, expire: 172_800 })
 
   const articles = await fetchWorldNewsTopNews({ sourceCountry: country, language, limit })
 

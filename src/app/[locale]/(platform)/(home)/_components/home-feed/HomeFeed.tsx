@@ -119,7 +119,6 @@ export default function HomeFeed({ currentTimestamp, data }: HomeFeedProps) {
             cards={data.finance}
             renderCard={renderBigChanceCard}
           />
-          <HomeFeedNews feed={data.news} currentTimestamp={currentTimestamp} />
           <CardSection
             id="home-feed-politics"
             title={t('Politics')}
@@ -146,6 +145,7 @@ export default function HomeFeed({ currentTimestamp, data }: HomeFeedProps) {
                 : null
             }
           />
+          <HomeFeedNews feed={data.news} currentTimestamp={currentTimestamp} />
         </div>
 
         <HomeFeedSidebar

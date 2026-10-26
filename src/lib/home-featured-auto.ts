@@ -15,6 +15,12 @@ import {
 } from '@/lib/home-featured-settings'
 
 const AUTO_POOL_SIZE = 24
+/**
+ * Auto picks show market comments as their context. Ten cards each searching
+ * the news every two hours used up the World News API's daily quota and
+ * emptied the home News section; the admin can still pick news per card.
+ */
+const AUTO_PICK_CONTEXT_MODE = 'comments' as const
 
 export interface HomeFeaturedAutoRefreshResult {
   skipped: string | null
@@ -98,7 +104,9 @@ export async function refreshHomeFeaturedAutoPicks(
 
   const nextAutoIds = picked.map((event) => event.id)
   const changed =
-    nextAutoIds.length !== currentAutoIds.length || nextAutoIds.some((id, index) => id !== currentAutoIds[index])
+    nextAutoIds.length !== currentAutoIds.length ||
+    nextAutoIds.some((id, index) => id !== currentAutoIds[index]) ||
+    items.some((item) => item.source === 'ai' && item.contextMode !== AUTO_PICK_CONTEXT_MODE)
   if (!changed) {
     return { skipped: null, manual: manualItems.length, auto: nextAutoIds.length, changed: false }
   }
@@ -126,7 +134,8 @@ export async function refreshHomeFeaturedAutoPicks(
       source: 'ai' as const,
       startsAt: null,
       endsAt: null,
-      contextMode: settings.defaultContextMode,
+      // Comments cost nothing; news lookups spend the World News quota the home News section needs.
+      contextMode: AUTO_PICK_CONTEXT_MODE,
       autoRolloverEnabled: false,
     })),
   ])
