@@ -48,6 +48,12 @@ const config: NextConfig = {
   compress: false,
   experimental: {
     agentUpgrade: 'latest',
+    // Netlify's free build container has 8 GiB and 3 CPUs, so Next defaults to
+    // 2 static-generation workers there and the 550+ page prerender is
+    // SIGKILL'd (OOM) at "Generating static pages (0/552)". Vercel's 2-vCPU
+    // container gets 1 worker from the same default and builds fine in the
+    // same 8 GiB, so pin Netlify to the configuration that is known to fit.
+    cpus: process.env.NETLIFY === 'true' ? 1 : undefined,
     exposeTestingApiInProductionBuild: instantNavigationTest,
     inlineCss: true,
     serverActions: {

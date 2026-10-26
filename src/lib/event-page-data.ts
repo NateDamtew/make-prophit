@@ -7,7 +7,7 @@ import type { Event, EventLiveChartConfig, EventSeriesEntry } from '@/types'
 import { loadMarketContextSettings } from '@/lib/ai/market-context-config'
 import { cacheTags } from '@/lib/cache-tags'
 import { EventRepository } from '@/lib/db/queries/event'
-import { PUBLIC_EVENT_PAGE_CACHE_LIFE } from '@/lib/event-page-cache'
+import { resolveEventPageCacheLife } from '@/lib/event-page-cache'
 import { resolveSportsEventGroupPayload } from '@/lib/sports-event-group'
 import { loadRuntimeThemeState } from '@/lib/theme-settings'
 import 'server-only'
@@ -57,7 +57,6 @@ export async function loadEventPagePublicContentData(
   locale: SupportedLocale,
 ): Promise<EventPageContentData | null> {
   'use cache'
-  cacheLife(PUBLIC_EVENT_PAGE_CACHE_LIFE)
   cacheTag(cacheTags.event(eventSlug))
 
   const [marketContextSettings, eventResult] = await Promise.all([
@@ -71,6 +70,7 @@ export async function loadEventPagePublicContentData(
   if (error || !rawEvent) {
     return null
   }
+  cacheLife(resolveEventPageCacheLife(rawEvent.status))
 
   const event = await resolveSportsEventGroupPayload(rawEvent, locale, {
     warningLabel: 'event page sports event group',
