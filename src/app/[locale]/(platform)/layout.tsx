@@ -11,6 +11,7 @@ import { FilterProvider } from '@/app/[locale]/(platform)/_providers/FilterProvi
 import PlatformNavigationProvider from '@/app/[locale]/(platform)/_providers/PlatformNavigationProvider'
 import { QuickViewProvider } from '@/app/[locale]/(platform)/_providers/QuickViewProvider'
 import { TradingOnboardingProvider } from '@/app/[locale]/(platform)/_providers/TradingOnboardingProvider'
+import { timeStep } from '@/lib/perf-timing'
 import { loadPlatformLayoutNavigation } from '@/lib/platform-layout-navigation'
 import AppKitProvider from '@/providers/AppKitProvider'
 import { CommunityFollowsProvider } from '@/providers/CommunityFollowsProvider'
@@ -19,7 +20,7 @@ import TradeAlertsProvider from '@/providers/TradeAlertsProvider'
 export const instant = false
 
 async function PlatformLayoutContent({ children }: { children: ReactNode }) {
-  const { tags, childParentMap } = await loadPlatformLayoutNavigation()
+  const { tags, childParentMap } = await timeStep('layout navigation', () => loadPlatformLayoutNavigation())
 
   return (
     <TradingOnboardingProvider>

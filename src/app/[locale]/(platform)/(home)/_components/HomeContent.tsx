@@ -16,6 +16,7 @@ import { DEFAULT_HOME_FEATURED_SETTINGS } from '@/lib/home-featured-settings'
 import { loadHomeFeedPools } from '@/lib/home-feed'
 import { buildHomeFeed } from '@/lib/home-feed-sections'
 import { getInitialHomeEventsSortBy } from '@/lib/home-route-sort'
+import { timeStep } from '@/lib/perf-timing'
 import { PUBLIC_LISTING_PAGE_CACHE_LIFE } from '@/lib/public-listing-cache'
 import { loadRuntimeThemeSiteName } from '@/lib/theme-settings'
 
@@ -49,16 +50,18 @@ export default async function HomeContent({
   let initialFeaturedHotTopics: HomeFeaturedHotTopic[] = []
   let initialFeaturedSideCard: HomeFeaturedSideCardSettings = DEFAULT_HOME_FEATURED_SETTINGS.sideCard
 
-  const initialEventsPromise = listHomeEventsPage({
-    tag: initialTagSlug,
-    mainTag: initialMainTagSlug,
-    search: '',
-    userId: '',
-    bookmarked: false,
-    locale: resolvedLocale,
-    currentTimestamp,
-    ...(initialSortBy && { sortBy: initialSortBy }),
-  })
+  const initialEventsPromise = timeStep(`home trending list (${initialTagSlug})`, () =>
+    listHomeEventsPage({
+      tag: initialTagSlug,
+      mainTag: initialMainTagSlug,
+      search: '',
+      userId: '',
+      bookmarked: false,
+      locale: resolvedLocale,
+      currentTimestamp,
+      ...(initialSortBy && { sortBy: initialSortBy }),
+    }),
+  )
     .then(({ data: events, error, currentTimestamp: resolvedCurrentTimestamp, hasMore }) => ({
       events: error ? [] : (events ?? []),
       currentTimestamp: resolvedCurrentTimestamp ?? null,
@@ -73,8 +76,8 @@ export default async function HomeContent({
     ? (async () => {
         try {
           const [featuredEventsResult, featuredHotTopicsResult] = await Promise.allSettled([
-            listHomeFeaturedEvents(resolvedLocale),
-            listHomeFeaturedHotTopics(resolvedLocale),
+            timeStep('home hero cards', () => listHomeFeaturedEvents(resolvedLocale)),
+            timeStep('home hero hot topics', () => listHomeFeaturedHotTopics(resolvedLocale)),
           ])
           const featuredEvents = featuredEventsResult.status === 'fulfilled' ? featuredEventsResult.value : []
           const featuredHotTopics = featuredHotTopicsResult.status === 'fulfilled' ? featuredHotTopicsResult.value : []
@@ -88,7 +91,9 @@ export default async function HomeContent({
 
           const featuredSideCard =
             featuredEvents.length > 0
-              ? await getHomeFeaturedSideCard(featuredEvents, featuredHotTopics, resolvedLocale)
+              ? await timeStep('home hero side card', () =>
+                  getHomeFeaturedSideCard(featuredEvents, featuredHotTopics, resolvedLocale),
+                )
               : DEFAULT_HOME_FEATURED_SETTINGS.sideCard
 
           return {
@@ -113,18 +118,25 @@ export default async function HomeContent({
 
   // FORK: section-led home feed (Live now, Top stories, Crypto, Communities, Finance, News, Politics, Sports, sidebar).
   const homeFeedPoolsPromise = shouldLoadFeaturedEvents
-    ? loadHomeFeedPools({ locale: resolvedLocale, currentTimestamp }).catch((error) => {
-        console.error('Failed to load home feed sections', error)
-        return null
-      })
+    ? timeStep('home feed pools (all)', () => loadHomeFeedPools({ locale: resolvedLocale, currentTimestamp })).catch(
+        (error) => {
+          console.error('Failed to load home feed sections', error)
+          return null
+        },
+      )
     : Promise.resolve(null)
 
-  const [initialEventsResult, featuredEventsResult, siteName, homeFeedPools] = await Promise.all([
-    initialEventsPromise,
-    featuredEventsPromise,
-    categoryFaqContext ? loadRuntimeThemeSiteName() : Promise.resolve(''),
-    homeFeedPoolsPromise,
-  ])
+  // Every step above has already started, so this times the whole home content.
+  const [initialEventsResult, featuredEventsResult, siteName, homeFeedPools] = await timeStep(
+    'home content total',
+    () =>
+      Promise.all([
+        initialEventsPromise,
+        featuredEventsPromise,
+        categoryFaqContext ? loadRuntimeThemeSiteName() : Promise.resolve(''),
+        homeFeedPoolsPromise,
+      ]),
+  )
 
   initialEvents = initialEventsResult.events
   initialCurrentTimestamp = initialEventsResult.currentTimestamp

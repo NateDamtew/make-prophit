@@ -8,6 +8,7 @@ import { EventRepository } from '@/lib/db/queries/event'
 import { filterHomeEvents } from '@/lib/home-events'
 import { HOME_FEED_COMMUNITIES_LIMIT } from '@/lib/home-feed-types'
 import { loadHomeNewsFeed } from '@/lib/home-news'
+import { timeStep } from '@/lib/perf-timing'
 
 const HOME_FEED_POOL_SIZE = 12
 
@@ -86,12 +87,14 @@ export async function loadHomeFeedPools({
   locale,
 }: LoadHomeFeedPoolsOptions): Promise<HomeFeedPools> {
   const [crypto, finance, politics, sports, communities, news] = await Promise.all([
-    loadHomeFeedPool({ currentTimestamp, locale, tag: 'crypto' }),
-    loadHomeFeedPool({ currentTimestamp, locale, tag: 'finance' }),
-    loadHomeFeedPool({ currentTimestamp, locale, tag: 'politics' }),
-    loadHomeFeedPool({ currentTimestamp, locale, tag: 'sports', sportsSection: 'games' }),
-    loadHomeFeedCommunities(),
-    loadHomeNewsFeed(locale),
+    timeStep('home pool crypto', () => loadHomeFeedPool({ currentTimestamp, locale, tag: 'crypto' })),
+    timeStep('home pool finance', () => loadHomeFeedPool({ currentTimestamp, locale, tag: 'finance' })),
+    timeStep('home pool politics', () => loadHomeFeedPool({ currentTimestamp, locale, tag: 'politics' })),
+    timeStep('home pool sports', () =>
+      loadHomeFeedPool({ currentTimestamp, locale, tag: 'sports', sportsSection: 'games' }),
+    ),
+    timeStep('home communities', () => loadHomeFeedCommunities()),
+    timeStep('home news', () => loadHomeNewsFeed(locale)),
   ])
 
   return { crypto, finance, politics, sports, communities, news }
