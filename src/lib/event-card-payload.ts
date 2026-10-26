@@ -10,6 +10,28 @@ import type { Event, Market } from '@/types'
 /** The only metadata cards read: chart labels use short_title, mention charts the tweet/mention counts. */
 const CARD_METADATA_KEY = /^(?:short_title|(?:tweets?|mentions?)_?count|(?:tweets?|mentions?)Count)$/
 
+/**
+ * UMA request and dispute bookkeeping on the condition. Only event pages and
+ * the resolution timeline read these; cards read `resolved`, the oracle and the
+ * resolution price.
+ */
+const CONDITION_FIELDS_NOT_ON_CARDS = [
+  'outcomes',
+  'uma_request_tx_hash',
+  'uma_request_log_index',
+  'uma_oracle_address',
+  'mirror_uma_request_tx_hash',
+  'mirror_uma_request_log_index',
+  'mirror_uma_oracle_address',
+  'resolution_flagged',
+  'resolution_paused',
+  'resolution_last_update',
+  'resolution_was_disputed',
+  'resolution_approved',
+  'resolution_liveness_seconds',
+  'community_governed',
+] as const
+
 function slimMetadata(metadata: unknown) {
   if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
     return undefined
@@ -28,9 +50,14 @@ export function slimMarketForCard(market: Market): Market {
   if (market.condition) {
     // The condition repeats the market's outcomes; cards read the market's own copy.
     const condition: Record<string, unknown> = { ...market.condition }
-    delete condition.outcomes
+    for (const field of CONDITION_FIELDS_NOT_ON_CARDS) {
+      delete condition[field]
+    }
     slim.condition = condition as unknown as Market['condition']
   }
+  // The raw market_sports row (~1.4 KB a market) is already flattened onto the
+  // market as sports_* fields; nothing reads the nested copy.
+  delete (slim as Market & { sports?: unknown }).sports
   delete slim.market_rules
   delete slim.resolution_source
   delete slim.resolution_source_url

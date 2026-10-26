@@ -59,6 +59,9 @@ export default async function HomeContent({
       bookmarked: false,
       locale: resolvedLocale,
       currentTimestamp,
+      // The home feed only picks a few events from this list, so it skips the
+      // series backfill that fills a full grid page (one more 128-event batch).
+      firstPageOnly: shouldLoadFeaturedEvents,
       ...(initialSortBy && { sortBy: initialSortBy }),
     }),
   )
