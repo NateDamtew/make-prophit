@@ -1,6 +1,7 @@
-import { and, eq, inArray, isNotNull, ne, notInArray, sql } from 'drizzle-orm'
+import { and, eq, gt, inArray, isNotNull, ne, notInArray, sql } from 'drizzle-orm'
 import { revalidateTag } from 'next/cache'
 
+import type { ExternalMarketEntry } from '@/app/api/sync/events/route'
 import type { CurationDecision, CurationRule } from '@/lib/polymarket/curation'
 import type { GammaEvent } from '@/lib/polymarket/gamma'
 
@@ -8,11 +9,15 @@ import { ingestMarketsWithMetadata } from '@/app/api/sync/events/route'
 import { SUPPORTED_LOCALES } from '@/i18n/locales'
 import { cacheTags } from '@/lib/cache-tags'
 import { listPolymarketCurationRules } from '@/lib/db/queries/polymarket-curation'
-import { conditions, events, home_featured_events, markets } from '@/lib/db/schema'
+import { conditions, events, home_featured_events, markets, polymarket_market_sync_state } from '@/lib/db/schema'
 import { db } from '@/lib/drizzle'
 import { buildCurationIndex, decideEvent } from '@/lib/polymarket/curation'
 import { getGammaEventsByIds, listGammaEvents, toGammaNumber } from '@/lib/polymarket/gamma'
-import { buildExternalMarketEntries, collectSettledMarkets } from '@/lib/polymarket/metadata-adapter'
+import {
+  buildExternalMarketEntries,
+  collectSettledMarkets,
+  fingerprintMarketEntry,
+} from '@/lib/polymarket/metadata-adapter'
 import { updateOutcomePayoutsFromResolutionPrice } from '@/lib/resolution-payout-sync'
 
 /**
@@ -24,11 +29,16 @@ import { updateOutcomePayoutsFromResolutionPrice } from '@/lib/resolution-payout
 const DEFAULT_MAX_EVENTS_PER_TAG = 40
 const PIN_SOURCE = 'polymarket-curation'
 const VOLUME_CHUNK_SIZE = 200
+const LOOKUP_CHUNK_SIZE = 500
+/** Unchanged markets still re-import this often, as a safety net. */
+const FULL_REFRESH_MS = 24 * 60 * 60 * 1000
 
 export interface PolymarketSyncSummary {
   candidates: number
   visible: number
   imported: number
+  /** Markets skipped because nothing changed since they were last stored. */
+  unchanged: number
   hidden: number
   shown: number
   resolved: number
@@ -256,6 +266,104 @@ async function syncPins(pinnedEventIds: string[], options: { removeStale: boolea
   return pinnedEventIds.length
 }
 
+function chunked<T>(items: T[], size: number) {
+  const chunks: T[][] = []
+  for (let start = 0; start < items.length; start += size) {
+    chunks.push(items.slice(start, start + size))
+  }
+  return chunks
+}
+
+/**
+ * Bun SQL can close a pooled connection that sat idle through the Gamma fetches
+ * just as the next query picks it up; that query is safe to send once more.
+ */
+async function retryOnIdleTimeout<T>(run: () => Promise<T>): Promise<T> {
+  try {
+    return await run()
+  } catch (error) {
+    const code = (error as { cause?: { code?: string } } | null)?.cause?.code
+    if (code !== 'ERR_POSTGRES_IDLE_TIMEOUT') {
+      throw error
+    }
+    return run()
+  }
+}
+
+/** Drops markets whose stored fingerprint matches and was written within FULL_REFRESH_MS. */
+async function selectChangedEntries(entries: ExternalMarketEntry[]) {
+  const fingerprints = new Map(entries.map((entry) => [entry.condition.id, fingerprintMarketEntry(entry)]))
+  const staleBefore = new Date(Date.now() - FULL_REFRESH_MS)
+  const unchangedIds = new Set<string>()
+  for (const ids of chunked(Array.from(fingerprints.keys()), LOOKUP_CHUNK_SIZE)) {
+    const rows = await retryOnIdleTimeout(() =>
+      db
+        .select({
+          condition_id: polymarket_market_sync_state.condition_id,
+          fingerprint: polymarket_market_sync_state.fingerprint,
+        })
+        .from(polymarket_market_sync_state)
+        .where(
+          and(
+            inArray(polymarket_market_sync_state.condition_id, ids),
+            gt(polymarket_market_sync_state.synced_at, staleBefore),
+          ),
+        ),
+    )
+    for (const row of rows) {
+      if (row.fingerprint === fingerprints.get(row.condition_id)) {
+        unchangedIds.add(row.condition_id)
+      }
+    }
+  }
+  return {
+    changed: entries.filter((entry) => !unchangedIds.has(entry.condition.id)),
+    unchanged: unchangedIds.size,
+    fingerprints,
+  }
+}
+
+async function recordFingerprints(conditionIds: string[], fingerprints: Map<string, string>) {
+  for (const ids of chunked(conditionIds, VOLUME_CHUNK_SIZE)) {
+    await db
+      .insert(polymarket_market_sync_state)
+      .values(ids.map((id) => ({ condition_id: id, fingerprint: fingerprints.get(id)!, synced_at: new Date() })))
+      .onConflictDoUpdate({
+        target: polymarket_market_sync_state.condition_id,
+        set: { fingerprint: sql`excluded.fingerprint`, synced_at: sql`excluded.synced_at` },
+      })
+  }
+}
+
+/** Gamma event id -> Prophit event id for events already imported. */
+async function loadImportedEventIds(gammaIds: string[]) {
+  const eventIdByGammaId = new Map<string, string>()
+  for (const ids of chunked(gammaIds, LOOKUP_CHUNK_SIZE)) {
+    const rows = await db
+      .select({ id: events.id, polymarket_event_id: events.polymarket_event_id })
+      .from(events)
+      .where(and(eq(events.venue, 'polymarket'), inArray(events.polymarket_event_id, ids)))
+    for (const row of rows) {
+      eventIdByGammaId.set(row.polymarket_event_id!, row.id)
+    }
+  }
+  return eventIdByGammaId
+}
+
+/** Shows imported events the rules include again; their unchanged markets are not re-imported to do it. */
+async function unhideEvents(gammaIds: string[]) {
+  const slugs: string[] = []
+  for (const ids of chunked(gammaIds, LOOKUP_CHUNK_SIZE)) {
+    const rows = await db
+      .update(events)
+      .set({ is_hidden: false })
+      .where(and(eq(events.venue, 'polymarket'), eq(events.is_hidden, true), inArray(events.polymarket_event_id, ids)))
+      .returning({ slug: events.slug })
+    slugs.push(...rows.map((row) => row.slug))
+  }
+  return slugs
+}
+
 export async function runPolymarketSync(options: { deadlineMs: number }): Promise<PolymarketSyncSummary> {
   const errors: PolymarketSyncSummary['errors'] = []
   const rules = toCurationRules(await listPolymarketCurationRules())
@@ -303,7 +411,8 @@ export async function runPolymarketSync(options: { deadlineMs: number }): Promis
     }
   }
 
-  const ingest = await ingestMarketsWithMetadata(entries, {
+  const selection = await selectChangedEntries(entries)
+  const ingest = await ingestMarketsWithMetadata(selection.changed, {
     autoDeployNewEvents: true,
     deadlineMs: options.deadlineMs,
     onMarketStored: tagEvent,
@@ -311,17 +420,12 @@ export async function runPolymarketSync(options: { deadlineMs: number }): Promis
   for (const error of ingest.errors) {
     errors.push({ ref: `market:${error.conditionId}`, error: error.error })
   }
+  await recordFingerprints(Array.from(ingest.eventIdByConditionId.keys()), selection.fingerprints)
 
-  // Map Gamma event id -> Prophit event id through the ingested markets.
-  const prophitEventIdByGammaId = new Map<string, string>()
-  for (const id of visibleIds) {
-    for (const market of decisions.get(id)!.markets) {
-      const eventId = ingest.eventIdByConditionId.get(market.conditionId)
-      if (eventId) {
-        prophitEventIdByGammaId.set(id, eventId)
-        break
-      }
-    }
+  const prophitEventIdByGammaId = await loadImportedEventIds(visibleIds)
+  for (const slug of await unhideEvents(Array.from(prophitEventIdByGammaId.keys()))) {
+    changedSlugs.add(slug)
+    shown++
   }
 
   // Anything imported earlier that the rules no longer show goes hidden (not deleted:
@@ -379,6 +483,7 @@ export async function runPolymarketSync(options: { deadlineMs: number }): Promis
     candidates: candidates.size,
     visible: visibleIds.length,
     imported: ingest.processedCount,
+    unchanged: selection.unchanged,
     hidden: hiddenRows.length,
     shown,
     resolved,

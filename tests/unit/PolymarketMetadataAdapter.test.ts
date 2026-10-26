@@ -5,6 +5,7 @@ import type { GammaEvent, GammaMarket } from '@/lib/polymarket/gamma'
 import {
   buildExternalMarketEntries,
   collectSettledMarkets,
+  fingerprintMarketEntry,
   POLYMARKET_SOURCE_CREATOR,
   resolveSettledPrice,
   toProphitSlug,
@@ -116,5 +117,21 @@ describe('polymarket metadata adapter', () => {
       { conditionId: '0x111', price: 1 },
     ])
     expect(fullySettledEventIds).toEqual(['1208440'])
+  })
+
+  it('fingerprints a market by what the import writes, not by Gamma timestamps', () => {
+    function fingerprint(event: GammaEvent, market: GammaMarket, nowMs = 1) {
+      return fingerprintMarketEntry(buildExternalMarketEntries(event, [market], nowMs)[0])
+    }
+    const base = fingerprint(game, moneyline)
+
+    expect(fingerprint(game, { ...moneyline, updatedAt: '2026-10-25T09:00:00Z' })).toBe(base)
+    // Without any createdAt the creation time falls back to "now", which must not count as a change.
+    const undated = { ...game, createdAt: undefined }
+    const undatedMarket = { ...moneyline, createdAt: undefined }
+    expect(fingerprint(undated, undatedMarket, 1_000)).toBe(fingerprint(undated, undatedMarket, 9_000_000))
+    expect(fingerprint(game, { ...moneyline, question: 'Nets vs. Cavs' })).not.toBe(base)
+    expect(fingerprint(game, { ...moneyline, closed: true, outcomePrices: '["1","0"]' })).not.toBe(base)
+    expect(fingerprint({ ...game, score: '101-99' }, moneyline)).not.toBe(base)
   })
 })

@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto'
+
 import type { ExternalMarketEntry } from '@/app/api/sync/events/route'
 import type { GammaEvent, GammaMarket } from '@/lib/polymarket/gamma'
 
@@ -193,4 +195,19 @@ export function buildExternalMarketEntries(
     })
   }
   return entries
+}
+
+/** Bump to make every market re-import once (e.g. after the adapter's output changes). */
+const ENTRY_FINGERPRINT_VERSION = 1
+
+/**
+ * Stable hash of everything the import writes for a market. Gamma's updatedAt
+ * moves on every price tick and creationTimestamp can fall back to "now", so
+ * both are left out; live scores and results are in and still trigger an update.
+ */
+export function fingerprintMarketEntry(entry: ExternalMarketEntry) {
+  const condition = { ...entry.condition, updatedAt: undefined, creationTimestamp: undefined }
+  return createHash('sha256')
+    .update(JSON.stringify({ version: ENTRY_FINGERPRINT_VERSION, condition, metadata: entry.metadata }))
+    .digest('hex')
 }

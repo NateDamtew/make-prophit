@@ -2,7 +2,7 @@ import { sql } from 'drizzle-orm'
 import { boolean, char, integer, jsonb, pgTable, primaryKey, text, timestamp, unique } from 'drizzle-orm/pg-core'
 
 import { users } from '@/lib/db/schema/auth/tables'
-import { events } from '@/lib/db/schema/events/tables'
+import { conditions, events } from '@/lib/db/schema/events/tables'
 
 /**
  * Admin curation of the Polymarket catalogue. Nothing from Polymarket shows in
@@ -72,4 +72,13 @@ export const polymarket_accounts = pgTable('polymarket_accounts', {
   signer_address: char({ length: 42 }).notNull(),
   created_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
   updated_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
+})
+
+/** Fingerprint of each imported market as last stored, so the sync skips unchanged ones. */
+export const polymarket_market_sync_state = pgTable('polymarket_market_sync_state', {
+  condition_id: text()
+    .primaryKey()
+    .references(() => conditions.id, { onDelete: 'cascade' }),
+  fingerprint: text().notNull(),
+  synced_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
 })
