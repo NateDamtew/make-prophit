@@ -1,6 +1,7 @@
 import type {
   HomeFeedCommunity,
   HomeFeedData,
+  HomeFeedLiveItem,
   HomeFeedMarketCard,
   HomeFeedOutcomeRow,
   HomeFeedRankedMarket,
@@ -25,6 +26,7 @@ import {
   HOME_FEED_COMMUNITIES_LIMIT,
   HOME_FEED_LIVE_NOW_LIMIT,
   HOME_FEED_MOST_TRADED_LIMIT,
+  HOME_FEED_TRENDING_STRIP_LIMIT,
 } from '@/lib/home-feed-types'
 import { findHomeNewsRelatedMarketIndex } from '@/lib/home-news-match'
 import { buildChanceByMarket } from '@/lib/market-chance'
@@ -207,8 +209,8 @@ function buildSportsCard(
   ]
 
   return {
-    team1: { name: model.team1.name, chance: resolveButtonChance(model.team1Button) },
-    team2: { name: model.team2.name, chance: resolveButtonChance(model.team2Button) },
+    team1: { name: model.team1.name, chance: resolveButtonChance(model.team1Button), logoUrl: model.team1.logoUrl },
+    team2: { name: model.team2.name, chance: resolveButtonChance(model.team2Button), logoUrl: model.team2.logoUrl },
     buttons,
     startLabel: resolveSportsStartLabel(event, locale),
   }
@@ -316,6 +318,27 @@ function buildRankedMarket(event: Event, locale: string): HomeFeedRankedMarket {
   }
 }
 
+/** Strip entry: the Up/Yes chance, or the leading outcome/team for multi-outcome events and games. */
+function buildLiveStripItem(event: Event, locale: string, isLive: boolean): HomeFeedLiveItem {
+  const card = buildHomeFeedMarketCard(event, locale)
+  const teams = card.sports ? [card.sports.team1, card.sports.team2] : []
+  const leadingTeam = teams.reduce<(typeof teams)[number] | null>(
+    (best, team) => (team.chance != null && (best?.chance == null || team.chance > best.chance) ? team : best),
+    null,
+  )
+  const lead = card.chance == null ? (leadingTeam ?? card.outcomes[0] ?? null) : null
+  return {
+    id: card.id,
+    title: card.title,
+    href: card.href,
+    iconUrl: card.iconUrl,
+    chance: card.chance ?? lead?.chance ?? null,
+    leadLabel: lead ? ('label' in lead ? lead.label : lead.name) : null,
+    isUpDown: card.isUpDown,
+    isLive,
+  }
+}
+
 function buildHomeFeedCommunities(rows: HomeFeedCommunityRow[]): HomeFeedCommunity[] {
   return rows.slice(0, HOME_FEED_COMMUNITIES_LIMIT).map((row) => ({
     id: row.id,
@@ -381,13 +404,22 @@ export function buildHomeFeed(input: BuildHomeFeedInput): HomeFeedData {
     ...input.sports,
   ]).filter(isActiveEvent)
 
-  const liveNow = everyEvent
-    .filter((event) => Boolean(event.has_live_chart))
+  // Live charts and games in progress first, then the busiest markets of the last 24h.
+  const liveEvents = everyEvent
+    .filter((event) => Boolean(event.has_live_chart) || Boolean(event.sports_live))
     .slice(0, HOME_FEED_LIVE_NOW_LIMIT)
-    .map((event) => {
-      const card = buildHomeFeedMarketCard(event, locale)
-      return { id: card.id, title: card.title, href: card.href, chance: card.chance, isUpDown: card.isUpDown }
-    })
+  const liveEventIds = new Set(liveEvents.map((event) => event.id))
+  const trendingEvents = everyEvent
+    .filter((event) => !liveEventIds.has(event.id))
+    .map((event) => ({ event, volume24h: sumMarketVolume24h(event) }))
+    .filter(({ volume24h }) => volume24h > 0)
+    .sort((left, right) => right.volume24h - left.volume24h)
+    .slice(0, HOME_FEED_TRENDING_STRIP_LIMIT)
+    .map(({ event }) => event)
+  const liveNow = [
+    ...liveEvents.map((event) => buildLiveStripItem(event, locale, true)),
+    ...trendingEvents.map((event) => buildLiveStripItem(event, locale, false)),
+  ]
 
   const topStories = takeCards(
     input.trending.filter((event) => !isSportsEvent(event) && !isCadenceEvent(event)),

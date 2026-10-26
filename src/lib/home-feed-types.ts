@@ -7,6 +7,8 @@ import type { HomeNewsFeed } from '@/lib/home-news'
 
 export const HOME_FEED_CARDS_PER_SECTION = 3
 export const HOME_FEED_LIVE_NOW_LIMIT = 10
+/** Busiest markets that follow the live ones on the strip. */
+export const HOME_FEED_TRENDING_STRIP_LIMIT = 10
 export const HOME_FEED_MOST_TRADED_LIMIT = 5
 export const HOME_FEED_BREAKING_NEWS_LIMIT = 3
 export const HOME_FEED_COMMUNITIES_LIMIT = 10
@@ -27,9 +29,15 @@ export interface HomeFeedSportsButton {
   tone: 'team1' | 'team2' | 'draw'
 }
 
+export interface HomeFeedSportsTeam {
+  name: string
+  chance: number | null
+  logoUrl: string | null
+}
+
 export interface HomeFeedSportsCard {
-  team1: { name: string; chance: number | null }
-  team2: { name: string; chance: number | null }
+  team1: HomeFeedSportsTeam
+  team2: HomeFeedSportsTeam
   buttons: HomeFeedSportsButton[]
   startLabel: string | null
 }
@@ -64,8 +72,13 @@ export interface HomeFeedLiveItem {
   id: string
   title: string
   href: string
+  iconUrl: string | null
   chance: number | null
+  /** Leading outcome or team the chance belongs to, for multi-outcome events. */
+  leadLabel: string | null
   isUpDown: boolean
+  /** Live chart or game in progress; otherwise a trending market. */
+  isLive: boolean
 }
 
 export interface HomeFeedRankedMarket {

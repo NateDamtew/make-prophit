@@ -194,6 +194,17 @@
   }
 }
 
+/* Home "Live now" strip: the item list is rendered twice, so moving by half loops seamlessly. */
+@keyframes home-feed-live-strip {
+  from {
+    transform: translateX(0);
+  }
+
+  to {
+    transform: translateX(-50%);
+  }
+}
+
 @keyframes home-featured-pagination-progress {
   from {
     transform: scaleX(0);

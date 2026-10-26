@@ -68,10 +68,17 @@ describe('polymarket metadata adapter', () => {
     expect(entry.metadata.sports.market.sports_market_type).toBe('moneyline')
     expect(entry.metadata.sports.event.teams[0]).toMatchObject({
       name: 'Nets',
-      logo_url: 'https://example.com/bkn.png',
+      logo: 'https://example.com/bkn.png',
     })
+    expect(entry.metadata.sports.event.sport_slug).toBe('nba')
     // Never flagged as a Kuest mirror: the token ids are Polymarket's own.
     expect(entry.metadata.mirror_condition_id).toBeUndefined()
+  })
+
+  it('reads the sport code from the object Gamma sends on game events', () => {
+    const [entry] = buildExternalMarketEntries({ ...game, sport: { sport: 'nba', name: 'NBA' } }, [moneyline])
+    expect(entry.metadata.sports.event.sport_slug).toBe('nba')
+    expect(entry.metadata.sports.event.league_slug).toBe('nba')
   })
 
   it('skips markets whose outcomes and token ids do not line up', () => {

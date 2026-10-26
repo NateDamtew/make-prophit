@@ -37,15 +37,26 @@ function CardTitle({ card, className }: CardProps & { className?: string }) {
 
 function StoryHeader({ card }: CardProps) {
   return (
-    <div className="relative h-28 overflow-hidden bg-muted">
+    <div className="relative h-36 overflow-hidden bg-muted">
       {card.iconUrl ? (
-        <EventIconImage
-          src={card.iconUrl}
-          alt=""
-          sizes="(min-width: 1024px) 320px, 100vw"
-          containerClassName="absolute inset-0"
-          imageClassName="object-cover"
-        />
+        <>
+          {/* Event images come in every shape (mostly square); show all of it over a blurred fill of itself. */}
+          <EventIconImage
+            src={card.iconUrl}
+            alt=""
+            aria-hidden="true"
+            sizes="(min-width: 1024px) 320px, 100vw"
+            containerClassName="absolute inset-0 scale-125 opacity-60 blur-2xl"
+            imageClassName="object-cover"
+          />
+          <EventIconImage
+            src={card.iconUrl}
+            alt=""
+            sizes="(min-width: 1024px) 320px, 100vw"
+            containerClassName="absolute inset-0"
+            imageClassName="object-contain"
+          />
+        </>
       ) : (
         <svg
           viewBox="0 0 400 112"
@@ -168,7 +179,7 @@ export function HomeFeedUpDownCard({ card }: CardProps) {
   return (
     <article className={cn(HOME_FEED_CARD_CLASS, 'gap-4 p-4')}>
       <div className="flex items-center gap-3">
-        <HomeFeedTickerTile label={card.ticker} />
+        <HomeFeedTickerTile label={card.ticker} iconUrl={card.iconUrl} />
         <CardTitle card={card} className="flex-1" />
         {leading ? (
           <span
@@ -203,7 +214,7 @@ export function HomeFeedBigChanceCard({ card }: CardProps) {
   return (
     <article className={cn(HOME_FEED_CARD_CLASS, 'gap-4 p-4')}>
       <div className="flex items-start gap-3">
-        <HomeFeedTickerTile label={card.ticker} />
+        <HomeFeedTickerTile label={card.ticker} iconUrl={card.iconUrl} />
         <CardTitle card={card} className="flex-1" />
       </div>
       {isMultiOutcome ? (
@@ -237,7 +248,10 @@ export function HomeFeedBigChanceCard({ card }: CardProps) {
 export function HomeFeedOutcomeBarsCard({ card }: CardProps) {
   return (
     <article className={cn(HOME_FEED_CARD_CLASS, 'gap-3.5 p-4')}>
-      <CardTitle card={card} />
+      <div className="flex items-start gap-3">
+        <HomeFeedTickerTile label={card.ticker} iconUrl={card.iconUrl} />
+        <CardTitle card={card} className="flex-1" />
+      </div>
       {card.outcomes.length > 0 ? (
         <OutcomeRows card={card} showButtons={false} />
       ) : (
@@ -272,8 +286,19 @@ export function HomeFeedSportsCard({ card }: CardProps) {
       <div className="flex flex-col gap-2.5">
         {[sports.team1, sports.team2].map((team) => (
           <div key={team.name} className="flex flex-col gap-1.5">
-            <div className="flex justify-between gap-2 text-sm font-medium">
-              <span className="truncate">{team.name}</span>
+            <div className="flex items-center justify-between gap-2 text-sm font-medium">
+              <span className="flex min-w-0 items-center gap-2">
+                {team.logoUrl ? (
+                  <EventIconImage
+                    src={team.logoUrl}
+                    alt=""
+                    sizes="20px"
+                    containerClassName="size-5 shrink-0"
+                    imageClassName="object-contain"
+                  />
+                ) : null}
+                <span className="truncate">{team.name}</span>
+              </span>
               <span className="font-bold tabular-nums">{formatChanceLabel(team.chance)}</span>
             </div>
             <HomeFeedChanceBar chance={team.chance} />

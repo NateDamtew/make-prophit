@@ -87,7 +87,8 @@ export interface GammaEvent {
   tags?: GammaTag[]
   markets?: GammaMarket[]
   // Sports games only
-  sport?: string | null
+  /** Gamma sends the sport as an object on game events ({ sport: 'nba', name, image… }); older payloads used a plain code. */
+  sport?: string | { sport?: string | null; name?: string | null } | null
   gameId?: number | null
   startTime?: string | null
   eventDate?: string | null
