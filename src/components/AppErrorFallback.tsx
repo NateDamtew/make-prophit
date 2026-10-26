@@ -1,6 +1,5 @@
 'use client'
 
-import * as Sentry from '@sentry/nextjs'
 import { RotateCcwIcon } from 'lucide-react'
 import { useEffect } from 'react'
 
@@ -44,7 +43,9 @@ export default function AppErrorFallback({
         return
       }
 
-      Sentry.captureException(error)
+      // FORK: imported on demand so the SDK stays out of every page's bundle
+      // (see instrumentation-client.ts); a no-op when no DSN is configured.
+      void import('@sentry/nextjs').then((Sentry) => Sentry.captureException(error))
     },
     [error, hasStaleClientAssets],
   )
