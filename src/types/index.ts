@@ -183,7 +183,8 @@ export interface HomeFeaturedOutcomeSummary {
   marketSlug: string | null
   outcomeIndex: number
   label: string
-  chance: number
+  /** Null while the market has no price yet. */
+  chance: number | null
   imageUrl: string | null
   color: string
 }

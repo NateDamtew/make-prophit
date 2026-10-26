@@ -285,8 +285,8 @@ function useElementWidth<T extends HTMLElement>(enabled = true) {
   return [ref, width] as const
 }
 
-function formatChancePercent(chance: number) {
-  return `${Math.round(chance)}%`
+function formatChancePercent(chance: number | null) {
+  return chance == null ? '--%' : `${Math.round(chance)}%`
 }
 
 function normalizeText(value: string | null | undefined) {

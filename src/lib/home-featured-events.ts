@@ -22,6 +22,7 @@ import type {
   Market,
 } from '@/types'
 
+import { hasHomeCardMarketChance } from '@/app/[locale]/(platform)/(home)/_utils/homeCardMarketDisplay'
 import { DEFAULT_LOCALE } from '@/i18n/locales'
 import { cacheTags } from '@/lib/cache-tags'
 import { buildCommunityApiUrl } from '@/lib/community-url'
@@ -116,6 +117,11 @@ function resolveMarketChance(market: Market) {
   return noDisplayPrice == null ? 0 : (1 - noDisplayPrice) * 100
 }
 
+/** Null for a market with no quote, trade or volume yet, so the hero shows "--%" rather than the 50% fallback price. */
+function resolveOutcomeChance(market: Market) {
+  return hasHomeCardMarketChance(market) ? resolveMarketChance(market) : null
+}
+
 function resolveOutcomeImageUrl(market: Market) {
   const metadata =
     market.metadata && typeof market.metadata === 'object' ? (market.metadata as Record<string, unknown>) : null
@@ -148,11 +154,12 @@ function buildTopOutcomes(event: Event, kind: HomeFeaturedCardKind): HomeFeature
       return []
     }
 
+    const yesChance = resolveOutcomeChance(primaryMarket)
     return primaryMarket.outcomes.slice(0, 2).map((outcome, index) => {
       const chance =
-        outcome.outcome_index === OUTCOME_INDEX.NO
-          ? Math.max(0, Math.min(100, 100 - resolveMarketChance(primaryMarket)))
-          : resolveMarketChance(primaryMarket)
+        yesChance != null && outcome.outcome_index === OUTCOME_INDEX.NO
+          ? Math.max(0, Math.min(100, 100 - yesChance))
+          : yesChance
 
       return {
         key: `${primaryMarket.condition_id}:${outcome.outcome_index}`,
@@ -174,11 +181,11 @@ function buildTopOutcomes(event: Event, kind: HomeFeaturedCardKind): HomeFeature
       marketSlug: market.slug,
       outcomeIndex: resolveFeaturedMarketOutcomeIndex(market),
       label: market.short_title || market.title,
-      chance: resolveMarketChance(market),
+      chance: resolveOutcomeChance(market),
       imageUrl: resolveOutcomeImageUrl(market),
       color: CHART_COLORS[index % CHART_COLORS.length]!,
     }))
-    .sort((left, right) => right.chance - left.chance)
+    .sort((left, right) => (right.chance ?? -1) - (left.chance ?? -1))
     .slice(0, 4)
     .map((item, index) => ({
       ...item,
