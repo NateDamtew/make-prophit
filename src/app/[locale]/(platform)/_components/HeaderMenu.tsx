@@ -46,7 +46,7 @@ export default function HeaderMenu() {
 
 function HeaderMenuClient() {
   const t = useExtracted()
-  const { open } = useAppKit()
+  const { open, preloadWallet } = useAppKit()
   const { openQuickView } = useQuickView()
   const { data: session, isPending } = useSession()
   const hasHydrated = useHasHydrated()
@@ -114,7 +114,17 @@ function HeaderMenuClient() {
           {/* Wallet (SIWE) auth has no separate sign-up vs log-in — connecting a
               wallet creates the account if new, or logs in if it exists. So a
               single "Get Started" button is all that's needed. */}
-          <Button size="headerCompact" data-testid="header-get-started-button" onClick={() => open()}>
+          {/* The wallet SDK loads only when a guest reaches for this button
+              (or another control calls open()); hover/focus/touch start it
+              early so the login modal appears sooner. */}
+          <Button
+            size="headerCompact"
+            data-testid="header-get-started-button"
+            onPointerEnter={preloadWallet}
+            onFocus={preloadWallet}
+            onTouchStart={preloadWallet}
+            onClick={() => open()}
+          >
             {t('Get Started')}
           </Button>
           {!isMobile && <HeaderDropdownUserMenuGuest />}

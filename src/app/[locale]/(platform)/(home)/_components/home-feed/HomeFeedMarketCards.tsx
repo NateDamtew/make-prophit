@@ -39,7 +39,7 @@ function CardTitle({ card, className }: CardProps & { className?: string }) {
 /** Wider than this, an image fills the frame; squarer images (logos, seals) are shown whole instead of cut in half. */
 const STORY_IMAGE_FILL_MIN_ASPECT = 1.3
 
-function StoryHeaderImage({ src }: { src: string }) {
+function StoryHeaderImage({ src, isPriority }: { src: string; isPriority: boolean }) {
   const [fit, setFit] = useState<'cover' | 'contain'>('cover')
   const sizes = '(min-width: 1024px) 320px, 100vw'
 
@@ -59,6 +59,10 @@ function StoryHeaderImage({ src }: { src: string }) {
         src={src}
         alt=""
         sizes={sizes}
+        // The Top stories images are the page's largest content on load (the
+        // hero is hidden on phones), so they must not wait as lazy images.
+        loading={isPriority ? 'eager' : undefined}
+        fetchPriority={isPriority ? 'high' : undefined}
         containerClassName="absolute inset-0"
         imageClassName={fit === 'cover' ? 'object-cover' : 'object-contain'}
         onLoad={(event) => {
@@ -72,11 +76,11 @@ function StoryHeaderImage({ src }: { src: string }) {
   )
 }
 
-function StoryHeader({ card }: CardProps) {
+function StoryHeader({ card, isPriority }: CardProps & { isPriority: boolean }) {
   return (
     <div className="relative h-36 overflow-hidden bg-muted">
       {card.iconUrl ? (
-        <StoryHeaderImage src={card.iconUrl} />
+        <StoryHeaderImage src={card.iconUrl} isPriority={isPriority} />
       ) : (
         <svg
           viewBox="0 0 400 112"
@@ -160,13 +164,13 @@ function BinaryActions({ card, size = 'lg' }: CardProps & { size?: 'lg' | 'md' }
 }
 
 /** Top stories: image header, title, outcome rows with Yes/No or one big chance. */
-export function HomeFeedStoryCard({ card }: CardProps) {
+export function HomeFeedStoryCard({ card, isPriority = false }: CardProps & { isPriority?: boolean }) {
   const t = useExtracted()
   const isMultiOutcome = card.outcomes.length > 0
 
   return (
     <article className={cn(HOME_FEED_CARD_CLASS, 'overflow-hidden')}>
-      <StoryHeader card={card} />
+      <StoryHeader card={card} isPriority={isPriority} />
       <div className="flex flex-1 flex-col gap-3.5 p-4">
         <CardTitle card={card} className="text-base leading-[22px]" />
         {isMultiOutcome ? (

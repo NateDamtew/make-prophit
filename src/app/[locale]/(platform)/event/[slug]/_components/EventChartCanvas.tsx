@@ -45,6 +45,7 @@ interface EventChartCanvasProps {
   chartAnnotationMarkers: PredictionChartAnnotationMarker[]
   leadingGapStart: Date | null
   disableResetAnimation: boolean
+  animateMarkerPulse?: boolean
   legendContent: ReactNode
   watermark?: { iconSvg?: string | null; iconImageUrl?: string | null; label?: string | null }
   tradeFlowItems: TradeFlowLabelItem[]
@@ -66,6 +67,7 @@ export default function EventChartCanvas({
   chartAnnotationMarkers,
   leadingGapStart,
   disableResetAnimation,
+  animateMarkerPulse = true,
   legendContent,
   watermark,
   tradeFlowItems,
@@ -103,6 +105,7 @@ export default function EventChartCanvas({
             annotationMarkers={chartAnnotationMarkers}
             leadingGapStart={leadingGapStart}
             disableResetAnimation={disableResetAnimation}
+            animateMarkerPulse={animateMarkerPulse}
             legendContent={legendContent}
             showLegend={!isSingleMarket}
             watermark={isSingleMarket ? undefined : watermark}

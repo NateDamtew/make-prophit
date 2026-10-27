@@ -167,6 +167,24 @@ describe('appKitProvider (Dynamic)', () => {
     expect(state.latestValue?.isReady).toBe(true)
   })
 
+  it('does not load the wallet layer for a guest until asked, and preloadWallet() loads it without opening', async () => {
+    const { AppKitContext } = await import('@/hooks/useAppKit')
+    const AppKitProvider = (await import('@/providers/AppKitProvider')).default
+
+    const state = renderWithConsumer(AppKitProvider, AppKitContext)
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(state.latestValue?.isReady).toBe(false)
+
+    await act(async () => {
+      state.latestValue.preloadWallet()
+    })
+
+    await waitFor(() => {
+      expect(state.latestValue?.isReady).toBe(true)
+    })
+    expect(mocks.setShowAuthFlow).not.toHaveBeenCalled()
+  })
+
   it('calls setShowAuthFlow(false) when close() is called', async () => {
     mocks.user = { id: 'user-1' }
     const { AppKitContext } = await import('@/hooks/useAppKit')

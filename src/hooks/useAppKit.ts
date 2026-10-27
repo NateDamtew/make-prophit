@@ -16,6 +16,12 @@ export interface TonTxMessage {
 
 export interface AppKitValue {
   open: (options?: { view?: string; namespace?: string }) => Promise<void>
+  /**
+   * Starts loading the wallet SDK without opening anything. Call it when the
+   * user reaches for a control that will call open() (hover, focus, touch), so
+   * the login modal appears sooner. A no-op once the SDK has loaded.
+   */
+  preloadWallet: () => void
   close: () => Promise<void>
   isReady: boolean
   /** Wallet state, surfaced here so consumers never call Dynamic hooks directly. */
@@ -38,6 +44,7 @@ export interface AppKitValue {
 
 export const defaultAppKitValue: AppKitValue = {
   open: async () => {},
+  preloadWallet: () => {},
   close: async () => {},
   isReady: false,
   isEmbedded: false,

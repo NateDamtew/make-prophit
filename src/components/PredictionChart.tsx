@@ -279,6 +279,7 @@ export default function PredictionChart({
   yAxis,
   disableCursorSplit = false,
   disableResetAnimation: _disableResetAnimation = false,
+  animateMarkerPulse = true,
   markerOuterRadius = 6,
   markerInnerRadius = 2.8,
   markerPulseStyle = 'filled',
@@ -908,8 +909,12 @@ export default function PredictionChart({
             renderCursor,
           ),
         )
+        // The marker pulse redraws the whole canvas every frame for as long as the
+        // chart is mounted, so charts that aren't on screen can turn it off.
         const shouldContinueAnimation =
-          dataTransitionRef.current !== null || entryAnimationRef.current !== null || resolvedCursor === null
+          dataTransitionRef.current !== null ||
+          entryAnimationRef.current !== null ||
+          (animateMarkerPulse && resolvedCursor === null)
         if (didDraw && data.length > 0 && series.length > 0 && shouldContinueAnimation) {
           frameId = window.requestAnimationFrame(draw)
         }
@@ -924,6 +929,7 @@ export default function PredictionChart({
     },
     [
       _disableResetAnimation,
+      animateMarkerPulse,
       createCanvasFrame,
       cursorRangeEnd,
       data,

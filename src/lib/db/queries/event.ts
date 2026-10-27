@@ -123,8 +123,11 @@ function pickJsonKeys(source: SQL, keyPattern: string) {
 
 /** The card-relevant part of a market's metadata text, built in Postgres so the full document never leaves it. */
 function buildCardMetadataSql(metadata: Column) {
-  // The column is jsonb in the database (text in the schema); going through text works for either.
-  const document = sql`(CASE WHEN pg_input_is_valid(${metadata}::text, 'jsonb') THEN ${metadata}::text::jsonb END)`
+  // The column is jsonb in the database (text in the Drizzle schema), so the cast is a no-op. Going
+  // through text (`::text` + `pg_input_is_valid` + `::text::jsonb`) re-serialised and re-parsed the
+  // whole document at every one of its ~9 references: 6.4 s for beta's 6,434 active markets versus
+  // 1.1 s native, with identical output.
+  const document = sql`(${metadata}::jsonb)`
   return sql<Record<string, unknown> | null>`CASE WHEN ${document} IS NULL THEN NULL ELSE jsonb_strip_nulls(
     COALESCE(${pickJsonKeys(document, CARD_METADATA_KEY_PATTERN)}, '{}'::jsonb)
     || jsonb_build_object(

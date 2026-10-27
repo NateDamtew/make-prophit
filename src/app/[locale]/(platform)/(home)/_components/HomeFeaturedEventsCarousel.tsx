@@ -88,6 +88,8 @@ interface HomeFeaturedEventsCarouselProps {
 const HOME_FEATURED_CHART_HEIGHT = 292
 const HOME_FEATURED_CHART_HEIGHT_OFFSET = 20
 const HOME_FEATURED_LIVE_CHART_WIDTH_OFFSET = 24
+// Auto-advance moves to the next slide after 7 s (home-featured-pagination-progress).
+const NEIGHBOR_CHARTS_DELAY_MS = 4_000
 const HOME_FEATURED_ROLLOVER_RETRY_MS = 5_000
 const HOME_FEATURED_ROLLOVER_MAX_RETRIES = 6
 const HOME_FEATURED_ROLLOVER_MAX_RETRY_DELAY_MS = 60_000
@@ -2149,6 +2151,7 @@ function FeaturedSlide({
   isPrevious,
   isNext,
   isChartEnabled,
+  areNeighborChartsReady,
 }: {
   item: HomeFeaturedEventCard
   currentTimestamp: number | null
@@ -2156,13 +2159,14 @@ function FeaturedSlide({
   isPrevious: boolean
   isNext: boolean
   isChartEnabled: boolean
+  areNeighborChartsReady: boolean
 }) {
   const rolloverItem = useHomeFeaturedRolloverItem(sourceItem)
   const locale = useLocale()
   const item = useMemo(() => localizeHomeFeaturedMarketDates(rolloverItem, locale), [locale, rolloverItem])
   const isMobile = useIsMobile()
   const linkedHref = resolveFeaturedDestinationHref(item, locale)
-  const shouldRenderChart = isChartEnabled && (isPrevious || isActive || isNext)
+  const shouldRenderChart = isChartEnabled && (isActive || (areNeighborChartsReady && (isPrevious || isNext)))
   const [chartContainerRef, chartContainerWidth] = useElementWidth<HTMLDivElement>(shouldRenderChart)
   const isSingleMarket = item.event.total_markets_count === 1 || item.event.markets.length === 1
   const chartEvent = useMemo(() => getFeaturedChartEvent(item.event, isSingleMarket), [isSingleMarket, item.event])
@@ -2226,6 +2230,8 @@ function FeaturedSlide({
                 chartHeightOffset={HOME_FEATURED_CHART_HEIGHT_OFFSET}
                 variant="sportsEventHero"
                 showControls={false}
+                disableResetAnimation
+                animateMarkerPulse={isActive}
               />
             ) : (
               <HomeEventChart
@@ -2239,6 +2245,8 @@ function FeaturedSlide({
                 chartHeight={HOME_FEATURED_CHART_HEIGHT}
                 isSingleMarketOverride={isSingleMarket}
                 forceVisible
+                disableResetAnimation
+                animateMarkerPulse={isActive}
               />
             )}
           </EventMarketChannelProvider>
@@ -2359,10 +2367,25 @@ export default function HomeFeaturedEventsCarousel({
     featuredViewportStore.getServerSnapshot,
   )
   const [isAutoAdvancePaused, setIsAutoAdvancePaused] = useState(false)
+  // FORK: only the visible slide draws its chart while the page loads; the
+  // neighbouring slides get theirs before auto-advance (or any interaction)
+  // can bring them into view.
+  const [areNeighborChartsReady, setAreNeighborChartsReady] = useState(false)
   const hasMultipleItems = items.length > 1
   const activeItem = items[activeIndex]
   const previousIndex = items.length === 0 ? 0 : (activeIndex - 1 + items.length) % items.length
   const nextIndex = items.length === 0 ? 0 : (activeIndex + 1) % items.length
+
+  useEffect(
+    function readyNeighborChartsBeforeAutoAdvance() {
+      if (areNeighborChartsReady || !hasMultipleItems) {
+        return
+      }
+      const timeoutId = window.setTimeout(() => setAreNeighborChartsReady(true), NEIGHBOR_CHARTS_DELAY_MS)
+      return () => window.clearTimeout(timeoutId)
+    },
+    [areNeighborChartsReady, hasMultipleItems],
+  )
 
   useEffect(
     function preloadFeaturedCharts() {
@@ -2409,6 +2432,7 @@ export default function HomeFeaturedEventsCarousel({
       return
     }
 
+    setAreNeighborChartsReady(true)
     setActiveIndex((nextIndex + items.length) % items.length)
   }
 
@@ -2432,9 +2456,15 @@ export default function HomeFeaturedEventsCarousel({
       <div className="grid gap-x-8 gap-y-3 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.4fr)]">
         <div
           className="h-[clamp(430px,38vw,480px)] overflow-hidden rounded-xl border bg-card shadow-md shadow-black/4"
-          onMouseEnter={() => setIsAutoAdvancePaused(true)}
+          onMouseEnter={() => {
+            setIsAutoAdvancePaused(true)
+            setAreNeighborChartsReady(true)
+          }}
           onMouseLeave={() => setIsAutoAdvancePaused(false)}
-          onFocusCapture={() => setIsAutoAdvancePaused(true)}
+          onFocusCapture={() => {
+            setIsAutoAdvancePaused(true)
+            setAreNeighborChartsReady(true)
+          }}
           onBlurCapture={() => setIsAutoAdvancePaused(false)}
         >
           <div
@@ -2452,6 +2482,7 @@ export default function HomeFeaturedEventsCarousel({
                 isPrevious={index === previousIndex}
                 isNext={index === nextIndex}
                 isChartEnabled={isChartNearViewport}
+                areNeighborChartsReady={areNeighborChartsReady}
               />
             ))}
           </div>

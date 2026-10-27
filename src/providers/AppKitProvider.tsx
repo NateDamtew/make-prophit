@@ -3,7 +3,7 @@
 import type { ReactNode } from 'react'
 
 import { useExtracted } from 'next-intl'
-import { Component, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Component, lazy, Suspense, useCallback, useMemo, useRef, useState } from 'react'
 import { WagmiProvider } from 'wagmi'
 
 import type { AppKitValue } from '@/hooks/useAppKit'
@@ -25,11 +25,6 @@ const wagmiConfig = createDynamicWagmiConfig()
 // Loading them as their own chunk keeps them out of the bundle every page needs
 // before it can hydrate.
 const DynamicWalletLayer = lazy(() => import('@/providers/DynamicWalletLayer'))
-
-// Visitors without a session only need the wallet SDK to log in. Load it once
-// the page has finished loading and the browser is idle (or on the first
-// open()), so it doesn't compete with the page's own content.
-const IDLE_WALLET_LOAD_TIMEOUT_MS = 3000
 
 /**
  * Tags any error thrown while loading or running the Dynamic layer with a
@@ -53,35 +48,6 @@ class DynamicErrorBoundary extends Component<{ children: ReactNode }, { failed: 
   }
 }
 
-function whenPageIdle(callback: () => void) {
-  let idleHandle: number | undefined
-  let timeoutHandle: number | undefined
-
-  function scheduleIdle() {
-    if (typeof window.requestIdleCallback === 'function') {
-      idleHandle = window.requestIdleCallback(callback, { timeout: IDLE_WALLET_LOAD_TIMEOUT_MS })
-    } else {
-      timeoutHandle = window.setTimeout(callback, IDLE_WALLET_LOAD_TIMEOUT_MS)
-    }
-  }
-
-  if (document.readyState === 'complete') {
-    scheduleIdle()
-  } else {
-    window.addEventListener('load', scheduleIdle, { once: true })
-  }
-
-  return () => {
-    window.removeEventListener('load', scheduleIdle)
-    if (idleHandle !== undefined) {
-      window.cancelIdleCallback(idleHandle)
-    }
-    if (timeoutHandle !== undefined) {
-      window.clearTimeout(timeoutHandle)
-    }
-  }
-}
-
 export default function AppKitProvider({ children }: { children: ReactNode }) {
   const t = useExtracted()
   const hasHydrated = useHasHydrated()
@@ -96,15 +62,10 @@ export default function AppKitProvider({ children }: { children: ReactNode }) {
 
   // Dynamic's internal widgets are not compatible with cacheComponents'
   // streaming hydration, so the wallet layer only mounts on the client after
-  // hydration. Signed-in users (and the TMA) need it straight away.
+  // hydration. Signed-in users (and the TMA) need it straight away; visitors
+  // without a session only need it to log in, so it loads when they reach for a
+  // login control (preloadWallet) or call open(), never during page load.
   const shouldLoadWallet = hasHydrated && (walletLoadRequested || hasAuthenticatedUser || isTma)
-
-  useEffect(() => {
-    if (!hasHydrated || shouldLoadWallet) {
-      return
-    }
-    return whenPageIdle(() => setWalletLoadRequested(true))
-  }, [hasHydrated, shouldLoadWallet])
 
   const handleWalletValue = useCallback((value: AppKitValue) => {
     walletValueRef.current = value
@@ -133,6 +94,7 @@ export default function AppKitProvider({ children }: { children: ReactNode }) {
         const value = await whenWalletReady()
         await value.open(options)
       },
+      preloadWallet: () => setWalletLoadRequested(true),
       logout: async () => {
         await signOutAndRedirect({ currentPathname: IS_BROWSER ? window.location.pathname : '/' })
       },

@@ -222,6 +222,7 @@ function AppKitBridge({ hasAuthenticatedUser, regionBlockedMessage, onValueChang
         }
         setShowAuthFlow(true)
       },
+      preloadWallet: () => {},
       close: async () => {
         setShowAuthFlow(false)
       },

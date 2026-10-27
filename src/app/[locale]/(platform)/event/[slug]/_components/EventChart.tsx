@@ -74,6 +74,7 @@ function EventChartComponent({
   chartHeight,
   compactLegend = false,
   disableResetAnimation = false,
+  animateMarkerPulse = true,
   legendVariant,
   showControls = true,
   showSeriesNavigation = true,
@@ -664,6 +665,7 @@ function EventChartComponent({
             chartAnnotationMarkers={chartAnnotationMarkers}
             leadingGapStart={leadingGapStart}
             disableResetAnimation={disableResetAnimation}
+            animateMarkerPulse={animateMarkerPulse}
             legendContent={legendContent}
             watermark={isSingleMarket ? undefined : visibleWatermark}
             tradeFlowItems={tradeFlowItems}
@@ -737,6 +739,9 @@ function areChartPropsEqual(prev: EventChartProps, next: EventChartProps) {
     return false
   }
   if ((prev.disableResetAnimation ?? false) !== (next.disableResetAnimation ?? false)) {
+    return false
+  }
+  if ((prev.animateMarkerPulse ?? true) !== (next.animateMarkerPulse ?? true)) {
     return false
   }
   if (prev.event.id !== next.event.id) {
