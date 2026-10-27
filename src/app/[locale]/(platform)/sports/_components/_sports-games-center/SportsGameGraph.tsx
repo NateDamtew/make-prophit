@@ -94,6 +94,8 @@ export default function SportsGameGraph({
   defaultTimeRange = '1W',
   variant = 'default',
   showControls = true,
+  disableResetAnimation = false,
+  animateMarkerPulse = true,
 }: {
   card: SportsGamesCard
   selectedMarketType: SportsGamesMarketType
@@ -103,6 +105,8 @@ export default function SportsGameGraph({
   defaultTimeRange?: (typeof TIME_RANGES)[number]
   variant?: SportsGameGraphVariant
   showControls?: boolean
+  disableResetAnimation?: boolean
+  animateMarkerPulse?: boolean
 }) {
   const t = useExtracted()
   const translateSportsLabel = useLocalizedSportsLabel()
@@ -234,6 +238,8 @@ export default function SportsGameGraph({
             markerInnerRadius={usesPositionedSeriesLegend ? (isSportsEventHeroVariant ? 5.2 : 4.2) : undefined}
             markerPulseStyle={usesPositionedSeriesLegend ? (isSportsEventHeroVariant ? 'filled' : 'ring') : undefined}
             lineCurve="monotoneX"
+            disableResetAnimation={disableResetAnimation}
+            animateMarkerPulse={animateMarkerPulse}
             tooltipValueFormatter={(value) => `${Math.round(value)}%`}
             autoscale={chartSettings.autoscale}
             showXAxis={chartSettings.xAxis}

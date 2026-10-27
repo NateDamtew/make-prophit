@@ -79,6 +79,8 @@ export interface PredictionChartProps {
   }
   disableCursorSplit?: boolean
   disableResetAnimation?: boolean
+  /** Keep redrawing to pulse the last-point marker while not hovered (default true). */
+  animateMarkerPulse?: boolean
   markerOuterRadius?: number
   markerInnerRadius?: number
   markerPulseStyle?: 'filled' | 'ring'

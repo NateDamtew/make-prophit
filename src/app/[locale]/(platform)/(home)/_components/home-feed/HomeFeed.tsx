@@ -63,8 +63,9 @@ function CardSection({ cards, href, id, note, renderCard, title, trailing }: Car
   )
 }
 
+// Top stories is the first card row, so its images load eagerly at high priority.
 function renderStoryCard(card: HomeFeedMarketCard) {
-  return <HomeFeedStoryCard key={card.id} card={card} />
+  return <HomeFeedStoryCard key={card.id} card={card} isPriority />
 }
 
 function renderUpDownCard(card: HomeFeedMarketCard) {

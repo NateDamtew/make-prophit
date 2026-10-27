@@ -4,7 +4,6 @@ import type { ReactNode } from 'react'
 import { NextIntlClientProvider } from 'next-intl'
 import { cacheLife, cacheTag } from 'next/cache'
 import { notFound } from 'next/navigation'
-import Script from 'next/script'
 
 import type { SupportedLocale } from '@/i18n/locales'
 import type { RuntimeThemeState } from '@/lib/theme-settings'
@@ -15,6 +14,7 @@ import PublicRuntimeConfigScript from '@/components/PublicRuntimeConfigScript'
 import PwaInstallStateSync from '@/components/PwaInstallStateSync'
 import PwaServiceWorker from '@/components/PwaServiceWorker'
 import SiteStructuredData from '@/components/seo/SiteStructuredData'
+import TelegramWebAppScript from '@/components/TelegramWebAppScript'
 import TestModeBannerDeferred from '@/components/TestModeBannerDeferred'
 import { loadEnabledLocales } from '@/i18n/locale-settings'
 import { getRootLocale } from '@/i18n/root-locale'
@@ -191,7 +191,7 @@ function LocaleBody({
 }: LocaleBodyProps & LocalePublicData & { syncRootPreset: boolean }) {
   return (
     <body className="flex min-h-screen flex-col font-sans">
-      <Script src="https://telegram.org/js/telegram-web-app.js" strategy="beforeInteractive" />
+      <TelegramWebAppScript />
       <PublicRuntimeConfigScript config={publicRuntimeConfig} />
       <ThemeDocumentState runtimeTheme={runtimeTheme} syncRootPreset={syncRootPreset} />
       <SiteStructuredData site={runtimeTheme.site} />

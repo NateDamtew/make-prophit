@@ -16,4 +16,5 @@ export interface EventChartProps {
   isSingleMarketOverride?: boolean
   forceVisible?: boolean
   disableResetAnimation?: boolean
+  animateMarkerPulse?: boolean
 }
