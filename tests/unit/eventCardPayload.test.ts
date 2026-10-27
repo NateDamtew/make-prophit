@@ -48,6 +48,35 @@ describe('event card payload', () => {
     expect(slim.title).toBe('Market a')
   })
 
+  it('drops the nested sports row and UMA bookkeeping but keeps what cards and sharing read', () => {
+    const slim = slimMarketForCard(
+      buildMarket('a', 0.5, {
+        sports_market_type: 'moneyline',
+        sports: { condition_id: 'a', sports_market_type: 'moneyline', sports_teams: [{ name: 'Suns' }] },
+        condition: {
+          id: 'a',
+          oracle: '0xoracle',
+          resolved: false,
+          metadata_hash: 'polymarket:1',
+          resolution_price: null,
+          uma_request_tx_hash: '0xtx',
+          mirror_uma_oracle_address: '0xmirror',
+          resolution_liveness_seconds: 7200,
+          community_governed: false,
+        },
+      } as unknown as Partial<Market>),
+    )
+    expect((slim as Market & { sports?: unknown }).sports).toBeUndefined()
+    expect(slim.sports_market_type).toBe('moneyline')
+    expect(slim.condition).toEqual({
+      id: 'a',
+      oracle: '0xoracle',
+      resolved: false,
+      metadata_hash: 'polymarket:1',
+      resolution_price: null,
+    } as unknown as Market['condition'])
+  })
+
   it('drops event rules and context and slims every market', () => {
     const slim = slimEventForCard(buildEvent([buildMarket('a', 0.5), buildMarket('b', 0.2)]))
     expect(slim.rules).toBeUndefined()

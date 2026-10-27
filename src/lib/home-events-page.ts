@@ -15,6 +15,12 @@ const HOME_EVENTS_MAX_EXTRA_BATCHES = 2
 interface ListHomeEventsPageOptions {
   bookmarked: boolean
   currentTimestamp?: number | null
+  /**
+   * Return the first page's candidates without backfilling replaced series
+   * instances from later batches. For callers that use the list as a pool of
+   * a few events (the home feed) rather than a full grid page.
+   */
+  firstPageOnly?: boolean
   frequency?: 'all' | 'daily' | 'weekly' | 'monthly'
   hideCrypto?: boolean
   hideEarnings?: boolean
@@ -131,6 +137,7 @@ async function loadHomeEventBatches({
 async function loadHomeEventCandidates({
   bookmarked,
   currentTimestamp = null,
+  firstPageOnly = false,
   frequency = 'all',
   hideCrypto = false,
   hideEarnings = false,
@@ -273,7 +280,7 @@ async function loadHomeEventCandidates({
       .slice(0, HOME_EVENTS_PAGE_SIZE)
       .some((event) => Boolean(event.series_slug?.trim()) && !isSportsPrimaryHomeEvent(event))
 
-    if (candidates.length < HOME_EVENTS_PAGE_SIZE + 1 || !firstPageHasReplaceableSeries) {
+    if (firstPageOnly || candidates.length < HOME_EVENTS_PAGE_SIZE + 1 || !firstPageHasReplaceableSeries) {
       return {
         data: candidates,
         error: null,
@@ -334,6 +341,7 @@ async function loadHomeEventCandidates({
 export async function listHomeEventsPage({
   bookmarked,
   currentTimestamp,
+  firstPageOnly = false,
   frequency = 'all',
   hideCrypto = false,
   hideEarnings = false,
@@ -356,6 +364,7 @@ export async function listHomeEventsPage({
   const candidatesResult = await loadHomeEventCandidates({
     bookmarked,
     currentTimestamp: resolvedCurrentTimestamp,
+    firstPageOnly,
     frequency,
     hideCrypto,
     hideEarnings,

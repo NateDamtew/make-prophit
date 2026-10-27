@@ -303,6 +303,37 @@ describe('listHomeEventsPage', () => {
     )
   })
 
+  it('skips the series backfill when only the first page is wanted', async () => {
+    const firstPage = Array.from({ length: initialPageSize }, (_, index) => ({
+      id: `page-1-${index}`,
+      slug: `page-1-${index}`,
+      ...(index === 0 ? { series_slug: 'series-1' } : {}),
+    }))
+
+    mocks.listEvents.mockResolvedValueOnce({ data: firstPage, error: null })
+    mocks.filterHomeEvents.mockImplementation((events: any[]) => events.slice(1))
+
+    const { listHomeEventsPage } = await import('@/lib/home-events-page')
+    const result = await listHomeEventsPage({
+      bookmarked: false,
+      firstPageOnly: true,
+      locale: 'en',
+      mainTag: 'trending',
+      status: 'active',
+      tag: 'trending',
+      userId: '',
+    })
+
+    expect(mocks.listEvents).toHaveBeenCalledTimes(1)
+    expect(mocks.getEventsBySlugs).not.toHaveBeenCalled()
+    expect(result).toEqual({
+      data: firstPage.slice(1),
+      error: null,
+      currentTimestamp: null,
+      hasMore: false,
+    })
+  })
+
   it('loads more candidates for recurring series until the page is full', async () => {
     const firstPage = Array.from({ length: initialPageSize }, (_, index) => ({
       id: `page-1-${index}`,

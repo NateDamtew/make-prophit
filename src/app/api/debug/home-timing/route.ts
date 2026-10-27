@@ -32,6 +32,7 @@ async function runHomeSteps(pass: string) {
           bookmarked: false,
           locale,
           currentTimestamp,
+          firstPageOnly: true,
         }),
       ),
       (async () => {
