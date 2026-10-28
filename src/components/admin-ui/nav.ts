@@ -97,6 +97,13 @@ export const ADMIN_NAV: AdminNavGroup[] = [
         keywords: ['verified', 'fee', 'monetization'],
       },
       {
+        id: 'community-applications',
+        label: 'Leader Applications',
+        href: '/admin/communities/applications',
+        icon: ShieldCheckIcon,
+        keywords: ['communities', 'apply', 'leaders', 'level'],
+      },
+      {
         id: 'sync-jobs',
         label: 'Sync Jobs',
         href: '/admin/sync-jobs',

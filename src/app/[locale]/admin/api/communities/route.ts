@@ -16,6 +16,11 @@ interface AdminCommunityRow {
   is_verified: boolean
   community_fee_bps: number
   white_label: boolean
+  level: number
+  status: string
+  leader_type: string | null
+  trust_score: number | null
+  joins_paused: boolean
   created_at: string
 }
 
@@ -51,6 +56,7 @@ export async function GET(request: NextRequest) {
     const rowsResult = await db.execute(sql`
       SELECT id, slug, name, member_count, market_count,
              is_verified, community_fee_bps, COALESCE(white_label, FALSE) AS white_label,
+             level, status, leader_type, trust_score, joins_paused,
              created_at::text AS created_at
       FROM communities
       ${whereClause}

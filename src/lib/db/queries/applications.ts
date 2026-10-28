@@ -7,6 +7,7 @@ import type {
   CommunityApplicationRow,
 } from '@/lib/db/schema/communities/applications'
 
+import { users } from '@/lib/db/schema/auth/tables'
 import { community_applications } from '@/lib/db/schema/communities/applications'
 import { db } from '@/lib/drizzle'
 
@@ -136,4 +137,53 @@ export async function updateApplication(
     )
     .returning()
   return row ? toView(row) : null
+}
+
+/** Admin: applications by status, newest first, with the applicant. */
+export async function listApplicationsForAdmin(
+  status: ApplicationStatus | 'all' = 'pending',
+): Promise<Array<ApplicationView & { applicant: { id: string; username: string | null; image: string | null } }>> {
+  const rows = await db
+    .select({
+      application: community_applications,
+      username: users.username,
+      image: users.image,
+    })
+    .from(community_applications)
+    .innerJoin(users, eq(users.id, community_applications.user_id))
+    .where(status === 'all' ? undefined : eq(community_applications.status, status))
+    .orderBy(desc(community_applications.created_at))
+    .limit(200)
+  return rows.map((row) => ({
+    ...toView(row.application),
+    applicant: { id: row.application.user_id, username: row.username, image: row.image },
+  }))
+}
+
+export async function getApplicationById(id: string): Promise<CommunityApplicationRow | null> {
+  const [row] = await db.select().from(community_applications).where(eq(community_applications.id, id)).limit(1)
+  return row ?? null
+}
+
+/** Admin ruling on an application. Approval also records the community it created. */
+export async function reviewApplication(input: {
+  id: string
+  status: Extract<ApplicationStatus, 'approved' | 'more_info' | 'rejected'>
+  note: string | null
+  startLevel: number | null
+  communityId: string | null
+  reviewerId: string
+}): Promise<void> {
+  await db
+    .update(community_applications)
+    .set({
+      status: input.status,
+      admin_note: input.note,
+      start_level: input.startLevel,
+      community_id: input.communityId,
+      reviewed_by: input.reviewerId,
+      reviewed_at: new Date(),
+      updated_at: new Date(),
+    })
+    .where(eq(community_applications.id, input.id))
 }
