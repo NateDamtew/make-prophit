@@ -23,6 +23,11 @@ interface CommunityRow {
   market_count: number
   is_verified: boolean
   community_fee_bps: number
+  level: number
+  status: string
+  leader_type: string | null
+  trust_score: number | null
+  joins_paused: boolean
   created_at: string
 }
 
@@ -92,6 +97,14 @@ export function AdminCommunitiesManager() {
       cell: ({ row }) => <span className="text-sm tabular-nums">{formatNumber(row.original.market_count)}</span>,
     },
     {
+      accessorKey: 'level',
+      id: 'ladder',
+      header: () => <span className="text-muted-foreground">Ladder</span>,
+      cell: ({ row }) => (
+        <LadderEditor row={row.original} onSave={(body) => patch.mutateAsync({ id: row.original.id, body })} />
+      ),
+    },
+    {
       accessorKey: 'is_verified',
       id: 'verified',
       header: () => <span className="text-muted-foreground">Verified</span>,
@@ -156,7 +169,7 @@ export function AdminCommunitiesManager() {
     <section className="grid gap-6">
       <PageHeader
         title="Communities"
-        description="All communities on the platform. Toggle verification, set per-community revenue share, jump into Insights."
+        description="All communities on the platform. Set the trust level, pause or archive, toggle verification, set per-community revenue share, jump into Insights."
       />
 
       <DataTable
@@ -249,6 +262,126 @@ function FeeEditor({ row, onSave }: { row: CommunityRow; onSave: (bps: number) =
       <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" disabled={saving} onClick={commit}>
         Save
       </Button>
+    </div>
+  )
+}
+
+const LEVEL_LABELS = ['0 · New', '1 · Proven', '2 · Established']
+const STATUSES = ['active', 'paused', 'dormant', 'archived'] as const
+const LEADER_TYPES = ['news', 'sports', 'creator', 'group', 'event'] as const
+
+function LadderEditor({
+  row,
+  onSave,
+}: {
+  row: CommunityRow
+  onSave: (body: Record<string, unknown>) => Promise<unknown>
+}) {
+  const [open, setOpen] = useState(false)
+  const [level, setLevel] = useState(row.level)
+  const [status, setStatus] = useState(row.status)
+  const [leaderType, setLeaderType] = useState(row.leader_type ?? '')
+  const [joinsPaused, setJoinsPaused] = useState(row.joins_paused)
+  const [reason, setReason] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function commit() {
+    setSaving(true)
+    try {
+      await onSave({
+        level,
+        status,
+        leader_type: leaderType || null,
+        joins_paused: joinsPaused,
+        reason: reason.trim() || null,
+      })
+      toast.success('Ladder updated')
+      setOpen(false)
+    } catch (error) {
+      toast.error((error as Error).message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="text-left text-sm hover:underline"
+        title="Change level, status, leader type"
+      >
+        <span className="font-medium">L{row.level}</span>
+        <span className="text-muted-foreground"> · {row.status}</span>
+        {row.trust_score !== null ? <span className="text-muted-foreground"> · {row.trust_score}/100</span> : null}
+        {row.joins_paused ? <span className="text-muted-foreground"> · joins paused</span> : null}
+      </button>
+    )
+  }
+  return (
+    <div className="flex min-w-56 flex-col gap-2 rounded-md border border-border bg-card p-2 text-xs">
+      <label className="flex items-center justify-between gap-2">
+        Level
+        <select
+          value={level}
+          onChange={(event) => setLevel(Number(event.target.value))}
+          className="h-8 rounded-md border border-border bg-background px-1"
+        >
+          {LEVEL_LABELS.map((label, index) => (
+            <option key={label} value={index}>
+              {label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="flex items-center justify-between gap-2">
+        Status
+        <select
+          value={status}
+          onChange={(event) => setStatus(event.target.value)}
+          className="h-8 rounded-md border border-border bg-background px-1"
+        >
+          {STATUSES.map((value) => (
+            <option key={value} value={value}>
+              {value}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="flex items-center justify-between gap-2">
+        Leader
+        <select
+          value={leaderType}
+          onChange={(event) => setLeaderType(event.target.value)}
+          className="h-8 rounded-md border border-border bg-background px-1"
+        >
+          <option value="">—</option>
+          {LEADER_TYPES.map((value) => (
+            <option key={value} value={value}>
+              {value}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="flex items-center justify-between gap-2">
+        Joins paused
+        <Switch checked={joinsPaused} onCheckedChange={setJoinsPaused} aria-label="Joins paused" />
+      </label>
+      <Input
+        value={reason}
+        onChange={(event) => setReason(event.target.value)}
+        placeholder="Reason (shown in the ladder log)"
+        className="h-8 text-xs"
+      />
+      <div className="flex justify-end gap-1">
+        <Button size="sm" variant="ghost" onClick={() => setOpen(false)} disabled={saving}>
+          Cancel
+        </Button>
+        <Button size="sm" onClick={() => void commit()} disabled={saving}>
+          Save
+        </Button>
+      </div>
     </div>
   )
 }

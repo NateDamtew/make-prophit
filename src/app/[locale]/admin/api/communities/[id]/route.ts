@@ -3,8 +3,11 @@ import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 
+import type { CommunityControlPatch } from '@/lib/communities/admin-controls'
+
 import { recordAuditEvent } from '@/lib/admin-ui/audit'
 import { getAdminActor } from '@/lib/admin-ui/guard'
+import { applyCommunityControls } from '@/lib/communities/admin-controls'
 import { CommunityIntegrityRepository } from '@/lib/db/queries/community-integrity'
 import { CommunityMonetizationRepository } from '@/lib/db/queries/community-monetization'
 
@@ -13,6 +16,12 @@ const patchSchema = z.object({
   community_fee_bps: z.number().int().min(0).max(1000).optional(),
   fee_payout_address: z.string().trim().max(255).nullable().optional(),
   white_label: z.boolean().optional(),
+  // Trust ladder controls (communities v1): every change writes a trust event.
+  level: z.union([z.literal(0), z.literal(1), z.literal(2)]).optional(),
+  status: z.enum(['active', 'paused', 'dormant', 'archived']).optional(),
+  leader_type: z.enum(['news', 'sports', 'creator', 'group', 'event']).nullable().optional(),
+  joins_paused: z.boolean().optional(),
+  reason: z.string().trim().max(500).nullable().optional(),
 })
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -57,6 +66,34 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       ops.push(CommunityIntegrityRepository.setWhiteLabel(id, parsed.data.white_label))
     }
     await Promise.all(ops)
+
+    const controls: CommunityControlPatch = {}
+    if (parsed.data.level !== undefined) {
+      controls.level = parsed.data.level
+    }
+    if (parsed.data.status !== undefined) {
+      controls.status = parsed.data.status
+    }
+    if (parsed.data.leader_type !== undefined) {
+      controls.leaderType = parsed.data.leader_type
+    }
+    if (parsed.data.joins_paused !== undefined) {
+      controls.joinsPaused = parsed.data.joins_paused
+    }
+    if (Object.keys(controls).length > 0) {
+      controls.reason = parsed.data.reason ?? null
+      const changed = await applyCommunityControls(id, controls, actor.id)
+      if (changed) {
+        await recordAuditEvent({
+          actor,
+          action: 'community.trust_controls_updated',
+          targetType: 'community',
+          targetId: id,
+          summary: parsed.data.reason ?? 'Updated level / status / leader type / joins',
+          diff: changed,
+        })
+      }
+    }
 
     const after = await CommunityMonetizationRepository.getFields(id)
     await recordAuditEvent({
