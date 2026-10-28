@@ -5,8 +5,7 @@ import type { SupportedLocale } from '@/i18n/locales'
 import type { PoolCardSummary } from '@/lib/pools/activity'
 
 import { CommunityRepository } from '@/lib/db/queries/community'
-import { CommunityDiscoveryRepository } from '@/lib/db/queries/community-discovery'
-import { MyCommunitiesRepository } from '@/lib/db/queries/my-communities'
+import { listCommunitiesForExplore } from '@/lib/db/queries/community-home'
 import { UserRepository } from '@/lib/db/queries/user'
 import { getPoolCardSummaries } from '@/lib/pools/activity'
 import { STATIC_PARAMS_PLACEHOLDER } from '@/lib/static-params'
@@ -19,11 +18,11 @@ export async function generateStaticParams() {
 
 function CommunitiesLoadingSkeleton() {
   return (
-    <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
-      <div className="mb-8 h-32 animate-pulse rounded-2xl bg-muted/50" />
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+      <div className="mb-8 h-10 w-64 animate-pulse rounded-sm bg-secondary" />
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {[1, 2, 3, 4, 5, 6].map((i) => (
-          <div key={i} className="h-48 animate-pulse rounded-2xl bg-muted/30" />
+          <div key={i} className="h-44 animate-pulse rounded-xl bg-secondary/50" />
         ))}
       </div>
     </div>
@@ -32,32 +31,19 @@ function CommunitiesLoadingSkeleton() {
 
 async function CommunitiesContent() {
   const viewer = await UserRepository.getCurrentUser({ minimal: true })
-  const [{ data: communities }, { data: featuredMarkets }, joined, trending, categories] = await Promise.all([
-    CommunityRepository.listPublic({ limit: 30, sort: 'popular' }),
-    CommunityRepository.listFeaturedMarkets(8),
-    viewer ? MyCommunitiesRepository.listForUser(viewer.id) : Promise.resolve([]),
-    CommunityDiscoveryRepository.listTrending(30),
-    CommunityDiscoveryRepository.listCategories(12),
+  const [communities, { data: featuredMarkets }] = await Promise.all([
+    listCommunitiesForExplore({ limit: 60, userId: viewer?.id ?? null }),
+    CommunityRepository.listFeaturedMarkets(6),
   ])
 
-  // Fork: pool odds + volume for the featured market cards.
   const poolSummaries: Record<string, PoolCardSummary> = await getPoolCardSummaries(
     (featuredMarkets ?? []).map((market) => market.id),
   ).catch(() => ({}))
-  const featuredWithPools = (featuredMarkets ?? []).map((market) => ({
-    ...market,
-    pool: poolSummaries[market.id] ?? null,
-  }))
+  const featuredWithPools = (featuredMarkets ?? [])
+    .map((market) => ({ ...market, pool: poolSummaries[market.id] ?? null }))
+    .filter((market) => market.pool !== null && market.pool.state === 'open')
 
-  return (
-    <CommunitiesBrowse
-      initialCommunities={communities ?? []}
-      featuredMarkets={featuredWithPools}
-      joinedCommunityIds={joined.map((c) => c.id)}
-      trendingCommunities={trending as any}
-      categories={categories}
-    />
-  )
+  return <CommunitiesBrowse communities={communities} featuredMarkets={featuredWithPools} signedIn={Boolean(viewer)} />
 }
 
 export default async function CommunitiesPage({ params }: { params: Promise<{ locale: string }> }) {

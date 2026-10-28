@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 
 import { setRequestLocale } from 'next-intl/server'
 import { notFound } from 'next/navigation'
+import { connection } from 'next/server'
 import { Suspense } from 'react'
 
 import type { SupportedLocale } from '@/i18n/locales'
@@ -9,8 +10,9 @@ import type { PoolCardSummary } from '@/lib/pools/activity'
 
 import { CommunityThemeStyle } from '@/components/community-themes/CommunityThemeStyle'
 import { WhiteLabelBrandBar } from '@/components/community-themes/WhiteLabelBrandBar'
+import { isOwnerRole } from '@/lib/communities/roles'
 import { CommunityRepository } from '@/lib/db/queries/community'
-import { CommunityIntegrityRepository } from '@/lib/db/queries/community-integrity'
+import { getCommunityHome } from '@/lib/db/queries/community-home'
 import { CommunityMonetizationRepository } from '@/lib/db/queries/community-monetization'
 import { CommunityThemeRepository } from '@/lib/db/queries/community-theme'
 import { getTrustCard } from '@/lib/db/queries/community-trust'
@@ -18,8 +20,14 @@ import { UserRepository } from '@/lib/db/queries/user'
 import { getPoolCardSummaries } from '@/lib/pools/activity'
 import { STATIC_PARAMS_PLACEHOLDER } from '@/lib/static-params'
 
-import ClassicHero from './_components/classic/ClassicHero'
+import CommunityTabPanels from './_components/home/CommunityTabPanels'
 import { CommunityPresetSwitch } from './_components/presets/PresetDispatcher'
+import { isCommunityTab } from './_components/shell/community-tabs'
+import CommunityBanners from './_components/shell/CommunityBanners'
+import CommunityHeader from './_components/shell/CommunityHeader'
+import CommunityTabNav from './_components/shell/CommunityTabNav'
+
+type SearchParams = Record<string, string | string[] | undefined>
 
 export async function generateStaticParams() {
   return [{ slug: STATIC_PARAMS_PLACEHOLDER }]
@@ -57,20 +65,33 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 function CommunityLoadingSkeleton() {
   return (
     <div className="space-y-4">
-      <div className="h-36 animate-pulse rounded-2xl bg-muted/50 sm:h-48" />
-      <div className="flex items-end gap-4 px-1">
-        <div className="size-16 animate-pulse rounded-2xl bg-muted" />
-        <div className="space-y-2 pb-1">
-          <div className="h-5 w-40 animate-pulse rounded-sm bg-muted" />
-          <div className="h-3 w-64 animate-pulse rounded-sm bg-muted" />
+      <div className="flex items-start gap-4">
+        <div className="size-16 animate-pulse rounded-xl bg-secondary" />
+        <div className="space-y-2 pt-1">
+          <div className="h-6 w-48 animate-pulse rounded-sm bg-secondary" />
+          <div className="h-3 w-72 animate-pulse rounded-sm bg-secondary" />
         </div>
       </div>
-      <div className="h-96 animate-pulse rounded-2xl border bg-muted/30" />
+      <div className="h-11 animate-pulse rounded-sm bg-secondary/60" />
+      <div className="h-96 animate-pulse rounded-xl bg-secondary/40" />
     </div>
   )
 }
 
-async function CommunityContent({ slug }: { slug: string }) {
+function firstParam(query: SearchParams, key: string): string | undefined {
+  const value = query[key]
+  return Array.isArray(value) ? value[0] : value
+}
+
+/** The render-time clock the home starts from (the client ticks on from here). */
+function requestTimestamp() {
+  return Date.now()
+}
+
+async function CommunityContent({ slug, searchParams }: { slug: string; searchParams: Promise<SearchParams> }) {
+  // Request-time render: the clock and the viewer's session are read here.
+  await connection()
+  const query = await searchParams
   const { data: community } = await CommunityRepository.getBySlug(slug)
   if (!community) {
     notFound()
@@ -79,65 +100,87 @@ async function CommunityContent({ slug }: { slug: string }) {
   const user = await UserRepository.getCurrentUser({ minimal: true })
   const { data: memberRole } = user ? await CommunityRepository.getMemberRole(community.id, user.id) : { data: null }
 
-  const [{ data: members }, { data: markets }, { data: reviews }, monetization, theme, whiteLabel, trust] =
-    await Promise.all([
+  const [{ data: members }, { data: markets }, { data: reviews }, monetization, theme, trust, home] = await Promise.all(
+    [
       CommunityRepository.listMembers(community.id),
       CommunityRepository.listMarketsWithVoteTallies(community.id),
       CommunityRepository.listReviews(community.id),
       CommunityMonetizationRepository.getFields(community.id).catch(() => null),
       CommunityThemeRepository.get(community.id),
-      CommunityIntegrityRepository.getWhiteLabelFlag(community.id),
       getTrustCard(community.id).catch(() => null),
-    ])
+      getCommunityHome(community.id, user?.id ?? null).catch(() => ({
+        currency: null,
+        yourStakes: [],
+        topStakers: [],
+        openMarkets: 0,
+        volume30dMinor: '0',
+      })),
+    ],
+  )
 
-  // Fork: pool totals drive the odds/volume shown on the market cards.
+  // Pool totals drive the odds and volume on every market card.
   const poolSummaries: Record<string, PoolCardSummary> = await getPoolCardSummaries(
     (markets ?? []).map((market) => market.id),
   ).catch(() => ({}))
   const marketsWithPools = (markets ?? []).map((market) => ({ ...market, pool: poolSummaries[market.id] ?? null }))
 
   const isVerified = monetization?.is_verified ?? false
-  const communityWithVerified = {
-    ...community,
-    is_verified: isVerified,
-  }
-  // White-label only takes effect for verified communities (defense in depth —
-  // even if the flag leaks on, an unverified brand can't ride the look).
-  const showWhiteLabel = isVerified && whiteLabel
-
+  const communityWithVerified = { ...community, is_verified: isVerified }
+  const tabParam = firstParam(query, 'tab')
+  const tab = isCommunityTab(tabParam) ? tabParam : 'markets'
+  const previewParam = process.env.NODE_ENV === 'production' ? undefined : firstParam(query, 'preview')
+  const bannerPreview =
+    previewParam === 'paused' || previewParam === 'dormant' || previewParam === 'level0' ? previewParam : null
+  const pinnedMarketId = firstParam(query, 'm') ?? null
   const themeScopeId = `community-theme-${community.id}`
+  const presetProps = {
+    community: communityWithVerified,
+    members: members ?? [],
+    markets: marketsWithPools,
+    reviews: reviews ?? [],
+    memberRole,
+    currentUserId: user?.id ?? null,
+    theme,
+    trust,
+    home,
+    pinnedMarketId,
+    serverNow: requestTimestamp(),
+  }
 
   return (
-    <div id={themeScopeId}>
+    <div id={themeScopeId} className="flex flex-col gap-5">
       <CommunityThemeStyle scopeId={themeScopeId} theme={theme} />
-      {showWhiteLabel && (
-        <div className="mb-4">
-          <WhiteLabelBrandBar communityName={community.name} communityIcon={community.icon_url ?? null} />
-        </div>
-      )}
-      <ClassicHero
+      {isVerified ? (
+        <WhiteLabelBrandBar communityName={community.name} communityIcon={community.icon_url ?? null} />
+      ) : null}
+      <CommunityHeader
         community={communityWithVerified}
         trust={trust}
         memberRole={memberRole}
         currentUserId={user?.id ?? null}
       />
-      <div className="mt-6">
-        <CommunityPresetSwitch
-          preset={theme.layout_preset}
-          community={community as any}
-          members={(members ?? []) as any}
-          markets={marketsWithPools as any}
-          reviews={(reviews ?? []) as any}
-          memberRole={memberRole}
-          currentUserId={user?.id ?? null}
-          theme={theme}
-        />
-      </div>
+      <CommunityBanners trust={trust} isOwner={isOwnerRole(memberRole)} preview={bannerPreview} />
+      <CommunityTabNav
+        slug={community.slug}
+        active={tab}
+        counts={{ markets: home.openMarkets, members: members?.length ?? 0, reviews: reviews?.length ?? 0 }}
+      />
+      {tab === 'markets' ? (
+        <CommunityPresetSwitch preset={theme.layout_preset} {...presetProps} />
+      ) : (
+        <CommunityTabPanels tab={tab} {...presetProps} />
+      )}
     </div>
   )
 }
 
-export default async function CommunityDetailPage({ params }: { params: Promise<{ locale: string; slug: string }> }) {
+export default async function CommunityDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ locale: string; slug: string }>
+  searchParams: Promise<SearchParams>
+}) {
   const { locale, slug } = await params
   setRequestLocale(locale as SupportedLocale)
 
@@ -146,9 +189,9 @@ export default async function CommunityDetailPage({ params }: { params: Promise<
   }
 
   return (
-    <div className="mx-auto max-w-7xl px-2 py-6 sm:px-4 lg:px-8">
+    <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
       <Suspense fallback={<CommunityLoadingSkeleton />}>
-        <CommunityContent slug={slug} />
+        <CommunityContent slug={slug} searchParams={searchParams} />
       </Suspense>
     </div>
   )

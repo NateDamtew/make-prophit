@@ -35,26 +35,10 @@ const config: KnipConfig = {
     'src/lib/pawapay/constants.ts',
     'src/lib/pawapay/types.ts',
     'src/app/[locale]/(platform)/_actions/ledger-order.ts',
-    // Community layout pieces that are temporarily unrendered while only the
-    // Classic preset is active. Classic now ships its own hero/cards/tabs
-    // (the `classic/` dir + self-contained ClassicPreset), so the generic
-    // header, the old tab host, and the paused Newsroom/Sports/Forum presets
-    // have no live importer. All kept in-tree to be restored when the other
-    // layouts are re-enabled.
-    'src/app/[locale]/(platform)/community/[slug]/_components/CommunityHeader.tsx',
-    'src/app/[locale]/(platform)/community/[slug]/_components/CommunityTabs.tsx',
-    'src/app/[locale]/(platform)/community/[slug]/_components/CommunityMarketCard.tsx',
-    'src/app/[locale]/(platform)/community/[slug]/_components/community-tabs/MarketsTab.tsx',
-    'src/app/[locale]/(platform)/community/[slug]/_components/presets/NewsroomPreset.tsx',
-    'src/app/[locale]/(platform)/community/[slug]/_components/presets/SportsPreset.tsx',
-    'src/app/[locale]/(platform)/community/[slug]/_components/presets/ForumPreset.tsx',
-    // Header-only ticker; its sole consumer (CommunityHeader) is paused above.
-    'src/components/community-engagement/ActivityTicker.tsx',
     // Communities v1 shared library (notes/COMMUNITIES-CONCEPT.md). These
     // pieces ship with the component sheet (step 1) and get their first
     // consumer in a later step; drop each ignore in the step that uses it.
-    'src/components/communities/states/Banner.tsx', // step 5/6: review, paused, dormant, level 0
-    'src/components/communities/cards/MarketCardSkeleton.tsx', // step 6: community home loading
+    'src/components/communities/cards/MarketCardSkeleton.tsx', // step 8: embed / overlay loading
     // Upstream's arbitrage second-wallet reconnect hook. Its mount point was
     // upstream's Reown AppKitProvider; our Dynamic provider doesn't mount it
     // (multi-wallet arb is inert under Dynamic). Kept for future syncs.
