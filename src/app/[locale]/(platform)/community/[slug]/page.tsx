@@ -13,6 +13,7 @@ import { CommunityRepository } from '@/lib/db/queries/community'
 import { CommunityIntegrityRepository } from '@/lib/db/queries/community-integrity'
 import { CommunityMonetizationRepository } from '@/lib/db/queries/community-monetization'
 import { CommunityThemeRepository } from '@/lib/db/queries/community-theme'
+import { getTrustCard } from '@/lib/db/queries/community-trust'
 import { UserRepository } from '@/lib/db/queries/user'
 import { getPoolCardSummaries } from '@/lib/pools/activity'
 import { STATIC_PARAMS_PLACEHOLDER } from '@/lib/static-params'
@@ -78,14 +79,16 @@ async function CommunityContent({ slug }: { slug: string }) {
   const user = await UserRepository.getCurrentUser({ minimal: true })
   const { data: memberRole } = user ? await CommunityRepository.getMemberRole(community.id, user.id) : { data: null }
 
-  const [{ data: members }, { data: markets }, { data: reviews }, monetization, theme, whiteLabel] = await Promise.all([
-    CommunityRepository.listMembers(community.id),
-    CommunityRepository.listMarketsWithVoteTallies(community.id),
-    CommunityRepository.listReviews(community.id),
-    CommunityMonetizationRepository.getFields(community.id).catch(() => null),
-    CommunityThemeRepository.get(community.id),
-    CommunityIntegrityRepository.getWhiteLabelFlag(community.id),
-  ])
+  const [{ data: members }, { data: markets }, { data: reviews }, monetization, theme, whiteLabel, trust] =
+    await Promise.all([
+      CommunityRepository.listMembers(community.id),
+      CommunityRepository.listMarketsWithVoteTallies(community.id),
+      CommunityRepository.listReviews(community.id),
+      CommunityMonetizationRepository.getFields(community.id).catch(() => null),
+      CommunityThemeRepository.get(community.id),
+      CommunityIntegrityRepository.getWhiteLabelFlag(community.id),
+      getTrustCard(community.id).catch(() => null),
+    ])
 
   // Fork: pool totals drive the odds/volume shown on the market cards.
   const poolSummaries: Record<string, PoolCardSummary> = await getPoolCardSummaries(
@@ -112,7 +115,12 @@ async function CommunityContent({ slug }: { slug: string }) {
           <WhiteLabelBrandBar communityName={community.name} communityIcon={community.icon_url ?? null} />
         </div>
       )}
-      <ClassicHero community={communityWithVerified} memberRole={memberRole} currentUserId={user?.id ?? null} />
+      <ClassicHero
+        community={communityWithVerified}
+        trust={trust}
+        memberRole={memberRole}
+        currentUserId={user?.id ?? null}
+      />
       <div className="mt-6">
         <CommunityPresetSwitch
           preset={theme.layout_preset}

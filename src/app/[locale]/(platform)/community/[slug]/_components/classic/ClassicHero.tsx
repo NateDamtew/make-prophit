@@ -12,16 +12,22 @@ import {
   Plus,
   Settings as SettingsIcon,
   Share2,
-  Star,
 } from 'lucide-react'
 import Link from 'next/link'
 import { useState, useTransition } from 'react'
 
+import type { CommunityTrust } from '@/components/communities/types'
+
+import { formatRating } from '@/components/communities/format'
+import { LeaderTypeBadge } from '@/components/communities/trust/LeaderTypeBadge'
+import { LevelBadge } from '@/components/communities/trust/LevelBadge'
+import { TrustBlock } from '@/components/communities/trust/TrustBlock'
 import { VerifiedBadge } from '@/components/community-engagement/VerifiedBadge'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { toast } from '@/components/ui/toast'
+import { isCommunityRole, isOwnerRole, ROLE_LABELS } from '@/lib/communities/roles'
 import { cn } from '@/lib/utils'
 
 import { generateInviteAction, joinCommunityAction, leaveCommunityAction } from '../../_actions/community-actions'
@@ -45,6 +51,7 @@ interface ClassicHeroCommunity {
 
 interface Props {
   community: ClassicHeroCommunity
+  trust: CommunityTrust | null
   memberRole: string | null
   currentUserId: string | null
 }
@@ -59,17 +66,16 @@ function formatCompact(n: number): string {
   return String(n)
 }
 
-export default function ClassicHero({ community, memberRole, currentUserId }: Props) {
+export default function ClassicHero({ community, trust, memberRole, currentUserId }: Props) {
   const [isPending, startTransition] = useTransition()
   const [showInviteDialog, setShowInviteDialog] = useState(false)
   const [inviteCode, setInviteCode] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
 
   const isMember = !!memberRole
-  const isAdmin = memberRole === 'admin'
+  const isAdmin = isOwnerRole(memberRole)
   const rating = Number(community.average_rating ?? 0)
-  const roleLabel =
-    memberRole === 'admin' ? 'Admin' : memberRole === 'juror' ? 'Juror' : memberRole === 'member' ? 'Member' : null
+  const roleLabel = isCommunityRole(memberRole) ? ROLE_LABELS[memberRole] : null
 
   function handleJoin() {
     if (!currentUserId) {
@@ -194,10 +200,8 @@ export default function ClassicHero({ community, memberRole, currentUserId }: Pr
                 {roleLabel && (
                   <span
                     className={cn(
-                      'rounded-md px-2 py-0.5 text-2xs font-bold tracking-wider uppercase',
-                      roleLabel === 'Admin' && 'bg-primary text-primary-foreground',
-                      roleLabel === 'Juror' && 'bg-amber-500/20 text-amber-500',
-                      roleLabel === 'Member' && 'bg-muted text-muted-foreground',
+                      'rounded-full px-2 py-0.5 text-[11px] font-semibold',
+                      isAdmin ? 'bg-foreground text-background' : 'bg-secondary text-secondary-foreground',
                     )}
                   >
                     {roleLabel}
@@ -208,40 +212,27 @@ export default function ClassicHero({ community, memberRole, currentUserId }: Pr
                 <p className="mt-2 max-w-2xl text-sm/relaxed text-muted-foreground">{community.description}</p>
               )}
 
-              {/* Stats row with vertical dividers */}
-              <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-3 sm:gap-x-6">
+              {/* Trust strip: level, jurors, hold. Then the numbers. */}
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                {trust ? (
+                  <>
+                    <LevelBadge level={trust.level} name={trust.levelName} size="sm" />
+                    {trust.leaderType && <LeaderTypeBadge type={trust.leaderType} className="h-6 text-[11px]" />}
+                    <TrustBlock trust={trust} variant="mini" />
+                  </>
+                ) : null}
+              </div>
+              <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-3 sm:gap-x-6">
                 <Stat
                   label="Members"
-                  value={`${formatCompact(community.member_count)}/${formatCompact(community.max_members)}`}
+                  value={`${formatCompact(community.member_count)} of ${formatCompact(trust?.caps.maxMembers ?? community.max_members)}`}
                 />
                 <StatDivider />
                 <Stat label="Markets" value={formatCompact(community.market_count)} />
                 <StatDivider />
-                <Stat
-                  label="Rating"
-                  value={community.review_count > 0 ? rating.toFixed(1) : '—'}
-                  valueClassName={community.review_count > 0 ? 'text-primary' : undefined}
-                  icon={
-                    community.review_count > 0 ? (
-                      <span className="flex">
-                        {[1, 2, 3, 4, 5].map((i) => (
-                          <Star
-                            key={i}
-                            className={cn(
-                              'size-3',
-                              i <= Math.round(rating) ? 'fill-primary text-primary' : 'text-muted-foreground/40',
-                            )}
-                          />
-                        ))}
-                      </span>
-                    ) : undefined
-                  }
-                />
+                <Stat label="Rating" value={community.review_count > 0 ? formatRating(rating) : '—'} />
                 <StatDivider />
-                <Stat
-                  label={community.jury_size === 1 ? 'Juror' : 'Jurors'}
-                  value={formatCompact(community.jury_size)}
-                />
+                <Stat label="Jurors" value={formatCompact(trust?.jurors.length ?? community.jury_size)} />
               </div>
             </div>
           </div>
@@ -325,24 +316,11 @@ export default function ClassicHero({ community, memberRole, currentUserId }: Pr
   )
 }
 
-function Stat({
-  label,
-  value,
-  icon,
-  valueClassName,
-}: {
-  label: string
-  value: string
-  icon?: React.ReactNode
-  valueClassName?: string
-}) {
+function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0">
-      <p className="text-2xs font-semibold tracking-wider text-muted-foreground uppercase">{label}</p>
-      <div className="mt-1 flex items-center gap-1.5">
-        <p className={cn('truncate text-base leading-none font-bold', valueClassName)}>{value}</p>
-        {icon}
-      </div>
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="mt-0.5 truncate text-base leading-none font-bold tabular-nums">{value}</p>
     </div>
   )
 }
