@@ -4,7 +4,6 @@ import type { Event } from '@/types'
 
 import { EventRepository } from '@/lib/db/queries/event'
 import { filterHomeEvents, HOME_EVENTS_PAGE_SIZE, isSportsPrimaryHomeEvent } from '@/lib/home-events'
-import { timeStep } from '@/lib/perf-timing'
 
 const HOME_EVENTS_QUERY_BATCH_SIZE = 128
 // Recurring series can swap a listed instance for a later one, so a page may need more candidates
@@ -75,29 +74,27 @@ async function loadHomeEventBatches({
     Math.ceil(Math.max(0, visibleTarget - initialEvents.length) / HOME_EVENTS_QUERY_BATCH_SIZE) +
     HOME_EVENTS_MAX_EXTRA_BATCHES
   for (let batchIndex = 0; batchIndex < maxBatches; batchIndex++) {
-    const { data: rawEvents, error } = await timeStep(`home batch (${tag}, offset ${rawOffset})`, () =>
-      EventRepository.listEvents({
-        tag,
-        mainTag,
-        search,
-        skipLivePricing,
-        sortBy,
-        userId,
-        bookmarked,
-        frequency,
-        status,
-        offset: rawOffset,
-        limit: HOME_EVENTS_QUERY_BATCH_SIZE,
-        locale,
-        sportsSportSlug,
-        sportsSection,
-        hideSports,
-        hideCrypto,
-        hideEarnings,
-        excludeSportsAuxiliary: true,
-        cardPayload: true,
-      }),
-    )
+    const { data: rawEvents, error } = await EventRepository.listEvents({
+      tag,
+      mainTag,
+      search,
+      skipLivePricing,
+      sortBy,
+      userId,
+      bookmarked,
+      frequency,
+      status,
+      offset: rawOffset,
+      limit: HOME_EVENTS_QUERY_BATCH_SIZE,
+      locale,
+      sportsSportSlug,
+      sportsSection,
+      hideSports,
+      hideCrypto,
+      hideEarnings,
+      excludeSportsAuxiliary: true,
+      cardPayload: true,
+    })
 
     if (error) {
       return { data: [], error }
@@ -410,30 +407,26 @@ export async function listHomeEventsPage({
     ? pageEvents.filter((event) => !initiallyPricedEventIds.has(event.id))
     : []
   if (eventsNeedingPrices.length > 0) {
-    const { data: refreshedEvents, error: refreshError } = await timeStep(
-      `home price refresh (${tag}, ${eventsNeedingPrices.length} events)`,
-      () =>
-        EventRepository.getEventsBySlugs(
-          eventsNeedingPrices.map((event) => event.slug),
-          userId,
-          locale,
-          {
-            bookmarked,
-            excludeSportsAuxiliary: true,
-            frequency,
-            hideCrypto,
-            hideEarnings,
-            hideSports,
-            mainTag,
-            search,
-            sortBy,
-            sportsSection,
-            sportsSportSlug,
-            status,
-            tag,
-          },
-          { cardPayload: true },
-        ),
+    const { data: refreshedEvents, error: refreshError } = await EventRepository.getEventsBySlugs(
+      eventsNeedingPrices.map((event) => event.slug),
+      userId,
+      locale,
+      {
+        bookmarked,
+        excludeSportsAuxiliary: true,
+        frequency,
+        hideCrypto,
+        hideEarnings,
+        hideSports,
+        mainTag,
+        search,
+        sortBy,
+        sportsSection,
+        sportsSportSlug,
+        status,
+        tag,
+      },
+      { cardPayload: true },
     )
     const refreshedById = new Map((refreshError ? [] : (refreshedEvents ?? [])).map((event) => [event.id, event]))
     // A selected event may have become a draft or hidden since the cached scan.
