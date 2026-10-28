@@ -1,6 +1,10 @@
 import { and, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm'
 
-import { getConsensusThreshold, getMaxMembersForJurySize } from '@/lib/community-config'
+import type { CommunityRole } from '@/lib/communities/roles'
+import type { CapsOverride, CommunityStatus } from '@/lib/communities/rules'
+
+import { computeJoinGate, getEffectiveCaps, jurySeatsForMembers, majorityOf } from '@/lib/communities/rules'
+import { getCommunitySettings } from '@/lib/communities/settings'
 import { users } from '@/lib/db/schema/auth/tables'
 import {
   communities,
@@ -84,9 +88,17 @@ export const CommunityRepository = {
     creator_id: string
     icon_url?: string
     banner_url?: string
+    currency?: string
+    level?: 0 | 1 | 2
+    leader_type?: string | null
   }) {
     try {
-      const maxMembers = getMaxMembersForJurySize(input.jury_size)
+      // Member cap comes from the trust level (Level 0 unless an application set it);
+      // the jury starts at the first band and grows with the community.
+      const settings = await getCommunitySettings(input.currency ?? 'KES')
+      const level = input.level ?? 0
+      const maxMembers = settings.levels[level].maxMembers
+      const jurySize = Math.max(input.jury_size, jurySeatsForMembers(1, settings.jury.bands))
 
       const [community] = await db
         .insert(communities)
@@ -95,8 +107,12 @@ export const CommunityRepository = {
           slug: input.slug.toLowerCase(),
           description: input.description ?? null,
           type: input.type,
-          jury_size: input.jury_size,
+          jury_size: jurySize,
           max_members: maxMembers,
+          level,
+          level_changed_at: new Date(),
+          leader_type: input.leader_type ?? null,
+          currency: input.currency ?? null,
           rules: input.rules ?? null,
           terms: input.terms ?? null,
           creator_id: input.creator_id,
@@ -268,6 +284,11 @@ export const CommunityRepository = {
           member_count: communities.member_count,
           max_members: communities.max_members,
           type: communities.type,
+          status: communities.status,
+          level: communities.level,
+          currency: communities.currency,
+          caps_override: communities.caps_override,
+          joins_paused: communities.joins_paused,
         })
         .from(communities)
         .where(eq(communities.id, communityId))
@@ -276,8 +297,42 @@ export const CommunityRepository = {
       if (!community) {
         return { data: null, error: 'Community not found.' }
       }
-      if (community.member_count >= community.max_members) {
-        return { data: null, error: 'Community has reached its member limit.' }
+
+      // The join gate: lifecycle status, the level's member cap, and enough
+      // seated jurors for the band the community is about to grow into.
+      const settings = await getCommunitySettings(community.currency ?? 'KES')
+      const level = (community.level === 1 || community.level === 2 ? community.level : 0) as 0 | 1 | 2
+      const override = community.caps_override as CapsOverride | null
+      const caps = getEffectiveCaps(settings.levels[level], override, null)
+      const [seated] = await db
+        .select({ count: sql<number>`COUNT(*)::int` })
+        .from(community_members)
+        .where(
+          and(
+            eq(community_members.community_id, communityId),
+            sql`${community_members.role} IN ('juror', 'admin', 'co_owner')`,
+          ),
+        )
+      const gate = computeJoinGate({
+        memberCount: community.member_count,
+        activeJurors: seated?.count ?? 0,
+        maxMembers: caps.maxMembers,
+        status: community.status as CommunityStatus,
+        bands: settings.jury.bands,
+      })
+      if (!gate.allowed || community.joins_paused) {
+        const reason = community.joins_paused ? 'jury_too_small' : gate.reason
+        const message =
+          reason === 'jury_too_small'
+            ? `Joins are paused until this community seats ${gate.seatsNeeded} jurors.`
+            : reason === 'paused'
+              ? 'This community is paused by Prophit. No new members for now.'
+              : reason === 'dormant'
+                ? 'This community has gone quiet. Joins reopen when the owner posts again.'
+                : reason === 'archived'
+                  ? 'This community is closed.'
+                  : 'Community has reached its member limit.'
+        return { data: null, error: message }
       }
 
       const [member] = await db
@@ -332,7 +387,7 @@ export const CommunityRepository = {
     })
   },
 
-  async setMemberRole(communityId: string, userId: string, role: 'admin' | 'juror' | 'member') {
+  async setMemberRole(communityId: string, userId: string, role: CommunityRole) {
     return await runQuery(async () => {
       const [updated] = await db
         .update(community_members)
@@ -983,7 +1038,8 @@ export const CommunityRepository = {
     const yesCount = votes.filter((v) => v.vote === 'yes').length
     const noCount = votes.filter((v) => v.vote === 'no').length
     const disputedCount = votes.filter((v) => v.vote === 'disputed').length
-    const threshold = getConsensusThreshold(jurySize)
+    // A simple majority of the seats decides (3→2, 5→3, 7→4, 9→5).
+    const threshold = majorityOf(jurySize)
 
     let outcome: 'yes' | 'no' | 'cancelled' | null = null
     let resolvedStatus: 'resolved' | 'disputed' | 'pending' = 'pending'

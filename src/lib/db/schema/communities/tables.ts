@@ -31,7 +31,8 @@ export const communities = pgTable(
     banner_url: text(),
     icon_url: text(),
     type: text().notNull().default('public'), // 'public' | 'private'
-    status: text().notNull().default('active'), // 'active' | 'archived'
+    // 'active' | 'paused' (frozen by Prophit) | 'dormant' | 'archived' — see lib/communities/rules.ts
+    status: text().notNull().default('active'),
     jury_size: smallint().notNull().default(3), // fork: pool communities need at least 3 (see lib/pools/jury.ts)
     max_members: integer().notNull().default(5),
     rules: text(), // Community rules (free text)
@@ -48,12 +49,32 @@ export const communities = pgTable(
     currency: char({ length: 3 }),
     tier_changed_at: timestamp({ withTimezone: true }),
     tier_override: text(),
+    // ─── Trust ladder (fork, Communities v1) ────────────────────────────────
+    // 0 New | 1 Proven | 2 Established. Independent of `tier`. See lib/communities/rules.ts.
+    level: smallint().notNull().default(0),
+    level_changed_at: timestamp({ withTimezone: true }),
+    trust_score: smallint(), // 0–100, null until the nightly job has scored it
+    trust_updated_at: timestamp({ withTimezone: true }),
+    joins_paused: boolean().notNull().default(false),
+    joins_paused_reason: text(),
+    last_market_at: timestamp({ withTimezone: true }),
+    upheld_appeal_count: integer().notNull().default(0),
+    caps_override: jsonb().$type<{
+      maxMembers?: number
+      maxPoolPerMarketMinor?: string
+      maxPerPersonMinor?: string
+    }>(),
+    review_mode_override: text(), // 'every' | 'spot' | 'none' | null
+    leader_type: text(), // 'news' | 'sports' | 'creator' | 'group' | 'event' | null
+    frozen_reason: text(),
+    frozen_at: timestamp({ withTimezone: true }),
     created_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
     updated_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
     slugLowerIdx: uniqueIndex('idx_communities_slug').on(sql`LOWER(${table.slug})`),
     jurySizeCheck: check('chk_jury_size', sql`${table.jury_size} BETWEEN 1 AND 10`),
+    levelCheck: check('chk_communities_level', sql`${table.level} BETWEEN 0 AND 2`),
   }),
 )
 
@@ -71,7 +92,7 @@ export const community_members = pgTable(
     user_id: text()
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
-    role: text().notNull().default('member'), // 'admin' | 'juror' | 'member'
+    role: text().notNull().default('member'), // see lib/communities/roles.ts: admin | co_owner | editor | moderator | juror | member
     joined_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
     invited_by: text().references(() => users.id, { onDelete: 'set null' }),
   },

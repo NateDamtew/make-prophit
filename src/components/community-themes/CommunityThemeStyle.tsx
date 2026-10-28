@@ -23,11 +23,10 @@ const FONT_STACKS: Record<CommunityThemeState['font_hint'], string> = {
 export function CommunityThemeStyle({ scopeId, theme }: CommunityThemeStyleProps) {
   const decls: string[] = []
   if (theme.accent && isSafeAccent(theme.accent)) {
+    // The accent only tints the community's own marks (icon tile, brand bar,
+    // embed stripe). It never replaces `--primary`: the one yellow action per
+    // screen and the headline odds stay the platform's.
     decls.push(`--community-accent: ${theme.accent};`)
-    // Backfill the platform's primary token *inside the scoped wrapper* so any
-    // child component using bg-primary / text-primary picks up the accent
-    // without us having to thread it through props.
-    decls.push(`--primary: ${theme.accent};`)
   }
   decls.push(`--community-font-headline: ${FONT_STACKS[theme.font_hint]};`)
 

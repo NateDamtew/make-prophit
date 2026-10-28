@@ -50,6 +50,19 @@ const config: KnipConfig = {
     'src/app/[locale]/(platform)/community/[slug]/_components/presets/ForumPreset.tsx',
     // Header-only ticker; its sole consumer (CommunityHeader) is paused above.
     'src/components/community-engagement/ActivityTicker.tsx',
+    // Communities v1 shared library (notes/COMMUNITIES-CONCEPT.md). These
+    // pieces ship with the component sheet (step 1) and get their first
+    // consumer in a later step; drop each ignore in the step that uses it.
+    'src/components/communities/lifecycle/HoldCard.tsx', // step 2: market page hold state
+    'src/components/communities/lifecycle/RateResolution.tsx', // step 2: lost panel
+    'src/components/communities/odds/HeadlineOdds.tsx', // step 2: market hero
+    'src/components/communities/odds/PayoutLine.tsx', // step 2: stake sheet
+    'src/components/communities/odds/PoolSplitBar.tsx', // step 2: market hero
+    'src/components/communities/sheet/CommunitySheet.tsx', // step 2: stake sheet
+    'src/components/communities/sheet/sheet-state.ts', // step 2: bottom nav hides while a sheet is open
+    'src/components/communities/odds/OddsChip.tsx', // step 2: position card, verdict summary
+    'src/components/communities/states/Banner.tsx', // step 5/6: review, paused, dormant, level 0
+    'src/components/communities/cards/MarketCardSkeleton.tsx', // step 6: community home loading
     // Upstream's arbitrage second-wallet reconnect hook. Its mount point was
     // upstream's Reown AppKitProvider; our Dynamic provider doesn't mount it
     // (multi-wallet arb is inert under Dynamic). Kept for future syncs.

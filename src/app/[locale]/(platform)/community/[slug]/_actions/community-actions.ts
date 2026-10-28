@@ -3,8 +3,11 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
+import type { CommunityRole } from '@/lib/communities/roles'
+
 import { recordCommunityEvent } from '@/lib/communities/events'
 import { dispatchCommunityNotification } from '@/lib/communities/notifications'
+import { can, isCommunityRole, isJurorRole } from '@/lib/communities/roles'
 import { DEFAULT_ERROR_MESSAGE } from '@/lib/constants'
 import { CommunityRepository } from '@/lib/db/queries/community'
 import { UserRepository } from '@/lib/db/queries/user'
@@ -183,7 +186,7 @@ export async function castJuryVoteAction(
 
   // Must be a juror or admin
   const memberRole = await CommunityRepository.getMemberRole(communityId, user.id)
-  if (!memberRole.data || !['juror', 'admin'].includes(memberRole.data)) {
+  if (!isJurorRole(memberRole.data)) {
     return { error: 'Only jury members can vote.', data: null }
   }
 
@@ -265,7 +268,7 @@ export async function castJuryVoteAction(
 export async function setMemberRoleAction(
   communityId: string,
   targetUserId: string,
-  role: 'admin' | 'juror' | 'member',
+  role: CommunityRole,
   communitySlug: string,
 ) {
   const user = await UserRepository.getCurrentUser({ disableCookieCache: true, minimal: true })
@@ -273,10 +276,14 @@ export async function setMemberRoleAction(
     return { error: 'Unauthenticated.', data: null }
   }
 
-  // Only admin can change roles
+  if (!isCommunityRole(role)) {
+    return { error: 'Unknown role.', data: null }
+  }
+
+  // Only the owner (or a co-owner) can change roles
   const memberRole = await CommunityRepository.getMemberRole(communityId, user.id)
-  if (memberRole.data !== 'admin') {
-    return { error: 'Only community admins can change member roles.', data: null }
+  if (!can(memberRole.data, 'members')) {
+    return { error: 'Only the community owner can change member roles.', data: null }
   }
 
   const result = await CommunityRepository.setMemberRole(communityId, targetUserId, role)
@@ -295,8 +302,8 @@ export async function generateInviteAction(communityId: string) {
   }
 
   const memberRole = await CommunityRepository.getMemberRole(communityId, user.id)
-  if (memberRole.data !== 'admin') {
-    return { error: 'Only admins can generate invite links.', data: null }
+  if (!can(memberRole.data, 'members')) {
+    return { error: 'Only the community owner can generate invite links.', data: null }
   }
 
   const expiresAt = new Date()

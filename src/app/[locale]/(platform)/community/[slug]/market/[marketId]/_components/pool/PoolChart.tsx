@@ -188,9 +188,9 @@ export default function PoolChart({ market, summary, isMobile, outcomeLabels }: 
         <div className="flex flex-wrap items-center justify-between gap-3">
           <PoolMetaInformation
             totalMinor={totalMinor}
+            stakeCount={summary?.pool.stakeCount ?? 0}
             currency={summary?.pool.currency ?? null}
             endDate={market.resolution_date}
-            currentTimestamp={nowMs}
           />
           {hasChartData ? (
             <EventChartControls

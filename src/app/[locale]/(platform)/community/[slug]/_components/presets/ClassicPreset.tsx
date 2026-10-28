@@ -4,6 +4,7 @@ import { Activity, ChevronDown, Info, Plus, Scale, Star, TrendingUp, Users } fro
 import Link from 'next/link'
 import { useMemo, useState } from 'react'
 
+import { EmptyState } from '@/components/communities/states/EmptyState'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { useTabIndicatorPosition } from '@/hooks/useTabIndicatorPosition'
@@ -120,6 +121,7 @@ export default function ClassicPreset({
             markets={sortedMarkets}
             communitySlug={community.slug}
             communityIconUrl={community.icon_url ?? null}
+            jurySize={community.jury_size}
             isAdmin={isAdmin}
           />
         )}
@@ -164,44 +166,45 @@ function MarketsGrid({
   markets,
   communitySlug,
   communityIconUrl,
+  jurySize,
   isAdmin,
 }: {
   markets: PresetMarket[]
   communitySlug: string
   communityIconUrl: string | null
+  jurySize: number
   isAdmin: boolean
 }) {
   if (markets.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center gap-4 rounded-2xl border border-dashed bg-card/50 py-16 text-center">
-        <div className="flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary">
-          <TrendingUp className="size-5" />
-        </div>
-        <div className="max-w-sm">
-          <p className="text-lg font-semibold">No new proposals yet</p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {isAdmin
-              ? 'Stake your reputation and create the next prediction market for this community.'
-              : 'The community admin is curating markets. Check back soon.'}
-          </p>
-        </div>
-        {isAdmin && (
-          <Button
-            size="sm"
-            nativeButton={false}
-            render={<Link href={`/community/${communitySlug}/markets/new` as any} />}
-          >
+    return isAdmin ? (
+      <EmptyState
+        title="Your members are waiting"
+        body="Add a market from your suggestions, or write your own. Each one is checked by Prophit before it opens."
+        action={
+          <Button nativeButton={false} render={<Link href={`/community/${communitySlug}/markets/new` as any} />}>
             <Plus className="mr-1.5 size-3.5" />
-            Create First Market
+            Create a market
           </Button>
-        )}
-      </div>
+        }
+      />
+    ) : (
+      <EmptyState
+        dashed
+        title="No markets open right now"
+        body="New markets show up here as soon as the community posts them."
+      />
     )
   }
   return (
     <div className="grid gap-3 sm:grid-cols-2">
       {markets.map((m) => (
-        <PoolMarketCard key={m.id} market={m} communitySlug={communitySlug} communityIconUrl={communityIconUrl} />
+        <PoolMarketCard
+          key={m.id}
+          market={m}
+          communitySlug={communitySlug}
+          communityIconUrl={communityIconUrl}
+          jurySize={jurySize}
+        />
       ))}
     </div>
   )

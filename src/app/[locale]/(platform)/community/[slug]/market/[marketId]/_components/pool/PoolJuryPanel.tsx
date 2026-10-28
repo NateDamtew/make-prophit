@@ -1,14 +1,18 @@
 'use client'
 
-import { AlertCircleIcon, CheckCircleIcon, ExternalLinkIcon, GavelIcon, XCircleIcon } from 'lucide-react'
+import { AlertCircleIcon, GavelIcon } from 'lucide-react'
 import { useExtracted, useLocale } from 'next-intl'
 import { useMemo, useState, useTransition } from 'react'
 
 import { castJuryVoteAction } from '@/app/[locale]/(platform)/community/[slug]/_actions/community-actions'
+import { JuryProgress } from '@/components/communities/lifecycle/JuryProgress'
+import { VerdictCard } from '@/components/communities/lifecycle/VerdictCard'
 import { EvidencePanel } from '@/components/community-engagement/EvidencePanel'
 import { Button } from '@/components/ui/button'
 import { toast } from '@/components/ui/toast'
 import { useNowTimestamp } from '@/hooks/useNowTimestamp'
+import { isJurorRole } from '@/lib/communities/roles'
+import { majorityOf } from '@/lib/communities/rules'
 import { cn } from '@/lib/utils'
 
 import type { PoolCommunityRecord, PoolJuryVote, PoolMarketRecord } from './pool-market-types'
@@ -33,31 +37,6 @@ interface PoolJuryPanelProps {
   outcomeLabels: { yes: string; no: string }
 }
 
-function VoteBadge({ vote, labels }: { vote: string; labels: { yes: string; no: string; disputed: string } }) {
-  if (vote === 'yes') {
-    return (
-      <span className="flex items-center gap-1 rounded-full bg-yes/15 px-1.5 py-0.5 text-2xs font-medium text-yes-foreground">
-        <CheckCircleIcon className="size-2.5" />
-        {labels.yes.toUpperCase()}
-      </span>
-    )
-  }
-  if (vote === 'no') {
-    return (
-      <span className="flex items-center gap-1 rounded-full bg-no/15 px-1.5 py-0.5 text-2xs font-medium text-no-foreground">
-        <XCircleIcon className="size-2.5" />
-        {labels.no.toUpperCase()}
-      </span>
-    )
-  }
-  return (
-    <span className="flex items-center gap-1 rounded-full bg-amber-500/10 px-1.5 py-0.5 text-2xs font-medium text-amber-600">
-      <AlertCircleIcon className="size-2.5" />
-      {labels.disputed.toUpperCase()}
-    </span>
-  )
-}
-
 export default function PoolJuryPanel({
   market,
   community,
@@ -74,8 +53,8 @@ export default function PoolJuryPanel({
   const [evidenceUrl, setEvidenceUrl] = useState('')
   const [isSubmitting, startTransition] = useTransition()
 
-  const isJuror = memberRole === 'juror' || memberRole === 'admin'
-  const canManageEvidence = memberRole === 'admin' || memberRole === 'juror'
+  const isJuror = isJurorRole(memberRole)
+  const canManageEvidence = isJuror
   const isResolved = market.status === 'resolved' || market.status === 'cancelled'
   const resolutionDue =
     market.resolution_date && nowTimestamp !== null ? new Date(market.resolution_date).getTime() <= nowTimestamp : false
@@ -89,14 +68,11 @@ export default function PoolJuryPanel({
     const disputed = votes.filter((vote) => vote.vote === 'disputed').length
     return { yes, no, disputed, total: yes + no + disputed }
   }, [votes])
-  const consensusLabel =
-    community.jury_size <= 2
-      ? t('Unanimous')
-      : t('{required} of {total}', {
-          required: String(Math.ceil(community.jury_size * 0.75)),
-          total: String(community.jury_size),
-        })
-  const labels = { yes: outcomeLabels.yes, no: outcomeLabels.no, disputed: t('Disputed') }
+  const required = majorityOf(community.jury_size)
+  const consensusLabel = t('{required} of {total}', {
+    required: String(required),
+    total: String(community.jury_size),
+  })
 
   function handleSubmit() {
     if (!voteChoice) {
@@ -236,57 +212,58 @@ export default function PoolJuryPanel({
           </p>
         )}
 
-        <div>
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-semibold">{t('Jury votes')}</span>
-            <span className="text-xs text-muted-foreground">
-              {tally.yes} {outcomeLabels.yes} · {tally.no} {outcomeLabels.no}
-              {tally.disputed > 0 ? ` · ${tally.disputed} ${t('Disputed')}` : ''}
-            </span>
-          </div>
+        <div className="flex flex-col gap-3">
+          {!isResolved && (
+            <JuryProgress
+              seats={community.jury_size}
+              voted={tally.total}
+              required={required}
+              caption={
+                market.resolution_date
+                  ? t('Verdicts due by {time}. If the jury is late, everyone is refunded.', {
+                      time: new Intl.DateTimeFormat(locale, {
+                        weekday: 'short',
+                        day: 'numeric',
+                        month: 'short',
+                        hour: 'numeric',
+                        minute: '2-digit',
+                      }).format(new Date(market.resolution_date)),
+                    })
+                  : null
+              }
+            />
+          )}
           {votes.length === 0 ? (
             <p className="py-2 text-sm text-muted-foreground">
               {isJuror ? t('No votes yet. Be the first to cast yours.') : t('Jury members vote near resolution time.')}
             </p>
           ) : (
-            <ul className="mt-1 divide-y divide-border border-t">
+            <div className="grid gap-3 lg:grid-cols-2">
               {votes.map((vote) => (
-                <li key={vote.id} className="flex items-start gap-3 py-3">
-                  <div className="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted text-xs font-medium">
-                    {vote.juror_image ? (
-                      <img src={vote.juror_image} alt="" className="size-8 object-cover" />
-                    ) : (
-                      (vote.juror_username?.[0] ?? '?').toUpperCase()
-                    )}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-sm font-semibold">
-                        {vote.juror_username ? `@${vote.juror_username}` : t('Anonymous')}
-                      </span>
-                      <VoteBadge vote={vote.vote} labels={labels} />
-                      <span className="text-xs text-muted-foreground">
-                        {new Intl.DateTimeFormat(locale, { month: 'short', day: 'numeric' }).format(
-                          new Date(vote.voted_at),
-                        )}
-                      </span>
-                    </div>
-                    <p className="mt-1 text-sm text-muted-foreground">{vote.reasoning}</p>
-                    {vote.evidence_url && (
-                      <a
-                        href={vote.evidence_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="mt-1 inline-flex items-center gap-1 text-xs text-primary hover:underline"
-                      >
-                        <ExternalLinkIcon className="size-3" />
-                        {t('Evidence')}
-                      </a>
-                    )}
-                  </div>
-                </li>
+                <VerdictCard
+                  key={vote.id}
+                  state="revealed"
+                  juror={{
+                    userId: vote.juror_id ?? vote.id,
+                    username: vote.juror_username,
+                    image: vote.juror_image,
+                    rating: null,
+                    markets: null,
+                  }}
+                  vote={
+                    vote.vote === 'yes'
+                      ? outcomeLabels.yes.toUpperCase()
+                      : vote.vote === 'no'
+                        ? outcomeLabels.no.toUpperCase()
+                        : t('Disputed').toUpperCase()
+                  }
+                  side={vote.vote === 'yes' ? 'yes' : vote.vote === 'no' ? 'no' : null}
+                  reason={vote.reasoning}
+                  source={vote.evidence_url ? { type: 'link', url: vote.evidence_url } : null}
+                  votedAt={vote.voted_at}
+                />
               ))}
-            </ul>
+            </div>
           )}
         </div>
 

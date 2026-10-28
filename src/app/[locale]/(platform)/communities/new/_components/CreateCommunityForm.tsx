@@ -8,7 +8,7 @@ import { createCommunityAction } from '@/app/[locale]/(platform)/community/[slug
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { toast } from '@/components/ui/toast'
-import { getMaxMembersForJurySize } from '@/lib/community-config'
+import { DEFAULT_LEVEL_CAPS, majorityOf } from '@/lib/communities/rules'
 import { MIN_POOL_JURY_SIZE } from '@/lib/pools/jury'
 import { cn } from '@/lib/utils'
 
@@ -63,7 +63,9 @@ export default function CreateCommunityForm() {
   const [slugEdited, setSlugEdited] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const maxMembers = getMaxMembersForJurySize(jurySize)
+  // New communities start at Level 0; the cap grows with the trust level, not the jury size.
+  const maxMembers = DEFAULT_LEVEL_CAPS[0].maxMembers
+  const votesNeeded = majorityOf(jurySize)
 
   function handleNameChange(value: string) {
     setName(value)
@@ -265,9 +267,7 @@ export default function CreateCommunityForm() {
                   <span className="font-medium">Up to {maxMembers} members</span>
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  {jurySize <= 2
-                    ? 'Requires unanimous consent to resolve markets.'
-                    : `Requires ${Math.ceil(jurySize * 0.75)} of ${jurySize} jurors (>75%) to resolve markets.`}
+                  {`${votesNeeded} of ${jurySize} jurors must agree to resolve a market. The jury grows as the community does.`}
                 </p>
               </div>
             </div>
@@ -319,9 +319,7 @@ export default function CreateCommunityForm() {
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Consensus</p>
-                  <p className="font-medium">
-                    {jurySize <= 2 ? 'Unanimous' : `>${(Math.ceil(jurySize * 0.75) * 100) / jurySize}%`}
-                  </p>
+                  <p className="font-medium">{`${votesNeeded} of ${jurySize} must agree`}</p>
                 </div>
               </div>
 

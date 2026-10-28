@@ -13,13 +13,15 @@ import { useTradingOnboarding } from '@/app/[locale]/(platform)/_providers/Tradi
 import EventOrderPanelOutcomeButton from '@/app/[locale]/(platform)/event/[slug]/_components/EventOrderPanelOutcomeButton'
 import EventOrderPanelResolvedMarketDisplay from '@/app/[locale]/(platform)/event/[slug]/_components/EventOrderPanelResolvedMarketDisplay'
 import EventOrderPanelSubmitButton from '@/app/[locale]/(platform)/event/[slug]/_components/EventOrderPanelSubmitButton'
+import { AmountChips, defaultChipValues } from '@/components/communities/stake/AmountChips'
+import { AmountInput } from '@/components/communities/stake/AmountInput'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
 import { toast } from '@/components/ui/toast'
 import { useAppKit } from '@/hooks/useAppKit'
 import { Link } from '@/i18n/navigation'
-import { formatPoolMoney, majorInputToMinor, minorToMajorNumber } from '@/lib/pools/format'
+import { formatPoolMoney, minorToMajorNumber } from '@/lib/pools/format'
 import { estimatePayout } from '@/lib/pools/math'
 import { cn } from '@/lib/utils'
 import { usePortfolioValueVisibility } from '@/stores/usePortfolioValueVisibility'
@@ -29,7 +31,6 @@ import type { PoolCommunityRecord, PoolMarketRecord, PoolSide } from './pool-mar
 
 import { PoolMarketIcon } from './PoolMarketHeader'
 import PoolOrderPanelEarnings from './PoolOrderPanelEarnings'
-import PoolOrderPanelInput from './PoolOrderPanelInput'
 import { useInvalidatePool } from './usePoolMarketData'
 
 /**
@@ -239,6 +240,7 @@ export default function PoolOrderPanel({
   const [acceptTerms, setAcceptTerms] = useState(false)
   const [sharePayload, setSharePayload] = useState<ShareCardPayload | null>(null)
   const [isShareOpen, setIsShareOpen] = useState(false)
+  const areValuesHidden = usePortfolioValueVisibility((state) => state.isHidden)
 
   const wrapperClassName = cn(
     { 'rounded-xl border lg:w-85': !isMobile },
@@ -269,10 +271,9 @@ export default function PoolOrderPanel({
   const balanceMinor = ledgerUser ? BigInt(ledgerUser.availableMinor) : null
   const minStakeMinor = BigInt(summary.minStakeMinor)
   const minStakeMajor = minorToMajorNumber(minStakeMinor)
-  const chipValues = [1, 2, 10, 20].map((multiplier) => minStakeMajor * multiplier)
-  const stepValue = Math.max(1, minStakeMajor / 5)
-  const amountNumber = Number.parseFloat(amount.replace(/,/g, '')) || 0
-  const amountMinor = majorInputToMinor(amount.replace(/,/g, '')) ?? 0n
+  const chipValues = defaultChipValues(minStakeMajor)
+  const amountNumber = Number.parseInt(amount, 10) || 0
+  const amountMinor = BigInt(amountNumber) * 100n
   const yesPrice = pool.odds.yes
   const noPrice = pool.odds.no
   const totalYes = BigInt(pool.totalYes)
@@ -423,26 +424,39 @@ export default function PoolOrderPanel({
               />
             </div>
 
-            <PoolOrderPanelInput
-              isMobile={isMobile}
-              amount={amount}
-              amountNumber={amountNumber}
-              currency={currency}
-              balanceMinor={balanceMinor}
-              isBalanceLoading={isSummaryLoading}
-              chipValues={chipValues}
-              stepValue={stepValue}
-              maxAmount={balanceMinor === null ? 0 : minorToMajorNumber(balanceMinor)}
-              inputRef={inputRef}
-              onAmountChange={setAmount}
-              shouldShake={shouldShake}
-            />
-
-            {belowMinimum && (
-              <p className="mb-3 text-xs font-medium text-destructive">
-                {t('Minimum stake is {min}', { min: formatPoolMoney(minStakeMinor, currency) })}
-              </p>
-            )}
+            <div className="mb-3 flex flex-col gap-2">
+              <AmountInput
+                value={amount}
+                onChange={setAmount}
+                currency={currency}
+                inputRef={inputRef}
+                attention={insufficientBalance}
+                className={cn({ 'animate-order-shake': shouldShake })}
+                message={
+                  belowMinimum
+                    ? t('The smallest stake is {min}.', { min: formatPoolMoney(minStakeMinor, currency) })
+                    : null
+                }
+              />
+              <AmountChips
+                values={chipValues}
+                selected={amountNumber > 0 ? amountNumber : null}
+                onPick={(value) => {
+                  setAmount(String(value))
+                  inputRef.current?.focus()
+                }}
+              />
+              {balanceMinor !== null && (
+                <p className="flex items-center justify-between text-xs text-muted-foreground tabular-nums">
+                  <span>
+                    {t('Balance')}{' '}
+                    <strong className="font-semibold text-foreground">
+                      {areValuesHidden ? '****' : formatPoolMoney(balanceMinor, currency)}
+                    </strong>
+                  </span>
+                </p>
+              )}
+            </div>
             {!needsLogin && !hasLedgerBalance && (
               <p className="mb-3 text-xs text-muted-foreground">
                 {t('Deposit with mobile money to start trading in {currency}.', { currency })}

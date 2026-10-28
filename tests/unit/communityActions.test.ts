@@ -330,7 +330,7 @@ describe('setMemberRoleAction', () => {
     const { setMemberRoleAction } =
       await import('@/app/[locale]/(platform)/community/[slug]/_actions/community-actions')
     const result = await setMemberRoleAction('C1', 'u2', 'juror', 'slug')
-    expect(result.error).toMatch(/community admins/i)
+    expect(result.error).toMatch(/community owner/i)
   })
 
   it('allows admin to promote member', async () => {
@@ -355,7 +355,7 @@ describe('generateInviteAction', () => {
     const { generateInviteAction } =
       await import('@/app/[locale]/(platform)/community/[slug]/_actions/community-actions')
     const result = await generateInviteAction('C1')
-    expect(result.error).toMatch(/admins/i)
+    expect(result.error).toMatch(/owner/i)
   })
 
   it('generates invite for admin with 7-day expiry', async () => {
