@@ -3,9 +3,8 @@ import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm'
 import type { ReconciliationStatus } from '@/lib/db/schema/ledger/reconciliation'
 import type { MobileMoneySettings } from '@/lib/mobile-money/settings'
 
-import { getAdminIdentifierLists } from '@/lib/admin'
+import { listAdminUserIds } from '@/lib/admin-users'
 import { SettingsRepository } from '@/lib/db/queries/settings'
-import { users } from '@/lib/db/schema/auth/tables'
 import { reconciliation_runs } from '@/lib/db/schema/ledger/reconciliation'
 import { ledger_accounts, ledger_entries, ledger_reservations, payment_intents } from '@/lib/db/schema/ledger/tables'
 import { notifications } from '@/lib/db/schema/notifications/tables'
@@ -315,46 +314,10 @@ async function pauseCurrency(currency: string, reason: string, settings: MobileM
 }
 
 async function notifyAdmins(title: string, description: string) {
-  const lists = getAdminIdentifierLists()
-  const wallets = lists.wallets.map((w) => w.toLowerCase())
-  const emails = lists.emails.map((e) => e.toLowerCase())
-  const usernames = (lists as { usernames?: string[] }).usernames?.map((u) => u.toLowerCase()) ?? []
-  const conditions = []
-  if (wallets.length) {
-    conditions.push(
-      sql`LOWER(${users.address}) IN (${sql.join(
-        wallets.map((w) => sql`${w}`),
-        sql`, `,
-      )})`,
-    )
-  }
-  if (emails.length) {
-    conditions.push(
-      sql`LOWER(${users.email}) IN (${sql.join(
-        emails.map((e) => sql`${e}`),
-        sql`, `,
-      )})`,
-    )
-  }
-  if (usernames.length) {
-    conditions.push(
-      sql`LOWER(${users.username}) IN (${sql.join(
-        usernames.map((u) => sql`${u}`),
-        sql`, `,
-      )})`,
-    )
-  }
-  if (conditions.length === 0) {
-    return
-  }
-  const admins = await db
-    .select({ id: users.id })
-    .from(users)
-    .where(or(...conditions))
-  for (const admin of admins) {
+  for (const adminId of await listAdminUserIds()) {
     try {
       await db.insert(notifications).values({
-        user_id: admin.id,
+        user_id: adminId,
         category: 'system',
         title,
         description,

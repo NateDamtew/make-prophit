@@ -7,10 +7,7 @@
  *   - jury vote handler (resolution events)
  */
 
-import { inArray, or, sql } from 'drizzle-orm'
-
-import { getAdminIdentifierLists } from '@/lib/admin'
-import { users } from '@/lib/db/schema/auth/tables'
+import { listAdminUserIds } from '@/lib/admin-users'
 import { notifications } from '@/lib/db/schema/notifications/tables'
 import { db } from '@/lib/drizzle'
 
@@ -48,31 +45,7 @@ async function createNotification(input: CreateNotificationInput) {
 
 async function getAllPlatformAdmins(): Promise<string[]> {
   try {
-    const { wallets, emails, usernames } = getAdminIdentifierLists()
-    if (wallets.length === 0 && emails.length === 0 && usernames.length === 0) {
-      return []
-    }
-
-    const conditions: any[] = []
-    if (emails.length > 0) {
-      conditions.push(inArray(sql`LOWER(${users.email})`, emails))
-    }
-    if (wallets.length > 0) {
-      conditions.push(inArray(sql`LOWER(${users.address})`, wallets))
-    }
-    if (usernames.length > 0) {
-      conditions.push(inArray(sql`LOWER(${users.username})`, usernames))
-    }
-    if (conditions.length === 0) {
-      return []
-    }
-
-    const rows = await db
-      .select({ id: users.id })
-      .from(users)
-      .where(or(...conditions))
-
-    return rows.map((r) => r.id)
+    return await listAdminUserIds()
   } catch (err) {
     console.error('[getAllPlatformAdmins] Failed:', err)
     return []

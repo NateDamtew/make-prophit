@@ -1,3 +1,13 @@
+/**
+ * Platform admins are the wallets in ADMIN_WALLETS, and a user is an admin only
+ * when one of those wallets is linked to their account through Sign-In With
+ * Ethereum (the `wallets` table, written only after a signature check).
+ *
+ * Nothing a user can edit grants admin: not `users.address` (better-auth's
+ * `name`), not the email (saved unverified from Settings) and not the username.
+ * Matching those let any account make itself an admin.
+ */
+
 function parseAdminWalletsEnv(value: string): string[] {
   const trimmed = value.trim()
 
@@ -8,7 +18,7 @@ function parseAdminWalletsEnv(value: string): string[] {
   try {
     const parsed = JSON.parse(trimmed)
     if (Array.isArray(parsed)) {
-      return parsed.map((item) => String(item).toLowerCase())
+      return parsed.map((item) => String(item).trim().toLowerCase()).filter(Boolean)
     }
   } catch {
     //
@@ -20,64 +30,15 @@ function parseAdminWalletsEnv(value: string): string[] {
     .filter(Boolean)
 }
 
-let cachedAdminWallets: string[] | null = null
-let cachedAdminEmails: string[] | null = null
-
-function getAdminWallets(): string[] {
-  if (cachedAdminWallets) {
-    return cachedAdminWallets
-  }
-
-  const envValue = process.env.ADMIN_WALLETS
-  if (!envValue) {
-    cachedAdminWallets = []
-    return cachedAdminWallets
-  }
-
-  cachedAdminWallets = parseAdminWalletsEnv(envValue)
-  return cachedAdminWallets
+export function getAdminWallets(): string[] {
+  return parseAdminWalletsEnv(process.env.ADMIN_WALLETS ?? '')
 }
 
-function getAdminEmails(): string[] {
-  if (cachedAdminEmails) {
-    return cachedAdminEmails
-  }
-
-  const envValue = process.env.ADMIN_EMAILS
-  if (!envValue) {
-    cachedAdminEmails = ['nathandamtew@gmail.com']
-    return cachedAdminEmails
-  }
-
-  cachedAdminEmails = parseAdminWalletsEnv(envValue)
-  return cachedAdminEmails
-}
-
-function getAdminUsernames(): string[] {
-  return ['natedamtew']
-}
-
-export function isAdminWallet(addressOrEmail?: string | null): boolean {
-  if (!addressOrEmail) {
+/** Whether `address` is one of the ADMIN_WALLETS. Says nothing about who controls it; see admin-users.ts. */
+export function isAdminWallet(address?: string | null): boolean {
+  if (!address) {
     return false
   }
 
-  const normalized = addressOrEmail.toLowerCase()
-  if (normalized.includes('@')) {
-    return getAdminEmails().includes(normalized)
-  }
-
-  return getAdminWallets().includes(normalized) || getAdminUsernames().includes(normalized)
-}
-
-/**
- * Returns the lists used to identify admins. Useful for queries that
- * need to fetch admin user rows (e.g. for notifications).
- */
-export function getAdminIdentifierLists() {
-  return {
-    wallets: getAdminWallets(),
-    emails: getAdminEmails(),
-    usernames: getAdminUsernames(),
-  }
+  return getAdminWallets().includes(address.trim().toLowerCase())
 }
