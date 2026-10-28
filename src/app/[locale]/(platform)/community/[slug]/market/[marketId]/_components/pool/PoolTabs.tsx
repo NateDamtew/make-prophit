@@ -21,7 +21,7 @@ import { communityPath } from './pool-market-types'
 import { usePoolActivity, usePoolHolders } from './usePoolMarketData'
 
 /**
- * Comments / Top Holders / Activity tabs for pool markets, styled like the
+ * Comments / Top stakers / Activity tabs for pool markets, styled like the
  * platform `EventTabs`. Holders and activity come from pool_stakes; comments
  * are the community discussion thread.
  */
@@ -41,7 +41,7 @@ function PoolTabSelector({ activeTab }: { activeTab: PoolTabKey }) {
   const t = useExtracted()
   const tabs: Array<{ key: PoolTabKey; label: string }> = [
     { key: 'comments', label: t('Comments') },
-    { key: 'holders', label: t('Top Holders') },
+    { key: 'holders', label: t('Top stakers') },
     { key: 'activity', label: t('Activity') },
   ]
 
@@ -93,7 +93,7 @@ function HolderColumn({
         {isLoading ? (
           Array.from({ length: 3 }).map((_, index) => <ProfileLinkSkeleton key={index} />)
         ) : !holders || holders.length === 0 ? (
-          <p className="py-2 text-sm text-muted-foreground">{t('No holders found')}</p>
+          <p className="py-2 text-sm text-muted-foreground">{t('No stakers yet')}</p>
         ) : (
           holders.map((holder) => (
             <ProfileLink
@@ -133,14 +133,14 @@ function PoolTopHolders({
     <div className="mt-6">
       <div className="grid grid-cols-2 gap-6">
         <HolderColumn
-          title={t('{outcome} holders', { outcome: outcomeLabels.yes })}
+          title={t('{outcome} stakers', { outcome: outcomeLabels.yes })}
           holders={holdersQuery.data?.yes}
           isLoading={isLoading}
           currency={currency}
           amountClassName="text-yes"
         />
         <HolderColumn
-          title={t('{outcome} holders', { outcome: outcomeLabels.no })}
+          title={t('{outcome} stakers', { outcome: outcomeLabels.no })}
           holders={holdersQuery.data?.no}
           isLoading={isLoading}
           currency={currency}
@@ -179,7 +179,7 @@ function PoolActivityRow({
       }
       inlineContent={
         <>
-          <span className="text-foreground">{t('bought')} </span>
+          <span className="text-foreground">{t('staked')} </span>
           <span className={cn('font-semibold', item.outcome === 'yes' ? 'text-yes' : 'text-no')}>
             {formatPoolMoney(item.amountMinor, item.currency)}{' '}
             {item.outcome === 'yes' ? outcomeLabels.yes : outcomeLabels.no}{' '}

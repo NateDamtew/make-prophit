@@ -63,7 +63,7 @@ function useShareFeedback() {
   return { shareSuccess, setShareSuccess }
 }
 
-export function PoolMarketIcon({
+function PoolMarketIcon({
   market,
   community,
   className,

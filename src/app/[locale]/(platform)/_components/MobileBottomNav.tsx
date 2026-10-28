@@ -23,6 +23,7 @@ import type { SupportedLocale } from '@/i18n/locales'
 import SearchDiscoveryContent from '@/app/[locale]/(platform)/_components/SearchDiscoveryContent'
 import { MOBILE_BOTTOM_NAV_OFFSET } from '@/app/[locale]/(platform)/_lib/mobile-bottom-nav'
 import AppLink from '@/components/AppLink'
+import { useSheetState } from '@/components/communities/sheet/sheet-state'
 import LocaleFlag from '@/components/LocaleFlag'
 import PwaInstallDialog from '@/components/PwaInstallDialog'
 import { Button } from '@/components/ui/button'
@@ -86,6 +87,7 @@ function MobileBottomNavContent({ pathname }: MobileBottomNavContentProps) {
   const { data: session } = useSession()
   const user = useUser()
   const hasHydrated = useHasHydrated()
+  const sheetOpen = useSheetState((state) => state.openCount > 0)
   const { canShowInstallUi, isIos, isPrompting, requestInstall } = usePwaInstall()
   const {
     isSearchOpen,
@@ -305,7 +307,7 @@ function MobileBottomNavContent({ pathname }: MobileBottomNavContentProps) {
       <PwaInstallDialog open={isInstallDialogOpen} onOpenChange={setIsInstallDialogOpen} />
 
       <nav
-        className="fixed inset-x-0 z-40 lg:hidden"
+        className={cn('fixed inset-x-0 z-40 lg:hidden', sheetOpen && 'hidden')}
         style={{ bottom: 'calc(env(safe-area-inset-bottom) + 0.5rem)' }}
         aria-label={t('Primary navigation')}
       >

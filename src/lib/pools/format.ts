@@ -31,9 +31,3 @@ export function formatPoolMoney(
   const body = formatMinorUnitsForDisplay(toBigInt(minor), { trimWholeNumbers: true })
   return currency ? `${body} ${currency}` : body
 }
-
-/** Minor units → plain number of major units (for inputs and arithmetic in the UI). */
-export function minorToMajorNumber(minor: bigint | string | number | null | undefined): number {
-  const value = toBigInt(minor)
-  return Number(value) / 100
-}

@@ -42,6 +42,8 @@ export const LEDGER_ACCOUNT_KINDS = [
   'fx_clearing',
   'settlement',
   'suspense',
+  // Fork: owner / juror pay owed to a user with no ledger profile in the pool's currency.
+  'earnings_payable',
 ] as const
 export type LedgerAccountKind = (typeof LEDGER_ACCOUNT_KINDS)[number]
 

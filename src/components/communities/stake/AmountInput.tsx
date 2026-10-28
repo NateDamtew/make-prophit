@@ -69,7 +69,7 @@ export function AmountInput({
           placeholder="0"
           value={formatAmountDisplay(value)}
           onChange={(event) => onChange(event.target.value.replace(/\D/g, '').slice(0, 12))}
-          className="min-w-0 flex-1 bg-transparent text-[32px]/none font-bold text-foreground tabular-nums outline-none placeholder:text-muted-foreground/40"
+          className="w-full min-w-0 flex-1 bg-transparent text-[32px]/none font-bold text-foreground tabular-nums outline-none placeholder:text-muted-foreground/40"
         />
         {currency && <span className="text-[17px] font-semibold text-muted-foreground">{currency}</span>}
       </div>

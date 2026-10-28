@@ -5,16 +5,28 @@ import { notFound } from 'next/navigation'
 
 import type { SupportedLocale } from '@/i18n/locales'
 
+import { applyMarketPreview, isMarketPreviewState } from '@/components/communities/dev/fixtures'
 import { CommunityMarketEmbedButton } from '@/components/community-engagement/EmbedCodeButtonWrapper'
 import { ModerationBar } from '@/components/community-engagement/ModerationBar'
 import { CommunityRepository } from '@/lib/db/queries/community'
 import { CommunityIntegrityRepository } from '@/lib/db/queries/community-integrity'
+import { getTrustCard } from '@/lib/db/queries/community-trust'
 import { UserRepository } from '@/lib/db/queries/user'
 import { getPoolSummary } from '@/lib/pools/service'
 import { STATIC_PARAMS_PLACEHOLDER } from '@/lib/static-params'
 
 import CommunityMarketDetail from './_components/CommunityMarketDetail'
 import PoolMarketContent from './_components/pool/PoolMarketContent'
+
+function firstParam(query: Record<string, string | string[] | undefined>, key: string): string | undefined {
+  const value = query[key]
+  return Array.isArray(value) ? value[0] : value
+}
+
+/** The render-time clock the lifecycle starts from (the client ticks on from here). */
+function requestTimestamp() {
+  return Date.now()
+}
 
 export async function generateStaticParams() {
   return [{ slug: STATIC_PARAMS_PLACEHOLDER, marketId: STATIC_PARAMS_PLACEHOLDER }]
@@ -109,21 +121,38 @@ export default async function CommunityMarketDetailPage({
   // Fork: pool-engine markets (no platform event behind them) render with the
   // platform market page layout and trade against the local-currency ledger.
   if (data.market.engine === 'pool' && !data.market.event_id) {
-    const [initialSummary, query] = await Promise.all([
+    const [loadedSummary, trust, query] = await Promise.all([
       getPoolSummary(marketId, user?.id ?? null).catch(() => null),
+      getTrustCard(data.community.id).catch(() => null),
       searchParams,
     ])
-    const requestedOutcome = Array.isArray(query.outcome) ? query.outcome[0] : query.outcome
+    const requestedStake = firstParam(query, 'stake') ?? firstParam(query, 'outcome')
+    const previewState = process.env.NODE_ENV === 'production' ? undefined : firstParam(query, 'preview')
+    const serverNow = requestTimestamp()
+    const preview = isMarketPreviewState(previewState)
+      ? applyMarketPreview(previewState, {
+          market: data.market,
+          summary: loadedSummary,
+          votes: votes ?? [],
+          // Previews show the viewer's panels even when signed out (dev only).
+          userId: user?.id ?? 'preview-viewer',
+          now: serverNow,
+        })
+      : null
     return (
-      <main className="container grid min-h-screen gap-8 pb-12 lg:grid-cols-[minmax(0,3fr)_21.25rem]">
+      <main className="container grid min-h-screen gap-8 pb-12 lg:grid-cols-[minmax(0,3fr)_22.5rem]">
         <PoolMarketContent
-          market={data.market}
+          market={preview?.market ?? data.market}
           community={data.community}
-          votes={votes ?? []}
+          votes={preview?.votes ?? votes ?? []}
+          trust={trust}
           memberRole={memberRole}
           currentUserId={user?.id ?? null}
-          initialSummary={initialSummary}
-          initialOutcome={requestedOutcome === 'no' ? 'no' : 'yes'}
+          initialSummary={preview?.summary ?? loadedSummary}
+          initialOutcome={requestedStake === 'no' ? 'no' : 'yes'}
+          openStakeOnLoad={requestedStake === 'yes' || requestedStake === 'no'}
+          serverNow={serverNow}
+          preview={preview !== null}
           headerActions={embedSlot}
           moderationSlot={moderationSlot}
         />
