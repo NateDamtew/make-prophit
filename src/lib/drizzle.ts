@@ -24,13 +24,28 @@ function serializeJsonbParam(value: unknown) {
   return serialized
 }
 
+function normalizeBigint(value: unknown): bigint | null {
+  if (value === null || value === undefined) {
+    return null
+  }
+  return typeof value === 'bigint' ? value : BigInt(value as string | number)
+}
+
 // Bun's default JSONB codec only normalizes array parameters. Add the scalar
 // normalizer here so every JSONB value is serialized before it reaches Bun SQL.
+// Bun SQL also returns int8 columns as strings, and drizzle's `bigint` codec
+// (mode 'bigint') has no result normalizer, so ledger balances and pool totals
+// would arrive as strings and `+` would concatenate. Map them to BigInt here.
 const postgresCodecs = {
   ...bunSqlPgCodecs,
   jsonb: {
     ...bunSqlPgCodecs.jsonb,
     normalizeParam: serializeJsonbParam,
+  },
+  bigint: {
+    ...bunSqlPgCodecs.bigint,
+    normalize: normalizeBigint,
+    normalizeArray: (values: unknown) => (Array.isArray(values) ? values.map(normalizeBigint) : values),
   },
 }
 
