@@ -11,7 +11,7 @@ import { createPublicClient, http, verifyMessage as viemVerifyMessage } from 'vi
 import { generateSiweNonce } from 'viem/siwe'
 import { z } from 'zod'
 
-import { isAdminWallet } from '@/lib/admin'
+import { isAdminUser } from '@/lib/admin-users'
 import { AffiliateRepository } from '@/lib/db/queries/affiliate'
 import { db } from '@/lib/drizzle'
 import { resolvePublicRuntimeEnv } from '@/lib/public-runtime-config.shared'
@@ -80,6 +80,33 @@ function parseAffiliateCookie(rawValue: string | null) {
     }
   } catch {
     return null
+  }
+}
+
+/**
+ * better-auth's self-service user endpoints write straight to `users`: `name` is
+ * the wallet address column, and `/change-email` swaps the email. The app never
+ * calls them (profile, settings and deposit-wallet changes go through server
+ * actions), and they let any signed-in user rewrite their own identity, so they
+ * are closed.
+ */
+const BLOCKED_SELF_SERVICE_PATHS = new Set(['/update-user', '/change-email'])
+
+function blockSelfServiceUserUpdates() {
+  return {
+    id: 'block-self-service-user-updates',
+    hooks: {
+      before: [
+        {
+          matcher(context: any) {
+            return BLOCKED_SELF_SERVICE_PATHS.has(context.path)
+          },
+          handler: createAuthMiddleware(async () => {
+            throw new APIError('FORBIDDEN', { message: 'This account field cannot be changed here.' })
+          }),
+        },
+      ],
+    },
   }
 }
 
@@ -410,10 +437,8 @@ export const auth = betterAuth({
           email,
           settings,
           image: user.image ? getPublicAssetUrl(user.image) : '',
-          is_admin:
-            isAdminWallet(user.name) ||
-            isAdminWallet(user.email) ||
-            (typeof (user as any).username === 'string' && isAdminWallet((user as any).username)),
+          // Only an ADMIN_WALLETS address the user signed in with (SIWE) counts; see src/lib/admin.ts.
+          is_admin: await isAdminUser(userId),
         },
         session,
       }
@@ -465,6 +490,7 @@ export const auth = betterAuth({
       },
     }),
     siweTwoFactorRedirect(),
+    blockSelfServiceUserUpdates(),
     twoFactor({
       allowPasswordless: true,
       skipVerificationOnEnable: false,
@@ -498,40 +524,51 @@ export const auth = betterAuth({
       createdAt: 'created_at',
       updatedAt: 'updated_at',
     },
+    // Set by the server only (SIWE, deposit-wallet and settings actions), never from a request body.
     additionalFields: {
       address: {
         type: 'string',
+        input: false,
       },
       username: {
         type: 'string',
+        input: false,
       },
       settings: {
         type: 'json',
+        input: false,
       },
       deposit_wallet_address: {
         type: 'string',
+        input: false,
       },
       deposit_wallet_signature: {
         type: 'string',
+        input: false,
       },
       deposit_wallet_status: {
         type: 'string',
+        input: false,
       },
       deposit_wallet_signed_at: {
         type: 'date',
+        input: false,
       },
       deposit_wallet_tx_hash: {
         type: 'string',
+        input: false,
       },
       affiliate_code: {
         type: 'string',
+        input: false,
       },
       referred_by_user_id: {
         type: 'string',
+        input: false,
       },
     },
     changeEmail: {
-      enabled: true,
+      enabled: false,
     },
   },
   session: {

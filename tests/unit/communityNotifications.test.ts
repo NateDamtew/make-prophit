@@ -4,18 +4,12 @@ import { hoisted } from '../bun-test-helpers'
 
 const mocks = hoisted(() => ({
   dbInsertValues: mock(),
-  dbSelectFromWhere: mock(),
-  getAdminIdentifierLists: mock(),
+  listAdminUserIds: mock(),
 }))
 
 void mock.module('@/lib/drizzle', () => ({
   db: {
     insert: () => ({ values: mocks.dbInsertValues }),
-    select: () => ({
-      from: () => ({
-        where: () => mocks.dbSelectFromWhere(),
-      }),
-    }),
   },
 }))
 
@@ -23,12 +17,8 @@ void mock.module('@/lib/db/schema/notifications/tables', () => ({
   notifications: {},
 }))
 
-void mock.module('@/lib/db/schema/auth/tables', () => ({
-  users: { id: 'users.id', email: 'users.email', address: 'users.address', username: 'users.username' },
-}))
-
-void mock.module('@/lib/admin', () => ({
-  getAdminIdentifierLists: mocks.getAdminIdentifierLists,
+void mock.module('@/lib/admin-users', () => ({
+  listAdminUserIds: mocks.listAdminUserIds,
 }))
 
 describe('community-notifications: individual notifications', () => {
@@ -134,12 +124,8 @@ describe('community-notifications: super admin escalation', () => {
     mocks.dbInsertValues.mockResolvedValue(undefined)
   })
 
-  it('does nothing when no admin identifiers configured', async () => {
-    mocks.getAdminIdentifierLists.mockReturnValue({
-      wallets: [],
-      emails: [],
-      usernames: [],
-    })
+  it('does nothing when no admin has signed in with an admin wallet', async () => {
+    mocks.listAdminUserIds.mockResolvedValue([])
     const { notifySuperAdminsOfDeployFailure } = await import('@/lib/community-notifications')
     await notifySuperAdminsOfDeployFailure({
       marketTitle: 'X',
@@ -149,13 +135,8 @@ describe('community-notifications: super admin escalation', () => {
     expect(mocks.dbInsertValues).not.toHaveBeenCalled()
   })
 
-  it('notifies all matched admin users on deploy failure', async () => {
-    mocks.getAdminIdentifierLists.mockReturnValue({
-      wallets: [],
-      emails: ['admin@example.com'],
-      usernames: ['superadmin'],
-    })
-    mocks.dbSelectFromWhere.mockResolvedValue([{ id: 'admin-1' }, { id: 'admin-2' }])
+  it('notifies every admin user on deploy failure', async () => {
+    mocks.listAdminUserIds.mockResolvedValue(['admin-1', 'admin-2'])
 
     const { notifySuperAdminsOfDeployFailure } = await import('@/lib/community-notifications')
     await notifySuperAdminsOfDeployFailure({
