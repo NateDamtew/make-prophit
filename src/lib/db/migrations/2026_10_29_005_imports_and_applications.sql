@@ -32,3 +32,5 @@ CREATE TABLE IF NOT EXISTS community_applications (
 );
 CREATE INDEX IF NOT EXISTS idx_community_applications_user ON community_applications (user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_community_applications_status ON community_applications (status, created_at DESC);
+
+ALTER TABLE public.community_applications ENABLE ROW LEVEL SECURITY;
