@@ -8,6 +8,7 @@ import type { CommunityRole } from '@/lib/communities/roles'
 import { recordCommunityEvent } from '@/lib/communities/events'
 import { dispatchCommunityNotification } from '@/lib/communities/notifications'
 import { can, isCommunityRole, isJurorRole } from '@/lib/communities/roles'
+import { getCommunitySettings } from '@/lib/communities/settings'
 import { DEFAULT_ERROR_MESSAGE } from '@/lib/constants'
 import { CommunityRepository } from '@/lib/db/queries/community'
 import { UserRepository } from '@/lib/db/queries/user'
@@ -52,6 +53,14 @@ export async function createCommunityAction(input: z.input<typeof CreateCommunit
   const parsed = CreateCommunitySchema.safeParse(input)
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? DEFAULT_ERROR_MESSAGE, data: null }
+  }
+
+  // Leaders apply first; Prophit approves and creates the community. Platform admins may create directly.
+  if (!user.is_admin) {
+    const settings = await getCommunitySettings()
+    if (settings.requireApplication) {
+      return { error: 'Communities open by application. Apply at /communities/apply.', data: null }
+    }
   }
 
   // Fork: new communities start on the pool tier, where the jury alone settles balances.

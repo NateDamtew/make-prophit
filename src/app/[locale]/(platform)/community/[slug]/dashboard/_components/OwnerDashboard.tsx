@@ -2,6 +2,7 @@
 
 import {
   ActivityIcon,
+  ArrowDownToLineIcon,
   CheckIcon,
   Code2Icon,
   PaintbrushIcon,
@@ -100,6 +101,10 @@ export default function OwnerDashboard({ community, trust, dashboard }: OwnerDas
           <Button nativeButton={false} render={<Link href={`${base}/markets/new`} />}>
             <PlusIcon className="size-4" aria-hidden="true" />
             {t('Add market')}
+          </Button>
+          <Button variant="secondary" nativeButton={false} render={<Link href={`${base}/dashboard/import`} />}>
+            <ArrowDownToLineIcon className="size-4" aria-hidden="true" />
+            {(trust?.level ?? 0) >= 1 ? t('Import from Prophit') : t('Import (Level 1)')}
           </Button>
           <Button variant="secondary" nativeButton={false} render={<Link href={`${base}/settings`} />}>
             <SettingsIcon className="size-4" aria-hidden="true" />
