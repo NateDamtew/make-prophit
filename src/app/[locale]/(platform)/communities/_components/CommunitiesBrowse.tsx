@@ -100,7 +100,7 @@ export default function CommunitiesBrowse({ communities, featuredMarkets, signed
             {t('Questions run by people you follow, resolved by a jury that shows its work, paid in your money.')}
           </p>
         </div>
-        <Button variant="secondary" nativeButton={false} render={<Link href="/communities/new" />}>
+        <Button variant="secondary" nativeButton={false} render={<Link href="/communities/apply" />}>
           {t('Lead a community')}
         </Button>
       </div>
@@ -179,7 +179,7 @@ export default function CommunitiesBrowse({ communities, featuredMarkets, signed
             }
             action={
               chip === 'all' && !search ? (
-                <Button nativeButton={false} render={<Link href="/communities/new" />}>
+                <Button nativeButton={false} render={<Link href="/communities/apply" />}>
                   {t('Apply to lead')}
                 </Button>
               ) : (

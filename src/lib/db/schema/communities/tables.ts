@@ -151,6 +151,10 @@ export const community_markets = pgTable('community_markets', {
   event_creation_draft_id: char({ length: 26 }),
   // Engine the market was created on; immutable. 'pool' | 'orderbook'
   engine: text().notNull().default('pool'),
+  // Imported from the main catalogue: settles from the source condition, no jury.
+  source_event_id: char({ length: 26 }),
+  source_condition_id: text(),
+  source_platform: text(),
   created_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
   updated_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
 })

@@ -2,6 +2,7 @@ import { setRequestLocale } from 'next-intl/server'
 import { redirect } from 'next/navigation'
 import { Suspense } from 'react'
 
+import { getCommunitySettings } from '@/lib/communities/settings'
 import { UserRepository } from '@/lib/db/queries/user'
 import { STATIC_PARAMS_PLACEHOLDER } from '@/lib/static-params'
 
@@ -14,7 +15,13 @@ export async function generateStaticParams() {
 async function AuthCheck() {
   const user = await UserRepository.getCurrentUser({ minimal: true })
   if (!user) {
-    redirect('/' as any)
+    redirect('/communities/apply')
+  }
+  if (!user.is_admin) {
+    const settings = await getCommunitySettings()
+    if (settings.requireApplication) {
+      redirect('/communities/apply')
+    }
   }
   return <CreateCommunityForm />
 }

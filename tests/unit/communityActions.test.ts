@@ -19,6 +19,12 @@ const mocks = hoisted(() => ({
   getMarket: mock(),
 }))
 
+// Community creation is gated by the `require_application` setting; these tests
+// exercise the create path itself, so the gate is open here.
+void mock.module('@/lib/communities/settings', () => ({
+  getCommunitySettings: async () => ({ requireApplication: false }),
+}))
+
 void mock.module('@/lib/db/queries/user', () => ({
   UserRepository: {
     getCurrentUser: mocks.getCurrentUser,
