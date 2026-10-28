@@ -81,7 +81,6 @@ import {
 import { buildPublicEventListVisibilityCondition, HIDE_FROM_NEW_TAG_SLUG } from '@/lib/event-visibility'
 import { resolveSportsSection } from '@/lib/events-routing'
 import { resolveDisplayPrice } from '@/lib/market-chance'
-import { timeStep } from '@/lib/perf-timing'
 import { fetchPolymarketLastTradePrices } from '@/lib/polymarket/clob-prices'
 import { isListedPolymarketMarket } from '@/lib/polymarket/curation'
 import { normalizeEventVenue } from '@/lib/polymarket/endpoints'
@@ -1922,13 +1921,9 @@ async function hydrateEventListResults({
   )
   const eventIds = eventsData.map((event) => event.id)
   // Sports group keys feed the grouped-volume lookup; chain them so both run alongside the other list queries.
-  const sportsVolumeGroupKeysPromise = timeStep('list sports group keys', () =>
-    getSportsVolumeGroupKeysByEventId(eventIds),
-  )
+  const sportsVolumeGroupKeysPromise = getSportsVolumeGroupKeysByEventId(eventIds)
   const groupedSportsVolumesPromise = sportsVolumeGroupKeysPromise.then((groupKeysByEventId) =>
-    timeStep('list sports volumes', () =>
-      getSportsAggregatedVolumesByGroupKey(Array.from(new Set(groupKeysByEventId.values()))),
-    ),
+    getSportsAggregatedVolumesByGroupKey(Array.from(new Set(groupKeysByEventId.values()))),
   )
   const [
     priceMap,
@@ -1943,21 +1938,17 @@ async function hydrateEventListResults({
   ] = await Promise.all([
     skipLivePricing
       ? Promise.resolve(new Map<string, OutcomePrices>())
-      : timeStep(`list prices: ${tokensForPricing.length} tokens (${listPolymarketTokenIds.size} polymarket)`, () =>
-          fetchOutcomePrices(tokensForPricing, { polymarketTokenIds: listPolymarketTokenIds }),
-        ),
+      : fetchOutcomePrices(tokensForPricing, { polymarketTokenIds: listPolymarketTokenIds }),
     skipLivePricing
       ? Promise.resolve(new Map<string, number>())
-      : timeStep(`list last trades: ${tokensForPricing.length} tokens`, () =>
-          fetchLastTradePrices(tokensForPricing, listPolymarketTokenIds),
-        ),
-    timeStep('list tag names', () => getLocalizedTagNamesById(tagIds, locale)),
-    timeStep('list titles', () => getLocalizedEventTitlesById(eventIds, locale)),
-    timeStep('list contexts', () => getLocalizedEventAdditionalContextsById(eventIds, locale)),
-    timeStep('list rules', () => getLocalizedEventRulesById(eventIds, locale)),
+      : fetchLastTradePrices(tokensForPricing, listPolymarketTokenIds),
+    getLocalizedTagNamesById(tagIds, locale),
+    getLocalizedEventTitlesById(eventIds, locale),
+    getLocalizedEventAdditionalContextsById(eventIds, locale),
+    getLocalizedEventRulesById(eventIds, locale),
     sportsVolumeGroupKeysPromise,
     groupedSportsVolumesPromise,
-    timeStep('list live chart slugs', () => getEnabledLiveChartSeriesSlugs()),
+    getEnabledLiveChartSeriesSlugs(),
   ])
 
   return eventsData
@@ -2061,7 +2052,7 @@ export const EventRepository = {
     return await runQuery(async () => {
       const safeLimit = normalizeEventListLimit(limit)
       const validOffset = normalizeEventListOffset(offset)
-      const sportsSlugResolver = await timeStep('list sports slug resolver', () => getSportsSlugResolverFromDb())
+      const sportsSlugResolver = await getSportsSlugResolverFromDb()
       const normalizedRequestedSportsSportSlug = sportsSportSlug.trim().toLowerCase()
 
       const whereConditions: SQL<unknown>[] = []
@@ -2313,17 +2304,13 @@ export const EventRepository = {
       } else if ((tag === 'trending' && !sortBy) || sortBy === 'trending') {
         const trendingVolumeOrder = buildTrendingVolumeOrder()
 
-        const trendingEventIds = await timeStep(
-          `list ids query (trending, offset ${validOffset}, limit ${safeLimit})`,
-          () =>
-            db
-              .select({ id: events.id })
-              .from(events)
-              .where(baseWhere)
-              .orderBy(desc(trendingVolumeOrder), desc(events.created_at))
-              .limit(safeLimit)
-              .offset(validOffset),
-        )
+        const trendingEventIds = await db
+          .select({ id: events.id })
+          .from(events)
+          .where(baseWhere)
+          .orderBy(desc(trendingVolumeOrder), desc(events.created_at))
+          .limit(safeLimit)
+          .offset(validOffset)
 
         if (trendingEventIds.length === 0) {
           return { data: [], error: null }
@@ -2332,37 +2319,35 @@ export const EventRepository = {
         const orderedIds = trendingEventIds.map((event) => event.id)
         const orderIndex = new Map(orderedIds.map((id, index) => [id, index]))
 
-        const trendingData = (await timeStep(`list rows query (${orderedIds.length} events)`, () =>
-          db.query.events.findMany({
-            where: {
-              RAW: (table) => mapEventColumnsToRelationAlias(and(baseWhere, inArray(table.id, orderedIds))!, table),
-            },
-            columns: cardPayload ? EVENT_CARD_EXCLUDED_COLUMNS : undefined,
-            with: {
-              markets: {
-                columns: cardPayload ? MARKET_CARD_EXCLUDED_COLUMNS : undefined,
-                extras: cardPayload ? { card_metadata: (table) => buildCardMetadataSql(table.metadata) } : undefined,
-                with: {
-                  sports: cardPayload ? { columns: MARKET_SPORTS_CARD_EXCLUDED_COLUMNS } : true,
-                  condition: {
-                    with: { outcomes: true },
-                  },
+        const trendingData = (await db.query.events.findMany({
+          where: {
+            RAW: (table) => mapEventColumnsToRelationAlias(and(baseWhere, inArray(table.id, orderedIds))!, table),
+          },
+          columns: cardPayload ? EVENT_CARD_EXCLUDED_COLUMNS : undefined,
+          with: {
+            markets: {
+              columns: cardPayload ? MARKET_CARD_EXCLUDED_COLUMNS : undefined,
+              extras: cardPayload ? { card_metadata: (table) => buildCardMetadataSql(table.metadata) } : undefined,
+              with: {
+                sports: cardPayload ? { columns: MARKET_SPORTS_CARD_EXCLUDED_COLUMNS } : true,
+                condition: {
+                  with: { outcomes: true },
                 },
               },
-
-              eventTags: {
-                with: { tag: true },
-              },
-              sports: true,
-
-              ...(userId && {
-                bookmarks: {
-                  where: { RAW: (table) => eq(table.user_id, userId) },
-                },
-              }),
             },
-          }),
-        )) as DrizzleEventResult[]
+
+            eventTags: {
+              with: { tag: true },
+            },
+            sports: true,
+
+            ...(userId && {
+              bookmarks: {
+                where: { RAW: (table) => eq(table.user_id, userId) },
+              },
+            }),
+          },
+        })) as DrizzleEventResult[]
 
         eventsData = trendingData.sort((left, right) => {
           const leftIndex = orderIndex.get(left.id) ?? Number.MAX_SAFE_INTEGER
@@ -2387,17 +2372,13 @@ export const EventRepository = {
           }
         })()
 
-        const sortedEventIds = await timeStep(
-          `list ids query (tag ${tag || mainTag || '-'}, sort ${sortBy ?? 'default'}, offset ${validOffset}, limit ${safeLimit})`,
-          () =>
-            db
-              .select({ id: events.id })
-              .from(events)
-              .where(baseWhere)
-              .orderBy(...orderByClause)
-              .limit(safeLimit)
-              .offset(validOffset),
-        )
+        const sortedEventIds = await db
+          .select({ id: events.id })
+          .from(events)
+          .where(baseWhere)
+          .orderBy(...orderByClause)
+          .limit(safeLimit)
+          .offset(validOffset)
 
         if (sortedEventIds.length === 0) {
           return { data: [], error: null }
@@ -2406,37 +2387,35 @@ export const EventRepository = {
         const orderedIds = sortedEventIds.map((event) => event.id)
         const orderIndex = new Map(orderedIds.map((id, index) => [id, index]))
 
-        const sortedData = (await timeStep(`list rows query (${orderedIds.length} events)`, () =>
-          db.query.events.findMany({
-            where: {
-              RAW: (table) => mapEventColumnsToRelationAlias(and(baseWhere, inArray(table.id, orderedIds))!, table),
-            },
-            columns: cardPayload ? EVENT_CARD_EXCLUDED_COLUMNS : undefined,
-            with: {
-              markets: {
-                columns: cardPayload ? MARKET_CARD_EXCLUDED_COLUMNS : undefined,
-                extras: cardPayload ? { card_metadata: (table) => buildCardMetadataSql(table.metadata) } : undefined,
-                with: {
-                  sports: cardPayload ? { columns: MARKET_SPORTS_CARD_EXCLUDED_COLUMNS } : true,
-                  condition: {
-                    with: { outcomes: true },
-                  },
+        const sortedData = (await db.query.events.findMany({
+          where: {
+            RAW: (table) => mapEventColumnsToRelationAlias(and(baseWhere, inArray(table.id, orderedIds))!, table),
+          },
+          columns: cardPayload ? EVENT_CARD_EXCLUDED_COLUMNS : undefined,
+          with: {
+            markets: {
+              columns: cardPayload ? MARKET_CARD_EXCLUDED_COLUMNS : undefined,
+              extras: cardPayload ? { card_metadata: (table) => buildCardMetadataSql(table.metadata) } : undefined,
+              with: {
+                sports: cardPayload ? { columns: MARKET_SPORTS_CARD_EXCLUDED_COLUMNS } : true,
+                condition: {
+                  with: { outcomes: true },
                 },
               },
-
-              eventTags: {
-                with: { tag: true },
-              },
-              sports: true,
-
-              ...(userId && {
-                bookmarks: {
-                  where: { RAW: (table) => eq(table.user_id, userId) },
-                },
-              }),
             },
-          }),
-        )) as DrizzleEventResult[]
+
+            eventTags: {
+              with: { tag: true },
+            },
+            sports: true,
+
+            ...(userId && {
+              bookmarks: {
+                where: { RAW: (table) => eq(table.user_id, userId) },
+              },
+            }),
+          },
+        })) as DrizzleEventResult[]
 
         eventsData = sortedData.sort((left, right) => {
           const leftIndex = orderIndex.get(left.id) ?? Number.MAX_SAFE_INTEGER
@@ -2449,17 +2428,13 @@ export const EventRepository = {
         applyCardMetadata(eventsData)
       }
 
-      const eventsWithMarkets = await timeStep(
-        `list hydrate (${eventsData.length} events, ${eventsData.reduce((sum, event) => sum + (event.markets?.length ?? 0), 0)} markets)`,
-        () =>
-          hydrateEventListResults({
-            eventsData,
-            locale,
-            skipLivePricing,
-            sportsSlugResolver,
-            userId,
-          }),
-      )
+      const eventsWithMarkets = await hydrateEventListResults({
+        eventsData,
+        locale,
+        skipLivePricing,
+        sportsSlugResolver,
+        userId,
+      })
 
       return { data: eventsWithMarkets, error: null }
     })

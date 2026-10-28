@@ -49,7 +49,6 @@ import { findNextHomeFeaturedSeriesEvent, isHomeFeaturedEventEnded } from '@/lib
 import { getHomeFeaturedSettingsFromSettings } from '@/lib/home-featured-settings'
 import { HOME_INITIAL_EVENTS_CACHE_LIFE } from '@/lib/home-initial-events-cache'
 import { resolveDisplayPrice } from '@/lib/market-chance'
-import { timeStep } from '@/lib/perf-timing'
 import { resolvePublicRuntimeEnv } from '@/lib/public-runtime-config.shared'
 import { isSportsEvent, resolveSportsEventGroupPayload } from '@/lib/sports-event-group'
 import { buildHomeSportsMoneylineModel, resolveHomeSportsButtonChance } from '@/lib/sports-home-card'
@@ -1009,24 +1008,22 @@ async function resolveHomeFeaturedTargets(
 export async function listHomeFeaturedEvents(
   locale: SupportedLocale = DEFAULT_LOCALE,
 ): Promise<HomeFeaturedEventCard[]> {
-  const { data: allSettings, error: settingsError } = await timeStep('hero settings', () => loadHomeFeaturedSettings())
+  const { data: allSettings, error: settingsError } = await loadHomeFeaturedSettings()
   if (settingsError) {
     console.error('Failed to load home featured settings', settingsError)
     return []
   }
 
   const settings = getHomeFeaturedSettingsFromSettings(allSettings ?? undefined)
-  const targets = await timeStep('hero targets', () => resolveHomeFeaturedTargets(settings, locale))
+  const targets = await resolveHomeFeaturedTargets(settings, locale)
   if (targets.length === 0) {
     console.warn('Home featured markets: no configured targets and no live Up/Down fallback candidates.')
     return []
   }
 
-  const featuredEvents = await timeStep(`hero events (${targets.length})`, () =>
-    loadHomeFeaturedEvents(
-      targets.map((target) => target.eventSlug),
-      locale,
-    ),
+  const featuredEvents = await loadHomeFeaturedEvents(
+    targets.map((target) => target.eventSlug),
+    locale,
   )
   const eventsBySlug = new Map(featuredEvents.map(({ requestedSlug, event }) => [requestedSlug, event]))
   const resolvedEvents = targets
@@ -1046,7 +1043,6 @@ export async function listHomeFeaturedEvents(
     )
     return []
   }
-  const liveSeriesStartedAt = performance.now()
   const liveSeriesEntries: Array<readonly [string, HomeFeaturedLiveSeriesData]> = await Promise.all(
     resolvedEvents.map(async ({ event, target }) => {
       if (target.targetType !== 'series' || !event.series_slug) {
@@ -1091,64 +1087,61 @@ export async function listHomeFeaturedEvents(
       ] as const
     }),
   )
-  console.info(`[perf] hero live series ${Math.round(performance.now() - liveSeriesStartedAt)}ms`)
   const liveSeriesByEventId = new Map(liveSeriesEntries)
 
   // Context (comments/news) per card is resolved here.
-  return timeStep(`hero cards + context (${resolvedEvents.length})`, () =>
-    Promise.all(
-      resolvedEvents.map(async (entry, index, all): Promise<HomeFeaturedEventCard> => {
-        const { target, event } = entry
-        const kind = resolveCardKind(event)
-        const mode = resolveEffectiveContextMode(target.contextMode, settings.defaultContextMode)
-        const temporal = resolveTemporalStatus(event, locale)
-        const liveSeries = liveSeriesByEventId.get(event.id)
-        const primaryMarkets = buildPrimaryMarkets(event, kind)
-        const topOutcomes = buildTopOutcomes(event, kind)
+  return Promise.all(
+    resolvedEvents.map(async (entry, index, all): Promise<HomeFeaturedEventCard> => {
+      const { target, event } = entry
+      const kind = resolveCardKind(event)
+      const mode = resolveEffectiveContextMode(target.contextMode, settings.defaultContextMode)
+      const temporal = resolveTemporalStatus(event, locale)
+      const liveSeries = liveSeriesByEventId.get(event.id)
+      const primaryMarkets = buildPrimaryMarkets(event, kind)
+      const topOutcomes = buildTopOutcomes(event, kind)
 
-        return {
-          featuredId: target.featuredId,
+      return {
+        featuredId: target.featuredId,
+        targetType: target.targetType,
+        source: target.source,
+        rank: target.rank,
+        contextMode: mode,
+        kind,
+        // Serialised into the home page: no rules or metadata documents, and big
+        // futures capped to the markets the card shows (sports buttons need them all).
+        event: slimEventForCard(
+          event,
+          kind === 'sports'
+            ? {}
+            : {
+                maxMarkets: HERO_CARD_MAX_MARKETS,
+                keepConditionIds: [
+                  ...primaryMarkets.map((market) => market.condition_id),
+                  ...topOutcomes.map((outcome) => outcome.conditionId),
+                ],
+              },
+        ),
+        primaryMarkets: primaryMarkets.map(slimMarketForCard),
+        topOutcomes,
+        contextItems: await resolveContextItems({
+          event,
           targetType: target.targetType,
-          source: target.source,
-          rank: target.rank,
-          contextMode: mode,
-          kind,
-          // Serialised into the home page: no rules or metadata documents, and big
-          // futures capped to the markets the card shows (sports buttons need them all).
-          event: slimEventForCard(
-            event,
-            kind === 'sports'
-              ? {}
-              : {
-                  maxMarkets: HERO_CARD_MAX_MARKETS,
-                  keepConditionIds: [
-                    ...primaryMarkets.map((market) => market.condition_id),
-                    ...topOutcomes.map((outcome) => outcome.conditionId),
-                  ],
-                },
-          ),
-          primaryMarkets: primaryMarkets.map(slimMarketForCard),
-          topOutcomes,
-          contextItems: await resolveContextItems({
-            event,
-            targetType: target.targetType,
-            mode,
-            featuredId: target.featuredId,
-            settings,
-            locale,
-          }),
-          previousTitle: all[index - 1]?.event.title ?? all.at(-1)?.event.title ?? null,
-          nextTitle: all[index + 1]?.event.title ?? all[0]?.event.title ?? null,
-          resolvedEventId: target.eventId,
-          resolvedSeriesSlug: target.seriesSlug,
-          temporalStatus: temporal.temporalStatus,
-          temporalLabel: temporal.temporalLabel,
-          sportsMarketGroups: kind === 'sports' ? buildSportsMarketGroups(event) : [],
-          liveChartConfig: liveSeries?.config ?? null,
-          seriesEvents: liveSeries?.seriesEvents ?? [],
-          nextSeriesEvent: liveSeries?.nextEvent ?? null,
-        }
-      }),
-    ),
+          mode,
+          featuredId: target.featuredId,
+          settings,
+          locale,
+        }),
+        previousTitle: all[index - 1]?.event.title ?? all.at(-1)?.event.title ?? null,
+        nextTitle: all[index + 1]?.event.title ?? all[0]?.event.title ?? null,
+        resolvedEventId: target.eventId,
+        resolvedSeriesSlug: target.seriesSlug,
+        temporalStatus: temporal.temporalStatus,
+        temporalLabel: temporal.temporalLabel,
+        sportsMarketGroups: kind === 'sports' ? buildSportsMarketGroups(event) : [],
+        liveChartConfig: liveSeries?.config ?? null,
+        seriesEvents: liveSeries?.seriesEvents ?? [],
+        nextSeriesEvent: liveSeries?.nextEvent ?? null,
+      }
+    }),
   )
 }
