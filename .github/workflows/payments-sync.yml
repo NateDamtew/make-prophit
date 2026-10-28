@@ -140,3 +140,9 @@ jobs:
           code=$(curl -sS -m 90 -o resp.json -w '%{http_code}' -H "Authorization: Bearer $CRON_SECRET" "$BASE_URL/api/sync/community-tiers") || true
           echo "community-tiers (HTTP $code): $(cat resp.json)"
           case "$code" in 2*) ;; *) echo "::error::community-tiers returned HTTP $code"; exit 1;; esac
+      - name: Community trust ladder
+        if: always()
+        run: |
+          code=$(curl -sS -m 90 -o resp.json -w '%{http_code}' -H "Authorization: Bearer $CRON_SECRET" "$BASE_URL/api/sync/community-trust") || true
+          echo "community-trust (HTTP $code): $(cat resp.json)"
+          case "$code" in 2*) ;; *) echo "::error::community-trust returned HTTP $code"; exit 1;; esac

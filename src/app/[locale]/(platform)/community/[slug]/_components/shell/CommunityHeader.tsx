@@ -5,6 +5,7 @@ import {
   CheckIcon,
   Code2Icon,
   CopyIcon,
+  LayoutDashboardIcon,
   MoreHorizontalIcon,
   PaintbrushIcon,
   PlusIcon,
@@ -225,6 +226,10 @@ export default function CommunityHeader({ community, trust, memberRole, currentU
                   <MoreHorizontalIcon className="size-4" />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuItem render={<Link href={`/community/${community.slug}/dashboard`} />}>
+                    <LayoutDashboardIcon className="size-4" />
+                    {t('Dashboard')}
+                  </DropdownMenuItem>
                   <DropdownMenuItem render={<Link href={`/community/${community.slug}/settings`} />}>
                     <SettingsIcon className="size-4" />
                     {t('Settings')}
