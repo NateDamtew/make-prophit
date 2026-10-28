@@ -68,3 +68,6 @@ PROPHIT-BETTING-LEGALITY.md
 # Local scratch area
 scratch/
 .env.backup
+
+# Private planning notes (own private repo, see memory)
+notes/
