@@ -19,6 +19,7 @@ export interface PoolMarketRecord {
   resolved_at: Date | null
   event_id: string | null
   engine?: string | null
+  market_mode?: string | null
   binary_outcome_yes?: string | null
   binary_outcome_no?: string | null
   created_at: Date

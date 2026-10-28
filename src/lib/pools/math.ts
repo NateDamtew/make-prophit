@@ -123,6 +123,54 @@ export function planSettlement(params: {
   }
 }
 
+export interface RakeSplitInput {
+  rake: bigint
+  /** Basis points of the rake, from the community's level. The remainder is Prophit's. */
+  ownerShareBps: number
+  juryShareBps: number
+  /** Jurors who voted with the majority and are paid for this market. */
+  votingJurorIds: readonly string[]
+  /** Imported markets have no jury: the jury share folds into Prophit's. */
+  imported?: boolean
+}
+
+export interface RakeSplit {
+  owner: bigint
+  juryPerJuror: bigint
+  juryTotal: bigint
+  prophit: bigint
+}
+
+/**
+ * Split the pool share between the community owner, the jurors who decided
+ * and Prophit. Each slice is floored; whatever rounding leaves goes to
+ * Prophit, so the three always add back up to the rake.
+ */
+export function splitRake(input: RakeSplitInput): RakeSplit {
+  const rake = input.rake > 0n ? input.rake : 0n
+  const ownerBps = BigInt(Math.max(0, Math.min(input.ownerShareBps, 10_000)))
+  const juryBps = BigInt(Math.max(0, Math.min(input.juryShareBps, 10_000 - Number(ownerBps))))
+  const owner = (rake * ownerBps) / 10_000n
+  const jurors = input.imported ? 0 : input.votingJurorIds.length
+  let juryPerJuror = 0n
+  let juryTotal = 0n
+  if (jurors > 0) {
+    const juryPool = (rake * juryBps) / 10_000n
+    juryPerJuror = juryPool / BigInt(jurors)
+    juryTotal = juryPerJuror * BigInt(jurors)
+  }
+  return { owner, juryPerJuror, juryTotal, prophit: rake - owner - juryTotal }
+}
+
+export function rakeSplitIsConserved(split: RakeSplit, rake: bigint): boolean {
+  return (
+    split.owner >= 0n &&
+    split.juryTotal >= 0n &&
+    split.prophit >= 0n &&
+    split.owner + split.juryTotal + split.prophit === rake
+  )
+}
+
 /** Sanity check: every unit of the pool ends up somewhere. */
 export function settlementIsConserved(plan: SettlementPlan): boolean {
   let paid = 0n

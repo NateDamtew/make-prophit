@@ -1,7 +1,12 @@
+import { eq } from 'drizzle-orm'
+
+import type { HoldSettings } from '@/lib/communities/hold'
 import type { CommunityLevel, JuryBand, LevelCaps, ReviewMode } from '@/lib/communities/rules'
 
+import { DEFAULT_HOLD_SETTINGS } from '@/lib/communities/hold'
 import { DEFAULT_JURY_BANDS, DEFAULT_LEVEL_CAPS } from '@/lib/communities/rules'
-import { SettingsRepository } from '@/lib/db/queries/settings'
+import { settings } from '@/lib/db/schema/settings/tables'
+import { db } from '@/lib/drizzle'
 
 /**
  * Non-secret configuration for Communities, stored in the `settings` table
@@ -12,6 +17,7 @@ import { SettingsRepository } from '@/lib/db/queries/settings'
 
 const COMMUNITY_SETTINGS_GROUP = 'communities'
 const COMMUNITY_JURY_KEY = 'jury'
+const COMMUNITY_HOLD_KEY = 'payout_hold'
 const COMMUNITY_LEVELS_KEY_PREFIX = 'levels:'
 const COMMUNITY_STAKES_KEY_PREFIX = 'stakes:'
 const COMMUNITY_REQUIRE_APPLICATION_KEY = 'require_application'
@@ -34,6 +40,7 @@ export interface CommunitySettings {
   jury: CommunityJurySettings
   levels: Record<CommunityLevel, LevelCaps>
   stakes: CommunityStakeSettings
+  hold: HoldSettings
   requireApplication: boolean
   prophitCommunityIds: string[]
 }
@@ -172,6 +179,13 @@ export function parseLevelSettings(raw: string | undefined): Record<CommunityLev
   }
 }
 
+function parseHoldSettings(raw: string | undefined): HoldSettings {
+  const parsed = readJsonObject(raw)
+  const holdHours = Math.max(0, readNumber(parsed.holdHours, DEFAULT_HOLD_SETTINGS.holdHours))
+  const appealMaxHours = Math.max(holdHours, readNumber(parsed.appealMaxHours, DEFAULT_HOLD_SETTINGS.appealMaxHours))
+  return { holdHours, appealMaxHours }
+}
+
 export function parseStakeSettings(currency: string, raw: string | undefined): CommunityStakeSettings {
   const parsed = readJsonObject(raw)
   return {
@@ -202,15 +216,25 @@ export function parseCommunitySettings(settings: SettingsMap | undefined, curren
     jury: parseJurySettings(group?.[COMMUNITY_JURY_KEY]?.value),
     levels: parseLevelSettings(group?.[`${COMMUNITY_LEVELS_KEY_PREFIX}${code}`]?.value),
     stakes: parseStakeSettings(code, group?.[`${COMMUNITY_STAKES_KEY_PREFIX}${code}`]?.value),
+    hold: parseHoldSettings(group?.[COMMUNITY_HOLD_KEY]?.value),
     requireApplication: readBoolean(group?.[COMMUNITY_REQUIRE_APPLICATION_KEY]?.value, true),
     prophitCommunityIds: readStringList(group?.[COMMUNITY_PROPHIT_IDS_KEY]?.value),
   }
 }
 
+/**
+ * Read the `communities` group straight from the table. The pool engine calls
+ * this inside ledger transactions, crons and scripts, where Next's request
+ * cache (`SettingsRepository.getSettings`) is not available.
+ */
 export async function getCommunitySettings(currency = 'KES'): Promise<CommunitySettings> {
-  const { data, error } = await SettingsRepository.getSettings()
-  if (error) {
-    throw new Error('Unable to load community settings.')
+  const rows = await db
+    .select({ key: settings.key, value: settings.value })
+    .from(settings)
+    .where(eq(settings.group, COMMUNITY_SETTINGS_GROUP))
+  const group: Record<string, { value: string }> = {}
+  for (const row of rows) {
+    group[row.key] = { value: row.value }
   }
-  return parseCommunitySettings(data ?? undefined, currency)
+  return parseCommunitySettings({ [COMMUNITY_SETTINGS_GROUP]: group }, currency)
 }

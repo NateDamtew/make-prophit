@@ -23,13 +23,15 @@ function poolQueryKey(marketId: string, part: 'summary' | 'history' | 'holders' 
   return extra ? (['pool', marketId, part, extra] as const) : (['pool', marketId, part] as const)
 }
 
-export function usePoolSummary(marketId: string, initialSummary: PoolSummary | null) {
+export function usePoolSummary(marketId: string, initialSummary: PoolSummary | null, options?: { enabled?: boolean }) {
+  const enabled = options?.enabled ?? true
   return useQuery({
     queryKey: poolQueryKey(marketId, 'summary'),
     queryFn: async () => (await getPoolSummaryAction(marketId)).data,
     initialData: initialSummary ?? undefined,
+    enabled,
     staleTime: 10_000,
-    refetchInterval: 30_000,
+    refetchInterval: enabled ? 30_000 : false,
   })
 }
 

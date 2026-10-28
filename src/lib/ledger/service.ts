@@ -34,6 +34,7 @@ export const HOUSE_ACCOUNT_NORMAL_BALANCE: Record<LedgerAccountKind, LedgerNorma
   fx_clearing: 'credit',
   settlement: 'debit',
   suspense: 'credit',
+  earnings_payable: 'credit',
 }
 
 export class LedgerError extends Error {

@@ -2,7 +2,14 @@ import { describe, expect, it } from 'bun:test'
 
 import type { StakeLike } from '@/lib/pools/math'
 
-import { estimatePayout, impliedOdds, planSettlement, settlementIsConserved } from '@/lib/pools/math'
+import {
+  estimatePayout,
+  impliedOdds,
+  planSettlement,
+  rakeSplitIsConserved,
+  settlementIsConserved,
+  splitRake,
+} from '@/lib/pools/math'
 
 function stake(id: string, outcome: 'yes' | 'no', amount: bigint, userId = `u-${id}`): StakeLike {
   return { id, userId, outcome, amount }
@@ -91,5 +98,58 @@ describe('planSettlement', () => {
         expect(value >= 0n).toBe(true)
       }
     }
+  })
+})
+
+describe('splitRake', () => {
+  it('splits the pool share between owner, voting jurors and Prophit, with rounding to Prophit', () => {
+    // 6% of 52,900 = 3,174 → owner 40% = 1,269.6 → 1,269; jury 20% = 634.8 → 634 / 5 jurors = 126 each (630)
+    const split = splitRake({
+      rake: 317_400n,
+      ownerShareBps: 4_000,
+      juryShareBps: 2_000,
+      votingJurorIds: ['a', 'b', 'c', 'd', 'e'],
+    })
+    expect(split.owner).toBe(126_960n)
+    expect(split.juryPerJuror).toBe(12_696n)
+    expect(split.juryTotal).toBe(63_480n)
+    expect(split.prophit).toBe(317_400n - 126_960n - 63_480n)
+    expect(rakeSplitIsConserved(split, 317_400n)).toBe(true)
+  })
+
+  it('leaves rounding residue with Prophit when the jury count does not divide evenly', () => {
+    const split = splitRake({
+      rake: 1_001n,
+      ownerShareBps: 4_000,
+      juryShareBps: 2_000,
+      votingJurorIds: ['a', 'b', 'c'],
+    })
+    expect(split.owner).toBe(400n)
+    expect(split.juryPerJuror).toBe(66n)
+    expect(split.juryTotal).toBe(198n)
+    expect(split.prophit).toBe(403n)
+    expect(rakeSplitIsConserved(split, 1_001n)).toBe(true)
+  })
+
+  it('folds the jury share into Prophit for imported markets and when nobody voted', () => {
+    const imported = splitRake({
+      rake: 1_000n,
+      ownerShareBps: 4_000,
+      juryShareBps: 2_000,
+      votingJurorIds: ['a'],
+      imported: true,
+    })
+    expect(imported.juryTotal).toBe(0n)
+    expect(imported.owner).toBe(400n)
+    expect(imported.prophit).toBe(600n)
+    const nobody = splitRake({ rake: 1_000n, ownerShareBps: 4_000, juryShareBps: 2_000, votingJurorIds: [] })
+    expect(nobody.prophit).toBe(600n)
+    expect(rakeSplitIsConserved(nobody, 1_000n)).toBe(true)
+  })
+
+  it('never pays more than the rake even with bad share settings', () => {
+    const split = splitRake({ rake: 1_000n, ownerShareBps: 9_000, juryShareBps: 5_000, votingJurorIds: ['a'] })
+    expect(split.owner + split.juryTotal + split.prophit).toBe(1_000n)
+    expect(split.prophit).toBeGreaterThanOrEqual(0n)
   })
 })

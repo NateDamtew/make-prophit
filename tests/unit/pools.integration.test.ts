@@ -170,6 +170,7 @@ describe.skipIf(!ENABLED || IS_PRODUCTION_DB)('pool engine (integration)', () =>
       communityMarketId: marketId,
       communityId,
       closesAt: new Date(Date.now() + 86_400_000),
+      rakeBps: 400,
     })
     const again = await service.openPoolForMarket({ communityMarketId: marketId, communityId, closesAt: null })
     expect(again.id).toBe(pool.id)
@@ -233,25 +234,53 @@ describe.skipIf(!ENABLED || IS_PRODUCTION_DB)('pool engine (integration)', () =>
       .update(communitySchema.community_markets)
       .set({ status: 'resolved', resolved_outcome: 'yes', resolved_at: new Date() })
       .where(eq(communitySchema.community_markets.id, marketId))
-    const settlement = await service.settlePoolForMarket(marketId)
+    // The result is in: payouts are computed and HELD, nothing moves yet.
+    const held = await service.settlePoolForMarket(marketId)
+    expect(held?.held).toBe(true)
+    expect(held?.holdUntil).toBeTruthy()
+    expect((await LedgerService.getAccount(poolAccount.id))?.balance).toBe(175_000n)
+    expect((await LedgerService.getUserBalance(userIds[0]!, 'KES')).balance).toBe(40_000n)
+    const heldSummary = await service.getPoolSummary(marketId, userIds[0]!)
+    expect(heldSummary?.pool.state).toBe('held')
+    expect(heldSummary?.pool.settledOutcome).toBe('yes')
+    expect(heldSummary?.user?.totalPayout).toBe('100800')
+    await expect(
+      service.stakeInPool({ communityMarketId: marketId, userId: userIds[0]!, outcome: 'yes', amountMinor: 10_000n }),
+    ).rejects.toMatchObject({ code: 'pool_held' })
+
+    // Too early: the hold has not run out.
+    const early = await service.releasePoolPayouts(pool.id, { now: new Date() })
+    expect(early?.held).toBe(true)
+    expect(await service.listHeldPoolsDueForRelease(new Date())).not.toContainEqual(
+      expect.objectContaining({ id: pool.id }),
+    )
+
+    // Hold over: one balanced transaction pays winners, the owner and Prophit.
+    const releaseAt = new Date(new Date(held!.holdUntil!).getTime() + 1_000)
+    expect((await service.listHeldPoolsDueForRelease(releaseAt)).some((row) => row.id === pool.id)).toBe(true)
+    const settlement = await service.releasePoolPayouts(pool.id, { now: releaseAt })
     expect(settlement?.refunded).toBe(false)
     expect(settlement?.rake).toBe('7000') // 4% of 175,000
     expect(settlement?.paidStakes).toBe(2)
+    expect(settlement?.ownerShare).toBe('2800') // 40% of the rake to the community owner (userIds[0])
+    expect(settlement?.juryShare).toBe('0') // nobody voted in this test, so the jury slice folds into Prophit
 
-    // winners: 168,000 split 60/40 → 100,800 and 67,200
-    expect((await LedgerService.getUserBalance(userIds[0]!, 'KES')).balance).toBe(40_000n + 100_800n)
+    // winners: 168,000 split 60/40 → 100,800 and 67,200; the owner also gets the 2,800 share
+    expect((await LedgerService.getUserBalance(userIds[0]!, 'KES')).balance).toBe(40_000n + 100_800n + 2_800n)
     expect((await LedgerService.getUserBalance(userIds[1]!, 'KES')).balance).toBe(60_000n + 67_200n)
     expect((await LedgerService.getUserBalance(userIds[2]!, 'KES')).balance).toBe(25_000n)
     expect((await LedgerService.getAccount(poolAccount.id))?.balance).toBe(0n)
     const rakeAfter = await LedgerService.recomputeAccountBalance(
       rakeBefore === null ? '' : (await LedgerService.getOrCreateHouseAccount('pool_rake', 'KES')).id,
     )
-    expect(rakeAfter.cached - rakeBefore.cached).toBe(7_000n)
-    expect(rakeAfter.recomputed - rakeBefore.recomputed).toBe(7_000n)
+    expect(rakeAfter.cached - rakeBefore.cached).toBe(4_200n)
+    expect(rakeAfter.recomputed - rakeBefore.recomputed).toBe(4_200n)
 
     // idempotent
     const replay = await service.settlePoolForMarket(marketId)
     expect(replay?.alreadySettled).toBe(true)
+    const replayRelease = await service.releasePoolPayouts(pool.id, { now: releaseAt })
+    expect(replayRelease?.alreadySettled).toBe(true)
     await expect(
       service.stakeInPool({ communityMarketId: marketId, userId: userIds[0]!, outcome: 'yes', amountMinor: 10_000n }),
     ).rejects.toMatchObject({ code: 'pool_settled' })

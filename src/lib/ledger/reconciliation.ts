@@ -160,7 +160,9 @@ async function checkPools(): Promise<ReconciliationCheckResult[]> {
   const balanceByPool = new Map(poolAccounts.map((row) => [row.ownerId ?? '', row.balance]))
   const mismatches: Array<Record<string, string>> = []
   for (const row of rows) {
-    const expected = row.state === 'open' || row.state === 'closed' ? row.totalYes + row.totalNo : 0n
+    // A held pool still owns its money: payouts are computed but not posted until release.
+    const expected =
+      row.state === 'open' || row.state === 'closed' || row.state === 'held' ? row.totalYes + row.totalNo : 0n
     const actual = balanceByPool.get(row.poolId) ?? 0n
     if (expected !== actual) {
       mismatches.push({

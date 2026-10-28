@@ -14,7 +14,7 @@ interface PoolMetaInformationProps {
   totalMinor: bigint
   stakeCount: number
   currency: string | null
-  endDate: Date | string | null
+  endDate: Date | string | number | null
 }
 
 export default function PoolMetaInformation({ totalMinor, stakeCount, currency, endDate }: PoolMetaInformationProps) {
