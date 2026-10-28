@@ -1,32 +1,26 @@
 'use client'
 
-import { Activity, Award, Globe, Lock, Search, Sparkles, Star, TrendingUp, Users } from 'lucide-react'
-import Link from 'next/link'
+import { SearchIcon } from 'lucide-react'
+import { useExtracted } from 'next-intl'
 import { useMemo, useState } from 'react'
 
+import type { LeaderType } from '@/lib/communities/rules'
+import type { ExploreCommunity } from '@/lib/db/queries/community-home'
 import type { PoolCardSummary } from '@/lib/pools/activity'
 
 import PoolMarketCard from '@/app/[locale]/(platform)/community/[slug]/_components/classic/PoolMarketCard'
+import { CommunityCard } from '@/components/communities/cards/CommunityCard'
+import { EmptyState } from '@/components/communities/states/EmptyState'
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Link } from '@/i18n/navigation'
 import { cn } from '@/lib/utils'
 
-interface Community {
-  id: string
-  slug: string
-  name: string
-  description: string | null
-  icon_url: string | null
-  banner_url: string | null
-  type: string
-  member_count: number
-  market_count: number
-  average_rating: string | null
-  review_count: number
-  jury_size: number
-  created_at: Date
-  creator_username: string | null
-  creator_image: string | null
-}
+/**
+ * Explore: every public community, filtered by who leads it, with the
+ * markets people are staking on right now up top. A leader can apply from
+ * here.
+ */
 
 interface FeaturedMarket {
   id: string
@@ -45,169 +39,78 @@ interface FeaturedMarket {
   community_icon: string | null
 }
 
-type Sort = 'popular' | 'trending' | 'newest' | 'top-rated' | 'most-active'
+type Chip = 'all' | 'joined' | 'verified' | LeaderType
 
-const FILTERS: { id: Sort; label: string; icon: React.ElementType }[] = [
-  { id: 'trending', label: 'Trending', icon: Activity },
-  { id: 'popular', label: 'Popular', icon: TrendingUp },
-  { id: 'newest', label: 'Newest', icon: Sparkles },
-  { id: 'top-rated', label: 'Top Rated', icon: Award },
-]
-
-function CommunityCard({ community }: { community: Community }) {
-  const rating = Number(community.average_rating ?? 0)
-
-  return (
-    <Link
-      href={`/community/${community.slug}` as any}
-      className="group block overflow-hidden rounded-2xl border bg-card transition-all hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md hover:shadow-primary/5"
-    >
-      {/* Banner accent */}
-      <div className="relative h-16 overflow-hidden bg-linear-to-br from-primary/20 via-primary/10 to-background">
-        {community.banner_url ? <img src={community.banner_url} alt="" className="size-full object-cover" /> : null}
-        {/* Type pill in top-right */}
-        <div className="absolute top-3 right-3">
-          <span className="flex items-center gap-1 rounded-full bg-background/80 px-2 py-0.5 text-2xs font-medium tracking-wide text-foreground uppercase backdrop-blur-sm">
-            {community.type === 'private' ? <Lock className="size-2.5" /> : <Globe className="size-2.5" />}
-            {community.type}
-          </span>
-        </div>
-      </div>
-
-      <div className="-mt-6 px-5 pb-5">
-        {/* Icon overlapping banner */}
-        <div className="mb-3 flex items-end gap-3">
-          <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl border-4 border-background bg-card text-xl shadow-sm">
-            {community.icon_url ? (
-              <img src={community.icon_url} alt={community.name} className="size-full rounded-xl object-cover" />
-            ) : (
-              '🏛️'
-            )}
-          </div>
-        </div>
-
-        <h3 className="truncate text-base font-semibold transition-colors group-hover:text-primary">
-          {community.name}
-        </h3>
-        {community.description && (
-          <p className="mt-0.5 line-clamp-2 text-sm text-muted-foreground">{community.description}</p>
-        )}
-
-        {/* Stats */}
-        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-          <span className="flex items-center gap-1">
-            <Users className="size-3" />
-            <strong className="text-foreground">{community.member_count}</strong>
-            <span>{community.member_count === 1 ? 'member' : 'members'}</span>
-          </span>
-          <span className="flex items-center gap-1">
-            <TrendingUp className="size-3" />
-            <strong className="text-foreground">{community.market_count}</strong>
-            <span>{community.market_count === 1 ? 'market' : 'markets'}</span>
-          </span>
-          {community.review_count > 0 && (
-            <span className="flex items-center gap-1">
-              <Star className="size-3 fill-amber-400 text-amber-400" />
-              <strong className="text-foreground">{rating.toFixed(1)}</strong>
-              <span>({community.review_count})</span>
-            </span>
-          )}
-        </div>
-
-        {community.creator_username && (
-          <div className="mt-3 flex items-center gap-1.5 border-t pt-3 text-xs text-muted-foreground">
-            <span>by</span>
-            <span className="font-medium text-foreground">@{community.creator_username}</span>
-            <span className="ml-auto rounded-full bg-muted px-2 py-0.5 text-2xs font-medium">
-              Jury size: {community.jury_size}
-            </span>
-          </div>
-        )}
-      </div>
-    </Link>
-  )
-}
-
-interface CategoryFacet {
-  slug: string
-  community_count: number
-  market_count: number
-}
-
-interface Props {
-  initialCommunities: Community[]
+interface CommunitiesBrowseProps {
+  communities: ExploreCommunity[]
   featuredMarkets: FeaturedMarket[]
-  /** IDs of communities the viewer has already joined. */
-  joinedCommunityIds?: string[]
-  /** Phase 3 — communities sorted by last-7-day activity. */
-  trendingCommunities?: Community[]
-  /** Phase 3 — category facets from community_markets.main_category_slug. */
-  categories?: CategoryFacet[]
+  signedIn: boolean
 }
 
-export default function CommunitiesBrowse({
-  initialCommunities,
-  featuredMarkets,
-  joinedCommunityIds = [],
-  trendingCommunities = [],
-  categories = [],
-}: Props) {
-  const [filter, setFilter] = useState<Sort>('popular')
+export default function CommunitiesBrowse({ communities, featuredMarkets, signedIn }: CommunitiesBrowseProps) {
+  const t = useExtracted()
+  const [chip, setChip] = useState<Chip>('all')
   const [search, setSearch] = useState('')
-  const [onlyJoined, setOnlyJoined] = useState(false)
-  const [activeCategory, setActiveCategory] = useState<string | null>(null)
-  const joinedSet = useMemo(() => new Set(joinedCommunityIds), [joinedCommunityIds])
+  const joinedCount = communities.filter((community) => community.joined).length
 
-  const filteredCommunities = useMemo(() => {
-    // Trending uses the server-ranked list; everything else uses the default list.
-    let result = filter === 'trending' ? [...trendingCommunities] : [...initialCommunities]
+  const chips: Array<{ id: Chip; label: string }> = [
+    { id: 'all', label: t('All') },
+    ...(joinedCount > 0 ? [{ id: 'joined' as const, label: t('Joined') }] : []),
+    { id: 'verified', label: t('Verified') },
+    { id: 'news', label: t('News') },
+    { id: 'sports', label: t('Sports') },
+    { id: 'creator', label: t('Creators') },
+    { id: 'group', label: t('Groups') },
+    { id: 'event', label: t('Events') },
+  ]
 
-    if (onlyJoined) {
-      result = result.filter((c) => joinedSet.has(c.id))
+  const filtered = useMemo(() => {
+    let list = communities
+    if (chip === 'joined') {
+      list = list.filter((community) => community.joined)
+    } else if (chip === 'verified') {
+      list = list.filter((community) => community.isVerified)
+    } else if (chip !== 'all') {
+      list = list.filter((community) => community.leaderType === chip)
     }
-
-    if (search.trim()) {
-      const q = search.trim().toLowerCase()
-      result = result.filter((c) => c.name.toLowerCase().includes(q) || c.description?.toLowerCase().includes(q))
+    const q = search.trim().toLowerCase()
+    if (q) {
+      list = list.filter(
+        (community) => community.name.toLowerCase().includes(q) || community.description?.toLowerCase().includes(q),
+      )
     }
-
-    // Category filter is applied as an extra constraint on whichever list
-    // we ended up with — for now we use the activeCategory client-side
-    // against the (already joined) main_category_slug field on the community.
-    // Since the community list itself doesn't carry per-market category data,
-    // we currently use the trending/popular source-of-truth as filtered server-
-    // side via listByCategory for v2; the client-side fallback simply highlights.
-    // (See task #53.) No-op here keeps the chip selection lossless.
-
-    if (filter === 'trending') {
-      // Order preserved from server (engagement-ranked).
-    } else if (filter === 'newest') {
-      result.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-    } else if (filter === 'top-rated') {
-      result.sort((a, b) => Number(b.average_rating ?? 0) - Number(a.average_rating ?? 0))
-    } else if (filter === 'most-active') {
-      result.sort((a, b) => b.market_count - a.market_count)
-    } else {
-      result.sort((a, b) => b.member_count - a.member_count)
-    }
-
-    return result
-  }, [initialCommunities, trendingCommunities, search, filter, onlyJoined, joinedSet])
-
-  const hasJoinedAny = joinedCommunityIds.length > 0
+    return [...list].sort((a, b) => {
+      const volume = BigInt(b.volume30dMinor) - BigInt(a.volume30dMinor)
+      if (volume !== 0n) {
+        return volume > 0n ? 1 : -1
+      }
+      if (b.openMarkets !== a.openMarkets) {
+        return b.openMarkets - a.openMarkets
+      }
+      return b.memberCount - a.memberCount
+    })
+  }, [communities, chip, search])
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
-      {/* Featured markets carousel */}
-      {featuredMarkets.length > 0 && (
-        <section className="mb-8">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold tracking-wide text-muted-foreground uppercase">Featured Markets</h2>
-            <span className="text-xs text-muted-foreground">From community-governed markets</span>
-          </div>
-          <div className="-mx-4 flex scrollbar-none gap-3 overflow-x-auto px-4 pb-2 [-ms-overflow-style:none] sm:-mx-6 sm:px-6 [&::-webkit-scrollbar]:hidden">
-            {featuredMarkets.map((market) => (
-              <div key={market.id} className="w-80 shrink-0">
+    <div className="mx-auto flex max-w-7xl flex-col gap-8 px-4 py-6 sm:px-6 lg:px-8">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="text-[26px]/tight font-bold">{t('Communities')}</h1>
+          <p className="mt-1 max-w-2xl text-sm/relaxed text-muted-foreground">
+            {t('Questions run by people you follow, resolved by a jury that shows its work, paid in your money.')}
+          </p>
+        </div>
+        <Button variant="secondary" nativeButton={false} render={<Link href="/communities/new" />}>
+          {t('Lead a community')}
+        </Button>
+      </div>
+
+      {featuredMarkets.length > 0 ? (
+        <section className="flex flex-col gap-3" aria-label={t('Staking now')}>
+          <h2 className="text-[17px] font-bold">{t('Staking now')}</h2>
+          <div className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0 lg:grid lg:grid-cols-3 lg:overflow-visible">
+            {featuredMarkets.slice(0, 6).map((market) => (
+              <div key={market.id} className="w-80 shrink-0 lg:w-auto">
                 <PoolMarketCard
                   market={{
                     ...market,
@@ -223,138 +126,107 @@ export default function CommunitiesBrowse({
             ))}
           </div>
         </section>
-      )}
+      ) : null}
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[200px_1fr]">
-        {/* Sidebar filters */}
-        <aside className="lg:sticky lg:top-20 lg:self-start">
-          <h2 className="mb-3 text-sm font-semibold">Communities</h2>
-          <nav className="flex gap-2 overflow-x-auto lg:flex-col lg:overflow-visible">
-            {FILTERS.map((f) => {
-              const Icon = f.icon
-              const isActive = filter === f.id && !onlyJoined
-              return (
-                <button
-                  key={f.id}
-                  type="button"
-                  onClick={() => {
-                    setFilter(f.id)
-                    setOnlyJoined(false)
-                  }}
-                  className={cn(
-                    'flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors',
-                    isActive
-                      ? 'bg-primary/10 font-medium text-primary'
-                      : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-                  )}
-                >
-                  <Icon className="size-4" />
-                  {f.label}
-                </button>
-              )
-            })}
-            {hasJoinedAny && (
+      <section className="flex flex-col gap-4" aria-label={t('All communities')}>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="-mx-4 flex gap-2 overflow-x-auto px-4 sm:mx-0 sm:flex-wrap sm:px-0">
+            {chips.map((item) => (
               <button
+                key={item.id}
                 type="button"
-                onClick={() => setOnlyJoined((v) => !v)}
+                onClick={() => setChip(item.id)}
+                aria-pressed={chip === item.id}
                 className={cn(
-                  'flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors',
-                  onlyJoined
-                    ? 'bg-primary/10 font-medium text-primary'
-                    : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                  'h-9 shrink-0 rounded-full px-3.5 text-sm font-semibold transition-colors',
+                  chip === item.id
+                    ? 'bg-foreground text-background'
+                    : 'bg-secondary text-secondary-foreground hover:bg-secondary/70',
                 )}
               >
-                <Users className="size-4" />
-                Joined by you
-                <span className="ml-1 rounded-full bg-muted px-1.5 text-2xs font-medium">
-                  {joinedCommunityIds.length}
-                </span>
+                {item.label}
               </button>
-            )}
-          </nav>
-        </aside>
-
-        {/* Main content */}
-        <main>
-          {/* Header with search */}
-          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h1 className="text-xl font-bold">
-                {FILTERS.find((f) => f.id === filter)?.label}
-                {' Communities'}
-              </h1>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                {filteredCommunities.length} {filteredCommunities.length === 1 ? 'community' : 'communities'}
-              </p>
-            </div>
-            <div className="relative w-full sm:w-72">
-              <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search communities..."
-                className="pl-9"
-              />
-            </div>
+            ))}
           </div>
+          <div className="relative w-full sm:w-64">
+            <SearchIcon
+              className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+              aria-hidden="true"
+            />
+            <Input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder={t('Search communities')}
+              className="h-10 rounded-md pl-9"
+            />
+          </div>
+        </div>
 
-          {/* Category facets — visual taxonomy of what's being predicted on the platform */}
-          {categories.length > 0 && (
-            <div className="mb-4 flex flex-wrap gap-1.5">
-              <button
-                type="button"
-                onClick={() => setActiveCategory(null)}
-                className={cn(
-                  'rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
-                  !activeCategory
-                    ? 'border-primary bg-primary/10 text-primary'
-                    : 'border-border text-muted-foreground hover:border-primary/40 hover:text-foreground',
-                )}
-              >
-                All
-              </button>
-              {categories.map((c) => (
-                <button
-                  key={c.slug}
-                  type="button"
-                  onClick={() => setActiveCategory(activeCategory === c.slug ? null : c.slug)}
-                  className={cn(
-                    'inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
-                    activeCategory === c.slug
-                      ? 'border-primary bg-primary/10 text-primary'
-                      : 'border-border text-muted-foreground hover:border-primary/40 hover:text-foreground',
-                  )}
-                  title={`${c.community_count} ${c.community_count === 1 ? 'community' : 'communities'} · ${c.market_count} markets`}
+        {filtered.length === 0 ? (
+          <EmptyState
+            dashed
+            title={
+              search
+                ? t('Nothing matches that search')
+                : chip === 'joined'
+                  ? t('You have not joined a community yet')
+                  : t('No communities here yet')
+            }
+            body={
+              chip === 'all' && !search
+                ? t('Communities open as leaders are approved. Apply to lead one and yours can be first.')
+                : t('Try another filter, or clear the search.')
+            }
+            action={
+              chip === 'all' && !search ? (
+                <Button nativeButton={false} render={<Link href="/communities/new" />}>
+                  {t('Apply to lead')}
+                </Button>
+              ) : (
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setChip('all')
+                    setSearch('')
+                  }}
                 >
-                  <span className="capitalize">{c.slug.replace(/-/g, ' ')}</span>
-                  <span className="text-2xs opacity-70">{c.market_count}</span>
-                </button>
-              ))}
-            </div>
-          )}
+                  {t('Show all')}
+                </Button>
+              )
+            }
+          />
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {filtered.map((community) => (
+              <CommunityCard
+                key={community.id}
+                slug={community.slug}
+                name={community.name}
+                description={community.description}
+                iconUrl={community.iconUrl}
+                level={community.level}
+                levelName={community.levelName}
+                isVerified={community.isVerified}
+                leaderType={community.leaderType}
+                memberCount={community.memberCount}
+                maxMembers={community.maxMembers}
+                openMarkets={community.openMarkets}
+                volume30dMinor={community.volume30dMinor}
+                currency={community.currency}
+                rating={community.rating}
+                joined={community.joined}
+                joinsPaused={community.joinsPaused}
+              />
+            ))}
+          </div>
+        )}
+      </section>
 
-          {/* Grid */}
-          {filteredCommunities.length === 0 ? (
-            <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed py-24 text-center">
-              <div className="flex size-14 items-center justify-center rounded-full bg-muted">
-                <Users className="size-7 text-muted-foreground" />
-              </div>
-              <div>
-                <p className="font-medium">No communities found</p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  {search ? 'Try a different search term.' : 'Check back later.'}
-                </p>
-              </div>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {filteredCommunities.map((community) => (
-                <CommunityCard key={community.id} community={community} />
-              ))}
-            </div>
-          )}
-        </main>
-      </div>
+      {!signedIn ? (
+        <p className="text-center text-xs text-muted-foreground">
+          {t('Sign up with your email to join a community and make your first call.')}
+        </p>
+      ) : null}
     </div>
   )
 }

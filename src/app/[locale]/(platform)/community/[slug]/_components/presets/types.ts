@@ -1,13 +1,16 @@
 /**
- * Shared prop shape for every layout preset. Each preset is a function of
- * the same data — they just compose Phase 1's tab components and a few
- * preset-specific surfaces differently.
+ * Shared prop shape for every home layout. Each layout is a function of the
+ * same data: the community, its markets with pool totals, the trust card,
+ * and the viewer's own stakes. They only compose the home sections
+ * differently.
  */
 
+import type { CommunityTrust } from '@/components/communities/types'
+import type { CommunityHome } from '@/lib/db/queries/community-home'
 import type { CommunityThemeState } from '@/lib/db/queries/community-theme'
 import type { PoolCardSummary } from '@/lib/pools/activity'
 
-interface PresetCommunity {
+export interface PresetCommunity {
   id: string
   slug: string
   name: string
@@ -20,6 +23,7 @@ interface PresetCommunity {
   created_at: Date
   is_verified?: boolean | null
   icon_url?: string | null
+  banner_url?: string | null
 }
 
 export interface PresetMember {
@@ -51,7 +55,7 @@ export interface PresetMarket {
   pool?: PoolCardSummary | null
 }
 
-interface PresetReview {
+export interface PresetReview {
   id: string
   rating: number
   review_text: string | null
@@ -68,4 +72,10 @@ export interface PresetProps {
   memberRole: string | null
   currentUserId: string | null
   theme: CommunityThemeState
+  trust: CommunityTrust | null
+  home: CommunityHome
+  /** Market pinned by a shared link (`?m=`), shown first to signed-out visitors. */
+  pinnedMarketId: string | null
+  /** Render-time clock; the client ticks on from here. */
+  serverNow: number
 }

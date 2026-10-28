@@ -7,7 +7,7 @@ import { communities, community_markets } from '@/lib/db/schema/communities/tabl
  * Layout presets a community admin can pick. Adding a new preset is a code +
  * migration change (the CHECK constraint in the SQL is the gate).
  */
-export const LAYOUT_PRESETS = ['classic', 'newsroom', 'sports', 'forum'] as const
+export const LAYOUT_PRESETS = ['classic', 'newsroom', 'news', 'sports', 'forum', 'group', 'creator', 'event'] as const
 export type LayoutPreset = (typeof LAYOUT_PRESETS)[number]
 
 export const SURFACE_MODES = ['auto', 'light', 'dark'] as const

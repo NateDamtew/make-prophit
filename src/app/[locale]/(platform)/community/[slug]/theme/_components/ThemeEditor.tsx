@@ -46,31 +46,34 @@ interface PresetOption {
 
 const PRESETS: PresetOption[] = [
   {
-    value: 'classic',
-    label: 'Classic',
-    description: 'Wide market grid + activity rail + community stats. Works for any community.',
-    icon: GavelIcon,
-  },
-  {
-    value: 'newsroom',
-    label: 'Newsroom',
-    description: 'Editorial layout for journalists and news brands. Featured market + topics + comments.',
+    value: 'news',
+    label: 'News',
+    description: 'A lead story, then the latest questions. For newsrooms, journalists and analysts.',
     icon: NewspaperIcon,
-    comingSoon: true,
   },
   {
     value: 'sports',
     label: 'Sports',
-    description: 'Live ticker, fixture grouping, leaderboard. For sports and live-event communities.',
+    description: 'What is closing now, fixtures by day, and a leaderboard. For clubs, leagues and fan pages.',
     icon: TrophyIcon,
-    comingSoon: true,
   },
   {
-    value: 'forum',
-    label: 'Forum',
-    description: 'Activity feed promoted, discussion-first. For interest groups and member-led communities.',
+    value: 'creator',
+    label: 'Creator',
+    description: 'Your call up top, one question at a time. For creators and commentators.',
+    icon: GavelIcon,
+  },
+  {
+    value: 'group',
+    label: 'Group',
+    description: 'A plain grid with your stakes and the members beside it. For chamas, offices and friends.',
     icon: ActivityIcon,
-    comingSoon: true,
+  },
+  {
+    value: 'event',
+    label: 'Event',
+    description: 'A countdown to the day, the questions, then the results. For elections, finals and launches.',
+    icon: TrophyIcon,
   },
 ]
 
