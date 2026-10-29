@@ -1,5 +1,6 @@
 import { expireAppeals } from '@/lib/communities/appeals-service'
 import { settleImportedMarkets } from '@/lib/communities/imports'
+import { notifyClosingSoon } from '@/lib/pools/notices'
 import {
   closeExpiredPools,
   computePoolSettlement,
@@ -14,6 +15,7 @@ export const maxDuration = 60
 /**
  * Pool housekeeping, every 5 minutes:
  * 0. settle imported markets whose source has resolved;
+ * 0b. tell stakers about pools closing within the hour;
  * 1. close pools past their resolution date;
  * 2. compute and hold payouts for any pool whose market resolved but whose
  *    settlement did not run (a crash between the jury vote and the write);
@@ -27,6 +29,7 @@ export async function GET(request: Request) {
     handler: async () => {
       const now = new Date()
       const imported = await settleImportedMarkets(now)
+      const closingSoonSent = await notifyClosingSoon(now)
       const closed = await closeExpiredPools()
       const expiredAppeals = await expireAppeals(now)
       const pending = await listUnsettledResolvedPools()
@@ -59,6 +62,7 @@ export async function GET(request: Request) {
       return buildCronJsonResponse({
         success: errors.length === 0 && imported.errors.length === 0,
         imported,
+        closingSoonSent,
         closed,
         expiredAppeals,
         computed,

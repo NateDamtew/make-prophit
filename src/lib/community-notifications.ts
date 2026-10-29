@@ -24,19 +24,24 @@ interface CreateNotificationInput {
   metadata?: Record<string, unknown>
 }
 
+/**
+ * The notifications table only accepts the categories trade/system/general
+ * and a fixed set of link types, so these land as 'general' with the
+ * workflow category in `metadata.kind` and the in-app path as a 'custom' link.
+ */
 async function createNotification(input: CreateNotificationInput) {
   try {
     await db.insert(notifications).values({
       user_id: input.userId,
-      category: input.category,
+      category: 'general',
       title: input.title,
       description: input.description,
       extra_info: input.extraInfo ?? null,
-      link_type: input.linkType ?? 'none',
+      link_type: input.linkUrl ? 'custom' : 'none',
       link_target: input.linkTarget ?? null,
       link_url: input.linkUrl ?? null,
       link_label: input.linkLabel ?? null,
-      metadata: input.metadata ?? {},
+      metadata: { kind: input.category, link_kind: input.linkType ?? 'none', ...(input.metadata ?? {}) },
     })
   } catch (err) {
     console.error('[community-notifications] Failed to create notification:', err)

@@ -77,9 +77,33 @@ async function isCommunityEventBlocked(slug: string, userId: string | undefined)
   }
 }
 
+const REF_COOKIE = 'prophit_ref'
+const REF_PATTERN = /^[a-z0-9_.-]{2,40}$/i
+const REF_MAX_AGE = 30 * 24 * 60 * 60
+
+/**
+ * A shared link carries `?ref=<username>`; the first visit remembers it for
+ * 30 days so a sign-up that follows can credit the sharer.
+ */
 export default async function proxy(request: NextRequest) {
+  const response = await route(request)
+  const ref = new URL(request.url).searchParams.get('ref')
+  if (ref && REF_PATTERN.test(ref) && !request.cookies.get(REF_COOKIE)) {
+    response.cookies.set(REF_COOKIE, ref, { path: '/', maxAge: REF_MAX_AGE, sameSite: 'lax' })
+  }
+  return response
+}
+
+/** Routes that live outside `[locale]` and must not be rewritten under a locale. */
+const UNLOCALIZED_PREFIXES = ['/embed/', '/og/', '/overlay/']
+
+async function route(request: NextRequest) {
   const url = new URL(request.url)
   const host = request.headers.get('host') || ''
+
+  if (UNLOCALIZED_PREFIXES.some((prefix) => url.pathname.startsWith(prefix))) {
+    return NextResponse.next()
+  }
 
   // ─── Landing Page Routing ────────────────────────────────────────────────
   // Isolate the base domain, clean port if present

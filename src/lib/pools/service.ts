@@ -25,6 +25,7 @@ import {
   settlementIsConserved,
   splitRake,
 } from '@/lib/pools/math'
+import { notifyPayoutsReleased } from '@/lib/pools/notices'
 
 /**
  * Pool engine: open → stake → (close) → held → settle. Every money movement
@@ -785,6 +786,13 @@ export async function releasePoolPayouts(
             ledger_transaction_id: transactionId,
           })
         }
+        await notifyPayoutsReleased(tx, {
+          communityMarketId: pool.community_market_id,
+          currency: pool.currency,
+          outcome,
+          payouts: perUser,
+          stakerIds: Array.from(new Set(stakes.map((stake) => stake.user_id))),
+        })
       }
     }
 
