@@ -19,6 +19,19 @@ import { getInitialHomeEventsSortBy } from '@/lib/home-route-sort'
 import { PUBLIC_LISTING_PAGE_CACHE_LIFE } from '@/lib/public-listing-cache'
 import { loadRuntimeThemeSiteName } from '@/lib/theme-settings'
 
+/** Home data steps slower than this are logged, so slow renders show up in the runtime logs. */
+const SLOW_HOME_STEP_MS = 3_000
+
+function logIfSlow<T>(label: string, promise: Promise<T>) {
+  const startedAt = performance.now()
+  return promise.finally(() => {
+    const elapsedMs = Math.round(performance.now() - startedAt)
+    if (elapsedMs >= SLOW_HOME_STEP_MS) {
+      console.warn(`[home] ${label} took ${elapsedMs}ms`)
+    }
+  })
+}
+
 interface HomeContentProps {
   categoryFaqContext?: CategoryFaqContext
   currentTimestamp: number | null
@@ -123,10 +136,10 @@ export default async function HomeContent({
     : Promise.resolve(null)
 
   const [initialEventsResult, featuredEventsResult, siteName, homeFeedPools] = await Promise.all([
-    initialEventsPromise,
-    featuredEventsPromise,
+    logIfSlow('initial events', initialEventsPromise),
+    logIfSlow('featured events', featuredEventsPromise),
     categoryFaqContext ? loadRuntimeThemeSiteName() : Promise.resolve(''),
-    homeFeedPoolsPromise,
+    logIfSlow('feed sections', homeFeedPoolsPromise),
   ])
 
   initialEvents = initialEventsResult.events

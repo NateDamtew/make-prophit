@@ -56,6 +56,7 @@ import { getPublicAssetUrl } from '@/lib/storage'
 
 const CHART_COLORS = ['var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)', 'var(--chart-4)']
 const FEATURED_COMMENTS_LIMIT = 8
+const FEATURED_COMMENTS_TIMEOUT_MS = 3_000
 const FEATURED_CONTEXT_ITEMS_PER_EVENT = 6
 const MIN_COMMENTS_FOR_SERIES = 3
 const CONTEXT_ITEM_TTL_MS = 30 * 60 * 1000
@@ -841,8 +842,10 @@ async function fetchCompactComments(
     url.searchParams.set('offset', '0')
     url.searchParams.set('sort', 'recent')
 
+    // Without a timeout a slow comments service held the whole home render open.
     const response = await fetch(url.toString(), {
       next: { revalidate: 30 },
+      signal: AbortSignal.timeout(FEATURED_COMMENTS_TIMEOUT_MS),
     })
     if (!response.ok) {
       return { hasEnoughSeriesComments: false, items: [] }

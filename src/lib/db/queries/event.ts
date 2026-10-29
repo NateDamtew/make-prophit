@@ -148,6 +148,81 @@ function applyCardMetadata(eventsData: DrizzleEventResult[]) {
     }
   }
 }
+
+/**
+ * Card lists load at most this many markets per event. Polymarket futures carry
+ * up to ~130 markets, and loading and pricing all of them pushed home renders
+ * past the 300s function limit; a card shows a handful.
+ */
+const CARD_MARKETS_PER_EVENT = 16
+
+interface CardMarketSelection {
+  conditionIds: string[]
+  /** Full volume of the events whose markets were capped (the mapper sums only the loaded ones). */
+  cappedEventVolumes: Map<string, number>
+}
+
+/**
+ * Picks the markets a card can show: unresolved first, then the most traded.
+ * Sports events keep every market because their buttons read each line.
+ */
+async function selectCardMarketIds(eventIds: string[]): Promise<CardMarketSelection> {
+  if (eventIds.length === 0) {
+    return { conditionIds: [], cappedEventVolumes: new Map() }
+  }
+
+  const ranked = db
+    .select({
+      condition_id: markets.condition_id,
+      event_id: markets.event_id,
+      rank: sql<number>`row_number() over (partition by ${markets.event_id} order by ${markets.is_resolved} asc, ${markets.volume_24h} desc nulls last, ${markets.volume} desc nulls last, ${markets.condition_id})`.as(
+        'rank',
+      ),
+      market_count: sql<number>`count(*) over (partition by ${markets.event_id})`.as('market_count'),
+      event_volume: sql<string>`coalesce(sum(${markets.volume}) over (partition by ${markets.event_id}), 0)`.as(
+        'event_volume',
+      ),
+      is_sports: sql<boolean>`${event_sports.event_id} is not null`.as('is_sports'),
+    })
+    .from(markets)
+    .leftJoin(event_sports, eq(event_sports.event_id, markets.event_id))
+    .where(inArray(markets.event_id, eventIds))
+    .as('ranked')
+
+  const rows = await db
+    .select({
+      condition_id: ranked.condition_id,
+      event_id: ranked.event_id,
+      rank: ranked.rank,
+      market_count: ranked.market_count,
+      event_volume: ranked.event_volume,
+      is_sports: ranked.is_sports,
+    })
+    .from(ranked)
+
+  const conditionIds: string[] = []
+  const cappedEventVolumes = new Map<string, number>()
+  for (const row of rows) {
+    const capped = !row.is_sports && Number(row.market_count) > CARD_MARKETS_PER_EVENT
+    if (!capped || Number(row.rank) <= CARD_MARKETS_PER_EVENT) {
+      conditionIds.push(row.condition_id)
+    }
+    if (capped && row.event_id) {
+      cappedEventVolumes.set(row.event_id, Number(row.event_volume) || 0)
+    }
+  }
+
+  return { conditionIds, cappedEventVolumes }
+}
+
+function applyCappedEventVolumes(eventsData: Event[], cappedEventVolumes: Map<string, number> | undefined) {
+  if (!cappedEventVolumes || cappedEventVolumes.size === 0) {
+    return eventsData
+  }
+  return eventsData.map((event) =>
+    cappedEventVolumes.has(event.id) ? { ...event, volume: cappedEventVolumes.get(event.id)! } : event,
+  )
+}
 const DEFAULT_SPORTS_FEED_EVENT_LIMIT = 128
 const MAX_SPORTS_FEED_EVENT_LIMIT = 256
 const SPORTS_FEED_EVENT_QUERY_CACHE_VERSION = 2
@@ -2185,6 +2260,7 @@ export const EventRepository = {
       const baseWhere = and(...whereConditions)
 
       let eventsData: DrizzleEventResult[] = []
+      let cardMarkets: CardMarketSelection | null = null
 
       if (isSearchOrderedQuery) {
         const orderedSearchEventIds = await db
@@ -2206,6 +2282,7 @@ export const EventRepository = {
 
         const orderedIds = orderedSearchEventIds.map((event) => event.id)
         const orderIndex = new Map(orderedIds.map((id, index) => [id, index]))
+        cardMarkets = cardPayload ? await selectCardMarketIds(orderedIds) : null
 
         const orderedSearchData = (await db.query.events.findMany({
           where: {
@@ -2216,6 +2293,9 @@ export const EventRepository = {
             markets: {
               columns: cardPayload ? MARKET_CARD_EXCLUDED_COLUMNS : undefined,
               extras: cardPayload ? { card_metadata: (table) => buildCardMetadataSql(table.metadata) } : undefined,
+              ...(cardMarkets && {
+                where: { RAW: (table) => inArray(table.condition_id, cardMarkets!.conditionIds) },
+              }),
               with: {
                 sports: cardPayload ? { columns: MARKET_SPORTS_CARD_EXCLUDED_COLUMNS } : true,
                 condition: {
@@ -2265,6 +2345,7 @@ export const EventRepository = {
 
         const orderedIds = resolvedEventIds.map((event) => event.id)
         const orderIndex = new Map(orderedIds.map((id, index) => [id, index]))
+        cardMarkets = cardPayload ? await selectCardMarketIds(orderedIds) : null
 
         const resolvedData = (await db.query.events.findMany({
           where: {
@@ -2275,6 +2356,9 @@ export const EventRepository = {
             markets: {
               columns: cardPayload ? MARKET_CARD_EXCLUDED_COLUMNS : undefined,
               extras: cardPayload ? { card_metadata: (table) => buildCardMetadataSql(table.metadata) } : undefined,
+              ...(cardMarkets && {
+                where: { RAW: (table) => inArray(table.condition_id, cardMarkets!.conditionIds) },
+              }),
               with: {
                 sports: cardPayload ? { columns: MARKET_SPORTS_CARD_EXCLUDED_COLUMNS } : true,
                 condition: {
@@ -2318,6 +2402,7 @@ export const EventRepository = {
 
         const orderedIds = trendingEventIds.map((event) => event.id)
         const orderIndex = new Map(orderedIds.map((id, index) => [id, index]))
+        cardMarkets = cardPayload ? await selectCardMarketIds(orderedIds) : null
 
         const trendingData = (await db.query.events.findMany({
           where: {
@@ -2328,6 +2413,9 @@ export const EventRepository = {
             markets: {
               columns: cardPayload ? MARKET_CARD_EXCLUDED_COLUMNS : undefined,
               extras: cardPayload ? { card_metadata: (table) => buildCardMetadataSql(table.metadata) } : undefined,
+              ...(cardMarkets && {
+                where: { RAW: (table) => inArray(table.condition_id, cardMarkets!.conditionIds) },
+              }),
               with: {
                 sports: cardPayload ? { columns: MARKET_SPORTS_CARD_EXCLUDED_COLUMNS } : true,
                 condition: {
@@ -2386,6 +2474,7 @@ export const EventRepository = {
 
         const orderedIds = sortedEventIds.map((event) => event.id)
         const orderIndex = new Map(orderedIds.map((id, index) => [id, index]))
+        cardMarkets = cardPayload ? await selectCardMarketIds(orderedIds) : null
 
         const sortedData = (await db.query.events.findMany({
           where: {
@@ -2396,6 +2485,9 @@ export const EventRepository = {
             markets: {
               columns: cardPayload ? MARKET_CARD_EXCLUDED_COLUMNS : undefined,
               extras: cardPayload ? { card_metadata: (table) => buildCardMetadataSql(table.metadata) } : undefined,
+              ...(cardMarkets && {
+                where: { RAW: (table) => inArray(table.condition_id, cardMarkets!.conditionIds) },
+              }),
               with: {
                 sports: cardPayload ? { columns: MARKET_SPORTS_CARD_EXCLUDED_COLUMNS } : true,
                 condition: {
@@ -2436,7 +2528,7 @@ export const EventRepository = {
         userId,
       })
 
-      return { data: eventsWithMarkets, error: null }
+      return { data: applyCappedEventVolumes(eventsWithMarkets, cardMarkets?.cappedEventVolumes), error: null }
     })
   },
 
@@ -4144,6 +4236,13 @@ export const EventRepository = {
       if (listContext?.empty) {
         return { data: [], error: null }
       }
+      const cardMarkets = cardPayload
+        ? await selectCardMarketIds(
+            (await db.select({ id: events.id }).from(events).where(inArray(events.slug, normalizedSlugs))).map(
+              (row) => row.id,
+            ),
+          )
+        : null
 
       const eventResults = (await db.query.events.findMany({
         where: {
@@ -4160,6 +4259,9 @@ export const EventRepository = {
           markets: {
             columns: cardPayload ? MARKET_CARD_EXCLUDED_COLUMNS : undefined,
             extras: cardPayload ? { card_metadata: (table) => buildCardMetadataSql(table.metadata) } : undefined,
+            ...(cardMarkets && {
+              where: { RAW: (table) => inArray(table.condition_id, cardMarkets.conditionIds) },
+            }),
             with: {
               sports: cardPayload ? { columns: MARKET_SPORTS_CARD_EXCLUDED_COLUMNS } : true,
               condition: {
@@ -4194,7 +4296,9 @@ export const EventRepository = {
         sportsSlugResolver,
         userId,
       })
-      const eventsBySlug = new Map(eventsWithMarkets.map((event) => [event.slug, event]))
+      const eventsBySlug = new Map(
+        applyCappedEventVolumes(eventsWithMarkets, cardMarkets?.cappedEventVolumes).map((event) => [event.slug, event]),
+      )
 
       return {
         data: normalizedSlugs.map((slug) => eventsBySlug.get(slug)).filter((event): event is Event => Boolean(event)),
