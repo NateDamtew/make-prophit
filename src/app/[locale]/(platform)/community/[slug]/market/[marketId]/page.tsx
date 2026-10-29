@@ -8,6 +8,7 @@ import type { SupportedLocale } from '@/i18n/locales'
 import { applyMarketPreview, isMarketPreviewState } from '@/components/communities/dev/fixtures'
 import { CommunityMarketEmbedButton } from '@/components/community-engagement/EmbedCodeButtonWrapper'
 import { ModerationBar } from '@/components/community-engagement/ModerationBar'
+import { getAppealView, getAppealViewerState } from '@/lib/communities/appeals-service'
 import { getMarketSeats, getViewerSeat, getVotesForViewer } from '@/lib/communities/jury-service'
 import { CommunityRepository } from '@/lib/db/queries/community'
 import { CommunityIntegrityRepository } from '@/lib/db/queries/community-integrity'
@@ -97,11 +98,13 @@ export default async function CommunityMarketDetailPage({
     : { data: null }
 
   // Votes stay sealed until they open; the viewer only ever sees their own before that.
-  const [votes, moderation, viewerSeat, seats] = await Promise.all([
+  const [votes, moderation, viewerSeat, seats, appeal, appealViewer] = await Promise.all([
     getVotesForViewer(marketId, user?.id ?? null),
     CommunityIntegrityRepository.getModerationFields(marketId),
     getViewerSeat(marketId, user?.id ?? null),
     getMarketSeats(marketId),
+    getAppealView(marketId).catch(() => null),
+    getAppealViewerState(marketId, user?.id ?? null).catch(() => null),
   ])
 
   // The Embed button is only useful for actively-trading markets, and only
@@ -154,6 +157,8 @@ export default async function CommunityMarketDetailPage({
           currentUserId={user?.id ?? null}
           viewerSeat={viewerSeat}
           seats={seats}
+          appeal={preview?.appeal ?? appeal}
+          appealViewer={appealViewer}
           initialSummary={preview?.summary ?? loadedSummary}
           initialOutcome={requestedStake === 'no' ? 'no' : 'yes'}
           openStakeOnLoad={requestedStake === 'yes' || requestedStake === 'no'}

@@ -6,6 +6,7 @@ import { useExtracted } from 'next-intl'
 import { useCallback, useMemo, useState } from 'react'
 
 import type { CommunityTrust } from '@/components/communities/types'
+import type { AppealView } from '@/lib/communities/appeals-service'
 import type { PoolSummary } from '@/lib/pools/service'
 
 import { previewOddsHistory } from '@/components/communities/dev/fixtures'
@@ -19,7 +20,9 @@ import { useIsMobile } from '@/hooks/useIsMobile'
 import { isJurorRole } from '@/lib/communities/roles'
 import { useUser } from '@/stores/useUser'
 
+import type { LifecycleAppeal } from './market-lifecycle'
 import type {
+  AppealViewerState,
   MarketSeat,
   PoolCommunityRecord,
   PoolJuryVote,
@@ -28,6 +31,7 @@ import type {
   ViewerJurySeat,
 } from './pool-market-types'
 
+import MarketAppealSection from './MarketAppealSection'
 import MarketBottomBar from './MarketBottomBar'
 import MarketHero from './MarketHero'
 import MarketJuryCall from './MarketJuryCall'
@@ -62,6 +66,10 @@ interface PoolMarketContentProps {
   viewerSeat?: ViewerJurySeat | null
   /** Who sits on this market's jury (empty on markets from before seats existed). */
   seats?: MarketSeat[]
+  /** The latest appeal on the market, live or ruled. */
+  appeal?: AppealView | null
+  /** What the viewer may do about appeals: file, back. */
+  appealViewer?: AppealViewerState | null
   initialSummary: PoolSummary | null
   initialOutcome: PoolSide
   /** Open the stake sheet on load (from `?stake=yes|no`). */
@@ -75,6 +83,23 @@ interface PoolMarketContentProps {
 
 const NO_SEATS: MarketSeat[] = []
 
+function toLifecycleAppeal(appeal: AppealView | null): LifecycleAppeal | null {
+  if (!appeal) {
+    return null
+  }
+  return {
+    id: appeal.id,
+    status: appeal.status,
+    claimedOutcome: appeal.claimedOutcome,
+    backers: appeal.backerCount,
+    backersNeeded: appeal.backersNeeded,
+    escrowMinor: appeal.escrowTotalMinor,
+    escrowTargetMinor: appeal.escrowTargetMinor,
+    windowEndsAt: new Date(appeal.windowEndsAt).getTime(),
+    filedByUsername: appeal.filedBy.username,
+  }
+}
+
 export default function PoolMarketContent({
   market,
   community,
@@ -84,6 +109,8 @@ export default function PoolMarketContent({
   currentUserId,
   viewerSeat = null,
   seats = NO_SEATS,
+  appeal = null,
+  appealViewer = null,
   initialSummary,
   initialOutcome,
   openStakeOnLoad,
@@ -108,7 +135,16 @@ export default function PoolMarketContent({
 
   const jurySize = trust?.jurySize ?? community.jury_size
   const juryRequired = trust?.juryRequired ?? Math.floor(community.jury_size / 2) + 1
-  const { lifecycle } = useMarketLifecycle({ market, summary, votes, jurySize, juryRequired, serverNow })
+  const lifecycleAppeal = useMemo(() => toLifecycleAppeal(appeal), [appeal])
+  const { lifecycle } = useMarketLifecycle({
+    market,
+    summary,
+    votes,
+    jurySize,
+    juryRequired,
+    serverNow,
+    appeal: lifecycleAppeal,
+  })
 
   const outcomeLabels = useMemo(
     () => ({ yes: market.binary_outcome_yes?.trim() || t('Yes'), no: market.binary_outcome_no?.trim() || t('No') }),
@@ -207,11 +243,23 @@ export default function PoolMarketContent({
               outcomeLabels={outcomeLabels}
               onShareWin={() => setShareOpen(true)}
               seat={viewerSeat}
+              appealViewer={appealViewer}
             />
           </div>
         )}
 
         <MarketJuryCall marketId={market.id} lifecycle={lifecycle} seat={viewerSeat} />
+
+        {appeal && (lifecycle.phase === 'appeal' || lifecycle.phase === 'review' || appeal.ruling) && (
+          <MarketAppealSection
+            community={community}
+            marketId={market.id}
+            appeal={appeal}
+            lifecycle={lifecycle}
+            outcomeLabels={outcomeLabels}
+            viewer={appealViewer}
+          />
+        )}
 
         {(marketDone || lifecycle.phase === 'awaiting' || votes.length > 0) && (
           <MarketVerdicts
@@ -272,6 +320,7 @@ export default function PoolMarketContent({
         onShareWin={() => setShareOpen(true)}
         onMoneyMoved={onMoneyMoved}
         seat={viewerSeat}
+        appealViewer={appealViewer}
       />
 
       <MarketBottomBar

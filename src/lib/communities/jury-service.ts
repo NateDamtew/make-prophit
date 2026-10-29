@@ -451,7 +451,7 @@ export async function rateResolution(params: { marketId: string; userId: string;
  * ratings. Appeal-driven fields (overturned votes, dissents proven) are read
  * from the vote rows, so an appeal ruling only has to mark the votes.
  */
-async function recomputeJurorStats(userIds: string[]) {
+export async function recomputeJurorStats(userIds: string[]) {
   const ids = Array.from(new Set(userIds)).filter(Boolean)
   if (ids.length === 0) {
     return

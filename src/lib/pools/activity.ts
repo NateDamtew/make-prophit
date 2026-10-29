@@ -165,6 +165,9 @@ export interface PoolCardSummary {
   stakeCount: number
   yesChance: number
   settledOutcome: string | null
+  payoutsFrozen: boolean
+  /** The live appeal, for the card's footer strip. */
+  appeal: { status: string; backers: number; backersNeeded: number } | null
 }
 
 /** Pool totals for a list of community markets (for the market cards). */
@@ -182,6 +185,16 @@ export async function getPoolCardSummaries(communityMarketIds: string[]): Promis
       total_no: pools.total_no,
       stake_count: pools.stake_count,
       settled_outcome: pools.settled_outcome,
+      payouts_frozen: pools.payouts_frozen,
+      appeal_status: sql<
+        string | null
+      >`(SELECT a.status FROM market_appeals a WHERE a.pool_id = ${pools.id} AND a.status IN ('open', 'threshold_met', 'under_review') LIMIT 1)`,
+      appeal_backers: sql<
+        number | null
+      >`(SELECT a.backer_count FROM market_appeals a WHERE a.pool_id = ${pools.id} AND a.status IN ('open', 'threshold_met', 'under_review') LIMIT 1)`,
+      appeal_needed: sql<
+        number | null
+      >`(SELECT a.backers_needed FROM market_appeals a WHERE a.pool_id = ${pools.id} AND a.status IN ('open', 'threshold_met', 'under_review') LIMIT 1)`,
     })
     .from(pools)
     .where(and(inArray(pools.community_market_id, communityMarketIds)))
@@ -196,6 +209,10 @@ export async function getPoolCardSummaries(communityMarketIds: string[]): Promis
       stakeCount: row.stake_count,
       yesChance: impliedOdds(row.total_yes, row.total_no).yes * 100,
       settledOutcome: row.settled_outcome ?? null,
+      payoutsFrozen: row.payouts_frozen,
+      appeal: row.appeal_status
+        ? { status: row.appeal_status, backers: row.appeal_backers ?? 0, backersNeeded: row.appeal_needed ?? 0 }
+        : null,
     }
   }
   return result

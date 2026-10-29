@@ -1,3 +1,4 @@
+import type { AppealView } from '@/lib/communities/appeals-service'
 import type { PoolSummary } from '@/lib/pools/service'
 
 /**
@@ -12,6 +13,7 @@ const MARKET_PREVIEW_STATES = [
   'closing',
   'awaiting',
   'hold',
+  'appeal',
   'review',
   'won',
   'lost',
@@ -175,7 +177,7 @@ function previewVotes(now: number, outcome: 'yes' | 'no'): PreviewVoteLike[] {
 export function applyMarketPreview<M extends PreviewMarketLike>(
   state: MarketPreviewState,
   input: { market: M; summary: PoolSummary | null; votes: PreviewVoteLike[]; userId: string | null; now: number },
-): { market: M; summary: PoolSummary; votes: PreviewVoteLike[] } {
+): { market: M; summary: PoolSummary; votes: PreviewVoteLike[]; appeal?: AppealView | null } {
   const { now, userId } = input
   const currency = input.summary?.pool.currency ?? 'KES'
   const summary = baseSummary(now, currency, userId)
@@ -237,11 +239,24 @@ export function applyMarketPreview<M extends PreviewMarketLike>(
         summary: withStake({ ...summary, pool: held(false) }, now, 'yes', '80700'),
         votes: previewVotes(now, 'yes'),
       }
+    case 'appeal':
+      return {
+        market: { ...market, status: 'resolved', resolved_outcome: 'yes', resolved_at: new Date(announced) },
+        summary: withStake(
+          { ...summary, pool: { ...held(false), holdExtendedUntil: new Date(announced + 48 * HOUR).toISOString() } },
+          now,
+          'no',
+          '0',
+        ),
+        votes: previewVotes(now, 'yes'),
+        appeal: previewAppealView('open', now, announced),
+      }
     case 'review':
       return {
         market: { ...market, status: 'resolved', resolved_outcome: 'yes', resolved_at: new Date(announced) },
         summary: withStake({ ...summary, pool: held(true) }, now, 'no', '0'),
         votes: previewVotes(now, 'yes'),
+        appeal: previewAppealView('met', now, announced),
       }
     case 'won':
     case 'settled':
@@ -323,4 +338,169 @@ export function applyMarketPreview<M extends PreviewMarketLike>(
         votes: [],
       }
   }
+}
+
+/** A plausible appeal for the previews: the petrol dissent, seven backers in. */
+function previewAppealView(
+  state: 'open' | 'met' | 'rejected' | 'upheld' | 'voided',
+  now: number,
+  announced: number,
+): AppealView {
+  const status = state === 'open' ? 'open' : state === 'met' ? 'threshold_met' : state
+  const backers = [
+    {
+      userId: 'preview-filer',
+      username: 'mama_wanjiru',
+      image: null,
+      amountMinor: '50000',
+      stakeSide: 'no' as const,
+      stakeMinor: '80000',
+      isFiler: true,
+    },
+    {
+      userId: 'preview-b2',
+      username: 'dennis_k',
+      image: null,
+      amountMinor: '100000',
+      stakeSide: 'no' as const,
+      stakeMinor: '400000',
+      isFiler: false,
+    },
+    {
+      userId: 'preview-b3',
+      username: 'sharon.n',
+      image: null,
+      amountMinor: '60000',
+      stakeSide: 'no' as const,
+      stakeMinor: '250000',
+      isFiler: false,
+    },
+    {
+      userId: 'preview-b4',
+      username: 'otis',
+      image: null,
+      amountMinor: '40000',
+      stakeSide: 'no' as const,
+      stakeMinor: '100000',
+      isFiler: false,
+    },
+    {
+      userId: 'preview-b5',
+      username: 'fatma',
+      image: null,
+      amountMinor: '30000',
+      stakeSide: 'no' as const,
+      stakeMinor: '50000',
+      isFiler: false,
+    },
+    {
+      userId: 'preview-b6',
+      username: 'brian',
+      image: null,
+      amountMinor: '30000',
+      stakeSide: 'no' as const,
+      stakeMinor: '60000',
+      isFiler: false,
+    },
+    {
+      userId: 'preview-b7',
+      username: 'achieng',
+      image: null,
+      amountMinor: '30000',
+      stakeSide: 'no' as const,
+      stakeMinor: '20000',
+      isFiler: false,
+    },
+  ]
+  const met = state !== 'open'
+  return {
+    id: 'preview-appeal',
+    status,
+    originalOutcome: 'yes',
+    claimedOutcome: state === 'voided' ? 'cancelled' : 'no',
+    reason:
+      'The rule says Nairobi. The EPRA notice lists 203.40 for Nairobi CBD only. The Nairobi county price in the same notice is 199.80, which is below 200.',
+    evidence: [
+      { type: 'link', url: 'https://example.com/epra-december', label: 'epra.go.ke, December notice, page 2' },
+      { type: 'photo', url: 'https://example.com/notice-table.jpg', label: 'Photo of the notice table' },
+    ],
+    filedBy: { userId: 'preview-filer', username: 'mama_wanjiru', image: null, stakeSide: 'no', stakeMinor: '80000' },
+    backersNeeded: 12,
+    escrowTargetMinor: '529000',
+    backerCount: met ? 12 : 7,
+    escrowTotalMinor: met ? '540000' : '340000',
+    currency: 'KES',
+    windowEndsAt: new Date(announced + 48 * HOUR).toISOString(),
+    createdAt: new Date(now - 5 * HOUR).toISOString(),
+    thresholdMetAt: met ? new Date(now - 2 * HOUR).toISOString() : null,
+    ruling: state === 'rejected' || state === 'upheld' || state === 'voided' ? state : null,
+    rulingText:
+      state === 'rejected'
+        ? 'The rule names Nairobi and the EPRA table lists one Nairobi price, 203.40 KES. The county average the appeal cites is not in the notice.'
+        : state === 'upheld'
+          ? 'The rule says Nairobi, not Nairobi CBD. The same notice gives 199.80 for the county, below 200. The jury read the wrong row.'
+          : state === 'voided'
+            ? 'The question did not say which EPRA figure counts, and the notice has two. Nobody can resolve it fairly either way.'
+            : null,
+    ruledAt:
+      state === 'rejected' || state === 'upheld' || state === 'voided' ? new Date(now - 1 * HOUR).toISOString() : null,
+    backers: met ? backers : backers.slice(0, 7),
+    opinions:
+      state === 'rejected' || state === 'upheld' || state === 'voided'
+        ? [
+            {
+              username: 'njeri',
+              image: null,
+              opinion: state === 'rejected' ? 'stand' : state === 'upheld' ? 'flip' : 'void',
+            },
+            {
+              username: 'joseph',
+              image: null,
+              opinion: state === 'rejected' ? 'stand' : state === 'upheld' ? 'flip' : 'void',
+            },
+            { username: 'wanjiru', image: null, opinion: 'stand' },
+          ]
+        : [],
+  }
+}
+
+/**
+ * Fixtures for the appeal page (`?preview=file|open|met|rejected|upheld|voided`,
+ * outside production): the appeal, what the viewer may do, and the pool.
+ */
+export function previewAppeal(state: string, now: number, viewerId: string) {
+  if (
+    state !== 'file' &&
+    state !== 'open' &&
+    state !== 'met' &&
+    state !== 'rejected' &&
+    state !== 'upheld' &&
+    state !== 'voided'
+  ) {
+    return null
+  }
+  const announced = now - 6 * HOUR
+  const decided = state === 'rejected' || state === 'upheld' || state === 'voided'
+  const appeal = state === 'file' ? null : previewAppealView(state, now, announced)
+  const viewer = {
+    staked: true,
+    stakeSide: 'no' as const,
+    stakeMinor: '150000',
+    backedMinor: decided ? '50000' : '0',
+    availableMinor: '234000',
+    canFile: state === 'file',
+    canBack: state === 'open',
+    isFiler: false,
+  }
+  const pool = {
+    state: decided ? (state === 'voided' || state === 'upheld' ? 'settled' : 'settled') : 'held',
+    settledOutcome: state === 'upheld' ? 'no' : state === 'voided' ? 'cancelled' : 'yes',
+    holdUntil: new Date(announced + 24 * HOUR).toISOString(),
+    holdExtendedUntil: new Date(announced + 48 * HOUR).toISOString(),
+    payoutsFrozen: state === 'met',
+    totalMinor: '5290000',
+    currency: 'KES',
+  }
+  const resolvedOutcome = state === 'upheld' ? 'no' : state === 'voided' ? 'cancelled' : 'yes'
+  return { appeal, viewer, pool, votes: previewVotes(now, 'yes'), resolvedOutcome, viewerId }
 }

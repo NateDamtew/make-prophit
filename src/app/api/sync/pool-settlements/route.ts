@@ -1,3 +1,4 @@
+import { expireAppeals } from '@/lib/communities/appeals-service'
 import { settleImportedMarkets } from '@/lib/communities/imports'
 import {
   closeExpiredPools,
@@ -16,7 +17,8 @@ export const maxDuration = 60
  * 1. close pools past their resolution date;
  * 2. compute and hold payouts for any pool whose market resolved but whose
  *    settlement did not run (a crash between the jury vote and the write);
- * 3. release payouts whose hold has run out and that no appeal has frozen.
+ * 3. expire appeals still gathering backers past their window (escrow back);
+ * 4. release payouts whose hold has run out and that no appeal has frozen.
  */
 export async function GET(request: Request) {
   return handleCronRoute({
@@ -26,6 +28,7 @@ export async function GET(request: Request) {
       const now = new Date()
       const imported = await settleImportedMarkets(now)
       const closed = await closeExpiredPools()
+      const expiredAppeals = await expireAppeals(now)
       const pending = await listUnsettledResolvedPools()
       const computed: string[] = []
       const released: string[] = []
@@ -57,6 +60,7 @@ export async function GET(request: Request) {
         success: errors.length === 0 && imported.errors.length === 0,
         imported,
         closed,
+        expiredAppeals,
         computed,
         released,
         errors,

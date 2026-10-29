@@ -32,6 +32,14 @@ function footerFor(market: PresetMarket): MarketCardFooterState | null {
   if (market.status === 'cancelled' || market.status === 'disputed' || outcome === 'cancelled') {
     return { kind: 'voided', refundMinor: null, currency: pool?.currency ?? null }
   }
+  if (pool && pool.state === 'held') {
+    if (pool.payoutsFrozen || pool.appeal?.status === 'under_review') {
+      return { kind: 'review' }
+    }
+    if (pool.appeal) {
+      return { kind: 'appeal', backers: pool.appeal.backers, backersNeeded: pool.appeal.backersNeeded }
+    }
+  }
   if (pool && pool.state === 'closed') {
     const voted = (market.votes?.yes ?? 0) + (market.votes?.no ?? 0) + (market.votes?.disputed ?? 0)
     return { kind: 'jury', voted, seats: 0, dueAt: market.resolution_date ?? null }

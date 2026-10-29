@@ -19,7 +19,7 @@ import { toast } from '@/components/ui/toast'
 import { Link } from '@/i18n/navigation'
 
 import type { MarketLifecycle } from './market-lifecycle'
-import type { PoolCommunityRecord, PoolMarketRecord, ViewerJurySeat } from './pool-market-types'
+import type { AppealViewerState, PoolCommunityRecord, PoolMarketRecord, ViewerJurySeat } from './pool-market-types'
 
 import { ResultPill } from './MarketHero'
 import { communityPath } from './pool-market-types'
@@ -43,6 +43,7 @@ interface MarketStatePanelProps {
   onMoneyMoved: () => void
   /** The viewer's seat on this jury, when they have one. */
   seat?: ViewerJurySeat | null
+  appealViewer?: AppealViewerState | null
 }
 
 function Card({ children, label }: { children: React.ReactNode; label?: string }) {
@@ -60,7 +61,12 @@ export function MarketStateBody({
   outcomeLabels,
   onShareWin,
   seat,
-}: Pick<MarketStatePanelProps, 'market' | 'community' | 'lifecycle' | 'outcomeLabels' | 'onShareWin' | 'seat'>) {
+  appealViewer,
+}: Pick<
+  MarketStatePanelProps,
+  'market' | 'community' | 'lifecycle' | 'outcomeLabels' | 'onShareWin' | 'seat' | 'appealViewer'
+>) {
+  const appealHref = `${communityPath(community.slug)}/market/${market.id}/appeal`
   const t = useExtracted()
   const locale = useLocale()
   const [rating, setRating] = useState<number | null>(null)
@@ -112,14 +118,14 @@ export function MarketStateBody({
     )
   }
 
-  if (phase === 'hold' || phase === 'review') {
+  if (phase === 'hold' || phase === 'review' || phase === 'appeal') {
     return (
       <Card label={t('Result')}>
         <div className="flex items-center justify-between gap-3">
           <p className="text-[13px] font-semibold text-muted-foreground">{t('Result')}</p>
           <ResultPill outcome={lifecycle.outcome} outcomeLabels={outcomeLabels} size="md" />
         </div>
-        {phase === 'hold' && lifecycle.hold ? (
+        {phase !== 'review' && lifecycle.hold ? (
           <HoldCard
             announcedAt={lifecycle.hold.announcedAt}
             paysAt={lifecycle.hold.paysAt}
@@ -142,7 +148,27 @@ export function MarketStateBody({
             {t('Your side did not win. You can read every verdict below and appeal within the hold.')}
           </p>
         )}
-        {phase === 'hold' && (
+        {phase === 'hold' && appealViewer?.canFile && (
+          <Button nativeButton={false} render={<Link href={appealHref} />} className="h-11 rounded-md font-bold">
+            {t('Appeal this result')}
+          </Button>
+        )}
+        {phase === 'appeal' && appealViewer?.canBack && (
+          <Button nativeButton={false} render={<Link href={appealHref} />} className="h-11 rounded-md font-bold">
+            {t('Back this appeal')}
+          </Button>
+        )}
+        {phase === 'appeal' && !appealViewer?.canBack && (
+          <Button
+            variant="secondary"
+            nativeButton={false}
+            render={<Link href={appealHref} />}
+            className="h-11 rounded-md"
+          >
+            {t('See the appeal')}
+          </Button>
+        )}
+        {phase === 'hold' && !appealViewer?.canFile && (
           <Button variant="secondary" nativeButton={false} render={<a href="#verdicts" />} className="h-11 rounded-md">
             {t('Read the verdicts')}
           </Button>
@@ -288,6 +314,7 @@ export default function MarketStatePanel(props: MarketStatePanelProps) {
             outcomeLabels={outcomeLabels}
             onShareWin={props.onShareWin}
             seat={props.seat ?? null}
+            appealViewer={props.appealViewer ?? null}
           />
         )}
         {trust ? <TrustBlock trust={trust} variant="compact" rulesHref={communityPath(community.slug)} /> : null}
