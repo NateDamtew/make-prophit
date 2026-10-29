@@ -62,7 +62,6 @@ function summary(pool: Partial<PoolSummary['pool']> = {}, user: PoolSummary['use
 const viewer: NonNullable<PoolSummary['user']> = {
   currency: 'KES',
   availableMinor: '60000',
-  consentRequired: false,
   stakes: [{ id: 's1', outcome: 'yes', amountMinor: '100000', payoutMinor: null, createdAt: '' }],
   totalYes: '100000',
   totalNo: '0',

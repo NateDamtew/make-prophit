@@ -64,7 +64,12 @@ interface ShareCardPayload {
   variant: 'yes' | 'no'
   eventSlug: string
   tag?: string
+  kind?: 'call' | 'won'
+  won?: string
+  accent?: string
 }
+
+const SAFE_ACCENT = /^#[0-9a-f]{6}$/i
 
 function normalizeRequiredText(value: unknown, maxLength = 120) {
   if (typeof value !== 'string') {
@@ -163,6 +168,10 @@ function normalizeSharePayload(parsed: Partial<ShareCardPayload>): ShareCardPayl
     variant,
     eventSlug,
     tag: normalizeOptionalText(parsed.tag, 40) || undefined,
+    kind: parsed.kind === 'won' ? 'won' : 'call',
+    won: normalizeOptionalText(parsed.won, 24) || undefined,
+    accent:
+      typeof parsed.accent === 'string' && SAFE_ACCENT.test(parsed.accent.trim()) ? parsed.accent.trim() : undefined,
   }
 }
 
@@ -199,7 +208,8 @@ export async function GET(request: Request) {
   const siteName = runtimeTheme.site.name
   const fontFamily = fonts.length > 0 ? 'Archivo' : 'ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif'
   const host = new URL(request.url).host.replace(/^www\./, '')
-  const eyebrow = (payload.tag || siteName).toUpperCase()
+  const won = payload.kind === 'won' && payload.won ? payload.won : null
+  const eyebrow = `${won ? 'I WON' : 'MY CALL'} · ${payload.tag || siteName}`.toUpperCase()
   const shortPath = payload.eventSlug.replace(/^\//, '').split('/').slice(0, 2).join('/')
   const titleLength = payload.title.length
   const tallTitleFontSize = titleLength > 90 ? 44 : titleLength > 60 ? 52 : 60
@@ -319,15 +329,15 @@ export async function GET(request: Request) {
         {outcomeLabel.toUpperCase()}
       </div>
       <div style={{ display: 'flex', gap: '8px', fontSize: '22px', color: MUTED }}>
-        <span>Avg price</span>
-        <span style={{ color: PAPER, fontWeight: 800 }}>{payload.avgPrice}</span>
+        <span>{won ? 'Called at' : 'Avg price'}</span>
+        <span style={{ color: PAPER, fontWeight: 800 }}>{won ? payload.odds : payload.avgPrice}</span>
       </div>
     </div>
   )
 
   const betBlock = (
     <div style={{ display: 'flex', flexDirection: 'column' }}>
-      <Eyebrow>BET</Eyebrow>
+      <Eyebrow>{won ? 'STAKED' : 'BET'}</Eyebrow>
       <div
         style={{
           display: 'flex',
@@ -343,7 +353,7 @@ export async function GET(request: Request) {
 
   const toWinBlock = (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: isTall ? 'flex-end' : 'flex-start' }}>
-      <Eyebrow>TO WIN</Eyebrow>
+      <Eyebrow>{won ? 'PAID' : 'TO WIN'}</Eyebrow>
       <div
         style={{
           display: 'flex',
@@ -353,17 +363,30 @@ export async function GET(request: Request) {
           color: YELLOW,
         }}
       >
-        {payload.toWin}
+        {won ?? payload.toWin}
       </div>
     </div>
   )
 
   const oddsRow = (
     <div style={{ display: 'flex', gap: '8px', fontSize: '22px', color: MUTED }}>
-      <span>Odds</span>
-      <span style={{ color: PAPER, fontWeight: 800 }}>{payload.odds}</span>
+      <span>{won ? 'Paid after the hold' : 'Odds'}</span>
+      {!won && <span style={{ color: PAPER, fontWeight: 800 }}>{payload.odds}</span>}
     </div>
   )
+  // The community's colour, as a strip across the top of the slip.
+  const accentStrip = payload.accent ? (
+    <div
+      style={{
+        display: 'flex',
+        height: '10px',
+        width: '100%',
+        borderRadius: '999px',
+        backgroundColor: payload.accent,
+        marginBottom: '28px',
+      }}
+    />
+  ) : null
 
   const slipPadX = isTall ? 56 : 40
   const slipPadTop = isTall ? 56 : 34
@@ -506,6 +529,7 @@ export async function GET(request: Request) {
           padding: `${slipPadTop}px ${slipPadX}px ${isStory ? 48 : 56}px`,
         }}
       >
+        {accentStrip}
         {marketBlock}
         <div style={{ display: 'flex', flex: '1 1 0%', minHeight: '36px' }} />
         <div style={{ display: 'flex' }}>{sideRow}</div>
@@ -537,6 +561,7 @@ export async function GET(request: Request) {
         {/* ticket notches on the perforation: columns are 3fr | divider | 2fr with 40px gaps */}
         <div style={{ ...notchStyle, left: `${wideNotchLeft}px`, top: '-18px' }} />
         <div style={{ ...notchStyle, left: `${wideNotchLeft}px`, bottom: '-18px' }} />
+        {accentStrip}
         <div style={{ display: 'flex', gap: '40px', alignItems: 'stretch' }}>
           <div style={{ display: 'flex', flexDirection: 'column', flex: '3 1 0%', minWidth: 0 }}>
             {marketBlock}

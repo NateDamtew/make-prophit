@@ -8,9 +8,9 @@ import { useCallback, useMemo, useState } from 'react'
 import type { CommunityTrust } from '@/components/communities/types'
 import type { PoolSummary } from '@/lib/pools/service'
 
-import { PositionShareDialog } from '@/app/[locale]/(platform)/_components/PositionShareDialog'
 import { previewOddsHistory } from '@/components/communities/dev/fixtures'
 import { buildPoolSharePayload } from '@/components/communities/share/payload'
+import { ShareSheet } from '@/components/communities/share/ShareSheet'
 import { readStakeIntent } from '@/components/communities/stake/stake-intent'
 import { StakeSheet } from '@/components/communities/stake/StakeSheet'
 import { TrustBlock } from '@/components/communities/trust/TrustBlock'
@@ -135,6 +135,8 @@ export default function PoolMarketContent({
       currency: lifecycle.currency ?? 'KES',
       userName: user?.username,
       userImage: user?.image,
+      kind: 'won',
+      wonMinor: stake.payoutMinor,
     })
   }, [lifecycle, market, community, outcomeLabels, totals, user])
 
@@ -284,7 +286,14 @@ export default function PoolMarketContent({
         </div>
       )}
 
-      <PositionShareDialog open={shareOpen} onOpenChange={setShareOpen} payload={winPayload} />
+      <ShareSheet
+        open={shareOpen}
+        onOpenChange={setShareOpen}
+        payload={winPayload}
+        kind="won"
+        marketPath={`/community/${community.slug}/market/${market.id}`}
+        communityName={community.name}
+      />
     </>
   )
 }

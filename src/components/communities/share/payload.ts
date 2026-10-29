@@ -19,6 +19,10 @@ export function buildPoolSharePayload(params: {
   currency: string
   userName?: string | null
   userImage?: string | null
+  /** "won" after a payout: the card leads with the amount paid. */
+  kind?: 'call' | 'won'
+  wonMinor?: bigint | null
+  accent?: string | null
 }): ShareCardPayload {
   const total = params.totalYes + params.totalNo
   const yesChance = total > 0n ? Number((params.totalYes * 10_000n) / total) / 100 : 50
@@ -42,5 +46,8 @@ export function buildPoolSharePayload(params: {
     variant: params.outcome,
     eventSlug: `community/${params.community.slug}/market/${params.market.id}`,
     tag: params.community.name,
+    kind: params.kind ?? 'call',
+    won: params.kind === 'won' && params.wonMinor ? formatPoolMoney(params.wonMinor, params.currency) : undefined,
+    accent: params.accent ?? undefined,
   }
 }

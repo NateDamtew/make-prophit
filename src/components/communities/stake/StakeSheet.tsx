@@ -9,8 +9,8 @@ import type { ShareCardPayload } from '@/lib/share-card'
 
 import { createMobileMoneyDepositAction } from '@/app/[locale]/(platform)/_actions/mobile-money'
 import { stakeInPoolAction } from '@/app/[locale]/(platform)/_actions/pool-stake'
-import { PositionShareDialog } from '@/app/[locale]/(platform)/_components/PositionShareDialog'
 import { formatBps, formatCloseLabel, formatMoney } from '@/components/communities/format'
+import { DepositFailed, DepositWaiting } from '@/components/communities/money/DepositStates'
 import {
   useInvalidateMobileMoney,
   useMobileMoneyIntent,
@@ -18,6 +18,7 @@ import {
 } from '@/components/communities/money/useMobileMoney'
 import { PayoutLine } from '@/components/communities/odds/PayoutLine'
 import { buildPoolSharePayload } from '@/components/communities/share/payload'
+import { ShareSheet } from '@/components/communities/share/ShareSheet'
 import { CommunitySheet } from '@/components/communities/sheet/CommunitySheet'
 import { AmountChips, defaultChipValues } from '@/components/communities/stake/AmountChips'
 import { AmountInput } from '@/components/communities/stake/AmountInput'
@@ -98,7 +99,6 @@ export function StakeSheet(props: StakeSheetProps) {
   const setAmount = setAmountInput
   const [view, setView] = useState<View>('form')
   const [phoneInput, setPhoneInput] = useState<string | null>(null)
-  const [consent, setConsent] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [intentId, setIntentId] = useState<string | null>(null)
   const [lastStake, setLastStake] = useState<{ amountMinor: bigint; payoutMinor: bigint; side: 'yes' | 'no' } | null>(
@@ -164,8 +164,7 @@ export function StakeSheet(props: StakeSheetProps) {
         : minDepositMinor
       : 0n
   const depositMinor = needMinor < minDepositMinor ? minDepositMinor : needMinor
-  const consentRequired = !needsLogin && Boolean(ledgerUser?.consentRequired || moneyQuery.data?.consentRequired)
-  const canSubmit = amountMinor > 0n && !belowMinimum && !overCap && !submitting && (!consentRequired || consent)
+  const canSubmit = amountMinor > 0n && !belowMinimum && !overCap && !submitting
 
   function persistIntent() {
     saveStakeIntent(market.id, { side, amount })
@@ -182,7 +181,6 @@ export function StakeSheet(props: StakeSheetProps) {
       const result = await createMobileMoneyDepositAction({
         phoneInput: phone,
         amountInput: String(Number(depositMinor / 100n)),
-        acceptTerms: consentRequired ? consent : undefined,
       })
       if (result.error || !result.data) {
         toast.error(result.error ?? t('Could not start the deposit.'))
@@ -219,7 +217,6 @@ export function StakeSheet(props: StakeSheetProps) {
         communityMarketId: market.id,
         outcome: side,
         amountInput: String(amountNumber),
-        acceptTerms: consentRequired ? consent : undefined,
       })
       if (result.error) {
         toast.error(result.error)
@@ -465,24 +462,6 @@ export function StakeSheet(props: StakeSheetProps) {
           </div>
         )}
 
-        {consentRequired && (
-          <label className="flex cursor-pointer items-start gap-3 text-[13px]/snug">
-            <input
-              type="checkbox"
-              checked={consent}
-              onChange={(event) => setConsent(event.target.checked)}
-              className="mt-0.5 size-5 shrink-0 accent-primary"
-            />
-            <span>
-              {t('I’m 18 or older and I accept the')}{' '}
-              <Link href="/tos" target="_blank" className="underline underline-offset-[3px]">
-                {t('Terms')}
-              </Link>
-              . {t('Asked once, before your first stake or deposit.')}
-            </span>
-          </label>
-        )}
-
         <Button
           type="button"
           size="lg"
@@ -493,8 +472,12 @@ export function StakeSheet(props: StakeSheetProps) {
           {submitting ? t('One moment…') : ctaLabel}
         </Button>
         {needsLogin && (
-          <p className="text-center text-xs text-muted-foreground">
-            {t('New here? You sign up with your email first. It takes a minute.')}
+          <p className="text-center text-xs/relaxed text-muted-foreground">
+            {t('One account for every community. By signing up you agree to the')}{' '}
+            <Link href="/tos" target="_blank" className="underline underline-offset-[3px]">
+              {t('Terms and Conditions')}
+            </Link>
+            .
           </p>
         )}
         {(short || noBalanceYet) && !needsLogin && (
@@ -533,7 +516,14 @@ export function StakeSheet(props: StakeSheetProps) {
         </div>
       )}
       {body}
-      <PositionShareDialog open={shareOpen} onOpenChange={setShareOpen} payload={sharePayload} />
+      <ShareSheet
+        open={shareOpen}
+        onOpenChange={setShareOpen}
+        payload={sharePayload}
+        kind="call"
+        marketPath={`/community/${community.slug}/market/${market.id}`}
+        communityName={community.name}
+      />
     </div>
   )
 
@@ -544,117 +534,6 @@ export function StakeSheet(props: StakeSheetProps) {
     <CommunitySheet open={Boolean(props.open)} onOpenChange={(next) => props.onOpenChange?.(next)} title={market.title}>
       <div className="pt-2">{content}</div>
     </CommunitySheet>
-  )
-}
-
-function DepositWaiting({
-  amountMinor,
-  currency,
-  phone,
-  onCancel,
-  onNotReceived,
-}: {
-  amountMinor: bigint
-  currency: string | null
-  phone: string
-  onCancel: () => void
-  onNotReceived: () => void
-}) {
-  const t = useExtracted()
-  return (
-    <div className="flex flex-col items-center gap-5 py-4 text-center">
-      <div className="relative flex size-32 items-center justify-center rounded-full border-2 border-border">
-        <span
-          className="absolute inset-[-2px] animate-spin rounded-full border-2 border-transparent border-t-foreground border-r-foreground"
-          aria-hidden="true"
-        />
-        <div className="flex size-24 items-center justify-center rounded-full bg-secondary">
-          <SmartphoneIcon className="size-10" aria-hidden="true" />
-        </div>
-      </div>
-      <div>
-        <h2 className="text-[26px]/tight font-bold">{t('Check your phone')}</h2>
-        <p className="mt-2 text-base/relaxed text-muted-foreground tabular-nums">
-          {t('Mobile money is asking you to pay {amount} to Prophit. Enter your PIN to approve it.', {
-            amount: formatMoney(amountMinor, currency),
-          })}
-        </p>
-      </div>
-      <p className="text-sm text-muted-foreground tabular-nums">{t('Prompt sent to {phone}.', { phone })}</p>
-      <ol className="flex w-full flex-col gap-3 rounded-xl border border-border bg-card p-4 text-left text-sm/snug">
-        <li className="flex gap-3">
-          <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-bold">
-            1
-          </span>
-          {t('Unlock your phone. The payment prompt shows on screen.')}
-        </li>
-        <li className="flex gap-3">
-          <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-bold">
-            2
-          </span>
-          {t('Enter your PIN and press OK.')}
-        </li>
-        <li className="flex gap-3">
-          <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-bold">
-            3
-          </span>
-          {t('Stay on this page. Your stake comes back ready, no need to tap anything.')}
-        </li>
-      </ol>
-      <div className="flex w-full flex-col gap-2">
-        <Button variant="secondary" size="lg" className="h-12 rounded-md" onClick={onNotReceived}>
-          {t('Didn’t get it?')}
-        </Button>
-        <Button variant="ghost" size="lg" onClick={onCancel}>
-          {t('Cancel')}
-        </Button>
-        <p className="text-xs text-muted-foreground">{t('Deposits are free.')}</p>
-      </div>
-    </div>
-  )
-}
-
-function DepositFailed({
-  amountMinor,
-  currency,
-  phone,
-  reason,
-  stakeLine,
-  onRetry,
-  onChangeNumber,
-}: {
-  amountMinor: bigint
-  currency: string | null
-  phone: string
-  reason: string | null
-  stakeLine: string
-  onRetry: () => void
-  onChangeNumber: () => void
-}) {
-  const t = useExtracted()
-  return (
-    <div className="flex flex-col gap-4">
-      <div>
-        <h2 className="text-[22px]/tight font-bold">{t('The payment prompt didn’t go through')}</h2>
-        <p className="mt-2 text-sm/relaxed text-muted-foreground">
-          {reason ?? t('No PIN was entered in time, so nothing was taken from your phone.')} {stakeLine}
-        </p>
-      </div>
-      <div className="rounded-xl bg-secondary p-3.5 text-sm tabular-nums">
-        <p>
-          {t('Sending to')} <strong>{phone}</strong>
-        </p>
-        <p className="text-muted-foreground">
-          {t('Amount {amount}. Deposits are free.', { amount: formatMoney(amountMinor, currency) })}
-        </p>
-      </div>
-      <Button size="lg" className="h-13 rounded-md text-base font-bold" onClick={onRetry}>
-        {t('Send the prompt again')}
-      </Button>
-      <Button variant="secondary" size="lg" className="h-12 rounded-md" onClick={onChangeNumber}>
-        {t('Use a different number')}
-      </Button>
-    </div>
   )
 }
 

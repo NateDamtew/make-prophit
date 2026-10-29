@@ -94,7 +94,6 @@ function baseSummary(now: number, currency: string, userId: string | null): Pool
       ? {
           currency,
           availableMinor: '350000',
-          consentRequired: false,
           stakes: [],
           totalYes: '0',
           totalNo: '0',

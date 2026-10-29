@@ -11,7 +11,6 @@ const IS_PRODUCTION_DB = (process.env.POSTGRES_URL ?? '').includes('vsytshpanaxx
 describe.skipIf(!ENABLED || IS_PRODUCTION_DB)('pool engine (integration)', () => {
   let service: typeof import('@/lib/pools/service')
   let LedgerService: typeof import('@/lib/ledger/service').LedgerService
-  let recordConsent: typeof import('@/lib/mobile-money/consent').recordConsent
   let db: typeof import('@/lib/drizzle').db
   let users: typeof import('@/lib/db/schema/auth/tables').users
   let communitySchema: typeof import('@/lib/db/schema/communities/tables')
@@ -28,8 +27,12 @@ describe.skipIf(!ENABLED || IS_PRODUCTION_DB)('pool engine (integration)', () =>
 
   async function fund(userId: string, amount: bigint, { consent = true } = {}) {
     await LedgerService.ensureUserProfile(userId, 'KES')
-    if (consent) {
-      await recordConsent(userId)
+    if (!consent) {
+      // A profile from before sign-up carried the acceptance: no consent fields yet.
+      await db
+        .update(ledgerSchema.ledger_user_profiles)
+        .set({ terms_accepted_at: null, age_confirmed_at: null, terms_version: null })
+        .where(eq(ledgerSchema.ledger_user_profiles.user_id, userId))
     }
     const cash = await LedgerService.getOrCreateUserCashAccount(userId, 'KES')
     const suspense = await LedgerService.getOrCreateHouseAccount('suspense', 'KES')
@@ -55,7 +58,6 @@ describe.skipIf(!ENABLED || IS_PRODUCTION_DB)('pool engine (integration)', () =>
   beforeAll(async () => {
     service = await import('@/lib/pools/service')
     ;({ LedgerService } = await import('@/lib/ledger/service'))
-    ;({ recordConsent } = await import('@/lib/mobile-money/consent'))
     ;({ db } = await import('@/lib/drizzle'))
     ;({ users } = await import('@/lib/db/schema/auth/tables'))
     communitySchema = await import('@/lib/db/schema/communities/tables')
@@ -88,7 +90,7 @@ describe.skipIf(!ENABLED || IS_PRODUCTION_DB)('pool engine (integration)', () =>
     await fund(userIds[0]!, 100_000n)
     await fund(userIds[1]!, 100_000n)
     await fund(userIds[2]!, 100_000n)
-    // userIds[3] has a balance but has not accepted the Terms yet.
+    // userIds[3] is a legacy profile with no recorded acceptance.
     await fund(userIds[3]!, 20_000n, { consent: false })
   })
 
@@ -290,30 +292,25 @@ describe.skipIf(!ENABLED || IS_PRODUCTION_DB)('pool engine (integration)', () =>
     expect(after?.user?.totalPayout).toBe('100800')
   })
 
-  it('refuses a stake until the age + terms box is ticked, then records the acceptance once', async () => {
+  it('seeds the age + terms acceptance with the profile, and records it for a legacy profile at its first stake', async () => {
+    // Sign-up is the acceptance: a fresh profile already carries it.
+    const seeded = await LedgerService.getUserProfile(userIds[0]!)
+    expect(seeded?.terms_accepted_at).toBeInstanceOf(Date)
+    expect(seeded?.age_confirmed_at).toBeInstanceOf(Date)
+    expect(seeded?.terms_version).toBeTruthy()
+
     const marketId = await createMarket(`Consent ${suffix}`)
     await service.openPoolForMarket({ communityMarketId: marketId, communityId, closesAt: null })
-    await expect(
-      service.stakeInPool({ communityMarketId: marketId, userId: userIds[3]!, outcome: 'yes', amountMinor: 5_000n }),
-    ).rejects.toMatchObject({ code: 'consent_required' })
-    const summaryBefore = await service.getPoolSummary(marketId, userIds[3]!)
-    expect(summaryBefore?.user?.consentRequired).toBe(true)
+    const before = await LedgerService.getUserProfile(userIds[3]!)
+    expect(before?.terms_accepted_at).toBeNull()
 
-    await service.stakeInPool({
-      communityMarketId: marketId,
-      userId: userIds[3]!,
-      outcome: 'yes',
-      amountMinor: 5_000n,
-      acceptTerms: true,
-    })
+    // Nothing to tick: the stake goes through and the acceptance is recorded with it.
+    await service.stakeInPool({ communityMarketId: marketId, userId: userIds[3]!, outcome: 'yes', amountMinor: 5_000n })
     const profile = await LedgerService.getUserProfile(userIds[3]!)
     expect(profile?.terms_accepted_at).toBeInstanceOf(Date)
     expect(profile?.age_confirmed_at).toBeInstanceOf(Date)
     expect(profile?.terms_version).toBeTruthy()
-    const summaryAfter = await service.getPoolSummary(marketId, userIds[3]!)
-    expect(summaryAfter?.user?.consentRequired).toBe(false)
 
-    // Later stakes no longer need the flag.
     await service.stakeInPool({ communityMarketId: marketId, userId: userIds[3]!, outcome: 'no', amountMinor: 5_000n })
   })
 

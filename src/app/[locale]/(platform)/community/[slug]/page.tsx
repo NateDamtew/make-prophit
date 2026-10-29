@@ -8,6 +8,7 @@ import { Suspense } from 'react'
 import type { SupportedLocale } from '@/i18n/locales'
 import type { PoolCardSummary } from '@/lib/pools/activity'
 
+import { MoneySheets } from '@/components/communities/money/MoneySheets'
 import { CommunityThemeStyle } from '@/components/community-themes/CommunityThemeStyle'
 import { WhiteLabelBrandBar } from '@/components/community-themes/WhiteLabelBrandBar'
 import { isOwnerRole } from '@/lib/communities/roles'
@@ -159,6 +160,7 @@ async function CommunityContent({ slug, searchParams }: { slug: string; searchPa
         memberRole={memberRole}
         currentUserId={user?.id ?? null}
       />
+      <MoneySheets community={{ slug: community.slug, name: community.name }} signedIn={Boolean(user)} />
       <CommunityBanners trust={trust} isOwner={isOwnerRole(memberRole)} preview={bannerPreview} />
       <CommunityTabNav
         slug={community.slug}

@@ -26,7 +26,6 @@ export async function stakeInPoolAction(input: {
   communityMarketId: string
   outcome: 'yes' | 'no'
   amountInput: string
-  acceptTerms?: boolean
 }) {
   const user = await UserRepository.getCurrentUser({ disableCookieCache: true, minimal: true })
   if (!user) {
@@ -47,7 +46,6 @@ export async function stakeInPoolAction(input: {
       userId: user.id,
       outcome: input.outcome,
       amountMinor,
-      acceptTerms: input.acceptTerms === true,
     })
     return {
       data: {
