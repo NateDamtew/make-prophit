@@ -30,11 +30,17 @@ function PageLoadingSkeleton() {
   )
 }
 
+/** Read after the session lookup (cookies), so the page is dynamic by then. */
+function requestTimestamp() {
+  return Date.now()
+}
+
 async function ReviewQueueContent() {
   const user = await UserRepository.getCurrentUser({ minimal: true })
   if (!user?.is_admin) {
     redirect('/' as any)
   }
+  const reviewedAt = requestTimestamp()
 
   const [pending, failures] = await Promise.all([
     CommunityRepository.listPendingReviews({ limit: 50 }),
@@ -71,6 +77,8 @@ async function ReviewQueueContent() {
           community_slug: row.community_slug,
           community_name: row.community_name,
           community_icon: row.community_icon,
+          community_tier: row.community_tier,
+          community_level: row.community_level,
           creator_username: row.creator_username,
         }))}
         failureMarkets={failureList.map((row) => ({
@@ -78,6 +86,7 @@ async function ReviewQueueContent() {
           community_slug: row.community_slug,
           community_name: row.community_name,
         }))}
+        reviewedAt={reviewedAt}
       />
     </>
   )
@@ -90,10 +99,10 @@ export default async function AdminCommunityReviewPage({ params }: { params: Pro
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Community Market Reviews</h1>
+        <h1 className="text-2xl font-bold">Community market reviews</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Review markets submitted by community admins. Approving deploys the market on-chain via the platform&apos;s
-          signer pool.
+          Markets leaders submitted: read them as written, check the date and the source, then approve, send back with a
+          note, or reject. Pool markets open at once on approval; order-book markets go on-chain.
         </p>
       </div>
 

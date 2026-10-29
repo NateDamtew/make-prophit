@@ -17,14 +17,14 @@ import { db } from '@/lib/drizzle'
  * strings, a `:<CCY>` suffix for anything denominated in money.
  */
 
-const COMMUNITY_SETTINGS_GROUP = 'communities'
-const COMMUNITY_JURY_KEY = 'jury'
-const COMMUNITY_HOLD_KEY = 'payout_hold'
-const COMMUNITY_APPEALS_KEY = 'appeals'
-const COMMUNITY_LEVELS_KEY_PREFIX = 'levels:'
-const COMMUNITY_STAKES_KEY_PREFIX = 'stakes:'
-const COMMUNITY_REQUIRE_APPLICATION_KEY = 'require_application'
-const COMMUNITY_PROPHIT_IDS_KEY = 'prophit_community_ids'
+export const COMMUNITY_SETTINGS_GROUP = 'communities'
+export const COMMUNITY_JURY_KEY = 'jury'
+export const COMMUNITY_HOLD_KEY = 'payout_hold'
+export const COMMUNITY_APPEALS_KEY = 'appeals'
+export const COMMUNITY_LEVELS_KEY_PREFIX = 'levels:'
+export const COMMUNITY_STAKES_KEY_PREFIX = 'stakes:'
+export const COMMUNITY_REQUIRE_APPLICATION_KEY = 'require_application'
+export const COMMUNITY_PROPHIT_IDS_KEY = 'prophit_community_ids'
 
 export interface CommunityJurySettings {
   bands: JuryBand[]
