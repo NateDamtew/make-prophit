@@ -10,6 +10,7 @@ import {
   SettingsIcon,
   ShieldCheckIcon,
   SmartphoneIcon,
+  SparklesIcon,
 } from 'lucide-react'
 import { useExtracted, useLocale } from 'next-intl'
 
@@ -101,6 +102,10 @@ export default function OwnerDashboard({ community, trust, dashboard }: OwnerDas
           <Button nativeButton={false} render={<Link href={`${base}/markets/new`} />}>
             <PlusIcon className="size-4" aria-hidden="true" />
             {t('Add market')}
+          </Button>
+          <Button variant="secondary" nativeButton={false} render={<Link href={`${base}/dashboard/suggestions`} />}>
+            <SparklesIcon className="size-4" aria-hidden="true" />
+            {t('Suggested')}
           </Button>
           <Button variant="secondary" nativeButton={false} render={<Link href={`${base}/dashboard/import`} />}>
             <ArrowDownToLineIcon className="size-4" aria-hidden="true" />

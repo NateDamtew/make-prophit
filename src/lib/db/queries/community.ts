@@ -685,8 +685,18 @@ export const CommunityRepository = {
       if (!finalMainCategory) {
         return { data: null, error: 'Main category is required. Add one before submitting.' }
       }
-      if (finalCategorySlugs.length < 4) {
-        return { data: null, error: 'At least 4 sub-categories required.' }
+      // Pool markets open in one community, not on the platform grid: one sub-category is enough for them.
+      const [owner] = await db
+        .select({ tier: communities.tier })
+        .from(communities)
+        .where(eq(communities.id, market.community_id))
+        .limit(1)
+      const requiredCategories = owner?.tier === 'orderbook' ? 4 : 1
+      if (finalCategorySlugs.length < requiredCategories) {
+        return {
+          data: null,
+          error: requiredCategories === 1 ? 'Add at least one category.' : 'At least 4 sub-categories required.',
+        }
       }
 
       const [updated] = await db

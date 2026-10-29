@@ -161,13 +161,18 @@ export async function approveMarketAction(
   if (market.review_status !== 'pending') {
     return { error: 'Only pending markets can be approved.', data: null }
   }
-  if (!market.main_category_slug || !market.category_slugs || market.category_slugs.length < 4) {
+  // Pool-tier communities (the default) never go on-chain: approving opens a
+  // local-currency parimutuel pool instead of an event_creations draft. They
+  // need a main category and one sub-category; the platform grid needs four.
+  const { data: owningCommunity } = await CommunityRepository.getById(market.community_id)
+  const isPoolCommunity = Boolean(owningCommunity) && (owningCommunity as { tier?: string }).tier !== 'orderbook'
+  if (
+    !market.main_category_slug ||
+    !market.category_slugs ||
+    market.category_slugs.length < (isPoolCommunity ? 1 : 4)
+  ) {
     return { error: 'Market is missing required categories.', data: null }
   }
-
-  // Pool-tier communities (the default) never go on-chain: approving opens a
-  // local-currency parimutuel pool instead of an event_creations draft.
-  const { data: owningCommunity } = await CommunityRepository.getById(market.community_id)
   if (owningCommunity && (owningCommunity as { tier?: string }).tier !== 'orderbook') {
     const { approveAsPoolMarket } = await import('@/lib/pools/approval')
     return approveAsPoolMarket({
