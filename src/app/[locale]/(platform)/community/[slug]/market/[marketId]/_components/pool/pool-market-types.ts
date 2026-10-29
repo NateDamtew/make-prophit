@@ -65,6 +65,18 @@ export interface MarketSeat {
   image: string | null
 }
 
+/** What the viewer may do about appeals on this market. */
+export interface AppealViewerState {
+  staked: boolean
+  stakeSide: 'yes' | 'no' | 'mixed' | null
+  stakeMinor: string
+  backedMinor: string
+  availableMinor: string
+  canFile: boolean
+  canBack: boolean
+  isFiler: boolean
+}
+
 /** The viewer's own seat on the market's jury. */
 export interface ViewerJurySeat {
   seated: boolean

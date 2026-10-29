@@ -15,6 +15,19 @@ export type MarketShape = 'binary' | 'multi'
 export type MarketSource = 'community' | 'imported'
 export type ViewerResult = 'won' | 'lost' | 'refunded' | null
 
+/** The live appeal on the market, as the page needs it. */
+export interface LifecycleAppeal {
+  id: string
+  status: 'open' | 'threshold_met' | 'under_review' | 'rejected' | 'upheld' | 'voided' | 'withdrawn' | 'expired'
+  claimedOutcome: 'yes' | 'no' | 'cancelled'
+  backers: number
+  backersNeeded: number
+  escrowMinor: string
+  escrowTargetMinor: string
+  windowEndsAt: number
+  filedByUsername: string | null
+}
+
 export interface MarketLifecycle {
   phase: MarketPhase
   shape: MarketShape
@@ -26,6 +39,7 @@ export interface MarketLifecycle {
   juryDueAt: number | null
   jury: { size: number; required: number; voted: number; revealed: boolean }
   hold: { announcedAt: number; paysAt: number; extended: boolean } | null
+  appeal: LifecycleAppeal | null
   viewer: {
     stake: { side: 'yes' | 'no' | 'mixed'; amountMinor: bigint; payoutMinor: bigint | null } | null
     result: ViewerResult
@@ -46,8 +60,13 @@ export function deriveMarketLifecycle(input: {
   jurySize: number
   juryRequired: number
   now: number
+  appeal?: LifecycleAppeal | null
 }): MarketLifecycle {
   const { market, summary, votes, now } = input
+  const appeal = input.appeal ?? null
+  const appealLive =
+    appeal !== null &&
+    (appeal.status === 'open' || appeal.status === 'threshold_met' || appeal.status === 'under_review')
   const pool = summary?.pool ?? null
   const closesAt = pool?.closesAt
     ? new Date(pool.closesAt).getTime()
@@ -86,7 +105,7 @@ export function deriveMarketLifecycle(input: {
   } else if (pool?.state === 'settled') {
     phase = 'settled'
   } else if (pool?.state === 'held') {
-    phase = pool.payoutsFrozen ? 'review' : 'hold'
+    phase = pool.payoutsFrozen || appeal?.status === 'under_review' ? 'review' : appealLive ? 'appeal' : 'hold'
   } else if (marketDone && outcome) {
     // The market resolved but the pool has not been computed yet: treat as held.
     phase = 'hold'
@@ -104,8 +123,12 @@ export function deriveMarketLifecycle(input: {
     pool?.resultAnnouncedAt && pool.holdUntil
       ? {
           announcedAt: new Date(pool.resultAnnouncedAt).getTime(),
-          paysAt: new Date(pool.holdUntil).getTime(),
-          extended: false,
+          // A live appeal stretches the hold to the extended deadline.
+          paysAt:
+            appealLive && appeal
+              ? new Date(pool.holdExtendedUntil ?? appeal.windowEndsAt).getTime()
+              : new Date(pool.holdUntil).getTime(),
+          extended: appealLive,
         }
       : null
 
@@ -121,7 +144,7 @@ export function deriveMarketLifecycle(input: {
     stake = { side, amountMinor: yes + no, payoutMinor: payout }
     if (phase === 'refunded') {
       result = 'refunded'
-    } else if (phase === 'settled' || phase === 'hold' || phase === 'review') {
+    } else if (phase === 'settled' || phase === 'hold' || phase === 'review' || phase === 'appeal') {
       result = payout !== null && payout > 0n ? 'won' : 'lost'
     }
   }
@@ -141,6 +164,7 @@ export function deriveMarketLifecycle(input: {
       revealed: marketDone || Boolean(market.votes_revealed_at) || votes.some((vote) => Boolean(vote.revealed_at)),
     },
     hold,
+    appeal,
     viewer: { stake, result },
     chance,
     poolMinor,

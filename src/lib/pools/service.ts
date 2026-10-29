@@ -7,6 +7,7 @@ import type { EntryInput } from '@/lib/ledger/invariants'
 import { computeAppealHoldUntil, computeHoldUntil, decideRelease } from '@/lib/communities/hold'
 import { getEffectiveCaps, isCommunityLevel } from '@/lib/communities/rules'
 import { getCommunitySettings } from '@/lib/communities/settings'
+import { market_appeals } from '@/lib/db/schema/communities/appeals'
 import { community_earnings } from '@/lib/db/schema/communities/earnings'
 import { communities, community_markets, jury_votes } from '@/lib/db/schema/communities/tables'
 import { ledger_user_profiles } from '@/lib/db/schema/ledger/tables'
@@ -641,14 +642,23 @@ export async function releasePoolPayouts(
     if (pool.state !== 'held') {
       throw new PoolError(POOL_ERROR_MESSAGES.market_not_resolved, 'market_not_resolved')
     }
+    // An appeal still gathering backers holds the release until the extended deadline.
+    const [activeAppeal] = await tx
+      .select({ id: market_appeals.id })
+      .from(market_appeals)
+      .where(
+        and(
+          eq(market_appeals.pool_id, pool.id),
+          inArray(market_appeals.status, ['open', 'threshold_met', 'under_review']),
+        ),
+      )
+      .limit(1)
     const decision = decideRelease({
       state: pool.state,
       holdUntil: pool.hold_until,
       holdExtendedUntil: pool.hold_extended_until,
       payoutsFrozen: pool.payouts_frozen,
-      // An open appeal (step 5) extends the wait to hold_extended_until; until
-      // the appeals table exists only a frozen flag can stop a release.
-      appealActive: false,
+      appealActive: Boolean(activeAppeal),
       isImported: pool.is_imported,
       now,
     })

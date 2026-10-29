@@ -1,8 +1,10 @@
 import { eq } from 'drizzle-orm'
 
+import type { AppealSettings } from '@/lib/communities/appeals-math'
 import type { HoldSettings } from '@/lib/communities/hold'
 import type { CommunityLevel, JuryBand, LevelCaps, ReviewMode } from '@/lib/communities/rules'
 
+import { DEFAULT_APPEAL_SETTINGS } from '@/lib/communities/appeals-math'
 import { DEFAULT_HOLD_SETTINGS } from '@/lib/communities/hold'
 import { DEFAULT_JURY_BANDS, DEFAULT_LEVEL_CAPS } from '@/lib/communities/rules'
 import { settings } from '@/lib/db/schema/settings/tables'
@@ -18,6 +20,7 @@ import { db } from '@/lib/drizzle'
 const COMMUNITY_SETTINGS_GROUP = 'communities'
 const COMMUNITY_JURY_KEY = 'jury'
 const COMMUNITY_HOLD_KEY = 'payout_hold'
+const COMMUNITY_APPEALS_KEY = 'appeals'
 const COMMUNITY_LEVELS_KEY_PREFIX = 'levels:'
 const COMMUNITY_STAKES_KEY_PREFIX = 'stakes:'
 const COMMUNITY_REQUIRE_APPLICATION_KEY = 'require_application'
@@ -41,6 +44,7 @@ export interface CommunitySettings {
   levels: Record<CommunityLevel, LevelCaps>
   stakes: CommunityStakeSettings
   hold: HoldSettings
+  appeals: AppealSettings
   requireApplication: boolean
   prophitCommunityIds: string[]
 }
@@ -179,6 +183,16 @@ export function parseLevelSettings(raw: string | undefined): Record<CommunityLev
   }
 }
 
+function parseAppealSettings(raw: string | undefined): AppealSettings {
+  const parsed = readJsonObject(raw)
+  return {
+    minBackMinor: readBigint(parsed.minBackMinor, DEFAULT_APPEAL_SETTINGS.minBackMinor),
+    backersNeeded: Math.max(1, Math.round(readNumber(parsed.backersNeeded, DEFAULT_APPEAL_SETTINGS.backersNeeded))),
+    poolShareBps: Math.max(0, Math.round(readNumber(parsed.poolShareBps, DEFAULT_APPEAL_SETTINGS.poolShareBps))),
+    appealJurors: Math.max(0, Math.round(readNumber(parsed.appealJurors, DEFAULT_APPEAL_SETTINGS.appealJurors))),
+  }
+}
+
 function parseHoldSettings(raw: string | undefined): HoldSettings {
   const parsed = readJsonObject(raw)
   const holdHours = Math.max(0, readNumber(parsed.holdHours, DEFAULT_HOLD_SETTINGS.holdHours))
@@ -217,6 +231,7 @@ export function parseCommunitySettings(settings: SettingsMap | undefined, curren
     levels: parseLevelSettings(group?.[`${COMMUNITY_LEVELS_KEY_PREFIX}${code}`]?.value),
     stakes: parseStakeSettings(code, group?.[`${COMMUNITY_STAKES_KEY_PREFIX}${code}`]?.value),
     hold: parseHoldSettings(group?.[COMMUNITY_HOLD_KEY]?.value),
+    appeals: parseAppealSettings(group?.[COMMUNITY_APPEALS_KEY]?.value),
     requireApplication: readBoolean(group?.[COMMUNITY_REQUIRE_APPLICATION_KEY]?.value, true),
     prophitCommunityIds: readStringList(group?.[COMMUNITY_PROPHIT_IDS_KEY]?.value),
   }

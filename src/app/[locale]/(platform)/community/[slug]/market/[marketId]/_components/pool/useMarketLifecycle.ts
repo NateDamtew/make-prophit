@@ -6,7 +6,7 @@ import type { PoolSummary } from '@/lib/pools/service'
 
 import { useNowTimestamp } from '@/hooks/useNowTimestamp'
 
-import type { MarketLifecycle } from './market-lifecycle'
+import type { LifecycleAppeal, MarketLifecycle } from './market-lifecycle'
 import type { PoolJuryVote, PoolMarketRecord } from './pool-market-types'
 
 import { deriveMarketLifecycle } from './market-lifecycle'
@@ -23,13 +23,14 @@ export function useMarketLifecycle(input: {
   jurySize: number
   juryRequired: number
   serverNow: number
+  appeal?: LifecycleAppeal | null
 }): { lifecycle: MarketLifecycle; now: number } {
   const tick = useNowTimestamp()
   const now = tick ?? input.serverNow
-  const { market, summary, votes, jurySize, juryRequired } = input
+  const { market, summary, votes, jurySize, juryRequired, appeal = null } = input
   const lifecycle = useMemo(
-    () => deriveMarketLifecycle({ market, summary, votes, jurySize, juryRequired, now }),
-    [market, summary, votes, jurySize, juryRequired, now],
+    () => deriveMarketLifecycle({ market, summary, votes, jurySize, juryRequired, now, appeal }),
+    [market, summary, votes, jurySize, juryRequired, now, appeal],
   )
   return { lifecycle, now }
 }
