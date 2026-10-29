@@ -2,6 +2,7 @@
 import type { Metadata } from 'next'
 
 import { notFound } from 'next/navigation'
+import { Suspense } from 'react'
 
 import { recordCommunityEvent } from '@/lib/communities/events'
 import { CommunityRepository } from '@/lib/db/queries/community'
@@ -72,11 +73,32 @@ function pct(value: number) {
   return `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%`
 }
 
+/**
+ * The card reads the query string and the database, so it renders inside a
+ * Suspense boundary: with `cacheComponents` on, dynamic reads outside one
+ * fail at request time in production.
+ */
 export default async function CommunityMarketEmbed({ params, searchParams }: EmbedParams) {
   const { slug, marketId } = await params
   if (slug === '__placeholder__' || marketId === '__placeholder__') {
     notFound()
   }
+  return (
+    <Suspense fallback={null}>
+      <EmbedCard slug={slug} marketId={marketId} searchParams={searchParams} />
+    </Suspense>
+  )
+}
+
+async function EmbedCard({
+  slug,
+  marketId,
+  searchParams,
+}: {
+  slug: string
+  marketId: string
+  searchParams: EmbedParams['searchParams']
+}) {
   const { referrer, theme: themeParam, ref } = await searchParams
 
   const { data } = await CommunityRepository.getMarketWithCommunity(marketId)
