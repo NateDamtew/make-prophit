@@ -5,6 +5,7 @@ import type { CommunityLevel, CommunityStatus } from '@/lib/communities/rules'
 import { recomputeAllJurorStats } from '@/lib/communities/jury-service'
 import { isCommunityLevel, jurySeatsForMembers } from '@/lib/communities/rules'
 import { getCommunitySettings } from '@/lib/communities/settings'
+import { expireSuggestions } from '@/lib/communities/suggestions'
 import { computeTrustScore, decideLevel, decideStatus } from '@/lib/communities/trust'
 import { community_trust_events } from '@/lib/db/schema/communities/governance'
 import { communities, community_markets } from '@/lib/db/schema/communities/tables'
@@ -24,6 +25,8 @@ export interface TrustSyncResult {
   reactivated: string[]
   /** Jurors whose public record was rebuilt. */
   jurorsRecomputed: number
+  /** Suggestions that stopped being offered. */
+  suggestionsExpired: number
   errors: Array<{ communityId: string; error: string }>
 }
 
@@ -63,6 +66,7 @@ export async function syncCommunityTrust(now = new Date()): Promise<TrustSyncRes
     dormant: [],
     reactivated: [],
     jurorsRecomputed: 0,
+    suggestionsExpired: 0,
     errors: [],
   }
   const settingsByCurrency = new Map<string, Awaited<ReturnType<typeof getCommunitySettings>>>()
@@ -148,6 +152,14 @@ export async function syncCommunityTrust(now = new Date()): Promise<TrustSyncRes
     }
   }
 
+  try {
+    result.suggestionsExpired = await expireSuggestions(now)
+  } catch (error) {
+    result.errors.push({
+      communityId: '*',
+      error: `suggestions: ${error instanceof Error ? error.message : String(error)}`,
+    })
+  }
   try {
     result.jurorsRecomputed = await recomputeAllJurorStats()
   } catch (error) {

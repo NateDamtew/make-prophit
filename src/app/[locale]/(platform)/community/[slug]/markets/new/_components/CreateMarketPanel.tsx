@@ -1,16 +1,17 @@
 'use client'
 
-import { FileEdit, Link2, WandSparkles } from 'lucide-react'
+import { FileEdit, Link2, Sparkles, WandSparkles } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useEffect, useState } from 'react'
 
+import SuggestionsPicker from '@/components/communities/suggestions/SuggestionsPicker'
 import { cn } from '@/lib/utils'
 
 import DraftsList from './DraftsList'
 import MarketWizard from './MarketWizard'
 import PlatformMarketPicker from './PlatformMarketPicker'
 
-type Mode = 'quickcreate' | 'platform' | 'drafts'
+type Mode = 'quickcreate' | 'suggested' | 'platform' | 'drafts'
 
 interface Props {
   communityId: string
@@ -21,11 +22,12 @@ interface Props {
 }
 
 function isValidMode(value: string | null): value is Mode {
-  return value === 'quickcreate' || value === 'platform' || value === 'drafts'
+  return value === 'quickcreate' || value === 'suggested' || value === 'platform' || value === 'drafts'
 }
 
 const TABS: Array<{ id: Mode; label: string; icon: typeof WandSparkles }> = [
   { id: 'quickcreate', label: 'Quick Create', icon: WandSparkles },
+  { id: 'suggested', label: 'Suggested', icon: Sparkles },
   { id: 'platform', label: 'Pull from Platform', icon: Link2 },
   { id: 'drafts', label: 'Draft', icon: FileEdit },
 ]
@@ -104,6 +106,7 @@ export default function CreateMarketPanel({ communityId, communitySlug, communit
           communityIcon={communityIcon}
         />
       )}
+      {mode === 'suggested' && <SuggestionsPicker communityId={communityId} communitySlug={communitySlug} />}
       {mode === 'platform' && <PlatformMarketPicker communityId={communityId} communitySlug={communitySlug} />}
       {mode === 'drafts' && <DraftsList communityId={communityId} communitySlug={communitySlug} drafts={drafts} />}
     </>

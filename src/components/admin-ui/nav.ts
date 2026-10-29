@@ -104,6 +104,13 @@ export const ADMIN_NAV: AdminNavGroup[] = [
         keywords: ['communities', 'apply', 'leaders', 'level'],
       },
       {
+        id: 'community-suggestions',
+        label: 'Market Suggestions',
+        href: '/admin/communities/suggestions',
+        icon: ShieldCheckIcon,
+        keywords: ['communities', 'suggestions', 'pool', 'drafts', 'news'],
+      },
+      {
         id: 'sync-jobs',
         label: 'Sync Jobs',
         href: '/admin/sync-jobs',
