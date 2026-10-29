@@ -1,14 +1,16 @@
 'use client'
 
+import type { Route } from 'next'
+
 import { useQuery } from '@tanstack/react-query'
 import { GavelIcon } from 'lucide-react'
 import { useExtracted, useLocale } from 'next-intl'
+import Link from 'next/link'
 
 import { getJurorProfileAction } from '@/app/[locale]/(platform)/_actions/jury'
 import { formatRating } from '@/components/communities/format'
 import { LevelBadge } from '@/components/communities/trust/LevelBadge'
-import { Link } from '@/i18n/navigation'
-import { LEVEL_NAMES, isCommunityLevel } from '@/lib/communities/rules'
+import { isCommunityLevel, LEVEL_NAMES } from '@/lib/communities/rules'
 import { cn } from '@/lib/utils'
 
 /**
@@ -91,7 +93,7 @@ export default function PublicJurorRecord({ userId }: { userId: string | null })
             {profile.servesOn.map((community) => (
               <li key={community.slug} className="flex items-center gap-3 px-4 py-3">
                 <Link
-                  href={`/community/${community.slug}`}
+                  href={`/community/${community.slug}` as Route}
                   className="min-w-0 flex-1 truncate text-sm font-semibold underline-offset-2 hover:underline"
                 >
                   {community.name}
@@ -124,7 +126,7 @@ export default function PublicJurorRecord({ userId }: { userId: string | null })
                 >
                   <div className="flex items-start justify-between gap-3">
                     <Link
-                      href={`/community/${row.communitySlug}/market/${row.marketId}`}
+                      href={`/community/${row.communitySlug}/market/${row.marketId}` as Route}
                       className="text-sm font-semibold underline-offset-2 hover:underline"
                     >
                       {row.title}
