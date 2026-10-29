@@ -14,7 +14,7 @@ import { pool_stakes, pools } from '@/lib/db/schema/pools/tables'
 import { db } from '@/lib/drizzle'
 import { LedgerError, LedgerService } from '@/lib/ledger/service'
 import { recordConsent } from '@/lib/mobile-money/consent'
-import { CONSENT_REQUIRED_MESSAGE, hasCurrentConsent } from '@/lib/mobile-money/rules'
+import { hasCurrentConsent } from '@/lib/mobile-money/rules'
 import { getMobileMoneySettings } from '@/lib/mobile-money/settings'
 import {
   estimatePayout,
@@ -60,7 +60,6 @@ export class PoolError extends Error {
       | 'pool_cap'
       | 'insufficient_funds'
       | 'market_not_resolved'
-      | 'consent_required'
       | 'invalid',
   ) {
     super(message)
@@ -82,7 +81,6 @@ export const POOL_ERROR_MESSAGES: Record<PoolError['code'], string> = {
   pool_cap: 'This pool has reached its limit for now.',
   insufficient_funds: 'You do not have enough available balance for that stake.',
   market_not_resolved: 'The market has not been resolved yet.',
-  consent_required: CONSENT_REQUIRED_MESSAGE,
   invalid: 'Something went wrong. Please try again.',
 }
 
@@ -246,8 +244,6 @@ export interface PoolSummary {
   user: {
     currency: string | null
     availableMinor: string
-    /** True until the user has confirmed their age and accepted the current Terms. */
-    consentRequired: boolean
     stakes: Array<{
       id: string
       outcome: PoolOutcome
@@ -306,7 +302,6 @@ export async function getPoolSummary(communityMarketId: string, userId: string |
     user = {
       currency: profile?.currency ?? null,
       availableMinor: (balance?.available ?? 0n).toString(),
-      consentRequired: !hasCurrentConsent(profile),
       stakes: stakes.map((stake) => ({
         id: stake.id,
         outcome: stake.outcome,
@@ -368,8 +363,6 @@ export async function stakeInPool(params: {
   userId: string
   outcome: PoolOutcome
   amountMinor: bigint
-  /** Set when the user ticked the age + Terms box on this request; recorded with the stake. */
-  acceptTerms?: boolean
 }): Promise<{ stake: PoolStakeRow; pool: PoolRow }> {
   if (params.amountMinor <= 0n) {
     throw new PoolError(POOL_ERROR_MESSAGES.invalid, 'invalid')
@@ -422,10 +415,8 @@ export async function stakeInPool(params: {
     if (profile.trading_frozen) {
       throw new PoolError(POOL_ERROR_MESSAGES.frozen, 'frozen')
     }
+    // Signing up is the age + Terms acceptance; re-record it when the Terms version moved.
     if (!hasCurrentConsent(profile)) {
-      if (!params.acceptTerms) {
-        throw new PoolError(POOL_ERROR_MESSAGES.consent_required, 'consent_required')
-      }
       await recordConsent(params.userId, tx)
     }
     if (profile.currency !== pool.currency) {

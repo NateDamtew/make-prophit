@@ -262,9 +262,19 @@ export default function CommunityHeader({ community, trust, memberRole, currentU
                 {full ? t('Full for now') : t('Joins paused')}
               </span>
             ) : (
-              <Button size="sm" onClick={handleJoin} disabled={isPending}>
-                {isPending ? t('Joining…') : currentUserId ? t('Join') : t('Sign up to join')}
-              </Button>
+              <div className="flex flex-col items-end gap-1">
+                <Button size="sm" onClick={handleJoin} disabled={isPending}>
+                  {isPending ? t('Joining…') : currentUserId ? t('Join') : t('Sign up to join')}
+                </Button>
+                {!currentUserId && (
+                  <span className="text-[11px] text-muted-foreground">
+                    {t('By signing up you agree to the')}{' '}
+                    <Link href="/tos" target="_blank" className="underline underline-offset-2">
+                      {t('Terms')}
+                    </Link>
+                  </span>
+                )}
+              </div>
             )
           ) : null}
         </div>

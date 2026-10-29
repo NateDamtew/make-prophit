@@ -240,19 +240,18 @@ describe.skipIf(!ENABLED || IS_PRODUCTION_DB)('mobile money flow (integration)',
     }
   })
 
-  it('refuses the first deposit until the age + terms box is ticked', async () => {
-    const refused = await deposits.createDeposit(
-      { userId, phoneInput: '+254 703 456 789', amountInput: '1000' },
-      { client, settings },
-    )
-    expect('error' in refused && refused.code).toBe('consent_required')
+  it('seeds the age + terms acceptance when the profile is created (sign-up is the acceptance)', async () => {
+    const profile = await LedgerService.ensureUserProfile(userId, 'KES')
+    expect(profile.terms_accepted_at).toBeInstanceOf(Date)
+    expect(profile.age_confirmed_at).toBeInstanceOf(Date)
+    expect(profile.terms_version).toBeTruthy()
     const intents = await intentsRepo.PaymentIntentRepository.listForUser(userId, { limit: 5 })
     expect(intents).toHaveLength(0)
   })
 
   it('creates a pending deposit and credits the ledger exactly once from a signed callback', async () => {
     const created = await deposits.createDeposit(
-      { userId, phoneInput: '+254 703 456 789', amountInput: '1000', acceptTerms: true },
+      { userId, phoneInput: '+254 703 456 789', amountInput: '1000' },
       { client, settings },
     )
     expect('data' in created).toBe(true)

@@ -47,13 +47,19 @@ export const MOBILE_MONEY_RULE_MESSAGES: Record<MobileMoneyRuleError, string> = 
 /** Bump when the Terms change materially so every user has to accept them again. */
 export const CURRENT_TERMS_VERSION = '2026-10-21'
 
-export const CONSENT_REQUIRED_MESSAGE =
-  'Please confirm that you are 18 or older and accept the Terms of Use to continue.'
-
 export interface ConsentFields {
   terms_accepted_at: Date | null
   age_confirmed_at: Date | null
   terms_version: string | null
+}
+
+/**
+ * Signing up is the acceptance ("By signing up you agree to the Terms"), so a
+ * new ledger profile is seeded with these fields and the money entry points
+ * record them again when the Terms version moves.
+ */
+export function currentConsentFields(now = new Date()): ConsentFields {
+  return { terms_accepted_at: now, age_confirmed_at: now, terms_version: CURRENT_TERMS_VERSION }
 }
 
 /** True when the profile carries an age confirmation and an acceptance of the current Terms version. */

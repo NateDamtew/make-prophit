@@ -14,7 +14,6 @@ import { recordConsent } from '@/lib/mobile-money/consent'
 import { MobileMoneyAccountRepository, PaymentIntentRepository } from '@/lib/mobile-money/intents'
 import { MobileMoneyNotifications } from '@/lib/mobile-money/notifications'
 import {
-  CONSENT_REQUIRED_MESSAGE,
   decideIntentTransition,
   hasCurrentConsent,
   MOBILE_MONEY_RULE_MESSAGES,
@@ -44,14 +43,7 @@ export interface PayoutDependencies {
 
 export type PayoutError = {
   error: string
-  code:
-    | MobileMoneyRuleError
-    | 'invalid_phone'
-    | 'provider_error'
-    | 'frozen'
-    | 'insufficient_funds'
-    | 'no_profile'
-    | 'consent_required'
+  code: MobileMoneyRuleError | 'invalid_phone' | 'provider_error' | 'frozen' | 'insufficient_funds' | 'no_profile'
 }
 
 export interface CreatePayoutResult {
@@ -211,7 +203,7 @@ async function resolveOperationForPhone(params: {
  * intent → POST to pawaPay → pending / rejected (hold released on rejection).
  */
 export async function createPayout(
-  params: { userId: string; phoneInput: string; amountInput: string; acceptTerms?: boolean },
+  params: { userId: string; phoneInput: string; amountInput: string },
   deps: PayoutDependencies = {},
 ): Promise<{ data: CreatePayoutResult } | PayoutError> {
   const preview = await previewPayout(params, deps)
@@ -220,12 +212,9 @@ export async function createPayout(
   }
   const { operation, data } = preview
 
-  // Age + Terms gate (seeded or migrated balances may never have deposited).
+  // Signing up is the age + Terms acceptance; seeded or migrated profiles get it recorded here.
   const profile = await LedgerService.getUserProfile(params.userId)
   if (!hasCurrentConsent(profile)) {
-    if (!params.acceptTerms) {
-      return { code: 'consent_required', error: CONSENT_REQUIRED_MESSAGE }
-    }
     await recordConsent(params.userId)
   }
   const grossMinor = BigInt(data.grossMinor)

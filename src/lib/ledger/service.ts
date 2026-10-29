@@ -12,6 +12,7 @@ import {
 } from '@/lib/db/schema/ledger/tables'
 import { db } from '@/lib/drizzle'
 import { assertBalancedEntries, availableBalance, balanceDelta, LedgerInvariantError } from '@/lib/ledger/invariants'
+import { currentConsentFields } from '@/lib/mobile-money/rules'
 
 /**
  * The ledger service. Every mutating call runs inside a database transaction,
@@ -145,7 +146,7 @@ export const LedgerService = {
       }
       const [created] = await t
         .insert(ledger_user_profiles)
-        .values({ user_id: userId, currency: code, country: country ?? null })
+        .values({ user_id: userId, currency: code, country: country ?? null, ...currentConsentFields() })
         .onConflictDoNothing()
         .returning()
       if (created) {

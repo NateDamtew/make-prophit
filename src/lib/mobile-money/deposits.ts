@@ -14,7 +14,6 @@ import { recordConsent } from '@/lib/mobile-money/consent'
 import { MobileMoneyAccountRepository, PaymentIntentRepository } from '@/lib/mobile-money/intents'
 import { MobileMoneyNotifications } from '@/lib/mobile-money/notifications'
 import {
-  CONSENT_REQUIRED_MESSAGE,
   decideIntentTransition,
   hasCurrentConsent,
   MOBILE_MONEY_RULE_MESSAGES,
@@ -41,7 +40,7 @@ export interface DepositDependencies {
 
 export type DepositError = {
   error: string
-  code: MobileMoneyRuleError | 'invalid_phone' | 'provider_error' | 'not_found' | 'consent_required'
+  code: MobileMoneyRuleError | 'invalid_phone' | 'provider_error' | 'not_found'
 }
 
 export interface DepositPreview {
@@ -144,7 +143,7 @@ export interface CreateDepositResult {
  * NOT_FOUND / FOUND.
  */
 export async function createDeposit(
-  params: { userId: string; phoneInput: string; amountInput: string; acceptTerms?: boolean },
+  params: { userId: string; phoneInput: string; amountInput: string },
   deps: DepositDependencies = {},
 ): Promise<{ data: CreateDepositResult } | DepositError> {
   const preview = await previewDeposit({ phoneInput: params.phoneInput }, deps)
@@ -167,11 +166,8 @@ export async function createDeposit(
 
   // Lock the user's ledger currency on first deposit and make sure the cash account exists.
   const profile = await LedgerService.ensureUserProfile(params.userId, operation.currency, undefined, operation.country)
-  // Age + Terms gate: the first deposit carries the acceptance; later ones skip it.
+  // Signing up is the age + Terms acceptance; re-record it when the Terms version moved.
   if (!hasCurrentConsent(profile)) {
-    if (!params.acceptTerms) {
-      return { code: 'consent_required', error: CONSENT_REQUIRED_MESSAGE }
-    }
     await recordConsent(params.userId)
   }
   await LedgerService.getOrCreateUserCashAccount(params.userId, operation.currency)

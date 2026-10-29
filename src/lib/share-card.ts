@@ -18,6 +18,12 @@ export interface ShareCardPayload {
   eventSlug: string
   /** Eyebrow on the slip, e.g. the community or category name. */
   tag?: string
+  /** "My call" after a stake (default) or "I won" after a payout. */
+  kind?: 'call' | 'won'
+  /** The amount paid out, shown as the headline on a won card. */
+  won?: string
+  /** Community accent (#rrggbb) for the strip on the slip. */
+  accent?: string
 }
 
 export interface ShareCardPosition {
