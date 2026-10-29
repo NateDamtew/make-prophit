@@ -1,19 +1,18 @@
 import type { NextRequest } from 'next/server'
 
-import { and, eq } from 'drizzle-orm'
 import { NextResponse } from 'next/server'
 
 import { castJuryVoteAction } from '@/app/[locale]/(platform)/community/[slug]/_actions/community-actions'
+import { getViewerSeat, getVotesForViewer } from '@/lib/communities/jury-service'
+import { isJurorRole } from '@/lib/communities/roles'
 import { CommunityRepository } from '@/lib/db/queries/community'
-import { jury_votes } from '@/lib/db/schema/communities/tables'
-import { db } from '@/lib/drizzle'
 
 import { requireTmaUser } from '../../../../_lib'
 
 /**
  * GET /api/tma/communities/markets/[marketId]/vote
- * Returns the jury votes + tally + the caller's own vote / role for this
- * community market.
+ * Returns the jury votes (sealed until they open, except the caller's own),
+ * the tally once open, and whether the caller is seated to vote.
  */
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ marketId: string }> }) {
   const guard = await requireTmaUser()
@@ -27,31 +26,36 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ error: 'Market not found.' }, { status: 404 })
   }
 
-  const [{ data: votes }, { data: role }, [ownVote]] = await Promise.all([
-    CommunityRepository.getVotes(marketId),
+  const [votes, { data: role }, seat] = await Promise.all([
+    getVotesForViewer(marketId, guard.user.id),
     CommunityRepository.getMemberRole(market.community_id, guard.user.id),
-    db
-      .select({ vote: jury_votes.vote })
-      .from(jury_votes)
-      .where(and(eq(jury_votes.community_market_id, marketId), eq(jury_votes.juror_id, guard.user.id)))
-      .limit(1),
+    getViewerSeat(marketId, guard.user.id),
   ])
 
+  const revealed = votes.some((v) => v.revealed_at !== null) || market.status !== 'active'
   const tally = { yes: 0, no: 0, disputed: 0 } as Record<string, number>
-  for (const v of votes ?? []) {
-    tally[v.vote] = (tally[v.vote] ?? 0) + 1
+  if (revealed) {
+    for (const v of votes) {
+      tally[v.vote] = (tally[v.vote] ?? 0) + 1
+    }
   }
+  const mine = votes.find((v) => v.juror_id === guard.user.id)
 
   return NextResponse.json({
     status: market.status,
     resolvedOutcome: market.resolved_outcome,
-    canVote: role === 'juror' || role === 'admin',
+    // Seated jurors vote; before the seats are drawn, the community's jurors do.
+    canVote: seat ? seat.seated : market.jury_seat_count === null && isJurorRole(role),
+    revealed,
+    votedCount: votes.length,
+    seatCount: market.jury_seat_count,
     tally,
-    myVote: ownVote?.vote ?? null,
-    votes: (votes ?? []).map((v) => ({
+    myVote: mine?.vote ?? null,
+    votes: votes.map((v) => ({
       vote: v.vote,
       reasoning: v.reasoning,
       votedAt: v.voted_at,
+      revealed: v.revealed_at !== null,
       juror: { username: v.juror_username, image: v.juror_image },
     })),
   })

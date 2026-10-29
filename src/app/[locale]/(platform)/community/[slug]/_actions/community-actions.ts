@@ -6,7 +6,7 @@ import { z } from 'zod'
 import type { CommunityRole } from '@/lib/communities/roles'
 
 import { recordCommunityEvent } from '@/lib/communities/events'
-import { dispatchCommunityNotification } from '@/lib/communities/notifications'
+import { castSealedVote, JuryError } from '@/lib/communities/jury-service'
 import { can, isCommunityRole, isJurorRole } from '@/lib/communities/roles'
 import { getCommunitySettings } from '@/lib/communities/settings'
 import { DEFAULT_ERROR_MESSAGE } from '@/lib/constants'
@@ -40,8 +40,10 @@ const ReviewSchema = z.object({
 
 const JuryVoteSchema = z.object({
   vote: z.enum(['yes', 'no', 'disputed']),
+  // The floor; the community's own minimum (80 by default) is enforced in the jury service.
   reasoning: z.string().trim().min(10, 'Please provide at least 10 characters of reasoning'),
   evidence_url: z.string().url().optional().or(z.literal('')),
+  source_type: z.enum(['link', 'photo']).optional(),
 })
 
 export async function createCommunityAction(input: z.input<typeof CreateCommunitySchema>) {
@@ -193,7 +195,7 @@ export async function castJuryVoteAction(
     return { error: 'Unauthenticated.', data: null }
   }
 
-  // Must be a juror or admin
+  // Must be a juror or admin; the seat check itself happens in the service.
   const memberRole = await CommunityRepository.getMemberRole(communityId, user.id)
   if (!isJurorRole(memberRole.data)) {
     return { error: 'Only jury members can vote.', data: null }
@@ -204,15 +206,24 @@ export async function castJuryVoteAction(
     return { error: parsed.error.issues[0]?.message ?? DEFAULT_ERROR_MESSAGE, data: null }
   }
 
-  const result = await CommunityRepository.castVote({
-    community_market_id: communityMarketId,
-    juror_id: user.id,
-    vote: parsed.data.vote,
-    reasoning: parsed.data.reasoning,
-    evidence_url: parsed.data.evidence_url || undefined,
-  })
-  if (result.error) {
-    return { error: result.error, data: null }
+  // Sealed: the vote is stored, and the market only opens and decides once
+  // every seat has voted or the deadline passes.
+  let result: Awaited<ReturnType<typeof castSealedVote>>
+  try {
+    result = await castSealedVote({
+      marketId: communityMarketId,
+      jurorId: user.id,
+      vote: parsed.data.vote,
+      reasoning: parsed.data.reasoning,
+      sourceUrl: parsed.data.evidence_url || null,
+      sourceType: parsed.data.source_type ?? null,
+    })
+  } catch (error) {
+    if (error instanceof JuryError) {
+      return { error: error.message, data: null }
+    }
+    console.error('[castJuryVoteAction] failed', error)
+    return { error: DEFAULT_ERROR_MESSAGE, data: null }
   }
 
   await recordCommunityEvent({
@@ -221,57 +232,27 @@ export async function castJuryVoteAction(
     kind: 'jury.voted',
     targetType: 'market',
     targetId: communityMarketId,
-    payload: { vote: parsed.data.vote },
+    // The vote itself stays sealed; the feed only says that this juror voted.
+    payload: { sealed: !result.verdict.reveal },
   })
 
-  // After casting the vote, check if consensus has been reached and
-  // resolve automatically. This propagates to conditions for on-chain
-  // settlement when the market is event-linked.
-  const community = await CommunityRepository.getById(communityId)
-  if (community.data) {
-    const resolution = await CommunityRepository.resolveMarket(communityMarketId, community.data.jury_size)
-    // If consensus was reached and the market actually moved to a terminal
-    // state, emit the resolved event + member-wide notification.
-    if (resolution && (resolution.status === 'resolved' || resolution.status === 'disputed')) {
-      // Pool-engine markets settle in the ledger as soon as the jury decides.
-      try {
-        const { settlePoolForMarket } = await import('@/lib/pools/service')
-        await settlePoolForMarket(communityMarketId)
-      } catch (settleError) {
-        console.error('[castJuryVoteAction] pool settlement failed; the cron will retry', settleError)
-      }
-      const marketRow = await CommunityRepository.getMarket(communityMarketId)
-      const title = marketRow.data?.title ?? 'A market'
-
-      await recordCommunityEvent({
-        communityId,
-        actor: { id: user.id, label: actorLabel(user) },
-        kind: resolution.status === 'disputed' ? 'market.disputed' : 'market.resolved',
-        targetType: 'market',
-        targetId: communityMarketId,
-        payload: { title, outcome: resolution.outcome ?? null },
-      })
-
-      await dispatchCommunityNotification({
-        communityId,
-        category: 'community.market_resolved',
-        title:
-          resolution.status === 'disputed' ? 'A market was disputed' : `Market resolved: ${resolution.outcome ?? '—'}`,
-        description: title,
-        link: {
-          type: 'internal',
-          url: `/community/${communitySlug}/market/${communityMarketId}`,
-          label: 'View market',
-        },
-        fanout: 'all-members',
-        payload: { market_id: communityMarketId, outcome: resolution.outcome ?? null },
-      })
-    }
+  const { verdict } = result
+  if (verdict.reveal && verdict.status !== 'pending') {
+    const marketRow = await CommunityRepository.getMarket(communityMarketId)
+    const title = marketRow.data?.title ?? 'A market'
+    await recordCommunityEvent({
+      communityId,
+      actor: { id: user.id, label: actorLabel(user) },
+      kind: verdict.status === 'resolved' ? 'market.resolved' : 'market.disputed',
+      targetType: 'market',
+      targetId: communityMarketId,
+      payload: { title, outcome: verdict.outcome ?? null },
+    })
   }
 
   revalidatePath(`/community/${communitySlug}`, 'layout')
   revalidatePath(`/community/${communitySlug}/market/${communityMarketId}`, 'layout')
-  return { error: null, data: result.data }
+  return { error: null, data: { voteId: result.voteId, verdict } }
 }
 
 export async function setMemberRoleAction(

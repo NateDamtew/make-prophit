@@ -2,6 +2,7 @@ import { and, eq, inArray, sql } from 'drizzle-orm'
 
 import type { CommunityLevel, CommunityStatus } from '@/lib/communities/rules'
 
+import { recomputeAllJurorStats } from '@/lib/communities/jury-service'
 import { isCommunityLevel, jurySeatsForMembers } from '@/lib/communities/rules'
 import { getCommunitySettings } from '@/lib/communities/settings'
 import { computeTrustScore, decideLevel, decideStatus } from '@/lib/communities/trust'
@@ -21,6 +22,8 @@ export interface TrustSyncResult {
   promoted: string[]
   dormant: string[]
   reactivated: string[]
+  /** Jurors whose public record was rebuilt. */
+  jurorsRecomputed: number
   errors: Array<{ communityId: string; error: string }>
 }
 
@@ -44,7 +47,7 @@ export async function syncCommunityTrust(now = new Date()): Promise<TrustSyncRes
       )`,
       late: sql<number>`(
         select count(*)::int from ${community_markets} m
-        where m.community_id = ${communities}.id and m.status = 'cancelled' and m.resolved_outcome = 'cancelled'
+        where m.community_id = ${communities}.id and m.late_resolution = true
       )`,
       latest_market: sql<Date | null>`(
         select max(m.created_at) from ${community_markets} m
@@ -54,7 +57,14 @@ export async function syncCommunityTrust(now = new Date()): Promise<TrustSyncRes
     .from(communities)
     .where(inArray(communities.status, ['active', 'dormant', 'paused']))
 
-  const result: TrustSyncResult = { scanned: rows.length, promoted: [], dormant: [], reactivated: [], errors: [] }
+  const result: TrustSyncResult = {
+    scanned: rows.length,
+    promoted: [],
+    dormant: [],
+    reactivated: [],
+    jurorsRecomputed: 0,
+    errors: [],
+  }
   const settingsByCurrency = new Map<string, Awaited<ReturnType<typeof getCommunitySettings>>>()
 
   for (const row of rows) {
@@ -136,6 +146,15 @@ export async function syncCommunityTrust(now = new Date()): Promise<TrustSyncRes
     } catch (error) {
       result.errors.push({ communityId: row.id, error: error instanceof Error ? error.message : String(error) })
     }
+  }
+
+  try {
+    result.jurorsRecomputed = await recomputeAllJurorStats()
+  } catch (error) {
+    result.errors.push({
+      communityId: '*',
+      error: `juror stats: ${error instanceof Error ? error.message : String(error)}`,
+    })
   }
 
   return result

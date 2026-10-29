@@ -17,6 +17,13 @@ const mocks = hoisted(() => ({
   createInvite: mock(),
   redeemInvite: mock(),
   getMarket: mock(),
+  castSealedVote: mock(),
+}))
+
+// Sealed votes live in the jury service; the action only gates and records.
+void mock.module('@/lib/communities/jury-service', () => ({
+  castSealedVote: mocks.castSealedVote,
+  JuryError: class JuryError extends Error {},
 }))
 
 // Community creation is gated by the `require_application` setting; these tests
@@ -273,26 +280,33 @@ describe('castJuryVoteAction', () => {
     expect(result.error).toMatch(/jury members/i)
   })
 
-  it('allows jurors to vote', async () => {
+  it('allows jurors to vote, and the vote stays sealed', async () => {
     mocks.getCurrentUser.mockResolvedValue({ id: 'u1' })
     mocks.getMemberRole.mockResolvedValue({ data: 'juror', error: null })
-    mocks.castVote.mockResolvedValue({ data: { id: 'V1' }, error: null })
-    mocks.getById.mockResolvedValue({ data: { jury_size: 3 }, error: null })
-    mocks.resolveMarket.mockResolvedValue({ outcome: null, status: 'pending', voteCount: 1, threshold: 3 })
+    mocks.castSealedVote.mockResolvedValue({
+      voteId: 'V1',
+      verdict: { status: 'pending', outcome: null, reveal: false, required: 2, voted: 1, yes: 1, no: 0, disputed: 0 },
+    })
     const { castJuryVoteAction } = await import('@/app/[locale]/(platform)/community/[slug]/_actions/community-actions')
     const result = await castJuryVoteAction('M1', 'C1', 'slug', {
       vote: 'yes',
       reasoning: 'Resolution source confirms YES',
     })
     expect(result.error).toBeNull()
+    expect(result.data?.verdict.status).toBe('pending')
+    expect(mocks.castSealedVote).toHaveBeenCalledWith(
+      expect.objectContaining({ marketId: 'M1', jurorId: 'u1', vote: 'yes', sourceUrl: null }),
+    )
+    expect(mocks.getMarket).not.toHaveBeenCalled()
   })
 
-  it('also allows admins to vote', async () => {
+  it('also allows admins to vote, and reports the verdict once the votes open', async () => {
     mocks.getCurrentUser.mockResolvedValue({ id: 'u1' })
     mocks.getMemberRole.mockResolvedValue({ data: 'admin', error: null })
-    mocks.castVote.mockResolvedValue({ data: { id: 'V1' }, error: null })
-    mocks.getById.mockResolvedValue({ data: { jury_size: 1 }, error: null })
-    mocks.resolveMarket.mockResolvedValue({ outcome: 'yes', status: 'resolved', voteCount: 1, threshold: 1 })
+    mocks.castSealedVote.mockResolvedValue({
+      voteId: 'V1',
+      verdict: { status: 'resolved', outcome: 'no', reveal: true, required: 2, voted: 3, yes: 1, no: 2, disputed: 0 },
+    })
     mocks.getMarket.mockResolvedValue({ data: { title: 'Test Market' }, error: null })
     const { castJuryVoteAction } = await import('@/app/[locale]/(platform)/community/[slug]/_actions/community-actions')
     const result = await castJuryVoteAction('M1', 'C1', 'slug', {
@@ -300,6 +314,21 @@ describe('castJuryVoteAction', () => {
       reasoning: 'Data shows otherwise',
     })
     expect(result.error).toBeNull()
+    expect(result.data?.verdict.outcome).toBe('no')
+    expect(mocks.getMarket).toHaveBeenCalledWith('M1')
+  })
+
+  it('passes a jury refusal back as the error', async () => {
+    mocks.getCurrentUser.mockResolvedValue({ id: 'u1' })
+    mocks.getMemberRole.mockResolvedValue({ data: 'juror', error: null })
+    const { JuryError } = await import('@/lib/communities/jury-service')
+    mocks.castSealedVote.mockRejectedValue(new JuryError('You are not seated on this market’s jury.', 'not_seated'))
+    const { castJuryVoteAction } = await import('@/app/[locale]/(platform)/community/[slug]/_actions/community-actions')
+    const result = await castJuryVoteAction('M1', 'C1', 'slug', {
+      vote: 'yes',
+      reasoning: 'Resolution source confirms YES',
+    })
+    expect(result.error).toMatch(/not seated/i)
   })
 
   it('rejects too-short reasoning', async () => {

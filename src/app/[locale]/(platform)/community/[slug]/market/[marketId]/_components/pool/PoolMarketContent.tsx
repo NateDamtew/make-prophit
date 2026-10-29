@@ -19,12 +19,19 @@ import { useIsMobile } from '@/hooks/useIsMobile'
 import { isJurorRole } from '@/lib/communities/roles'
 import { useUser } from '@/stores/useUser'
 
-import type { PoolCommunityRecord, PoolJuryVote, PoolMarketRecord, PoolSide } from './pool-market-types'
+import type {
+  MarketSeat,
+  PoolCommunityRecord,
+  PoolJuryVote,
+  PoolMarketRecord,
+  PoolSide,
+  ViewerJurySeat,
+} from './pool-market-types'
 
 import MarketBottomBar from './MarketBottomBar'
 import MarketHero from './MarketHero'
+import MarketJuryCall from './MarketJuryCall'
 import MarketJuryList from './MarketJuryList'
-import MarketJuryVote from './MarketJuryVote'
 import MarketPositionCard from './MarketPositionCard'
 import MarketResolvedBy from './MarketResolvedBy'
 import MarketRules from './MarketRules'
@@ -51,6 +58,10 @@ interface PoolMarketContentProps {
   trust: CommunityTrust | null
   memberRole: string | null
   currentUserId: string | null
+  /** The viewer's seat on this jury, when they have one. */
+  viewerSeat?: ViewerJurySeat | null
+  /** Who sits on this market's jury (empty on markets from before seats existed). */
+  seats?: MarketSeat[]
   initialSummary: PoolSummary | null
   initialOutcome: PoolSide
   /** Open the stake sheet on load (from `?stake=yes|no`). */
@@ -62,6 +73,8 @@ interface PoolMarketContentProps {
   moderationSlot?: ReactNode
 }
 
+const NO_SEATS: MarketSeat[] = []
+
 export default function PoolMarketContent({
   market,
   community,
@@ -69,6 +82,8 @@ export default function PoolMarketContent({
   trust,
   memberRole,
   currentUserId,
+  viewerSeat = null,
+  seats = NO_SEATS,
   initialSummary,
   initialOutcome,
   openStakeOnLoad,
@@ -110,7 +125,6 @@ export default function PoolMarketContent({
     lifecycle.phase === 'refunded' ||
     lifecycle.phase === 'hold' ||
     lifecycle.phase === 'review'
-  const showJuryVote = isJuror && lifecycle.phase === 'awaiting' && lifecycle.source === 'community'
 
   const onMoneyMoved = useCallback(() => {
     if (!preview) {
@@ -187,50 +201,46 @@ export default function PoolMarketContent({
         {!marketOpen && (
           <div className="lg:hidden">
             <MarketStateBody
+              market={market}
               community={community}
               lifecycle={lifecycle}
               outcomeLabels={outcomeLabels}
               onShareWin={() => setShareOpen(true)}
+              seat={viewerSeat}
             />
           </div>
         )}
 
-        {showJuryVote && (
-          <MarketJuryVote
-            market={market}
-            community={community}
-            votes={votes}
-            currentUserId={currentUserId}
-            outcomeLabels={outcomeLabels}
-          />
-        )}
+        <MarketJuryCall marketId={market.id} lifecycle={lifecycle} seat={viewerSeat} />
 
         {(marketDone || lifecycle.phase === 'awaiting' || votes.length > 0) && (
           <MarketVerdicts
             marketId={market.id}
             lifecycle={lifecycle}
             votes={votes}
+            seats={seats}
             trust={trust}
             outcomeLabels={outcomeLabels}
             canManageEvidence={isJuror}
+            currentUserId={currentUserId}
           />
         )}
 
         {lifecycle.source === 'community' && (
-          <MarketJuryList trust={trust} jurySize={jurySize} juryRequired={juryRequired} />
+          <MarketJuryList trust={trust} jurySize={lifecycle.jury.size} juryRequired={lifecycle.jury.required} />
         )}
 
         <MarketResolvedBy
           community={community}
           trust={trust}
-          jurySize={jurySize}
-          juryRequired={juryRequired}
+          jurySize={lifecycle.jury.size}
+          juryRequired={lifecycle.jury.required}
           holdHours={summary?.holdHours ?? trust?.holdHours ?? 24}
           imported={lifecycle.source === 'imported'}
           source={market.resolution_source}
         />
 
-        <MarketRules market={market} summary={summary} closesAt={lifecycle.closesAt} />
+        <MarketRules market={market} summary={summary} closesAt={lifecycle.closesAt} juryDueAt={lifecycle.juryDueAt} />
 
         {!preview && (
           <PoolTabs
@@ -261,13 +271,16 @@ export default function PoolMarketContent({
         outcomeLabels={outcomeLabels}
         onShareWin={() => setShareOpen(true)}
         onMoneyMoved={onMoneyMoved}
+        seat={viewerSeat}
       />
 
       <MarketBottomBar
+        marketId={market.id}
         lifecycle={lifecycle}
         outcomeLabels={outcomeLabels}
         onPick={pickSide}
         onShareWin={() => setShareOpen(true)}
+        seat={viewerSeat}
       />
 
       {marketOpen && (

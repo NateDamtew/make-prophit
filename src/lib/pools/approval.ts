@@ -2,6 +2,7 @@ import { and, count, eq, inArray } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 
 import { recordCommunityEvent } from '@/lib/communities/events'
+import { assignJurySeats } from '@/lib/communities/jury-service'
 import { notifyMarketApproved } from '@/lib/community-notifications'
 import { community_markets, community_members } from '@/lib/db/schema/communities/tables'
 import { db } from '@/lib/drizzle'
@@ -75,6 +76,12 @@ export async function approveAsPoolMarket(params: {
     closesAt: finalDate,
     currency: params.community.currency ?? undefined,
   })
+  // The seats are drawn now, so stakers see who will decide before they stake.
+  try {
+    await assignJurySeats(market.id)
+  } catch (seatError) {
+    console.error('[approveAsPoolMarket] seating the jury failed; the jury pass will seat it', seatError)
+  }
 
   await notifyMarketApproved({ communityAdminId: market.created_by, communitySlug, marketTitle: finalTitle })
   await recordCommunityEvent({

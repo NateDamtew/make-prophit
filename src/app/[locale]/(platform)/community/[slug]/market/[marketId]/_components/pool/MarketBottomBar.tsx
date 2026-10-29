@@ -1,15 +1,17 @@
 'use client'
 
-import { Share2Icon } from 'lucide-react'
+import { GavelIcon, Share2Icon } from 'lucide-react'
 import { useExtracted, useLocale } from 'next-intl'
 
 import { MOBILE_BOTTOM_NAV_OFFSET } from '@/app/[locale]/(platform)/_lib/mobile-bottom-nav'
 import { formatCloseLabel, formatMoney, formatShortCountdown } from '@/components/communities/format'
 import { useSheetState } from '@/components/communities/sheet/sheet-state'
 import { useNowTimestamp } from '@/hooks/useNowTimestamp'
+import { Link } from '@/i18n/navigation'
 import { cn } from '@/lib/utils'
 
 import type { MarketLifecycle } from './market-lifecycle'
+import type { ViewerJurySeat } from './pool-market-types'
 
 /**
  * The fixed bar above the pill nav on phones. Open: Yes / No with the odds,
@@ -18,13 +20,22 @@ import type { MarketLifecycle } from './market-lifecycle'
  */
 
 interface MarketBottomBarProps {
+  marketId: string
   lifecycle: MarketLifecycle
   outcomeLabels: { yes: string; no: string }
   onPick: (side: 'yes' | 'no') => void
   onShareWin: () => void
+  seat?: ViewerJurySeat | null
 }
 
-export default function MarketBottomBar({ lifecycle, outcomeLabels, onPick, onShareWin }: MarketBottomBarProps) {
+export default function MarketBottomBar({
+  marketId,
+  lifecycle,
+  outcomeLabels,
+  onPick,
+  onShareWin,
+  seat,
+}: MarketBottomBarProps) {
   const t = useExtracted()
   const locale = useLocale()
   const now = useNowTimestamp()
@@ -55,6 +66,23 @@ export default function MarketBottomBar({ lifecycle, outcomeLabels, onPick, onSh
           <span className="truncate">{outcomeLabels.no}</span>
           {yesPct !== null ? <span>{100 - yesPct}%</span> : null}
         </button>
+      </div>
+    )
+  } else if (phase === 'awaiting' && seat?.seated && !seat.voted && !lifecycle.jury.revealed) {
+    content = (
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm font-semibold tabular-nums">
+          {lifecycle.juryDueAt !== null
+            ? t('Your vote is due {time}', { time: formatCloseLabel(lifecycle.juryDueAt, locale, now) })
+            : t('Your vote is due')}
+        </p>
+        <Link
+          href={`/jury/${marketId}`}
+          className="inline-flex h-11 items-center gap-2 rounded-md bg-primary px-4 text-sm font-bold text-primary-foreground"
+        >
+          <GavelIcon className="size-4" aria-hidden="true" />
+          {t('Vote now')}
+        </Link>
       </div>
     )
   } else if (phase === 'awaiting') {

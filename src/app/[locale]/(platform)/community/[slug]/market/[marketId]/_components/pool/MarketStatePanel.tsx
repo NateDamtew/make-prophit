@@ -1,12 +1,13 @@
 'use client'
 
-import { Share2Icon, SmartphoneIcon } from 'lucide-react'
+import { GavelIcon, LockIcon, Share2Icon, SmartphoneIcon } from 'lucide-react'
 import { useExtracted, useLocale } from 'next-intl'
 import { useState } from 'react'
 
 import type { CommunityTrust } from '@/components/communities/types'
 import type { PoolSummary } from '@/lib/pools/service'
 
+import { rateResolutionAction } from '@/app/[locale]/(platform)/_actions/jury'
 import { formatCloseLabel, formatMoney } from '@/components/communities/format'
 import { HoldCard } from '@/components/communities/lifecycle/HoldCard'
 import { JuryProgress } from '@/components/communities/lifecycle/JuryProgress'
@@ -18,7 +19,7 @@ import { toast } from '@/components/ui/toast'
 import { Link } from '@/i18n/navigation'
 
 import type { MarketLifecycle } from './market-lifecycle'
-import type { PoolCommunityRecord, PoolMarketRecord } from './pool-market-types'
+import type { PoolCommunityRecord, PoolMarketRecord, ViewerJurySeat } from './pool-market-types'
 
 import { ResultPill } from './MarketHero'
 import { communityPath } from './pool-market-types'
@@ -40,6 +41,8 @@ interface MarketStatePanelProps {
   outcomeLabels: { yes: string; no: string }
   onShareWin: () => void
   onMoneyMoved: () => void
+  /** The viewer's seat on this jury, when they have one. */
+  seat?: ViewerJurySeat | null
 }
 
 function Card({ children, label }: { children: React.ReactNode; label?: string }) {
@@ -51,11 +54,13 @@ function Card({ children, label }: { children: React.ReactNode; label?: string }
 }
 
 export function MarketStateBody({
+  market,
   community,
   lifecycle,
   outcomeLabels,
   onShareWin,
-}: Pick<MarketStatePanelProps, 'community' | 'lifecycle' | 'outcomeLabels' | 'onShareWin'>) {
+  seat,
+}: Pick<MarketStatePanelProps, 'market' | 'community' | 'lifecycle' | 'outcomeLabels' | 'onShareWin' | 'seat'>) {
   const t = useExtracted()
   const locale = useLocale()
   const [rating, setRating] = useState<number | null>(null)
@@ -70,6 +75,22 @@ export function MarketStateBody({
             ? t('Closed. Waiting for the source to settle.')
             : t('Closed. The jury is deciding.')}
         </p>
+        {seat?.seated && lifecycle.source === 'community' && !lifecycle.jury.revealed && (
+          <Button
+            size="lg"
+            variant={seat.voted ? 'secondary' : 'default'}
+            nativeButton={false}
+            render={<Link href={`/jury/${market.id}`} />}
+            className="h-12 rounded-md text-base font-bold"
+          >
+            {seat.voted ? (
+              <LockIcon className="size-4" aria-hidden="true" />
+            ) : (
+              <GavelIcon className="size-4" aria-hidden="true" />
+            )}
+            {seat.voted ? t('Your vote is sealed') : t('Vote now')}
+          </Button>
+        )}
         {lifecycle.source === 'community' && (
           <JuryProgress
             seats={lifecycle.jury.size}
@@ -171,7 +192,12 @@ export function MarketStateBody({
           </div>
           <RateResolution
             value={rating}
-            onRate={(value) => {
+            onRate={async (value) => {
+              const result = await rateResolutionAction({ marketId: market.id, rating: value })
+              if (result.error) {
+                toast.error(result.error)
+                return
+              }
               setRating(value)
               toast.success(t('Thanks. Your rating goes on each juror’s record.'))
             }}
@@ -256,10 +282,12 @@ export default function MarketStatePanel(props: MarketStatePanelProps) {
           />
         ) : (
           <MarketStateBody
+            market={props.market}
             community={community}
             lifecycle={lifecycle}
             outcomeLabels={outcomeLabels}
             onShareWin={props.onShareWin}
+            seat={props.seat ?? null}
           />
         )}
         {trust ? <TrustBlock trust={trust} variant="compact" rulesHref={communityPath(community.slug)} /> : null}

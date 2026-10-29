@@ -28,7 +28,7 @@ const RESOLUTION_PRICE_INVALID = '500000000000000000' // 5e17
  * to the linked event's conditions so on-chain settlement pays out.
  * Only applies if the community market has an event_id (was deployed).
  */
-async function writeJuryResolutionToConditions(communityMarketId: string, outcome: 'yes' | 'no' | 'cancelled') {
+export async function propagateJuryResolution(communityMarketId: string, outcome: 'yes' | 'no' | 'cancelled') {
   try {
     const [link] = await db
       .select({ event_id: community_markets.event_id })
@@ -1069,7 +1069,7 @@ export const CommunityRepository = {
       // Propagate to the linked platform event's conditions (if any)
       // so on-chain settlement can pay out. This bypasses UMA for
       // community-governed markets.
-      await writeJuryResolutionToConditions(communityMarketId, outcome)
+      await propagateJuryResolution(communityMarketId, outcome)
 
       // Notify the community admin of the resolution
       try {
