@@ -9,6 +9,7 @@ import type { CommunityTrust } from '@/components/communities/types'
 import type { PoolSummary } from '@/lib/pools/service'
 
 import { PositionShareDialog } from '@/app/[locale]/(platform)/_components/PositionShareDialog'
+import { previewOddsHistory } from '@/components/communities/dev/fixtures'
 import { buildPoolSharePayload } from '@/components/communities/share/payload'
 import { readStakeIntent } from '@/components/communities/stake/stake-intent'
 import { StakeSheet } from '@/components/communities/stake/StakeSheet'
@@ -167,9 +168,15 @@ export default function PoolMarketContent({
           <MarketHero market={market} lifecycle={lifecycle} outcomeLabels={outcomeLabels} totals={totals} />
         </div>
 
-        {marketOpen && !preview && (
+        {marketOpen && (
           <div className="min-h-72 w-full">
-            <PoolChart market={market} summary={summary} isMobile={isMobile} outcomeLabels={outcomeLabels} />
+            <PoolChart
+              market={market}
+              summary={summary}
+              isMobile={isMobile}
+              outcomeLabels={outcomeLabels}
+              previewHistory={preview ? previewOddsHistory(serverNow, summary) : undefined}
+            />
           </div>
         )}
 

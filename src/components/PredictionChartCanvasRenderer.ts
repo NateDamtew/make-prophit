@@ -126,7 +126,43 @@ function withOpacity(color: string, opacity: number) {
     }
   }
 
+  const triplet = resolveRgbTriplet(color)
+  if (triplet) {
+    return `rgba(${triplet[0]}, ${triplet[1]}, ${triplet[2]}, ${opacity})`
+  }
+
   return color
+}
+
+const rgbTripletCache = new Map<string, readonly [number, number, number] | null>()
+
+/**
+ * Theme tokens are oklch(), which the hex path above cannot fade. Paint the
+ * colour once on a 1×1 canvas and read the pixel back; the browser does the
+ * colour-space conversion for us.
+ */
+function resolveRgbTriplet(color: string) {
+  const cached = rgbTripletCache.get(color)
+  if (cached !== undefined) {
+    return cached
+  }
+  let triplet: readonly [number, number, number] | null = null
+  if (typeof document !== 'undefined') {
+    const probe = document.createElement('canvas')
+    probe.width = 1
+    probe.height = 1
+    const context = probe.getContext('2d', { willReadFrequently: true })
+    if (context) {
+      context.fillStyle = color
+      context.fillRect(0, 0, 1, 1)
+      const [red, green, blue, alpha] = context.getImageData(0, 0, 1, 1).data
+      if (alpha > 0) {
+        triplet = [red, green, blue]
+      }
+    }
+  }
+  rgbTripletCache.set(color, triplet)
+  return triplet
 }
 
 function scaleX(frame: PredictionChartCanvasGeometry, timestamp: number) {

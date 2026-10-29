@@ -35,12 +35,13 @@ export function usePoolSummary(marketId: string, initialSummary: PoolSummary | n
   })
 }
 
-export function usePoolHistory(marketId: string) {
+export function usePoolHistory(marketId: string, options: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: poolQueryKey(marketId, 'history'),
     queryFn: async () => (await getPoolHistoryAction(marketId)).data,
     staleTime: 30_000,
     refetchInterval: 60_000,
+    enabled: options.enabled ?? true,
   })
 }
 

@@ -47,6 +47,25 @@ interface PreviewVoteLike {
 
 const HOUR = 60 * 60 * 1000
 
+/**
+ * A plausible odds walk for the preview chart: starts near even, drifts and
+ * wobbles over three days, and lands on the summary's live odds.
+ */
+export function previewOddsHistory(now: number, summary: PoolSummary | null): Array<{ t: number; yes: number }> {
+  const end = summary ? summary.pool.odds.yes * 100 : 50
+  const start = now - 3 * 24 * HOUR
+  const steps = 36
+  const points: Array<{ t: number; yes: number }> = []
+  for (let index = 0; index <= steps; index += 1) {
+    const progress = index / steps
+    const drift = 50 + (end - 50) * progress
+    const wobble = Math.sin(progress * 9) * 6 * (1 - progress) + Math.cos(progress * 23) * 2.5
+    points.push({ t: start + (now - start) * progress, yes: Math.max(3, Math.min(97, drift + wobble)) })
+  }
+  points[points.length - 1] = { t: now, yes: end }
+  return points
+}
+
 function baseSummary(now: number, currency: string, userId: string | null): PoolSummary {
   return {
     pool: {
