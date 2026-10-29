@@ -1,3 +1,5 @@
+import { notFound } from 'next/navigation'
+
 import OverlayView from '@/app/overlay/community/[slug]/_components/OverlayView'
 
 /**
@@ -10,5 +12,8 @@ export function generateStaticParams() {
 
 export default async function TickerPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
+  if (slug === '__placeholder__') {
+    notFound()
+  }
   return <OverlayView slug={slug} variant="ticker" />
 }
