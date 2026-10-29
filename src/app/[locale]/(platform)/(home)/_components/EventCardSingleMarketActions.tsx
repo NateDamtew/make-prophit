@@ -5,9 +5,9 @@ import type { HomeCardBinaryOutcome } from '@/app/[locale]/(platform)/(home)/_ut
 import type { Market } from '@/types'
 
 import { resolveBinaryOutcomeByIndex } from '@/app/[locale]/(platform)/(home)/_utils/eventCardResolvedOutcome'
+import Link from '@/app/[locale]/(platform)/_components/IntentPrefetchLink'
 import { Button } from '@/components/ui/button'
 import { useOutcomeLabel } from '@/hooks/useOutcomeLabel'
-import { Link } from '@/i18n/navigation'
 import { OUTCOME_INDEX } from '@/lib/constants'
 import { resolveEventOutcomePath } from '@/lib/events-routing'
 import { cn } from '@/lib/utils'

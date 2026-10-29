@@ -64,14 +64,15 @@ async function buildSitemapEntries(
     return buildDynamicEntries(dynamicEntries, siteUrl, enabledLocales)
   }
 
-  if (sitemapId.startsWith(ACTIVE_EVENTS_SITEMAP_PREFIX)) {
+  // Event pages are listed in the default locale only. Thousands of events times
+  // every enabled locale sent crawlers to translated copies, and each crawl of an
+  // uncached copy is a billed ISR write.
+  if (sitemapId.startsWith(ACTIVE_EVENTS_SITEMAP_PREFIX) || sitemapId.startsWith(CLOSED_EVENTS_SITEMAP_PREFIX)) {
     const dynamicEntries = await getDynamicSitemapEntriesById(sitemapId)
-    return buildDynamicEntries(dynamicEntries, siteUrl, enabledLocales)
-  }
-
-  if (sitemapId.startsWith(CLOSED_EVENTS_SITEMAP_PREFIX)) {
-    const dynamicEntries = await getDynamicSitemapEntriesById(sitemapId)
-    return buildDynamicEntries(dynamicEntries, siteUrl, enabledLocales)
+    return dynamicEntries.map((entry) => ({
+      url: toAbsoluteUrl(siteUrl, withLocalePrefix(entry.path, DEFAULT_LOCALE)),
+      lastModified: entry.lastModified,
+    }))
   }
 
   return []

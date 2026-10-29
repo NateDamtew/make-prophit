@@ -9,9 +9,9 @@ import {
   hasHomeCardMarketChance,
   resolveHomeCardBinaryOutcome,
 } from '@/app/[locale]/(platform)/(home)/_utils/homeCardMarketDisplay'
+import Link from '@/app/[locale]/(platform)/_components/IntentPrefetchLink'
 import { buttonVariants } from '@/components/ui/button'
 import { useOutcomeLabel } from '@/hooks/useOutcomeLabel'
-import { Link } from '@/i18n/navigation'
 import { OUTCOME_INDEX } from '@/lib/constants'
 import { resolveEventMarketPath, resolveEventOutcomePath } from '@/lib/events-routing'
 import { cn } from '@/lib/utils'

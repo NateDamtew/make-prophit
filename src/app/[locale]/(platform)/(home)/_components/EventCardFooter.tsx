@@ -3,9 +3,9 @@ import { useExtracted } from 'next-intl'
 
 import type { Event } from '@/types'
 
+import Link from '@/app/[locale]/(platform)/_components/IntentPrefetchLink'
 import EventBookmark from '@/app/[locale]/(platform)/event/[slug]/_components/EventBookmark'
 import { NewBadge } from '@/components/ui/new-badge'
-import { Link } from '@/i18n/navigation'
 import {
   isCryptoEvent,
   resolveCryptoCadenceRouteSlug,

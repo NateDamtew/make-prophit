@@ -3,15 +3,15 @@ import type { Event } from '@/types'
 /**
  * Event pages are invalidated by tag (`cacheTags.event(slug)`) from the sync
  * routes and admin actions, so the time-based lifetime below is only a safety
- * net. Events that are still trading keep a short lifetime so server-rendered
- * prices stay close to live; settled events are effectively static and would
- * otherwise be regenerated on every crawler visit, which is billed as an ISR
- * write on Vercel.
+ * net. Every regeneration is billed as an ISR write on Vercel (per 8 KB of a
+ * 1.5-2 MB page), so even trading events keep a 10-minute lifetime: prices and
+ * the order book refresh on the client, and a 60s lifetime meant nearly every
+ * crawler visit regenerated the page. Settled events are effectively static.
  */
 export const PUBLIC_EVENT_PAGE_CACHE_LIFE = {
   stale: 60,
-  revalidate: 60,
-  expire: 3_660,
+  revalidate: 600,
+  expire: 86_400,
 } as const
 
 export const SETTLED_EVENT_PAGE_CACHE_LIFE = {
