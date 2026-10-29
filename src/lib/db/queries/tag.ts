@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto'
 import type { NonDefaultLocale, SupportedLocale } from '@/i18n/locales'
 import type { PlatformCategorySidebarItem, PlatformNavigationChild } from '@/lib/platform-navigation'
 
-import { DEFAULT_LOCALE, NON_DEFAULT_LOCALES } from '@/i18n/locales'
+import { DEFAULT_LOCALE, NON_DEFAULT_LOCALES, SUPPORTED_LOCALES } from '@/i18n/locales'
 import { cacheTags } from '@/lib/cache-tags'
 import { getCategorySidebarConfiguredTagSlugs, resolveCategorySidebarData } from '@/lib/category-sidebar-config'
 import {
@@ -339,9 +339,16 @@ async function getVisibleActiveEventCountsByTagSlugs(tagSlugs: string[]): Promis
   }
 }
 
-async function getCachedMainTags(locale: SupportedLocale): Promise<MainTagsResult> {
-  'use cache'
-  cacheTag(cacheTags.mainTags(locale))
+/**
+ * The language-independent part of the category menu: main tags, their
+ * subcategories and how many visible events each holds. Kept in Vercel's shared
+ * runtime cache so it is computed once rather than per locale and per server
+ * instance; the event scan behind the counts was the database's biggest egress.
+ * Throws instead of caching a failed read.
+ */
+async function loadMainTagsSnapshot() {
+  'use cache: remote'
+  cacheTag(...SUPPORTED_LOCALES.map((locale) => cacheTags.mainTags(locale)))
 
   const { data: mainTagsResult, error } = await runQuery(async () => {
     const result = await db
@@ -364,8 +371,7 @@ async function getCachedMainTags(locale: SupportedLocale): Promise<MainTagsResul
   })
 
   if (error || !mainTagsResult) {
-    const errorMessage = typeof error === 'string' ? error : 'Unknown error'
-    return { data: null, error: errorMessage, globalChilds: [] }
+    throw new Error(typeof error === 'string' ? error : 'Unknown error')
   }
 
   const mainVisibleTags = mainTagsResult
@@ -393,28 +399,8 @@ async function getCachedMainTags(locale: SupportedLocale): Promise<MainTagsResul
   })
 
   if (viewError || !subcategoriesResult) {
-    const tagsWithChilds = mainVisibleTags.map((tag: any) => ({ ...tag, childs: [] }))
-    const errorMessage = typeof viewError === 'string' ? viewError : 'Unknown error'
-    return { data: tagsWithChilds, error: errorMessage, globalChilds: [] }
+    throw new Error(typeof viewError === 'string' ? viewError : 'Unknown error')
   }
-
-  const configuredSidebarTagSlugs = locale === DEFAULT_LOCALE ? [] : Array.from(getCategorySidebarConfiguredTagSlugs())
-  const { data: configuredSidebarTags, error: configuredSidebarTagsError } =
-    configuredSidebarTagSlugs.length === 0
-      ? { data: [], error: null }
-      : await runQuery(async () => {
-          const result = await db
-            .select({
-              id: tags.id,
-              slug: tags.slug,
-            })
-            .from(tags)
-            .where(and(inArray(tags.slug, configuredSidebarTagSlugs), eq(tags.is_main_category, false)))
-
-          return { data: result, error: null }
-        })
-
-  const configuredSidebarTagRecords = configuredSidebarTagsError ? [] : (configuredSidebarTags ?? [])
 
   const visibleMainEventTags = alias(event_tags, 'visible_main_event_tags')
   const visibleMainTags = alias(tags, 'visible_main_tags')
@@ -495,6 +481,75 @@ async function getCachedMainTags(locale: SupportedLocale): Promise<MainTagsResul
   const subcategoryEventCounts = new Map<string, number>()
   const mainCategoryEventCounts = new Map<string, number>()
 
+  const mainSlugSet = new Set(mainSlugs)
+
+  for (const event of visibleSidebarCountEvents) {
+    const mainTagsForEvent = new Set(
+      event.tags.filter((tag) => tag.isMainCategory && mainSlugSet.has(tag.slug)).map((tag) => tag.slug),
+    )
+    const subTagsForEvent = new Set(
+      event.tags
+        .filter((tag) => !tag.isMainCategory && !mainSlugSet.has(tag.slug) && !EXCLUDED_SUB_SLUGS.has(tag.slug))
+        .map((tag) => tag.slug),
+    )
+
+    for (const mainSlug of mainTagsForEvent) {
+      mainCategoryEventCounts.set(mainSlug, (mainCategoryEventCounts.get(mainSlug) ?? 0) + 1)
+
+      const resolvedSubTagsForEvent = new Set(subTagsForEvent)
+      const cadenceRouteSlug = resolveCryptoCadenceRouteSlug(event)
+      if (mainSlug === 'crypto' && cadenceRouteSlug) {
+        resolvedSubTagsForEvent.add(cadenceRouteSlug)
+      }
+
+      for (const subSlug of resolvedSubTagsForEvent) {
+        const key = `${mainSlug}::${subSlug}`
+        subcategoryEventCounts.set(key, (subcategoryEventCounts.get(key) ?? 0) + 1)
+      }
+    }
+  }
+
+  return {
+    mainVisibleTags,
+    mainSlugs,
+    subcategoriesResult,
+    mainCategoryEventCounts: Object.fromEntries(mainCategoryEventCounts),
+    subcategoryEventCounts: Object.fromEntries(subcategoryEventCounts),
+  }
+}
+
+async function getCachedMainTags(locale: SupportedLocale): Promise<MainTagsResult> {
+  'use cache'
+  cacheTag(cacheTags.mainTags(locale))
+
+  let snapshot: Awaited<ReturnType<typeof loadMainTagsSnapshot>>
+  try {
+    snapshot = await loadMainTagsSnapshot()
+  } catch (error) {
+    return { data: null, error: error instanceof Error ? error.message : 'Unknown error', globalChilds: [] }
+  }
+  const { mainVisibleTags, mainSlugs, subcategoriesResult } = snapshot
+  const mainCategoryEventCounts = new Map(Object.entries(snapshot.mainCategoryEventCounts))
+  const subcategoryEventCounts = new Map(Object.entries(snapshot.subcategoryEventCounts))
+
+  const configuredSidebarTagSlugs = locale === DEFAULT_LOCALE ? [] : Array.from(getCategorySidebarConfiguredTagSlugs())
+  const { data: configuredSidebarTags, error: configuredSidebarTagsError } =
+    configuredSidebarTagSlugs.length === 0
+      ? { data: [], error: null }
+      : await runQuery(async () => {
+          const result = await db
+            .select({
+              id: tags.id,
+              slug: tags.slug,
+            })
+            .from(tags)
+            .where(and(inArray(tags.slug, configuredSidebarTagSlugs), eq(tags.is_main_category, false)))
+
+          return { data: result, error: null }
+        })
+
+  const configuredSidebarTagRecords = configuredSidebarTagsError ? [] : (configuredSidebarTags ?? [])
+
   const translationTagIds = new Set<number>()
   for (const tag of mainVisibleTags) {
     translationTagIds.add(tag.id)
@@ -542,32 +597,6 @@ async function getCachedMainTags(locale: SupportedLocale): Promise<MainTagsResul
   const globalCounts = new Map<string, { name: string; slug: string; count: number }>()
 
   const mainSlugSet = new Set(mainSlugs)
-
-  for (const event of visibleSidebarCountEvents) {
-    const mainTagsForEvent = new Set(
-      event.tags.filter((tag) => tag.isMainCategory && mainSlugSet.has(tag.slug)).map((tag) => tag.slug),
-    )
-    const subTagsForEvent = new Set(
-      event.tags
-        .filter((tag) => !tag.isMainCategory && !mainSlugSet.has(tag.slug) && !EXCLUDED_SUB_SLUGS.has(tag.slug))
-        .map((tag) => tag.slug),
-    )
-
-    for (const mainSlug of mainTagsForEvent) {
-      mainCategoryEventCounts.set(mainSlug, (mainCategoryEventCounts.get(mainSlug) ?? 0) + 1)
-
-      const resolvedSubTagsForEvent = new Set(subTagsForEvent)
-      const cadenceRouteSlug = resolveCryptoCadenceRouteSlug(event)
-      if (mainSlug === 'crypto' && cadenceRouteSlug) {
-        resolvedSubTagsForEvent.add(cadenceRouteSlug)
-      }
-
-      for (const subSlug of resolvedSubTagsForEvent) {
-        const key = `${mainSlug}::${subSlug}`
-        subcategoryEventCounts.set(key, (subcategoryEventCounts.get(key) ?? 0) + 1)
-      }
-    }
-  }
 
   for (const subtag of subcategoriesResult) {
     if (

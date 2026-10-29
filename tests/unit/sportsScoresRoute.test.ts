@@ -132,6 +132,49 @@ describe('sync sports scores route', () => {
     })
   })
 
+  it('refreshes only the event, not the listing pages, when just the score changes', async () => {
+    mocks.select.mockImplementation(() =>
+      makeSelectChain([
+        {
+          livestream_url: null,
+          sports_source_provider: 'thesportsdb',
+          sports_source_event_id: '2519345',
+          sports_source_game_id: null,
+          sports_start_time: new Date('2026-07-10T19:00:00.000Z'),
+          sports_live: true,
+          sports_ended: false,
+          sports_score: '1-1',
+          sports_period: '2H',
+          sports_elapsed: '60',
+          event_id: 'event-1',
+          slug: 'main-market',
+        },
+      ]),
+    )
+    mocks.resolveSportsEvent.mockResolvedValue({
+      score: '2-1',
+      period: '2H',
+      elapsed: '61',
+      live: true,
+      ended: false,
+      livestreamUrl: null,
+      raw: { strStatus: '2H' },
+    })
+
+    const { POST } = await import('@/app/api/sync/sports-scores/route')
+    const response = await POST(
+      new Request('https://example.com/api/sync/sports-scores', {
+        method: 'POST',
+        headers: { authorization: 'Bearer cron-secret' },
+      }),
+    )
+
+    expect(mocks.revalidateTag).toHaveBeenCalledWith('event:main-market', { expire: 0 })
+    expect(mocks.revalidateTag).not.toHaveBeenCalledWith('events:list', { expire: 0 })
+    expect(mocks.revalidateTag).not.toHaveBeenCalledWith('sports:menu', { expire: 0 })
+    await expect(response.json()).resolves.toMatchObject({ updatedCount: 1 })
+  })
+
   it('continues updating sibling events when one row write fails', async () => {
     const sharedRow = {
       livestream_url: null,

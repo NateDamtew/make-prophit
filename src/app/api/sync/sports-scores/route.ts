@@ -97,6 +97,10 @@ export async function POST(request: Request) {
     .limit(MAX_EVENTS_PER_RUN)
 
   let updatedCount = 0
+  // Games that started or ended. Score and clock ticks refresh only the event
+  // itself; listing pages pick those up on their own 5-minute lifetime instead
+  // of re-rendering every home and category page each minute of a live game.
+  let liveStateChangedCount = 0
   const errors: Array<{ eventId: string; error: string }> = []
   const rowGroups = groupSportsScoreRowsBySource(rows)
 
@@ -178,6 +182,9 @@ export async function POST(request: Request) {
           revalidateTag(cacheTags.seriesEvents(row.series_slug), { expire: 0 })
         }
         updatedCount += 1
+        if (nextLive !== (row.sports_live ?? null) || nextEnded !== (row.sports_ended ?? null)) {
+          liveStateChangedCount += 1
+        }
       } catch (error) {
         errors.push({
           eventId: row.event_id,
@@ -187,7 +194,7 @@ export async function POST(request: Request) {
     }
   }
 
-  if (updatedCount > 0) {
+  if (liveStateChangedCount > 0) {
     revalidateTag(cacheTags.eventsList, { expire: 0 })
     revalidateTag(cacheTags.sportsMenu, { expire: 0 })
   }

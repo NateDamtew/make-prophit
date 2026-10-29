@@ -68,7 +68,8 @@ describe('tagRepository.getMainTags', () => {
 
     expect(result.error).toBeNull()
     expect(result.data?.map((tag) => tag.slug)).toEqual(['crypto'])
-    expect(mocks.cacheTag).toHaveBeenCalledOnce()
+    // The shared snapshot and the per-locale menu each tag their cache.
+    expect(mocks.cacheTag).toHaveBeenCalledTimes(2)
     expect(mocks.runQuery).toHaveBeenCalledTimes(4)
   })
 
@@ -240,13 +241,6 @@ describe('tagRepository.getMainTags', () => {
       .mockResolvedValueOnce({ data: [], error: null })
       .mockResolvedValueOnce({
         data: [
-          { id: 10, slug: 'stocks' },
-          { id: 11, slug: 'daily' },
-        ],
-        error: null,
-      })
-      .mockResolvedValueOnce({
-        data: [
           {
             event_id: 'btc-daily',
             event_slug: 'btc-daily',
@@ -264,6 +258,14 @@ describe('tagRepository.getMainTags', () => {
       })
       .mockResolvedValueOnce({
         data: [{ current_timestamp_ms: now.getTime() }],
+        error: null,
+      })
+      // Per-locale step: configured sidebar tags, then translations.
+      .mockResolvedValueOnce({
+        data: [
+          { id: 10, slug: 'stocks' },
+          { id: 11, slug: 'daily' },
+        ],
         error: null,
       })
       .mockResolvedValueOnce({
