@@ -37,9 +37,12 @@ describe('community-notifications: individual notifications', () => {
     expect(mocks.dbInsertValues).toHaveBeenCalledWith(
       expect.objectContaining({
         user_id: 'u1',
-        category: 'community_market_review',
+        // The notifications table only allows trade/system/general; the workflow category lives in metadata.
+        category: 'general',
         title: 'Market submitted for review',
         link_target: 'ethiopian-traders',
+        link_type: 'custom',
+        metadata: expect.objectContaining({ kind: 'community_market_review', link_kind: 'community' }),
       }),
     )
   })
@@ -71,7 +74,8 @@ describe('community-notifications: individual notifications', () => {
     expect(mocks.dbInsertValues).toHaveBeenCalledWith(
       expect.objectContaining({
         link_url: '/event/will-x-happen',
-        link_type: 'community_market',
+        link_type: 'custom',
+        metadata: expect.objectContaining({ kind: 'community_market_deployed', link_kind: 'community_market' }),
       }),
     )
   })
@@ -149,8 +153,9 @@ describe('community-notifications: super admin escalation', () => {
     expect(mocks.dbInsertValues).toHaveBeenCalledWith(
       expect.objectContaining({
         user_id: 'admin-1',
-        category: 'community_market_deploy_failure_admin',
+        category: 'general',
         extra_info: 'gas estimation failed',
+        metadata: expect.objectContaining({ kind: 'community_market_deploy_failure_admin' }),
       }),
     )
   })

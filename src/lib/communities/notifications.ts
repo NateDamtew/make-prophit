@@ -56,14 +56,20 @@ interface DispatchInput {
  * Insert one or many notification rows for a community event. Respects
  * `community_notification_prefs.mute_*` toggles. Never throws — notifications
  * must not block the action that triggered them.
+ *
+ * The notifications table only accepts the categories trade/system/general
+ * and the link types none/market/event/order/settings/profile/external/custom,
+ * so community notices are stored as 'general' with the community category
+ * in `metadata.kind` and an in-app path as a 'custom' link.
  */
 export async function dispatchCommunityNotification(input: DispatchInput): Promise<void> {
   try {
-    const link_type = input.link?.type ?? 'none'
+    const link_type = input.link ? (input.link.type === 'internal' ? 'custom' : 'external') : 'none'
     const link_url = input.link?.url ?? null
     const link_label = input.link?.label ?? null
     const metadata = {
       community_id: input.communityId,
+      kind: input.category,
       ...(input.payload ?? {}),
     } as Record<string, unknown>
 
@@ -75,7 +81,7 @@ export async function dispatchCommunityNotification(input: DispatchInput): Promi
       }
       await db.insert(notifications).values({
         user_id: input.recipientUserId,
-        category: input.category,
+        category: 'general',
         title: input.title,
         description: input.description,
         link_type,
@@ -96,7 +102,7 @@ export async function dispatchCommunityNotification(input: DispatchInput): Promi
         INSERT INTO notifications (user_id, category, title, description, link_type, link_url, link_label, metadata)
         SELECT
           m.user_id,
-          ${input.category},
+          'general',
           ${input.title},
           ${input.description},
           ${link_type},

@@ -4,6 +4,7 @@ import type { Verdict } from '@/lib/communities/jury-rules'
 import type { LedgerTx } from '@/lib/pools/service'
 
 import { computeJuryDeadline, decideVerdict, estimateJurorPay, summarizeJuror } from '@/lib/communities/jury-rules'
+import { resultInNotice, stakesRefundedNotice } from '@/lib/communities/notification-templates'
 import { dispatchCommunityNotification } from '@/lib/communities/notifications'
 import { majorityOf } from '@/lib/communities/rules'
 import { getCommunitySettings } from '@/lib/communities/settings'
@@ -360,19 +361,18 @@ async function notifyMarketDecided(marketId: string, communityId: string, verdic
   if (!row) {
     return
   }
+  const notice =
+    verdict.status === 'resolved' && (verdict.outcome === 'yes' || verdict.outcome === 'no')
+      ? resultInNotice({ marketTitle: row.title, outcome: verdict.outcome, holdHours: 24 })
+      : stakesRefundedNotice({ marketTitle: row.title, reason: verdict.status === 'late' ? 'late_jury' : 'voided' })
   await dispatchCommunityNotification({
     communityId,
     category: 'community.market_resolved',
-    title:
-      verdict.status === 'resolved'
-        ? `Result in: ${verdict.outcome === 'yes' ? 'Yes' : 'No'}`
-        : verdict.status === 'late'
-          ? 'Jury late: stakes refunded'
-          : 'Market voided: stakes refunded',
-    description: row.title,
-    link: { type: 'internal', url: `/community/${row.slug}/market/${marketId}`, label: 'View market' },
+    title: notice.title,
+    description: notice.description,
+    link: { type: 'internal', url: `/community/${row.slug}/market/${marketId}`, label: notice.linkLabel },
     fanout: 'all-members',
-    payload: { market_id: marketId, outcome: verdict.outcome, kind: 'result_in' },
+    payload: { market_id: marketId, outcome: verdict.outcome, kind: notice.kind },
   })
 }
 

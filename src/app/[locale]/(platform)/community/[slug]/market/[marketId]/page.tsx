@@ -14,6 +14,7 @@ import { CommunityRepository } from '@/lib/db/queries/community'
 import { CommunityIntegrityRepository } from '@/lib/db/queries/community-integrity'
 import { getTrustCard } from '@/lib/db/queries/community-trust'
 import { UserRepository } from '@/lib/db/queries/user'
+import { formatPoolMoney } from '@/lib/pools/format'
 import { getPoolSummary } from '@/lib/pools/service'
 import { STATIC_PARAMS_PLACEHOLDER } from '@/lib/static-params'
 
@@ -48,12 +49,32 @@ export async function generateMetadata({
   if (!data) {
     return { title: 'Market not found' }
   }
+  // "62% Yes · 48,300 KES pool · closes Sat, Dec 13": the line under a shared link.
+  const summary = await getPoolSummary(data.market.id, null).catch(() => null)
+  const pool = summary?.pool ?? null
+  const closesAt = pool?.closesAt ?? data.market.resolution_date
+  const oddsLine = pool
+    ? [
+        pool.settledOutcome === 'yes'
+          ? 'Resolved Yes'
+          : pool.settledOutcome === 'no'
+            ? 'Resolved No'
+            : `${Math.round(pool.odds.yes * 100)}% Yes`,
+        `${formatPoolMoney(BigInt(pool.totalYes) + BigInt(pool.totalNo), pool.currency)} pool`,
+        closesAt
+          ? `${pool.acceptingStakes ? 'closes' : 'closed'} ${new Date(closesAt).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}`
+          : null,
+      ]
+        .filter(Boolean)
+        .join(' · ')
+    : null
+  const description = oddsLine ?? data.market.description ?? `Prediction market in ${data.community.name}`
   return {
     title: `${data.market.title} — ${data.community.name}`,
-    description: data.market.description ?? undefined,
+    description,
     openGraph: {
       title: data.market.title,
-      description: data.market.description ?? `Prediction market in ${data.community.name}`,
+      description,
       images: [
         {
           url: `/og/community/${data.community.slug}/market/${data.market.id}`,
@@ -67,7 +88,7 @@ export async function generateMetadata({
     twitter: {
       card: 'summary_large_image',
       title: data.market.title,
-      description: data.market.description ?? undefined,
+      description,
       images: [`/og/community/${data.community.slug}/market/${data.market.id}`],
     },
   }
