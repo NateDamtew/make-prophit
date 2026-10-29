@@ -55,9 +55,11 @@ interface MarketRulesProps {
   market: PoolMarketRecord
   summary: PoolSummary | null
   closesAt: number | null
+  /** When the jury's votes are due: the close plus the voting window. */
+  juryDueAt: number | null
 }
 
-export default function MarketRules({ market, summary, closesAt }: MarketRulesProps) {
+export default function MarketRules({ market, summary, closesAt, juryDueAt }: MarketRulesProps) {
   const t = useExtracted()
   const locale = useLocale()
   const description = market.description?.trim() ?? ''
@@ -94,8 +96,8 @@ export default function MarketRules({ market, summary, closesAt }: MarketRulesPr
   if (closesAt !== null) {
     rows.push({ key: 'closes', label: t('Closes'), value: formatCloseLabel(closesAt, locale) })
   }
-  if (market.resolution_date) {
-    rows.push({ key: 'due', label: t('Verdict due'), value: formatCloseLabel(market.resolution_date, locale) })
+  if (juryDueAt !== null) {
+    rows.push({ key: 'due', label: t('Verdict due'), value: formatCloseLabel(juryDueAt, locale) })
   }
   if (summary) {
     rows.push({

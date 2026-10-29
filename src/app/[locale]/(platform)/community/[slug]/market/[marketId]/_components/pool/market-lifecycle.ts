@@ -54,7 +54,12 @@ export function deriveMarketLifecycle(input: {
     : market.resolution_date
       ? new Date(market.resolution_date).getTime()
       : null
-  const juryDueAt = market.resolution_date ? new Date(market.resolution_date).getTime() : null
+  // The jury's deadline is the close plus the voting window; markets from before seats existed only have the close.
+  const juryDueAt = market.jury_deadline_at
+    ? new Date(market.jury_deadline_at).getTime()
+    : market.resolution_date
+      ? new Date(market.resolution_date).getTime()
+      : null
   const totalYes = pool ? BigInt(pool.totalYes) : 0n
   const totalNo = pool ? BigInt(pool.totalNo) : 0n
   const poolMinor = totalYes + totalNo
@@ -71,7 +76,9 @@ export function deriveMarketLifecycle(input: {
     market.status === 'cancelled' ||
     market.status === 'disputed'
   const lateRefund =
-    refunded && juryDueAt !== null && votes.length < input.juryRequired && market.status === 'cancelled'
+    refunded &&
+    (market.late_resolution === true ||
+      (juryDueAt !== null && votes.length < input.juryRequired && market.status === 'cancelled'))
 
   let phase: MarketPhase
   if (refunded) {
@@ -127,7 +134,12 @@ export function deriveMarketLifecycle(input: {
     refundReason: refunded ? (lateRefund ? 'late' : 'voided') : null,
     closesAt,
     juryDueAt,
-    jury: { size: input.jurySize, required: input.juryRequired, voted: votes.length, revealed: marketDone },
+    jury: {
+      size: market.jury_seat_count ?? input.jurySize,
+      required: market.jury_required_votes ?? input.juryRequired,
+      voted: votes.length,
+      revealed: marketDone || Boolean(market.votes_revealed_at) || votes.some((vote) => Boolean(vote.revealed_at)),
+    },
     hold,
     viewer: { stake, result },
     chance,

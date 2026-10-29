@@ -9,12 +9,13 @@ import { startTransition, useOptimistic } from 'react'
 
 import PublicActivityList from '@/app/[locale]/(platform)/profile/_components/PublicActivityList'
 import PublicCommunitiesList from '@/app/[locale]/(platform)/profile/_components/PublicCommunitiesList'
+import PublicJurorRecord from '@/app/[locale]/(platform)/profile/_components/PublicJurorRecord'
 import PublicPositionsList from '@/app/[locale]/(platform)/profile/_components/PublicPositionsList'
 import { Tabs, TabsContent, TabsIndicator, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
 
-// 'communities' is fork-only; upstream ships positions/activity/resolutions.
-type TabType = 'positions' | 'activity' | 'resolutions' | 'communities'
+// 'communities' and 'jury' are fork-only; upstream ships positions/activity/resolutions.
+type TabType = 'positions' | 'activity' | 'resolutions' | 'communities' | 'jury'
 
 const TAB_QUERY_PARAM = 'tab'
 
@@ -23,11 +24,17 @@ const baseTabs = [
   { id: 'activity' as const },
   { id: 'resolutions' as const },
   { id: 'communities' as const },
+  { id: 'jury' as const },
 ]
 
 function parseTab(value: string | null | undefined): TabType {
   const normalized = value?.toLowerCase()
-  if (normalized === 'activity' || normalized === 'resolutions' || normalized === 'communities') {
+  if (
+    normalized === 'activity' ||
+    normalized === 'resolutions' ||
+    normalized === 'communities' ||
+    normalized === 'jury'
+  ) {
     return normalized
   }
   return 'positions'
@@ -77,6 +84,9 @@ export default function PublicProfileTabs({ userAddress, resolutionsContent, use
     if (id === 'resolutions') {
       return t('Resolutions')
     }
+    if (id === 'jury') {
+      return t('Jury')
+    }
     return t('Communities')
   }
 
@@ -118,6 +128,9 @@ export default function PublicProfileTabs({ userAddress, resolutionsContent, use
         </TabsContent>
         <TabsContent value="communities" className="mt-0">
           <PublicCommunitiesList userId={userId} />
+        </TabsContent>
+        <TabsContent value="jury" className="mt-0">
+          <PublicJurorRecord userId={userId} />
         </TabsContent>
       </div>
     </Tabs>

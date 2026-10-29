@@ -3,6 +3,7 @@ import { and, eq, sql } from 'drizzle-orm'
 import type { CommunityTrust } from '@/components/communities/types'
 import type { CommunityLevel, CommunityStatus } from '@/lib/communities/rules'
 
+import { getJurorRatings } from '@/lib/communities/jury-service'
 import { getEffectiveCaps, isCommunityLevel, isLeaderType, majorityOf } from '@/lib/communities/rules'
 import { getCommunitySettings } from '@/lib/communities/settings'
 import { communities, community_markets, community_members, jury_votes } from '@/lib/db/schema'
@@ -13,8 +14,9 @@ import { db } from '@/lib/drizzle'
  * the community page, market pages, cards and embeds. Returns the client-safe
  * shape (money as strings) so pages can pass it straight to components.
  *
- * Fields that need the jury-seats work (on-time %, overturned verdicts,
- * juror ratings) are null until that step lands; the UI shows "—" for them.
+ * Juror ratings come from the losers' ratings cached in `juror_stats`; the
+ * on-time share counts markets the jury decided before the deadline against
+ * the ones it let lapse.
  */
 
 export async function getTrustCard(communityId: string): Promise<CommunityTrust | null> {
@@ -62,7 +64,7 @@ export async function getTrustCard(communityId: string): Promise<CommunityTrust 
       : null
   const caps = getEffectiveCaps(settings.levels[level], override, reviewOverride)
 
-  const [jurorRows, [resolvedRow]] = await Promise.all([
+  const [jurorRows, [resolvedRow], [lateRow]] = await Promise.all([
     db
       .select({
         user_id: community_members.user_id,
@@ -88,7 +90,14 @@ export async function getTrustCard(communityId: string): Promise<CommunityTrust 
       .select({ count: sql<number>`COUNT(*)::int` })
       .from(community_markets)
       .where(and(eq(community_markets.community_id, communityId), eq(community_markets.status, 'resolved'))),
+    db
+      .select({ count: sql<number>`COUNT(*)::int` })
+      .from(community_markets)
+      .where(and(eq(community_markets.community_id, communityId), eq(community_markets.late_resolution, true))),
   ])
+  const ratings = await getJurorRatings(jurorRows.map((row) => row.user_id))
+  const resolved = resolvedRow?.count ?? 0
+  const late = lateRow?.count ?? 0
 
   return {
     communityId: community.id,
@@ -109,11 +118,11 @@ export async function getTrustCard(communityId: string): Promise<CommunityTrust 
       image: row.image,
       isOwner: row.role === 'admin' || row.role === 'co_owner',
       markets: row.markets,
-      rating: null,
+      rating: ratings.get(row.user_id) ?? null,
     })),
-    resolved: resolvedRow?.count ?? 0,
+    resolved,
     overturned: 0,
-    onTimePct: null,
+    onTimePct: resolved + late > 0 ? Math.round((resolved / (resolved + late)) * 100) : null,
     caps: {
       maxMembers: caps.maxMembers,
       maxPoolPerMarketMinor: caps.maxPoolPerMarketMinor.toString(),

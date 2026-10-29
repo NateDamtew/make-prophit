@@ -155,6 +155,15 @@ export const community_markets = pgTable('community_markets', {
   source_event_id: char({ length: 26 }),
   source_condition_id: text(),
   source_platform: text(),
+  // ─── Jury (step 4): seats assigned at go-live, votes sealed until all are in or the deadline passes.
+  jury_seat_count: smallint(),
+  jury_required_votes: smallint(),
+  jury_deadline_at: timestamp({ withTimezone: true }),
+  votes_revealed_at: timestamp({ withTimezone: true }),
+  result_announced_at: timestamp({ withTimezone: true }),
+  jury_notified_at: timestamp({ withTimezone: true }),
+  resolution_kind: text(), // 'jury' | 'source' | 'late' | 'admin'
+  late_resolution: boolean().notNull().default(false),
   created_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
   updated_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
 })
@@ -177,6 +186,15 @@ export const jury_votes = pgTable(
     reasoning: text().notNull(),
     evidence_url: text(),
     voted_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    // Sealed-vote fields (step 4). `source_type` says what evidence_url is: 'link' | 'photo'.
+    source_type: text(),
+    sealed_at: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    revealed_at: timestamp({ withTimezone: true }),
+    correction_note: text(),
+    correction_note_at: timestamp({ withTimezone: true }),
+    was_late: boolean().notNull().default(false),
+    agreed_with_outcome: boolean(),
+    overturned: boolean().notNull().default(false),
   },
   (table) => ({
     uniqueVote: unique('uniq_jury_vote').on(table.community_market_id, table.juror_id),

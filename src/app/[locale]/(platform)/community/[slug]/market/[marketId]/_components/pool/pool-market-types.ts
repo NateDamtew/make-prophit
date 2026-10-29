@@ -23,6 +23,12 @@ export interface PoolMarketRecord {
   binary_outcome_yes?: string | null
   binary_outcome_no?: string | null
   created_at: Date
+  // Jury seats (step 4); absent on markets from before seats existed.
+  jury_seat_count?: number | null
+  jury_required_votes?: number | null
+  jury_deadline_at?: Date | null
+  votes_revealed_at?: Date | null
+  late_resolution?: boolean
 }
 
 export interface PoolCommunityRecord {
@@ -36,13 +42,34 @@ export interface PoolCommunityRecord {
 
 export interface PoolJuryVote {
   id: string
+  /** 'yes' | 'no' | 'disputed', or 'sealed' for another juror's vote before the reveal. */
   vote: string
   reasoning: string
   evidence_url: string | null
+  source_type?: string | null
   voted_at: Date
+  revealed_at?: Date | null
+  was_late?: boolean
+  overturned?: boolean
+  correction_note?: string | null
+  correction_note_at?: Date | null
   juror_username: string | null
   juror_image: string | null
   juror_id?: string
+}
+
+/** One seated juror, for the verdict list before the reveal. */
+export interface MarketSeat {
+  userId: string
+  username: string | null
+  image: string | null
+}
+
+/** The viewer's own seat on the market's jury. */
+export interface ViewerJurySeat {
+  seated: boolean
+  voted: boolean
+  vote: 'yes' | 'no' | 'disputed' | null
 }
 
 export type PoolSide = PoolOutcome

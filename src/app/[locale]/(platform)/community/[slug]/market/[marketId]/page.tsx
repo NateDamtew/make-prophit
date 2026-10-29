@@ -8,6 +8,7 @@ import type { SupportedLocale } from '@/i18n/locales'
 import { applyMarketPreview, isMarketPreviewState } from '@/components/communities/dev/fixtures'
 import { CommunityMarketEmbedButton } from '@/components/community-engagement/EmbedCodeButtonWrapper'
 import { ModerationBar } from '@/components/community-engagement/ModerationBar'
+import { getMarketSeats, getViewerSeat, getVotesForViewer } from '@/lib/communities/jury-service'
 import { CommunityRepository } from '@/lib/db/queries/community'
 import { CommunityIntegrityRepository } from '@/lib/db/queries/community-integrity'
 import { getTrustCard } from '@/lib/db/queries/community-trust'
@@ -95,9 +96,12 @@ export default async function CommunityMarketDetailPage({
     ? await CommunityRepository.getMemberRole(data.community.id, user.id)
     : { data: null }
 
-  const [{ data: votes }, moderation] = await Promise.all([
-    CommunityRepository.getVotes(marketId),
+  // Votes stay sealed until they open; the viewer only ever sees their own before that.
+  const [votes, moderation, viewerSeat, seats] = await Promise.all([
+    getVotesForViewer(marketId, user?.id ?? null),
     CommunityIntegrityRepository.getModerationFields(marketId),
+    getViewerSeat(marketId, user?.id ?? null),
+    getMarketSeats(marketId),
   ])
 
   // The Embed button is only useful for actively-trading markets, and only
@@ -148,6 +152,8 @@ export default async function CommunityMarketDetailPage({
           trust={trust}
           memberRole={memberRole}
           currentUserId={user?.id ?? null}
+          viewerSeat={viewerSeat}
+          seats={seats}
           initialSummary={preview?.summary ?? loadedSummary}
           initialOutcome={requestedStake === 'no' ? 'no' : 'yes'}
           openStakeOnLoad={requestedStake === 'yes' || requestedStake === 'no'}
