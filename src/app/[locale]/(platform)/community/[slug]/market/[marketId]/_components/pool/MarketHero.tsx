@@ -18,7 +18,7 @@ import PoolMetaInformation from './PoolMetaInformation'
 
 /**
  * The block under the title that says what the market is doing right now.
- * Open: the big chance number and the split. Closed: the jury's progress.
+ * Open: the big chance number (the chart below carries the split). Closed: the jury's progress.
  * Decided: the result, and the hold, freeze or payout that follows it.
  */
 
@@ -112,10 +112,7 @@ export default function MarketHero({ market, lifecycle, outcomeLabels, totals, c
             <p className="mt-2 text-sm text-muted-foreground">{t('The first stake sets the odds.')}</p>
           </div>
         ) : (
-          <>
-            <HeadlineOdds chance={chance} label={headlineLabel} />
-            <PoolSplitBar segments={segments} currency={currency} binary />
-          </>
+          <HeadlineOdds chance={chance} label={headlineLabel} />
         )}
         {phase === 'closing' && lifecycle.closesAt !== null ? (
           <Countdown target={lifecycle.closesAt} verb={t('Closes')} start={market.created_at} />

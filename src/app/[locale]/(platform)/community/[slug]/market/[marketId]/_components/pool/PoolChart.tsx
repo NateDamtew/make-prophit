@@ -38,6 +38,8 @@ interface PoolChartProps {
   summary: PoolSummary | null
   isMobile: boolean
   outcomeLabels: { yes: string; no: string }
+  /** Dev previews: fixture odds history instead of the server's. */
+  previewHistory?: Array<{ t: number; yes: number }>
 }
 
 interface CursorState {
@@ -51,12 +53,16 @@ function clampChance(value: number) {
   return Math.max(0, Math.min(100, value))
 }
 
-export default function PoolChart({ market, summary, isMobile, outcomeLabels }: PoolChartProps) {
+function formatChance(value: number) {
+  return `${Math.round(value)}%`
+}
+
+export default function PoolChart({ market, summary, isMobile, outcomeLabels, previewHistory }: PoolChartProps) {
   const t = useExtracted()
   const locale = useLocale()
   const site = useSiteIdentity()
   const nowMs = useNowTimestamp()
-  const historyQuery = usePoolHistory(market.id)
+  const historyQuery = usePoolHistory(market.id, { enabled: !previewHistory })
   const [activeOutcomeIndex, setActiveOutcomeIndex] = useState<typeof OUTCOME_INDEX.YES | typeof OUTCOME_INDEX.NO>(
     OUTCOME_INDEX.YES,
   )
@@ -80,7 +86,7 @@ export default function PoolChart({ market, summary, isMobile, outcomeLabels }: 
   const chartEndMs = Number.isFinite(settledAtMs) ? settledAtMs : (nowMs ?? new Date(market.created_at).getTime())
 
   const chartData = useMemo<DataPoint[]>(() => {
-    const history = historyQuery.data ?? []
+    const history = previewHistory ?? historyQuery.data ?? []
     const points = history.map((point) => ({ t: point.t, yes: clampChance(point.yes) }))
     if (points.length === 0) {
       points.push({ t: new Date(market.created_at).getTime(), yes: liveYesChance ?? 50 })
@@ -107,7 +113,16 @@ export default function PoolChart({ market, summary, isMobile, outcomeLabels }: 
       date: new Date(point.t),
       [seriesKey]: isNoSide ? 100 - point.yes : point.yes,
     }))
-  }, [activeTimeRange, chartEndMs, historyQuery.data, isNoSide, liveYesChance, market.created_at, seriesKey])
+  }, [
+    activeTimeRange,
+    chartEndMs,
+    historyQuery.data,
+    isNoSide,
+    liveYesChance,
+    market.created_at,
+    previewHistory,
+    seriesKey,
+  ])
 
   const chartScopeKey = `${market.id}:${activeTimeRange}:${activeOutcomeIndex}`
   const cursorSnapshot = cursorState.scopeKey === chartScopeKey ? cursorState.snapshot : null
@@ -167,7 +182,7 @@ export default function PoolChart({ market, summary, isMobile, outcomeLabels }: 
       chart={
         <EventChartCanvas
           chartData={chartData}
-          isLoading={historyQuery.isPending && !summary}
+          isLoading={!previewHistory && historyQuery.isPending && !summary}
           locale={locale}
           legendSeries={legendSeries}
           chartWidth={chartWidth}
@@ -182,6 +197,8 @@ export default function PoolChart({ market, summary, isMobile, outcomeLabels }: 
           disableResetAnimation={false}
           legendContent={null}
           tradeFlowItems={[]}
+          appearance="live"
+          tooltipValueFormatter={formatChance}
         />
       }
       controls={

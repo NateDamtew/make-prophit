@@ -49,7 +49,39 @@ interface EventChartCanvasProps {
   legendContent: ReactNode
   watermark?: { iconSvg?: string | null; iconImageUrl?: string | null; label?: string | null }
   tradeFlowItems: TradeFlowLabelItem[]
+  /**
+   * `live` borrows the live-series chart's look (soft area fill under a smooth
+   * line, ring marker, hairline grid, neutral axes). Used by pool markets.
+   */
+  appearance?: 'default' | 'live'
+  tooltipValueFormatter?: (value: number) => string
 }
+
+const LIVE_APPEARANCE = {
+  lineCurve: 'catmullRom',
+  lineStrokeWidth: 2.15,
+  markerOuterRadius: 10,
+  markerInnerRadius: 3.4,
+  markerPulseStyle: 'ring',
+  markerOffsetX: 0,
+  lineEndOffsetX: 0,
+  showAreaFill: true,
+  areaFillTopOpacity: 0.14,
+  areaFillBottomOpacity: 0,
+  areaFillBottomOffset: 5,
+  gridLineStyle: 'solid',
+  gridLineOpacity: 0.42,
+  xAxisTickFontSize: 11,
+  yAxisTickFontSize: 11,
+  alignYAxisLabelsToChartEdge: true,
+  fadeYAxisEdges: true,
+  neutralAxisColors: true,
+  showXAxisTopRule: true,
+  showXAxisTopRuleFullWidth: true,
+  hideYAxisMinimumLabel: true,
+  cursorGuideColor: '#5D6878',
+  disableCursorSplit: true,
+} as const satisfies Partial<PredictionChartProps>
 
 const CHART_MARGIN = { top: 10, right: 40, bottom: 30, left: 0 }
 export default function EventChartCanvas({
@@ -71,6 +103,8 @@ export default function EventChartCanvas({
   legendContent,
   watermark,
   tradeFlowItems,
+  appearance = 'default',
+  tooltipValueFormatter,
 }: EventChartCanvasProps) {
   const handleCursorDataChange = useCallback(
     (snapshot: PredictionChartCursorSnapshot | null) => {
@@ -112,6 +146,8 @@ export default function EventChartCanvas({
             lineCurve="monotoneX"
             plotClipPadding={{ right: EVENT_PLOT_CLIP_RIGHT_PADDING }}
             tooltipLabelVariant="panel"
+            tooltipValueFormatter={tooltipValueFormatter}
+            {...(appearance === 'live' ? LIVE_APPEARANCE : {})}
             tooltipDateFormatter={(date) =>
               date.toLocaleString(locale, {
                 month: 'short',
