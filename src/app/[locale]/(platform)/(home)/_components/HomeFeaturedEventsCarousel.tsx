@@ -48,7 +48,6 @@ import { useHasHydrated } from '@/hooks/useHasHydrated'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { useOutcomeLabel } from '@/hooks/useOutcomeLabel'
 import { useSiteIdentity } from '@/hooks/useSiteIdentity'
-import { Link } from '@/i18n/navigation'
 import { getAvatarPlaceholderStyle, shouldUseAvatarPlaceholder } from '@/lib/avatar'
 import { ensureReadableTextColorOnDark } from '@/lib/color-contrast'
 import { resolveCryptoCadenceEventPresentation } from '@/lib/crypto-cadence-event'
@@ -561,7 +560,7 @@ const FeaturedMarketLink = forwardRef<HTMLAnchorElement, ComponentProps<'a'> & {
     return href.startsWith('/api/home-featured/live-link?') ? (
       <a {...props} href={href} ref={ref} />
     ) : (
-      <Link {...props} href={href} ref={ref} />
+      <IntentPrefetchLink {...props} href={href} ref={ref} />
     )
   },
 )
@@ -774,7 +773,7 @@ function SportsMarketButton({
   const appearance = forceNeutral ? resolveFilledNeutralSportsButtonAppearance() : resolveSportsButtonAppearance(market)
 
   return (
-    <Link
+    <IntentPrefetchLink
       key={`${groupLabel}:${market.key}`}
       href={href}
       className={cn(
@@ -796,7 +795,7 @@ function SportsMarketButton({
           style={appearance.backgroundStyle}
         />
       ) : null}
-    </Link>
+    </IntentPrefetchLink>
   )
 }
 
@@ -1508,9 +1507,9 @@ function SportsScoreboard({
           />
         )}
         {homeHref ? (
-          <Link href={homeHref} className={teamNameClassName}>
+          <IntentPrefetchLink href={homeHref} className={teamNameClassName}>
             {homeTeam?.name}
-          </Link>
+          </IntentPrefetchLink>
         ) : (
           <p className="truncate text-base font-medium text-foreground/90">{homeTeam?.name}</p>
         )}
@@ -1548,9 +1547,9 @@ function SportsScoreboard({
           />
         )}
         {awayHref ? (
-          <Link href={awayHref} className={teamNameClassName}>
+          <IntentPrefetchLink href={awayHref} className={teamNameClassName}>
             {awayTeam?.name}
-          </Link>
+          </IntentPrefetchLink>
         ) : (
           <p className="truncate text-base font-medium text-foreground/90">{awayTeam?.name}</p>
         )}
@@ -1709,16 +1708,16 @@ function FeaturedRightRailSingle({
               {sideCardContent}
             </a>
           ) : (
-            <Link href={sideCardHref} className={sideCardClassName}>
+            <IntentPrefetchLink href={sideCardHref} className={sideCardClassName}>
               {sideCardContent}
-            </Link>
+            </IntentPrefetchLink>
           )
         ) : (
           <div className={sideCardClassName}>{sideCardContent}</div>
         ))}
 
       <div className="min-h-0 overflow-hidden p-1">
-        <Link
+        <IntentPrefetchLink
           href="/predictions?_sort=volume"
           className="group/hot-topics mb-3 inline-flex items-center gap-2 text-foreground"
         >
@@ -1727,10 +1726,10 @@ function FeaturedRightRailSingle({
             {t('Hot topics')}
           </span>
           <ChevronRightIcon className="size-4 text-muted-foreground/50" />
-        </Link>
+        </IntentPrefetchLink>
         <div className="grid gap-2.5">
           {hotTopics.map((topic, index) => (
-            <Link
+            <IntentPrefetchLink
               key={topic.slug}
               href={topic.href}
               className="group/topic grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-2 rounded-md py-0.5"
@@ -1755,7 +1754,7 @@ function FeaturedRightRailSingle({
                   `col-start-4 size-3.5 text-muted-foreground/60 transition-transform group-hover/topic:translate-x-0.5`,
                 )}
               />
-            </Link>
+            </IntentPrefetchLink>
           ))}
         </div>
       </div>
@@ -1853,9 +1852,9 @@ function FeaturedSideCardSlide({
       {content}
     </a>
   ) : (
-    <Link href={href} className={className}>
+    <IntentPrefetchLink href={href} className={className}>
       {content}
-    </Link>
+    </IntentPrefetchLink>
   )
 }
 
@@ -1937,7 +1936,7 @@ function FeaturedRightRail({
       </div>
 
       <div className="min-h-0 overflow-hidden p-1">
-        <Link
+        <IntentPrefetchLink
           href="/predictions?_sort=volume"
           className="group/hot-topics mb-3 inline-flex items-center gap-2 text-foreground"
         >
@@ -1946,10 +1945,10 @@ function FeaturedRightRail({
             {t('Hot topics')}
           </span>
           <ChevronRightIcon className="size-4 text-muted-foreground/50" />
-        </Link>
+        </IntentPrefetchLink>
         <div className="grid gap-2.5">
           {hotTopics.map((topic, index) => (
-            <Link
+            <IntentPrefetchLink
               key={topic.slug}
               href={topic.href}
               className="group/topic grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-2 rounded-md py-0.5"
@@ -1966,7 +1965,7 @@ function FeaturedRightRail({
                 </span>
               )}
               <ChevronRightIcon className="col-start-4 size-3.5 text-muted-foreground/60 transition-transform group-hover/topic:translate-x-0.5" />
-            </Link>
+            </IntentPrefetchLink>
           ))}
         </div>
       </div>
@@ -1985,7 +1984,7 @@ function FeaturedRightRailAction() {
           `h-10 w-full rounded-full bg-transparent text-muted-foreground shadow-none transition-colors hover:bg-secondary/80 hover:text-foreground dark:bg-transparent dark:hover:bg-secondary/80`,
         )}
         nativeButton={false}
-        render={<Link href="/predictions">{t('Expand all')}</Link>}
+        render={<IntentPrefetchLink href="/predictions">{t('Expand all')}</IntentPrefetchLink>}
       />
     </div>
   )

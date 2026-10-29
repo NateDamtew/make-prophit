@@ -44,6 +44,7 @@ export interface PolymarketSyncSummary {
   /** Polymarket placeholder slots ("Team A", "Other") imported earlier and now switched off. */
   placeholdersHidden: number
   mirrorsHidden: number
+  /** Events newly pinned to the home hero this run. */
   pinned: number
   errors: { ref: string; error: string }[]
   timeLimitReached: boolean
@@ -302,7 +303,8 @@ async function syncPins(pinnedEventIds: string[]) {
       })),
     )
   }
-  return pinnedEventIds.length
+  // Only real changes count: callers invalidate every listing cache when this is non-zero.
+  return autoEventIds.length + toInsert.length
 }
 
 function chunked<T>(items: T[], size: number) {

@@ -8,6 +8,10 @@ import { Link } from '@/i18n/navigation'
 
 type IntentPrefetchLinkProps = Omit<ComponentProps<typeof Link>, 'prefetch'>
 
+/**
+ * Prefetches only on hover, focus or touch. Viewport prefetching rendered every
+ * event card's page on each home visit, and each render is a billed ISR write.
+ */
 export default function IntentPrefetchLink({
   href,
   onFocus,
@@ -22,7 +26,7 @@ export default function IntentPrefetchLink({
     <Link
       {...props}
       href={href}
-      prefetch={intentHref === hrefKey ? true : 'auto'}
+      prefetch={intentHref === hrefKey}
       onFocus={(event) => {
         onFocus?.(event)
         if (!event.defaultPrevented) {

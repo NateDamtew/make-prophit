@@ -20,8 +20,8 @@ const cachedEventPages = [
 ] as const
 
 describe('event page cache tags', () => {
-  it('uses a one-minute shared cache with one hour of stale revalidation', () => {
-    expect(PUBLIC_EVENT_PAGE_CACHE_LIFE).toEqual({ stale: 60, revalidate: 60, expire: 3_660 })
+  it('uses a ten-minute shared cache with one day of stale revalidation', () => {
+    expect(PUBLIC_EVENT_PAGE_CACHE_LIFE).toEqual({ stale: 60, revalidate: 600, expire: 86_400 })
   })
 
   it('keeps settled events cached for a day with a month of stale revalidation', () => {
