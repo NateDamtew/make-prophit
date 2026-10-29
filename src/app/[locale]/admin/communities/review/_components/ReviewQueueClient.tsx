@@ -22,6 +22,8 @@ interface PendingMarket {
   community_slug: string
   community_name: string
   community_icon: string | null
+  community_tier: string
+  community_level: number
   creator_username: string | null
 }
 
@@ -40,9 +42,11 @@ type Tab = 'pending' | 'failures'
 interface Props {
   pendingMarkets: PendingMarket[]
   failureMarkets: FailureMarket[]
+  /** When the page was built, for the "closes in the future" check. */
+  reviewedAt: number
 }
 
-export default function ReviewQueueClient({ pendingMarkets, failureMarkets }: Props) {
+export default function ReviewQueueClient({ pendingMarkets, failureMarkets, reviewedAt }: Props) {
   const [tab, setTab] = useState<Tab>('pending')
 
   return (
@@ -84,10 +88,12 @@ export default function ReviewQueueClient({ pendingMarkets, failureMarkets }: Pr
             <div className="py-12 text-center">
               <Inbox className="mx-auto mb-3 size-10 text-muted-foreground/30" />
               <p className="font-medium">All caught up</p>
-              <p className="mt-1 text-sm text-muted-foreground">No markets waiting for review.</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                No markets waiting. Level 0 communities send every market here; higher levels only spot checks.
+              </p>
             </div>
           ) : (
-            pendingMarkets.map((m) => <ReviewMarketCard key={m.id} market={m} />)
+            pendingMarkets.map((m) => <ReviewMarketCard key={m.id} market={m} reviewedAt={reviewedAt} />)
           )
         ) : failureMarkets.length === 0 ? (
           <div className="py-12 text-center">

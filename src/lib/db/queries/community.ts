@@ -831,6 +831,8 @@ export const CommunityRepository = {
           community_slug: communities.slug,
           community_name: communities.name,
           community_icon: communities.icon_url,
+          community_tier: communities.tier,
+          community_level: communities.level,
           creator_username: users.username,
         })
         .from(community_markets)

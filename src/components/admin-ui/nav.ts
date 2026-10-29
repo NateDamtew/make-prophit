@@ -111,6 +111,20 @@ export const ADMIN_NAV: AdminNavGroup[] = [
         keywords: ['communities', 'suggestions', 'pool', 'drafts', 'news'],
       },
       {
+        id: 'community-appeals',
+        label: 'Appeals Desk',
+        href: '/admin/communities/appeals',
+        icon: ShieldCheckIcon,
+        keywords: ['communities', 'appeals', 'rulings', 'escrow', 'disputes'],
+      },
+      {
+        id: 'community-settings',
+        label: 'Community Settings',
+        href: '/admin/communities/settings',
+        icon: ShieldCheckIcon,
+        keywords: ['communities', 'levels', 'caps', 'jury', 'hold', 'rake', 'limits'],
+      },
+      {
         id: 'sync-jobs',
         label: 'Sync Jobs',
         href: '/admin/sync-jobs',
