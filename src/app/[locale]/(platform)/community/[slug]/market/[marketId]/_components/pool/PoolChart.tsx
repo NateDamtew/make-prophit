@@ -6,24 +6,21 @@ import { useCallback, useMemo, useState } from 'react'
 import type { ChartSettings } from '@/app/[locale]/(platform)/event/[slug]/_components/EventChartControls'
 import type { TimeRange } from '@/app/[locale]/(platform)/event/[slug]/_hooks/useEventPriceHistory'
 import type { PoolSummary } from '@/lib/pools/service'
-import type { DataPoint, PredictionChartCursorSnapshot, SeriesConfig } from '@/types/PredictionChartTypes'
+import type { DataPoint, SeriesConfig } from '@/types/PredictionChartTypes'
 
 import EventChartCanvas from '@/app/[locale]/(platform)/event/[slug]/_components/EventChartCanvas'
 import EventChartControls, {
   defaultChartSettings,
 } from '@/app/[locale]/(platform)/event/[slug]/_components/EventChartControls'
-import EventChartHeader from '@/app/[locale]/(platform)/event/[slug]/_components/EventChartHeader'
 import EventChartLayout from '@/app/[locale]/(platform)/event/[slug]/_components/EventChartLayout'
 import { TIME_RANGES } from '@/app/[locale]/(platform)/event/[slug]/_hooks/useEventPriceHistory'
 import { resolveChartRangeStartMs } from '@/app/[locale]/(platform)/event/[slug]/_utils/EventChartUtils'
 import { useNowTimestamp } from '@/hooks/useNowTimestamp'
-import { useSiteIdentity } from '@/hooks/useSiteIdentity'
 import { useWindowSize } from '@/hooks/useWindowSize'
 import { OUTCOME_INDEX } from '@/lib/constants'
 
 import type { PoolMarketRecord, PoolSide } from './pool-market-types'
 
-import PoolMetaInformation from './PoolMetaInformation'
 import { usePoolHistory } from './usePoolMarketData'
 
 /**
@@ -42,11 +39,6 @@ interface PoolChartProps {
   previewHistory?: Array<{ t: number; yes: number }>
 }
 
-interface CursorState {
-  scopeKey: string
-  snapshot: PredictionChartCursorSnapshot | null
-}
-
 const CHART_HEIGHT = 272
 
 function clampChance(value: number) {
@@ -60,7 +52,6 @@ function formatChance(value: number) {
 export default function PoolChart({ market, summary, isMobile, outcomeLabels, previewHistory }: PoolChartProps) {
   const t = useExtracted()
   const locale = useLocale()
-  const site = useSiteIdentity()
   const nowMs = useNowTimestamp()
   const historyQuery = usePoolHistory(market.id, { enabled: !previewHistory })
   const [activeOutcomeIndex, setActiveOutcomeIndex] = useState<typeof OUTCOME_INDEX.YES | typeof OUTCOME_INDEX.NO>(
@@ -68,7 +59,6 @@ export default function PoolChart({ market, summary, isMobile, outcomeLabels, pr
   )
   const [activeTimeRange, setActiveTimeRange] = useState<TimeRange>('ALL')
   const [chartSettings, setChartSettings] = useState<ChartSettings>(defaultChartSettings)
-  const [cursorState, setCursorState] = useState<CursorState>({ scopeKey: '', snapshot: null })
 
   const isNoSide = activeOutcomeIndex === OUTCOME_INDEX.NO
   const activeSide: PoolSide = isNoSide ? 'no' : 'yes'
@@ -125,60 +115,16 @@ export default function PoolChart({ market, summary, isMobile, outcomeLabels, pr
   ])
 
   const chartScopeKey = `${market.id}:${activeTimeRange}:${activeOutcomeIndex}`
-  const cursorSnapshot = cursorState.scopeKey === chartScopeKey ? cursorState.snapshot : null
-  const handleCursorDataChange = useCallback(
-    (snapshot: PredictionChartCursorSnapshot | null) => {
-      setCursorState({ scopeKey: chartScopeKey, snapshot })
-    },
-    [chartScopeKey],
-  )
+  // The hero carries the headline chance; the canvas tooltip is the only hover readout.
+  const handleCursorDataChange = useCallback(() => {}, [])
 
   const { width: windowWidth } = useWindowSize()
   const chartWidth = isMobile ? (windowWidth || 400) * 0.84 : Math.min((windowWidth || 1440) * 0.55, 900)
 
-  const hoveredChance = cursorSnapshot?.values?.[seriesKey]
-  const isHovering = typeof hoveredChance === 'number' && Number.isFinite(hoveredChance)
-  const currentChance = (() => {
-    for (let index = chartData.length - 1; index >= 0; index -= 1) {
-      const value = chartData[index]?.[seriesKey]
-      if (typeof value === 'number' && Number.isFinite(value)) {
-        return value
-      }
-    }
-    return null
-  })()
-  const baselineChance = (() => {
-    for (const point of chartData) {
-      const value = point[seriesKey]
-      if (typeof value === 'number' && Number.isFinite(value)) {
-        return value
-      }
-    }
-    return null
-  })()
-  const yesChanceValue = isHovering ? hoveredChance : currentChance
-  const totalMinor = summary ? BigInt(summary.pool.totalYes) + BigInt(summary.pool.totalNo) : 0n
-  const watermark = useMemo(
-    () => ({ iconSvg: site.logoSvg, iconImageUrl: site.logoImageUrl, label: site.name }),
-    [site.logoImageUrl, site.logoSvg, site.name],
-  )
   const hasChartData = chartData.length > 0
 
   return (
     <EventChartLayout
-      header={
-        <EventChartHeader
-          isSingleMarket
-          activeOutcomeIndex={activeOutcomeIndex}
-          activeOutcomeLabel={activeOutcomeLabel}
-          primarySeriesColor={primarySeriesColor}
-          yesChanceValue={yesChanceValue}
-          effectiveBaselineYesChance={baselineChance}
-          effectiveCurrentYesChance={isHovering ? hoveredChance : currentChance}
-          watermark={watermark}
-          showSeriesNavigation={false}
-        />
-      }
       chart={
         <EventChartCanvas
           chartData={chartData}
@@ -202,13 +148,7 @@ export default function PoolChart({ market, summary, isMobile, outcomeLabels, pr
         />
       }
       controls={
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <PoolMetaInformation
-            totalMinor={totalMinor}
-            stakeCount={summary?.pool.stakeCount ?? 0}
-            currency={summary?.pool.currency ?? null}
-            endDate={market.resolution_date}
-          />
+        <div className="flex flex-wrap items-center justify-end gap-3">
           {hasChartData ? (
             <EventChartControls
               timeRanges={TIME_RANGES}
@@ -216,10 +156,7 @@ export default function PoolChart({ market, summary, isMobile, outcomeLabels, pr
               onTimeRangeChange={setActiveTimeRange}
               showOutcomeSwitch
               oppositeOutcomeLabel={oppositeOutcomeLabel || t('No')}
-              onShuffle={() => {
-                setActiveOutcomeIndex(isNoSide ? OUTCOME_INDEX.YES : OUTCOME_INDEX.NO)
-                handleCursorDataChange(null)
-              }}
+              onShuffle={() => setActiveOutcomeIndex(isNoSide ? OUTCOME_INDEX.YES : OUTCOME_INDEX.NO)}
               settings={chartSettings}
               onSettingsChange={setChartSettings}
             />
