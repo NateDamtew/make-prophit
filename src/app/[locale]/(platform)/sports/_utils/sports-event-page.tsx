@@ -134,10 +134,14 @@ export async function renderSportsVerticalEventPage({
     })
   }
 
-  const [{ data: groupedEvents }, { data: canonicalSportSlug }] = await Promise.all([
+  const [{ data: groupedEvents, error: groupedEventsError }, { data: canonicalSportSlug }] = await Promise.all([
     EventRepository.getSportsEventGroupBySlug(canonicalEventSlug, '', resolvedLocale),
     SportsMenuRepository.resolveCanonicalSlugByAlias(sport),
   ])
+  // Throw on DB failure instead of falling through to notFound(), which would cache a 404.
+  if (groupedEventsError) {
+    throw new Error(groupedEventsError)
+  }
 
   const cardGroups = buildSportsGamesCardGroups(groupedEvents ?? [])
   const targetGroup = cardGroups[0] ?? null
@@ -237,10 +241,13 @@ export async function renderSportsVerticalEventMarketPage({
     })
   }
 
-  const [{ data: groupedEvents }, { data: canonicalSportSlug }] = await Promise.all([
+  const [{ data: groupedEvents, error: groupedEventsError }, { data: canonicalSportSlug }] = await Promise.all([
     EventRepository.getSportsEventGroupBySlug(canonicalEventSlug, '', resolvedLocale),
     SportsMenuRepository.resolveCanonicalSlugByAlias(sport),
   ])
+  if (groupedEventsError) {
+    throw new Error(groupedEventsError)
+  }
   const cardGroups = buildSportsGamesCardGroups(groupedEvents ?? [])
   const targetGroup = cardGroups[0] ?? null
   const targetCard = targetGroup?.primaryCard ?? null
