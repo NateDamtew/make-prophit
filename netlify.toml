@@ -1,13 +1,14 @@
 # Netlify build configuration.
 #
-# Mirrors vercel.json: apply the Drizzle schema, then build with Bun running
-# Next (`bun run --bun next build`). Next 16's compiled server runtime only
-# loads under a recent Bun; older Bun releases fail during "Collecting page
-# data" with "Expected CommonJS module to have a function wrapper", so the
-# Bun version is pinned to the one Vercel builds with.
+# Netlify is not used for this site any more (beta deploys from Vercel).
+# The site is still linked to the repo and used to fail four checks on every
+# pull request because it has no database or env vars. Until the Netlify
+# site is deleted, every build is skipped: an ignore command that exits 0
+# tells Netlify not to build.
 
 [build]
 command = "bun run db:push && bun run build"
+ignore = "exit 0"
 
 [build.environment]
 BUN_VERSION = "1.4.2"
