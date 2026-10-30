@@ -42,6 +42,28 @@ export function RecordBars({
   )
 }
 
+/** The words next to the bars on a card: "10 of 10 stood", "9 stood, 1 late", "3 decided", "No results yet". */
+export function recordLabel(record: RecordMark[]): string {
+  const decided = record.filter((mark) => mark !== 'pending')
+  if (decided.length === 0) {
+    return 'No results yet'
+  }
+  const stood = decided.filter((mark) => mark === 'stood').length
+  const late = decided.filter((mark) => mark === 'late').length
+  const overturned = decided.filter((mark) => mark === 'overturned').length
+  if (stood === decided.length) {
+    return decided.length >= 6 ? `${stood} of ${decided.length} stood` : `${decided.length} decided`
+  }
+  const parts = [`${stood} stood`]
+  if (late > 0) {
+    parts.push(`${late} late`)
+  }
+  if (overturned > 0) {
+    parts.push(`${overturned} overturned`)
+  }
+  return parts.join(', ')
+}
+
 export function recordSummary(record: RecordMark[]): string {
   const decided = record.filter((mark) => mark !== 'pending')
   if (decided.length === 0) {

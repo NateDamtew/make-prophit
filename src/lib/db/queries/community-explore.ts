@@ -3,6 +3,7 @@ import { and, desc, eq, gt, inArray, sql } from 'drizzle-orm'
 import type { LeaderType } from '@/lib/communities/rules'
 import type { ExploreCommunity } from '@/lib/db/queries/community-home'
 
+import { getCommunitySettings } from '@/lib/communities/settings'
 import { listCommunitiesForExplore, listMyPoolStakes } from '@/lib/db/queries/community-home'
 import { communities, community_markets } from '@/lib/db/schema/communities/tables'
 import { pool_stakes, pools } from '@/lib/db/schema/pools/tables'
@@ -42,6 +43,8 @@ export interface ExploreCommunityRow extends ExploreCommunity {
   staked7dMinor: string
   /** The open market with the most money in it. */
   topMarket: ExploreMarket | null
+  /** One of Prophit's own communities ("Run by Prophit"). */
+  runByProphit: boolean
 }
 
 export interface YourCommunity {
@@ -234,12 +237,14 @@ export async function loadExplore(options: {
   const all = await listCommunitiesForExplore({ limit: options.limit ?? 120, userId: options.userId })
   const listed = options.leaderType ? all.filter((community) => community.leaderType === options.leaderType) : all
   const ids = listed.map((community) => community.id)
-  const [records, staked, openMarkets, yourCommunities] = await Promise.all([
+  const [records, staked, openMarkets, yourCommunities, settings] = await Promise.all([
     loadRecords(ids),
     loadStaked7d(ids, options.now),
     loadOpenMarkets(ids),
     loadYourCommunities(options.userId),
+    getCommunitySettings().catch(() => null),
   ])
+  const prophitIds = new Set(settings?.prophitCommunityIds ?? [])
   const topByCommunity = new Map<string, ExploreMarket>()
   for (const market of openMarkets) {
     if (!topByCommunity.has(market.communityId)) {
@@ -256,6 +261,7 @@ export async function loadExplore(options: {
       record: marks,
       staked7dMinor: (staked.get(community.id) ?? 0n).toString(),
       topMarket: topByCommunity.get(community.id) ?? null,
+      runByProphit: prophitIds.has(community.id),
     }
   })
   return { communities: rows, openMarkets, yourCommunities }

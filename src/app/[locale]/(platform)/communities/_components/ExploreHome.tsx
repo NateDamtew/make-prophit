@@ -5,7 +5,7 @@ import { useExtracted } from 'next-intl'
 import type { ExploreData } from '@/lib/db/queries/community-explore'
 
 import { CategoryTabs } from '@/components/communities/explore/CategoryTabs'
-import { BusiestList, ClosingToday, YourCommunities } from '@/components/communities/explore/ExploreSidebar'
+import { BusiestList, ClosingToday, LiveTicker, YourCommunities } from '@/components/communities/explore/ExploreSidebar'
 import { LiveNowHero } from '@/components/communities/explore/LiveNowHero'
 import { QuestionCard } from '@/components/communities/explore/QuestionCard'
 import { RecordLegend } from '@/components/communities/explore/RecordLegend'
@@ -16,9 +16,11 @@ import { Link } from '@/i18n/navigation'
 import { COMMUNITY_CATEGORIES } from '@/lib/communities/categories'
 
 /**
- * Explore: the biggest live question, then each category's communities
- * with what they are asking, the viewer's own communities, who is busiest
- * this week and what closes today. Every category links to its own page.
+ * Explore, option A of the board: the biggest live question up top with
+ * the busiest communities beside it; your communities; then one section
+ * per category with three cards each; closing today; how to read a
+ * record; the call to lead one. On phones the side column folds in
+ * after your communities.
  */
 export default function ExploreHome({ data, signedIn, now }: { data: ExploreData; signedIn: boolean; now: number }) {
   const t = useExtracted()
@@ -49,9 +51,7 @@ export default function ExploreHome({ data, signedIn, now }: { data: ExploreData
           <div>
             <h1 className="text-[26px]/tight font-bold">{t('Communities')}</h1>
             <p className="mt-1 max-w-2xl text-sm/relaxed text-muted-foreground">
-              {t(
-                'Every community names who decides its results. Payouts wait 24 hours so anyone who staked can appeal.',
-              )}
+              {t('Questions run by people you follow, decided by named jurors, paid in your money.')}
             </p>
           </div>
           <Button variant="secondary" nativeButton={false} render={<Link href="/communities/apply" />}>
@@ -61,18 +61,21 @@ export default function ExploreHome({ data, signedIn, now }: { data: ExploreData
         <CategoryTabs current={null} />
       </header>
 
-      {live && liveCommunity ? (
-        <LiveNowHero
-          market={live}
-          record={liveCommunity.record}
-          memberCount={liveCommunity.memberCount}
-          more={openMarkets.filter((market) => market.communityId !== live.communityId).slice(0, 2)}
-          now={now}
-        />
-      ) : null}
-
       <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_300px]">
         <div className="flex flex-col gap-8">
+          {live && liveCommunity ? (
+            <LiveNowHero
+              market={live}
+              record={liveCommunity.record}
+              memberCount={liveCommunity.memberCount}
+              more={openMarkets.filter((market) => market.communityId !== live.communityId).slice(0, 2)}
+              now={now}
+            />
+          ) : null}
+
+          <YourCommunities items={yourCommunities} signedIn={signedIn} now={now} />
+          <ClosingToday markets={openMarkets} now={now} className="lg:hidden" />
+
           {communities.length === 0 ? (
             <EmptyState
               dashed
@@ -88,20 +91,20 @@ export default function ExploreHome({ data, signedIn, now }: { data: ExploreData
           {sections.map(({ category, communities: items }) => (
             <section key={category.slug} className="flex flex-col gap-3" aria-label={category.title}>
               <div className="flex items-end justify-between gap-3">
-                <div>
-                  <h2 className="text-[17px] font-bold">{category.exploreTitle}</h2>
-                  <p className="text-xs text-muted-foreground">{category.exploreSubtitle}</p>
+                <div className="flex flex-wrap items-baseline gap-x-4">
+                  <h2 className="text-[17px] font-bold">{category.title}</h2>
+                  <p className="text-[13px] text-muted-foreground">{category.tagline}</p>
                 </div>
                 <Link
                   href={`/communities/${category.slug}`}
-                  className="shrink-0 text-sm font-semibold underline underline-offset-[3px]"
+                  className="shrink-0 text-[13px] font-semibold text-foreground hover:underline"
                 >
                   {t('See all')}
                 </Link>
               </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {items.slice(0, 4).map((community) => (
-                  <QuestionCard key={community.id} community={community} now={now} />
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {items.slice(0, 3).map((community) => (
+                  <QuestionCard key={community.id} community={community} />
                 ))}
               </div>
             </section>
@@ -109,9 +112,9 @@ export default function ExploreHome({ data, signedIn, now }: { data: ExploreData
           {uncategorised.length > 0 ? (
             <section className="flex flex-col gap-3" aria-label={t('More communities')}>
               <h2 className="text-[17px] font-bold">{t('More communities')}</h2>
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 {uncategorised.slice(0, 6).map((community) => (
-                  <QuestionCard key={community.id} community={community} now={now} />
+                  <QuestionCard key={community.id} community={community} />
                 ))}
               </div>
             </section>
@@ -119,13 +122,13 @@ export default function ExploreHome({ data, signedIn, now }: { data: ExploreData
         </div>
 
         <aside className="flex flex-col gap-4">
-          <YourCommunities items={yourCommunities} signedIn={signedIn} now={now} />
           <BusiestList
             communities={communities}
             title={t('Busiest this week')}
             subtitle={t('Money staked in the last 7 days')}
           />
-          <ClosingToday markets={openMarkets} now={now} />
+          <LiveTicker markets={openMarkets} />
+          <ClosingToday markets={openMarkets} now={now} className="hidden lg:block" />
           <RecordLegend noun={t("that community's")} />
         </aside>
       </div>

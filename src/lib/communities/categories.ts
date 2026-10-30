@@ -32,6 +32,8 @@ export interface CommunityCategory {
   /** Section title on Explore: "News desks are asking". */
   exploreTitle: string
   exploreSubtitle: string
+  /** Three or four words under the section title on Explore: "Politics, prices, policy". */
+  tagline: string
   /** The call to lead one. */
   cta: { title: string; body: string; action: string }
   /** The record legend's noun: "that desk's last 10 results". */
@@ -51,6 +53,7 @@ export const COMMUNITY_CATEGORIES: readonly CommunityCategory[] = [
     layout: 'news',
     exploreTitle: 'News desks are asking',
     exploreSubtitle: 'Prices, politics and policy, settled by a named public source.',
+    tagline: 'Politics, prices, policy',
     cta: {
       title: 'Run a newsroom?',
       body: 'Turn your stories into questions readers stake on, settled by your own editors in public. Verified newsrooms start at Level 2.',
@@ -70,6 +73,7 @@ export const COMMUNITY_CATEGORIES: readonly CommunityCategory[] = [
     layout: 'sports',
     exploreTitle: 'This weekend on the sports pages',
     exploreSubtitle: 'Stakes close at kickoff.',
+    tagline: 'Derbies, leagues, the national team',
     cta: {
       title: 'Run a fan page?',
       body: 'Ask your fans about every match day and earn a share of every pool.',
@@ -89,6 +93,7 @@ export const COMMUNITY_CATEGORIES: readonly CommunityCategory[] = [
     layout: 'creators',
     exploreTitle: 'Beat the creator',
     exploreSubtitle: 'They make a call on every question; your record against theirs is public.',
+    tagline: 'Call it before they do',
     cta: {
       title: 'Got fans?',
       body: 'Make your call, let your fans try to beat it, and earn a share of every pool.',
@@ -108,6 +113,7 @@ export const COMMUNITY_CATEGORIES: readonly CommunityCategory[] = [
     layout: 'groups',
     exploreTitle: 'Groups near you',
     exploreSubtitle: 'Chamas, estates and offices. Members see the questions.',
+    tagline: 'Chamas, estates, clubs, friends',
     cta: {
       title: 'Start one for your chama, estate or office',
       body: 'Ask the questions your group already argues about. Keep it invite only, pick 3 people you all trust to decide results, and settle up through M-Pesa.',
@@ -127,6 +133,7 @@ export const COMMUNITY_CATEGORIES: readonly CommunityCategory[] = [
     layout: 'default',
     exploreTitle: 'Happening now',
     exploreSubtitle: 'Questions that close as the event unfolds.',
+    tagline: 'Festivals, tournaments, award nights',
     cta: {
       title: 'Running an event?',
       body: 'Ask your crowd what happens next and settle it on the night.',

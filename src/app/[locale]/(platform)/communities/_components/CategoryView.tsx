@@ -434,7 +434,7 @@ export default function CategoryView({
           ) : (
             <div className="grid gap-3 sm:grid-cols-2">
               {listed.map((community) => (
-                <QuestionCard key={community.id} community={community} now={now} />
+                <QuestionCard key={community.id} community={community} />
               ))}
             </div>
           )}
