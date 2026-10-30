@@ -31,11 +31,13 @@ export async function resolveCanonicalEventSlugFromSportsPath(
   leagueSlug?: string | null,
 ) {
   const { data, error } = await EventRepository.getCanonicalEventSlugBySportsPath(sportSlug, eventSlug, leagueSlug)
-  if (error || !data?.slug) {
-    return null
+  // A DB failure must throw rather than return null: callers turn null into notFound(),
+  // and that 404 gets cached for an event that actually exists.
+  if (error) {
+    throw new Error(error)
   }
 
-  return data.slug
+  return data?.slug || null
 }
 
 async function getEventTitleBySlug(eventSlug: string, locale: SupportedLocale) {
@@ -44,12 +46,8 @@ async function getEventTitleBySlug(eventSlug: string, locale: SupportedLocale) {
 }
 
 export async function getEventRouteBySlug(eventSlug: string) {
-  const { data, error } = await EventRepository.getEventRouteBySlug(eventSlug)
-  if (error || !data) {
-    return null
-  }
-
-  return data
+  const { data } = await EventRepository.getEventRouteBySlug(eventSlug)
+  return data ?? null
 }
 
 export async function loadEventPagePublicContentData(
@@ -67,7 +65,12 @@ export async function loadEventPagePublicContentData(
   const marketContextEnabled = marketContextSettings.enabled && Boolean(marketContextSettings.apiKey)
 
   const { data: rawEvent, error } = eventResult
-  if (error || !rawEvent) {
+  // Callers already resolved the event route, so an error here is a DB failure, not a missing
+  // event. Throw so it isn't cached as null (which would pin a 404 on a live event).
+  if (error) {
+    throw new Error(error)
+  }
+  if (!rawEvent) {
     return null
   }
   cacheLife(resolveEventPageCacheLife(rawEvent.status))

@@ -552,6 +552,15 @@ interface RelatedEventOptions {
   locale?: SupportedLocale
 }
 
+interface EventRouteData {
+  slug: string
+  sports_sport_slug: string | null
+  sports_league_slug: string | null
+  sports_event_slug: string | null
+  sports_section: 'games' | 'props' | null
+  tags: Array<{ slug: string }>
+}
+
 interface ListEventMarketSlugsProps {
   tag: string
   mainTag?: string
@@ -3857,8 +3866,8 @@ export const EventRepository = {
     sportsSportSlug: string,
     sportsEventSlug: string,
     sportsLeagueSlug?: string | null,
-  ): Promise<QueryResult<{ slug: string }>> {
-    return runQuery(async () => {
+  ): Promise<QueryResult<{ slug: string } | null>> {
+    return runQuery<{ slug: string } | null>(async () => {
       const sportsSlugResolver = await getSportsSlugResolverFromDb()
       const requestedCanonicalSportsSlug = resolveCanonicalSportsSportSlug(sportsSlugResolver, {
         sportsSportSlug,
@@ -3869,12 +3878,12 @@ export const EventRepository = {
       const normalizedSportsLeagueSlug = sportsLeagueSlug?.trim().toLowerCase() ?? ''
 
       if (!requestedCanonicalSportsSlug || !normalizedSportsEventSlug || sportsSportSlugCandidates.length === 0) {
-        throw new Error('Event not found')
+        return { data: null, error: null }
       }
 
       const sportsSlugMatchCondition = buildSportsSlugMatchCondition(sportsSportSlugCandidates)
       if (!sportsSlugMatchCondition) {
-        throw new Error('Event not found')
+        return { data: null, error: null }
       }
 
       const normalizedSportsEventSlugColumn = sql<string>`
@@ -3913,7 +3922,7 @@ export const EventRepository = {
         return { data: { slug: matchingRow.slug }, error: null }
       }
 
-      throw new Error('Event not found')
+      return { data: null, error: null }
     })
   },
 
@@ -3931,24 +3940,20 @@ export const EventRepository = {
   async getEventTitleBySlug(
     slug: string,
     locale: SupportedLocale = DEFAULT_LOCALE,
-  ): Promise<QueryResult<{ title: string }>> {
+  ): Promise<QueryResult<{ title: string } | null>> {
     'use cache'
     cacheTag(cacheTags.event(slug))
 
-    return runQuery(async () => {
+    const queryResult = await runQuery<{ title: string } | null>(async () => {
       const result = await db
         .select({ id: events.id, title: events.title })
         .from(events)
         .where(and(eq(events.slug, slug), eq(events.is_hidden, false)))
         .limit(1)
 
-      if (result.length === 0) {
-        throw new Error('Event not found')
-      }
-
       const eventRow = result[0]
       if (!eventRow) {
-        throw new Error('Event not found')
+        return { data: null, error: null }
       }
 
       if (locale === DEFAULT_LOCALE) {
@@ -3964,22 +3969,20 @@ export const EventRepository = {
         error: null,
       }
     })
+
+    // Throw instead of returning the error so a transient DB failure is never cached as "event not found".
+    if (queryResult.error) {
+      throw new Error(queryResult.error)
+    }
+
+    return queryResult
   },
 
-  async getEventRouteBySlug(slug: string): Promise<
-    QueryResult<{
-      slug: string
-      sports_sport_slug: string | null
-      sports_league_slug: string | null
-      sports_event_slug: string | null
-      sports_section: 'games' | 'props' | null
-      tags: Array<{ slug: string }>
-    }>
-  > {
+  async getEventRouteBySlug(slug: string): Promise<QueryResult<EventRouteData | null>> {
     'use cache'
     cacheTag(cacheTags.event(slug))
 
-    return runQuery(async () => {
+    const queryResult = await runQuery<EventRouteData | null>(async () => {
       interface EventRouteRow {
         id: string
         slug: string
@@ -4007,7 +4010,7 @@ export const EventRepository = {
 
       const eventRow = result[0]
       if (!eventRow) {
-        throw new Error('Event not found')
+        return { data: null, error: null }
       }
 
       const tagRows = await db
@@ -4039,6 +4042,13 @@ export const EventRepository = {
         error: null,
       }
     })
+
+    // Throw instead of returning the error so a transient DB failure is never cached as "event not found".
+    if (queryResult.error) {
+      throw new Error(queryResult.error)
+    }
+
+    return queryResult
   },
 
   async getEventConditionChangeLogBySlug(slug: string): Promise<QueryResult<ConditionChangeLogEntry[]>> {
