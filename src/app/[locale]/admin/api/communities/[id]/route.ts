@@ -19,7 +19,7 @@ const patchSchema = z.object({
   // Trust ladder controls (communities v1): every change writes a trust event.
   level: z.union([z.literal(0), z.literal(1), z.literal(2)]).optional(),
   status: z.enum(['active', 'paused', 'dormant', 'archived']).optional(),
-  leader_type: z.enum(['news', 'sports', 'creator', 'group', 'event']).nullable().optional(),
+  leader_type: z.enum(['news', 'sports', 'creator', 'show', 'group', 'event']).nullable().optional(),
   joins_paused: z.boolean().optional(),
   reason: z.string().trim().max(500).nullable().optional(),
 })

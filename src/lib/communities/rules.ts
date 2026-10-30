@@ -14,9 +14,9 @@ export const LEVEL_NAMES: Record<CommunityLevel, string> = {
   2: 'Established',
 }
 
-export type LeaderType = 'news' | 'sports' | 'creator' | 'group' | 'event'
+export type LeaderType = 'news' | 'sports' | 'creator' | 'show' | 'group' | 'event'
 
-const LEADER_TYPES: readonly LeaderType[] = ['news', 'sports', 'creator', 'group', 'event']
+const LEADER_TYPES: readonly LeaderType[] = ['news', 'sports', 'creator', 'show', 'group', 'event']
 
 export type CommunityStatus = 'active' | 'paused' | 'dormant' | 'archived'
 

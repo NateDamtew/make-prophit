@@ -2,145 +2,193 @@
 
 import { useExtracted } from 'next-intl'
 
-import type { ExploreData } from '@/lib/db/queries/community-explore'
+import type { CommunityCategory } from '@/lib/communities/categories'
+import type { ExploreCommunityRow, ExploreData } from '@/lib/db/queries/community-explore'
+import type { HomeFeedLiveItem } from '@/lib/home-feed-types'
 
+import HomeFeedLiveStrip from '@/app/[locale]/(platform)/(home)/_components/home-feed/HomeFeedLiveStrip'
+import { HomeFeedSectionHeading } from '@/app/[locale]/(platform)/(home)/_components/home-feed/HomeFeedPrimitives'
 import { CategoryTabs } from '@/components/communities/explore/CategoryTabs'
-import { BusiestList, ClosingToday, YourCommunities } from '@/components/communities/explore/ExploreSidebar'
-import { LiveNowHero } from '@/components/communities/explore/LiveNowHero'
+import {
+  BusiestList,
+  ClosingToday,
+  EXPLORE_ROW_CLASS,
+  EXPLORE_ROW_ITEM_CLASS,
+  LeadPanel,
+  YourCommunities,
+} from '@/components/communities/explore/ExploreSidebar'
+import { FeaturedRotation } from '@/components/communities/explore/LiveNowHero'
 import { QuestionCard } from '@/components/communities/explore/QuestionCard'
 import { RecordLegend } from '@/components/communities/explore/RecordLegend'
-import { StartCommunityCta } from '@/components/communities/explore/StartCommunityCta'
 import { EmptyState } from '@/components/communities/states/EmptyState'
 import { Button } from '@/components/ui/button'
 import { Link } from '@/i18n/navigation'
 import { COMMUNITY_CATEGORIES } from '@/lib/communities/categories'
 
 /**
- * Explore: the biggest live question, then each category's communities
- * with what they are asking, the viewer's own communities, who is busiest
- * this week and what closes today. Every category links to its own page.
+ * Explore is the Trending page with community types in place of market
+ * categories: the featured community beside who is busiest this week, a
+ * live strip, then your communities and one card row per community type,
+ * with closing today, the record key and the call to start a community
+ * in the side column. On phones the rows scroll sideways.
  */
+
+const CARDS_PER_ROW = 3
+
+function byActivity(a: ExploreCommunityRow, b: ExploreCommunityRow) {
+  const staked = BigInt(b.staked7dMinor) - BigInt(a.staked7dMinor)
+  if (staked !== 0n) {
+    return staked > 0n ? 1 : -1
+  }
+  const volume = BigInt(b.volume30dMinor) - BigInt(a.volume30dMinor)
+  if (volume !== 0n) {
+    return volume > 0n ? 1 : -1
+  }
+  return b.memberCount - a.memberCount
+}
+
+/** The Explore sections: one per category that has its own section, with the categories folded into it. */
+function exploreSections(communities: ExploreCommunityRow[]) {
+  return COMMUNITY_CATEGORIES.filter((category) => !category.exploreUnder).map((category) => {
+    const types = [category.leaderType, ...(category.alsoLists?.leaderTypes ?? [])]
+    return {
+      category,
+      title: category.alsoLists?.title ?? category.title,
+      communities: communities.filter((community) => community.leaderType && types.includes(community.leaderType)),
+    }
+  })
+}
+
 export default function ExploreHome({ data, signedIn, now }: { data: ExploreData; signedIn: boolean; now: number }) {
   const t = useExtracted()
-  const { communities, openMarkets, yourCommunities } = data
-  const live = openMarkets[0] ?? null
-  const liveCommunity = live ? communities.find((community) => community.id === live.communityId) : null
-  const byActivity = [...communities].sort((a, b) => {
-    const staked = BigInt(b.staked7dMinor) - BigInt(a.staked7dMinor)
-    if (staked !== 0n) {
-      return staked > 0n ? 1 : -1
+  const { communities, openMarkets, yourCommunities, featured } = data
+  const ranked = [...communities].sort(byActivity)
+  // A type gets a row only when it has a community with an open question; nothing is listed for its own sake.
+  const sections = exploreSections(ranked).filter((section) =>
+    section.communities.some((community) => community.topMarket),
+  )
+  const uncategorised = ranked.filter((community) => community.leaderType === null)
+  const liveItems: HomeFeedLiveItem[] = openMarkets.slice(0, 12).map((market) => {
+    const lead = market.outcomes?.[0]
+    return {
+      id: market.id,
+      title: market.title,
+      href: `/community/${market.communitySlug}/market/${market.id}`,
+      iconUrl: market.communityIcon,
+      chance: lead
+        ? lead.chance * 100
+        : market.yesChance >= 0.5
+          ? market.yesChance * 100
+          : (1 - market.yesChance) * 100,
+      leadLabel: lead ? lead.label : market.yesChance >= 0.5 ? t('Yes') : t('No'),
+      isUpDown: false,
+      isLive: true,
     }
-    const volume = BigInt(b.volume30dMinor) - BigInt(a.volume30dMinor)
-    if (volume !== 0n) {
-      return volume > 0n ? 1 : -1
-    }
-    return b.memberCount - a.memberCount
   })
-  const sections = COMMUNITY_CATEGORIES.map((category) => ({
-    category,
-    communities: byActivity.filter((community) => community.leaderType === category.leaderType),
-  })).filter((section) => section.communities.length > 0)
-  const uncategorised = byActivity.filter((community) => community.leaderType === null)
+
+  function row(items: ExploreCommunityRow[], seeAllHref?: string, category?: CommunityCategory) {
+    return (
+      <div className={EXPLORE_ROW_CLASS}>
+        {items.slice(0, CARDS_PER_ROW).map((community) => (
+          <QuestionCard key={community.id} community={community} className={EXPLORE_ROW_ITEM_CLASS} />
+        ))}
+        {seeAllHref && category ? (
+          <Link
+            href={seeAllHref}
+            className={`${EXPLORE_ROW_ITEM_CLASS} flex items-center justify-center rounded-2xl border border-dashed border-muted-foreground/40 p-4 text-sm font-semibold text-muted-foreground sm:hidden`}
+          >
+            {t('See all {title}', { title: category.title.toLowerCase() })}
+          </Link>
+        ) : null}
+      </div>
+    )
+  }
 
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-8 px-4 py-6 sm:px-6 lg:px-8">
-      <header className="flex flex-col gap-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <h1 className="text-[26px]/tight font-bold">{t('Communities')}</h1>
-            <p className="mt-1 max-w-2xl text-sm/relaxed text-muted-foreground">
-              {t(
+      <h1 className="sr-only">{t('Communities')}</h1>
+      <CategoryTabs current={null} typeCounts={data.typeCounts} />
+
+      {featured.length > 0 ? (
+        <div className="flex flex-wrap items-stretch gap-6">
+          <div className="min-w-0 flex-[999_1_560px]">
+            <FeaturedRotation featured={featured} markets={openMarkets} communities={communities} now={now} />
+          </div>
+          <div className="hidden min-w-0 flex-[1_1_260px] lg:flex lg:max-w-[300px]">
+            <BusiestList
+              communities={communities}
+              title={t('Busiest this week')}
+              subtitle={t('Money staked in the last 7 days')}
+              note={t(
                 'Every community names who decides its results. Payouts wait 24 hours so anyone who staked can appeal.',
               )}
-            </p>
+            />
           </div>
-          <Button variant="secondary" nativeButton={false} render={<Link href="/communities/apply" />}>
-            {t('Lead a community')}
-          </Button>
         </div>
-        <CategoryTabs current={null} />
-      </header>
-
-      {live && liveCommunity ? (
-        <LiveNowHero
-          market={live}
-          record={liveCommunity.record}
-          memberCount={liveCommunity.memberCount}
-          more={openMarkets.filter((market) => market.communityId !== live.communityId).slice(0, 2)}
-          now={now}
-        />
       ) : null}
 
-      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_300px]">
-        <div className="flex flex-col gap-8">
+      <HomeFeedLiveStrip items={liveItems} />
+
+      <div className="flex flex-wrap items-start gap-10">
+        <div className="flex min-w-0 flex-[999_1_560px] flex-col gap-12">
+          {signedIn ? <YourCommunities items={yourCommunities} signedIn={signedIn} now={now} /> : null}
+          <ClosingToday markets={openMarkets} now={now} className="lg:hidden" />
+
           {communities.length === 0 ? (
             <EmptyState
               dashed
               title={t('No communities here yet')}
-              body={t('Communities open as leaders are approved. Apply to lead one and yours can be first.')}
+              body={t('Communities open as they are approved. Start one and yours can be first.')}
               action={
                 <Button nativeButton={false} render={<Link href="/communities/apply" />}>
-                  {t('Apply to lead')}
+                  {t('Start a community')}
                 </Button>
               }
             />
           ) : null}
-          {sections.map(({ category, communities: items }) => (
-            <section key={category.slug} className="flex flex-col gap-3" aria-label={category.title}>
-              <div className="flex items-end justify-between gap-3">
-                <div>
-                  <h2 className="text-[17px] font-bold">{category.exploreTitle}</h2>
-                  <p className="text-xs text-muted-foreground">{category.exploreSubtitle}</p>
-                </div>
-                <Link
-                  href={`/communities/${category.slug}`}
-                  className="shrink-0 text-sm font-semibold underline underline-offset-[3px]"
-                >
-                  {t('See all')}
-                </Link>
+
+          {sections.map(({ category, title, communities: items }) => (
+            <section key={category.slug} aria-labelledby={`explore-${category.slug}`}>
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <HomeFeedSectionHeading id={`explore-${category.slug}`} href={`/communities/${category.slug}`}>
+                  {title}
+                </HomeFeedSectionHeading>
+                <p className="flex items-center gap-4 text-[13px] text-muted-foreground">
+                  <span className="hidden sm:inline">{category.tagline}</span>
+                  <Link
+                    href={`/communities/${category.slug}`}
+                    className="font-semibold text-foreground hover:text-primary"
+                  >
+                    {t('See all')}
+                  </Link>
+                </p>
               </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {items.slice(0, 4).map((community) => (
-                  <QuestionCard key={community.id} community={community} now={now} />
-                ))}
-              </div>
+              {row(items, `/communities/${category.slug}`, category)}
             </section>
           ))}
+
           {uncategorised.length > 0 ? (
-            <section className="flex flex-col gap-3" aria-label={t('More communities')}>
-              <h2 className="text-[17px] font-bold">{t('More communities')}</h2>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {uncategorised.slice(0, 6).map((community) => (
-                  <QuestionCard key={community.id} community={community} now={now} />
-                ))}
+            <section aria-labelledby="explore-more">
+              <div className="mb-4">
+                <HomeFeedSectionHeading id="explore-more">{t('More communities')}</HomeFeedSectionHeading>
               </div>
+              {row(uncategorised)}
             </section>
           ) : null}
         </div>
 
-        <aside className="flex flex-col gap-4">
-          <YourCommunities items={yourCommunities} signedIn={signedIn} now={now} />
-          <BusiestList
-            communities={communities}
-            title={t('Busiest this week')}
-            subtitle={t('Money staked in the last 7 days')}
-          />
-          <ClosingToday markets={openMarkets} now={now} />
+        <aside aria-label={t('Sidebar')} className="flex min-w-0 flex-[1_1_300px] flex-col gap-6 lg:max-w-[340px]">
+          <ClosingToday markets={openMarkets} now={now} className="hidden lg:block" />
           <RecordLegend noun={t("that community's")} />
+          <LeadPanel
+            title={t('Got an audience?')}
+            body={t(
+              'Newsrooms, fan pages, creators, chamas. Ask your people questions and earn a share of every pool.',
+            )}
+            action={t('Start a community')}
+          />
         </aside>
       </div>
-
-      <StartCommunityCta
-        title={t('Got an audience?')}
-        body={t('Newsrooms, fan pages, creators, chamas. Ask your people questions and earn a share of every pool.')}
-        action={t('Start a community')}
-      />
-
-      {!signedIn ? (
-        <p className="text-center text-xs text-muted-foreground">
-          {t('Sign up to join a community and make your first call.')}
-        </p>
-      ) : null}
     </div>
   )
 }

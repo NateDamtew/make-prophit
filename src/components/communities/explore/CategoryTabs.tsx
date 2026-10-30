@@ -2,16 +2,29 @@
 
 import { useExtracted } from 'next-intl'
 
+import type { LeaderType } from '@/lib/communities/rules'
+
 import { Link } from '@/i18n/navigation'
 import { COMMUNITY_CATEGORIES } from '@/lib/communities/categories'
 import { cn } from '@/lib/utils'
 
-/** Explore and one tab per category; the category pages share it. */
-export function CategoryTabs({ current }: { current: string | null }) {
+/**
+ * Explore and one tab per category that has communities (the current
+ * page's own category always shows); the category pages share it.
+ */
+export function CategoryTabs({
+  current,
+  typeCounts,
+}: {
+  current: string | null
+  typeCounts: Partial<Record<LeaderType, number>>
+}) {
   const t = useExtracted()
   const tabs = [
     { slug: null, label: t('All'), href: '/communities' as const },
-    ...COMMUNITY_CATEGORIES.map((category) => ({
+    ...COMMUNITY_CATEGORIES.filter(
+      (category) => category.slug === current || (typeCounts[category.leaderType] ?? 0) > 0,
+    ).map((category) => ({
       slug: category.slug,
       label: category.label,
       href: `/communities/${category.slug}` as const,
