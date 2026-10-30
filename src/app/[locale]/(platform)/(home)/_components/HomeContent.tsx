@@ -55,6 +55,7 @@ export default async function HomeContent({
   const shouldLoadFeaturedEvents = initialTagSlug === 'trending' && initialMainTagSlug === 'trending'
   const initialSortBy = getInitialHomeEventsSortBy(initialTagSlug)
   let initialCurrentTimestamp: number | null = null
+  let initialEventsUpdatedAt = 0
   let initialHasMore = false
 
   let initialEvents: Event[] = []
@@ -63,6 +64,7 @@ export default async function HomeContent({
   let initialFeaturedSideCard: HomeFeaturedSideCardSettings = DEFAULT_HOME_FEATURED_SETTINGS.sideCard
 
   const initialEventsPromise = listHomeEventsPage({
+    cardPayload: true,
     tag: initialTagSlug,
     mainTag: initialMainTagSlug,
     search: '',
@@ -73,16 +75,18 @@ export default async function HomeContent({
     // The home feed only picks a few events from this list, so it skips the
     // series backfill that fills a full grid page (one more 128-event batch).
     firstPageOnly: shouldLoadFeaturedEvents,
+    includeUpdatedAt: true,
     ...(initialSortBy && { sortBy: initialSortBy }),
   })
-    .then(({ data: events, error, currentTimestamp: resolvedCurrentTimestamp, hasMore }) => ({
+    .then(({ data: events, error, currentTimestamp: resolvedCurrentTimestamp, hasMore, updatedAt }) => ({
       events: error ? [] : (events ?? []),
       currentTimestamp: resolvedCurrentTimestamp ?? null,
+      updatedAt: error ? 0 : (updatedAt ?? 0),
       hasMore: !error && hasMore === true,
     }))
     .catch((error) => {
       console.error('Failed to load initial home events', error)
-      return { events: [], currentTimestamp: null, hasMore: false }
+      return { events: [], currentTimestamp: null, updatedAt: 0, hasMore: false }
     })
 
   const featuredEventsPromise = shouldLoadFeaturedEvents
@@ -144,6 +148,7 @@ export default async function HomeContent({
 
   initialEvents = initialEventsResult.events
   initialCurrentTimestamp = initialEventsResult.currentTimestamp
+  initialEventsUpdatedAt = initialEventsResult.updatedAt
   initialHasMore = initialEventsResult.hasMore
   initialFeaturedEvents = featuredEventsResult.featuredEvents
   initialFeaturedHotTopics = featuredEventsResult.featuredHotTopics
@@ -174,6 +179,7 @@ export default async function HomeContent({
           initialHomeFeed={initialHomeFeed}
           // The home feed renders its own small cards, so the full list is only sent where the grid shows it.
           initialEvents={initialHomeFeed ? [] : initialEvents.map((event) => slimEventForCard(event))}
+          initialEventsUpdatedAt={initialEventsUpdatedAt}
           initialHasMore={initialHasMore}
           initialCurrentTimestamp={initialCurrentTimestamp}
           initialTag={initialTagSlug}

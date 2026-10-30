@@ -60,6 +60,7 @@ import { useOutcomeLabel } from '@/hooks/useOutcomeLabel'
 import { useSignaturePromptRunner } from '@/hooks/useSignaturePromptRunner'
 import { useSiteIdentity } from '@/hooks/useSiteIdentity'
 import { addressToBuilderCode } from '@/lib/builder-code'
+import { triggerConfetti } from '@/lib/confetti'
 import { CLOB_ORDER_TYPE, getExchangeEip712Domain, ORDER_SIDE, ORDER_TYPE, OUTCOME_INDEX } from '@/lib/constants'
 import { resolveEventPagePath } from '@/lib/events-routing'
 import {
@@ -97,7 +98,7 @@ import {
   scheduleOrderBookRefresh,
 } from '@/lib/trading-cache'
 import { calculateGrossedKuestUnitFee, calculateMarketFillFees } from '@/lib/trading-fees'
-import { cn, triggerConfetti } from '@/lib/utils'
+import { cn } from '@/lib/utils'
 import { isUserRejectedRequestError, normalizeAddress } from '@/lib/wallet'
 import { signAndSubmitDepositWalletCalls } from '@/lib/wallet/client'
 import { buildNegRiskRedeemPositionCall, buildRedeemPositionCall } from '@/lib/wallet/transactions'
