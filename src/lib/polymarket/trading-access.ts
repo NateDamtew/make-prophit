@@ -18,6 +18,8 @@ export interface PolymarketTradingAccess {
   allowed: boolean
   reason: PolymarketTradingBlockReason | null
   country: string | null
+  /** Polymarket refuses orders from this country, whatever the trading mode. */
+  regionRestricted: boolean
 }
 
 /**
@@ -96,20 +98,21 @@ export function resolvePolymarketTradingAccess(
   env: Readonly<Partial<NodeJS.ProcessEnv>> = process.env,
 ): PolymarketTradingAccess {
   const country = getRequestCountryCode(requestHeaders)
+  const regionRestricted = isPolymarketRestrictedCountry(country)
   const mode = resolvePolymarketTradingMode(env)
   if (mode === 'off') {
-    return { allowed: false, reason: 'disabled', country }
+    return { allowed: false, reason: 'disabled', country, regionRestricted }
   }
   if (!user) {
-    return { allowed: false, reason: 'unauthenticated', country }
+    return { allowed: false, reason: 'unauthenticated', country, regionRestricted }
   }
   if (mode === 'testers' && !user.is_admin && !isListedTester(user, env)) {
-    return { allowed: false, reason: 'not-tester', country }
+    return { allowed: false, reason: 'not-tester', country, regionRestricted }
   }
-  if (isPolymarketRestrictedCountry(country)) {
-    return { allowed: false, reason: 'region', country }
+  if (regionRestricted) {
+    return { allowed: false, reason: 'region', country, regionRestricted }
   }
-  return { allowed: true, reason: null, country }
+  return { allowed: true, reason: null, country, regionRestricted }
 }
 
 /** The public builder code that attributes orders to Prophit. */

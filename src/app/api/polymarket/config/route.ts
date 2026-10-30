@@ -14,6 +14,7 @@ export async function GET(request: Request) {
       tradingEnabled: access.allowed && Boolean(builderCode),
       reason: builderCode ? access.reason : 'disabled',
       country: access.country,
+      regionRestricted: access.regionRestricted,
       builderCode,
     },
     { headers: { 'Cache-Control': 'private, no-store' } },
