@@ -8,12 +8,11 @@ import type { CommunityCategory } from '@/lib/communities/categories'
 import type { ExploreCommunityRow, ExploreData, ExploreMarket } from '@/lib/db/queries/community-explore'
 
 import { CategoryTabs } from '@/components/communities/explore/CategoryTabs'
-import { BusiestList, ClosingToday } from '@/components/communities/explore/ExploreSidebar'
+import { BusiestList, ClosingToday, LeadPanel } from '@/components/communities/explore/ExploreSidebar'
 import { LiveNowHero } from '@/components/communities/explore/LiveNowHero'
 import { QuestionCard } from '@/components/communities/explore/QuestionCard'
 import { RecordBars, recordSummary } from '@/components/communities/explore/RecordBars'
 import { RecordLegend } from '@/components/communities/explore/RecordLegend'
-import { StartCommunityCta } from '@/components/communities/explore/StartCommunityCta'
 import { formatCloseLabel, initials } from '@/components/communities/format'
 import { EmptyState } from '@/components/communities/states/EmptyState'
 import { Button } from '@/components/ui/button'
@@ -27,7 +26,7 @@ import { cn } from '@/lib/utils'
  * board, a group finder; anything else gets the live question), the rest
  * is the same everywhere: every community in the category with sort and
  * a verified filter, who is busiest, what closes today, how to read a
- * record, and the call to lead one.
+ * record, and the call to start one.
  */
 
 type Sort = 'record' | 'active' | 'newest'
@@ -96,9 +95,11 @@ function NewsFrontPage({ data, now }: { data: ExploreData; now: number }) {
         market={top}
         record={topCommunity.record}
         memberCount={topCommunity.memberCount}
-        more={[]}
+        accent={topCommunity.accent}
         now={now}
         eyebrow={t('Top question, {name}', { name: top.communityName })}
+        history={data.featured.find((item) => item.marketId === top.id)?.oddsHistory ?? []}
+        jurors={data.featured.find((item) => item.marketId === top.id)?.jurors ?? []}
       />
       {top.resolutionSource ? (
         <p className="-mt-2 text-xs text-muted-foreground">{t('Source: {source}', { source: top.resolutionSource })}</p>
@@ -355,7 +356,7 @@ export default function CategoryView({
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-8 px-4 py-6 sm:px-6 lg:px-8">
       <header className="flex flex-col gap-4">
-        <CategoryTabs current={category.slug} />
+        <CategoryTabs current={category.slug} typeCounts={data.typeCounts} />
         <div>
           <Link
             href="/communities"
@@ -380,9 +381,11 @@ export default function CategoryView({
           market={live}
           record={liveCommunity.record}
           memberCount={liveCommunity.memberCount}
-          more={openMarkets.filter((market) => market.communityId !== live.communityId).slice(0, 2)}
+          accent={liveCommunity.accent}
           now={now}
           eyebrow={category.exploreTitle}
+          history={data.featured.find((item) => item.marketId === live.id)?.oddsHistory ?? []}
+          jurors={data.featured.find((item) => item.marketId === live.id)?.jurors ?? []}
         />
       ) : null}
 
@@ -418,7 +421,7 @@ export default function CategoryView({
             <EmptyState
               dashed
               title={verifiedOnly ? t('No verified ones yet') : t('None yet')}
-              body={verifiedOnly ? t('Clear the filter to see every one.') : t('Be the first to lead one here.')}
+              body={verifiedOnly ? t('Clear the filter to see every one.') : t('Be the first to start one here.')}
               action={
                 verifiedOnly ? (
                   <Button variant="secondary" onClick={() => setVerifiedOnly(false)}>
@@ -452,12 +455,11 @@ export default function CategoryView({
           />
           <ClosingToday markets={openMarkets} now={now} />
           <RecordLegend noun={category.recordNoun} />
+          {category.layout !== 'groups' ? (
+            <LeadPanel title={category.cta.title} body={category.cta.body} action={category.cta.action} />
+          ) : null}
         </aside>
       </div>
-
-      {category.layout !== 'groups' ? (
-        <StartCommunityCta title={category.cta.title} body={category.cta.body} action={category.cta.action} />
-      ) : null}
 
       {!signedIn ? (
         <p className="text-center text-xs text-muted-foreground">

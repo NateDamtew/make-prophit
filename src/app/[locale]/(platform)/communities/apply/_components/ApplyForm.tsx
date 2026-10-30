@@ -21,7 +21,7 @@ import { cn } from '@/lib/utils'
  * you. One form, saved as a draft in the browser until it is sent.
  */
 
-const LEADER_TYPES: LeaderType[] = ['news', 'sports', 'creator', 'group', 'event']
+const LEADER_TYPES: LeaderType[] = ['news', 'sports', 'creator', 'show', 'group', 'event']
 const DRAFT_KEY = 'community-apply-draft'
 
 interface Draft {
@@ -148,6 +148,7 @@ export default function ApplyForm({ signedIn, resume }: { signedIn: boolean; res
     news: t('Newsroom or journalist'),
     sports: t('Club, league or fan page'),
     creator: t('Creator or commentator'),
+    show: t('TV or radio show'),
     group: t('Group: chama, office, class, friends'),
     event: t('Event: election, final, launch'),
   }

@@ -1,13 +1,19 @@
 import { and, desc, eq, gt, inArray, sql } from 'drizzle-orm'
 
+import type { TrustJuror } from '@/components/communities/types'
 import type { LeaderType } from '@/lib/communities/rules'
 import type { ExploreCommunity } from '@/lib/db/queries/community-home'
+import type { PoolOddsPoint } from '@/lib/pools/activity'
 
 import { getCommunitySettings } from '@/lib/communities/settings'
 import { listCommunitiesForExplore, listMyPoolStakes } from '@/lib/db/queries/community-home'
+import { isSafeAccent } from '@/lib/db/queries/community-theme'
+import { getTrustCard } from '@/lib/db/queries/community-trust'
 import { communities, community_markets } from '@/lib/db/schema/communities/tables'
+import { community_themes } from '@/lib/db/schema/communities/themes'
 import { pool_stakes, pools } from '@/lib/db/schema/pools/tables'
 import { db } from '@/lib/drizzle'
+import { getPoolOddsHistory } from '@/lib/pools/activity'
 import { impliedOdds } from '@/lib/pools/math'
 
 /**
@@ -20,6 +26,7 @@ export type RecordMark = 'stood' | 'late' | 'overturned' | 'pending'
 
 export interface ExploreMarket {
   id: string
+  poolId: string
   title: string
   communityId: string
   communitySlug: string
@@ -35,6 +42,12 @@ export interface ExploreMarket {
   mainCategorySlug: string | null
   categorySlugs: string[]
   resolutionSource: string | null
+  /**
+   * Top outcomes for a multi-outcome question, best first. Pools are Yes / No
+   * today, so this is null until multi-outcome pools exist; the cards already
+   * draw it when it is set.
+   */
+  outcomes: Array<{ label: string; chance: number }> | null
 }
 
 export interface ExploreCommunityRow extends ExploreCommunity {
@@ -45,6 +58,8 @@ export interface ExploreCommunityRow extends ExploreCommunity {
   topMarket: ExploreMarket | null
   /** One of Prophit's own communities ("Run by Prophit"). */
   runByProphit: boolean
+  /** The community's accent colour for its tile, when it set one. */
+  accent: string | null
 }
 
 export interface YourCommunity {
@@ -57,11 +72,42 @@ export interface YourCommunity {
   nextCloseAt: string | null
 }
 
+/** Extra detail for the one market in the hero: its odds over time and who decides it. */
+export interface ExploreHeroDetail {
+  marketId: string
+  oddsHistory: PoolOddsPoint[]
+  jurors: TrustJuror[]
+}
+
 export interface ExploreData {
   communities: ExploreCommunityRow[]
   /** Every open market across the listed communities, biggest pool first. */
   openMarkets: ExploreMarket[]
   yourCommunities: YourCommunity[]
+  /** The featured rotation: the biggest open questions, each with its odds history and jurors. */
+  featured: ExploreHeroDetail[]
+  /** Public communities per type across the whole site, so only types that exist get a tab. */
+  typeCounts: Partial<Record<LeaderType, number>>
+}
+
+const FEATURED_COUNT = 3
+
+async function loadAccents(communityIds: string[]): Promise<Map<string, string>> {
+  const accents = new Map<string, string>()
+  if (communityIds.length === 0) {
+    return accents
+  }
+  const rows = await db
+    .select({ community_id: community_themes.community_id, accent: community_themes.accent })
+    .from(community_themes)
+    .where(inArray(community_themes.community_id, communityIds))
+  for (const row of rows) {
+    // Only colours that are safe to put in a style attribute reach the client.
+    if (isSafeAccent(row.accent)) {
+      accents.set(row.community_id, row.accent)
+    }
+  }
+  return accents
 }
 
 const RECORD_LENGTH = 10
@@ -151,6 +197,7 @@ async function loadOpenMarkets(communityIds: string[]): Promise<ExploreMarket[]>
   const rows = await db
     .select({
       id: community_markets.id,
+      pool_id: pools.id,
       title: community_markets.title,
       community_id: community_markets.community_id,
       main_category_slug: community_markets.main_category_slug,
@@ -181,6 +228,7 @@ async function loadOpenMarkets(communityIds: string[]): Promise<ExploreMarket[]>
     .limit(120)
   return rows.map((row) => ({
     id: row.id,
+    poolId: row.pool_id,
     title: row.title,
     communityId: row.community_id,
     communitySlug: row.slug,
@@ -196,6 +244,7 @@ async function loadOpenMarkets(communityIds: string[]): Promise<ExploreMarket[]>
     mainCategorySlug: row.main_category_slug,
     categorySlugs: row.category_slugs ?? [],
     resolutionSource: row.resolution_source,
+    outcomes: null,
   }))
 }
 
@@ -230,21 +279,50 @@ async function loadYourCommunities(userId: string | null): Promise<YourCommunity
 
 export async function loadExplore(options: {
   userId: string | null
-  leaderType?: LeaderType | null
+  /** Only these community types; every type when empty. */
+  leaderTypes?: LeaderType[]
   now: Date
   limit?: number
 }): Promise<ExploreData> {
   const all = await listCommunitiesForExplore({ limit: options.limit ?? 120, userId: options.userId })
-  const listed = options.leaderType ? all.filter((community) => community.leaderType === options.leaderType) : all
+  const wanted = options.leaderTypes ?? []
+  const listed =
+    wanted.length > 0 ? all.filter((community) => community.leaderType && wanted.includes(community.leaderType)) : all
   const ids = listed.map((community) => community.id)
-  const [records, staked, openMarkets, yourCommunities, settings] = await Promise.all([
+  const [records, staked, openMarkets, yourCommunities, settings, accents] = await Promise.all([
     loadRecords(ids),
     loadStaked7d(ids, options.now),
     loadOpenMarkets(ids),
     loadYourCommunities(options.userId),
     getCommunitySettings().catch(() => null),
+    loadAccents(ids),
   ])
   const prophitIds = new Set(settings?.prophitCommunityIds ?? [])
+  const typeCounts: Partial<Record<LeaderType, number>> = {}
+  for (const community of all) {
+    if (community.leaderType) {
+      typeCounts[community.leaderType] = (typeCounts[community.leaderType] ?? 0) + 1
+    }
+  }
+  // One featured question per community, biggest pools first.
+  const featuredMarkets: ExploreMarket[] = []
+  for (const market of openMarkets) {
+    if (featuredMarkets.length >= FEATURED_COUNT) {
+      break
+    }
+    if (!featuredMarkets.some((item) => item.communityId === market.communityId)) {
+      featuredMarkets.push(market)
+    }
+  }
+  const featured: ExploreHeroDetail[] = await Promise.all(
+    featuredMarkets.map(async (market) => {
+      const [oddsHistory, trust] = await Promise.all([
+        getPoolOddsHistory(market.poolId).catch(() => []),
+        getTrustCard(market.communityId).catch(() => null),
+      ])
+      return { marketId: market.id, oddsHistory, jurors: trust?.jurors ?? [] }
+    }),
+  )
   const topByCommunity = new Map<string, ExploreMarket>()
   for (const market of openMarkets) {
     if (!topByCommunity.has(market.communityId)) {
@@ -262,7 +340,8 @@ export async function loadExplore(options: {
       staked7dMinor: (staked.get(community.id) ?? 0n).toString(),
       topMarket: topByCommunity.get(community.id) ?? null,
       runByProphit: prophitIds.has(community.id),
+      accent: accents.get(community.id) ?? null,
     }
   })
-  return { communities: rows, openMarkets, yourCommunities }
+  return { communities: rows, openMarkets, yourCommunities, featured, typeCounts }
 }

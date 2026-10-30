@@ -1,4 +1,4 @@
-import { CalendarDaysIcon, MicIcon, NewspaperIcon, TrophyIcon, UsersIcon } from 'lucide-react'
+import { CalendarDaysIcon, MicIcon, NewspaperIcon, TrophyIcon, TvIcon, UsersIcon } from 'lucide-react'
 
 import type { LeaderType } from '@/lib/communities/rules'
 
@@ -13,6 +13,7 @@ const META: Record<LeaderType, { label: string; Icon: typeof NewspaperIcon }> = 
   news: { label: 'News', Icon: NewspaperIcon },
   sports: { label: 'Sports', Icon: TrophyIcon },
   creator: { label: 'Creator', Icon: MicIcon },
+  show: { label: 'Show', Icon: TvIcon },
   group: { label: 'Group', Icon: UsersIcon },
   event: { label: 'Event', Icon: CalendarDaysIcon },
 }

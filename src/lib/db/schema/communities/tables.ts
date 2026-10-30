@@ -65,7 +65,7 @@ export const communities = pgTable(
       maxPerPersonMinor?: string
     }>(),
     review_mode_override: text(), // 'every' | 'spot' | 'none' | null
-    leader_type: text(), // 'news' | 'sports' | 'creator' | 'group' | 'event' | null
+    leader_type: text(), // 'news' | 'sports' | 'creator' | 'show' | 'group' | 'event' | null
     frozen_reason: text(),
     frozen_at: timestamp({ withTimezone: true }),
     created_at: timestamp({ withTimezone: true }).notNull().defaultNow(),

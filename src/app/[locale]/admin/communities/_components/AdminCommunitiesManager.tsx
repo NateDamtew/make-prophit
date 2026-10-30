@@ -268,7 +268,7 @@ function FeeEditor({ row, onSave }: { row: CommunityRow; onSave: (bps: number) =
 
 const LEVEL_LABELS = ['0 · New', '1 · Proven', '2 · Established']
 const STATUSES = ['active', 'paused', 'dormant', 'archived'] as const
-const LEADER_TYPES = ['news', 'sports', 'creator', 'group', 'event'] as const
+const LEADER_TYPES = ['news', 'sports', 'creator', 'show', 'group', 'event'] as const
 
 function LadderEditor({
   row,

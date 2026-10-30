@@ -56,7 +56,11 @@ async function CategoryContent({ slug }: { slug: string }) {
   }
   const viewer = await UserRepository.getCurrentUser({ minimal: true })
   const now = requestTimestamp()
-  const data = await loadExplore({ userId: viewer?.id ?? null, leaderType: category.leaderType, now: new Date(now) })
+  const data = await loadExplore({
+    userId: viewer?.id ?? null,
+    leaderTypes: [category.leaderType, ...(category.alsoLists?.leaderTypes ?? [])],
+    now: new Date(now),
+  })
   return <CategoryView category={category} data={data} signedIn={Boolean(viewer)} now={now} />
 }
 

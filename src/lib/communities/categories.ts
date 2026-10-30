@@ -38,6 +38,13 @@ export interface CommunityCategory {
   cta: { title: string; body: string; action: string }
   /** The record legend's noun: "that desk's last 10 results". */
   recordNoun: string
+  /**
+   * Leader types this category lists besides its own, and the title it takes
+   * then: creators list shows too, as "Creators and shows".
+   */
+  alsoLists?: { leaderTypes: LeaderType[]; title: string }
+  /** Folded into another category's section on Explore (shows live under creators). */
+  exploreUnder?: LeaderType
 }
 
 export const COMMUNITY_CATEGORIES: readonly CommunityCategory[] = [
@@ -100,6 +107,28 @@ export const COMMUNITY_CATEGORIES: readonly CommunityCategory[] = [
       action: 'Start a community',
     },
     recordNoun: "that community's",
+    alsoLists: { leaderTypes: ['show'], title: 'Creators and shows' },
+  },
+  {
+    slug: 'shows',
+    leaderType: 'show',
+    label: 'Shows',
+    title: 'Shows',
+    blurb:
+      'TV and radio shows asking about every episode: who goes home, who wins, what gets said. Stakes close when the show starts.',
+    blurbShort: 'Shows asking about every episode. Stakes close when it starts.',
+    countNoun: { one: 'show', many: 'shows' },
+    layout: 'default',
+    exploreTitle: 'On air this week',
+    exploreSubtitle: 'Every episode is a question.',
+    tagline: 'Every episode is a question',
+    cta: {
+      title: 'Run a show?',
+      body: 'Ask your audience about every episode and earn a share of every pool.',
+      action: 'Start a community',
+    },
+    recordNoun: "that show's",
+    exploreUnder: 'creator',
   },
   {
     slug: 'groups',

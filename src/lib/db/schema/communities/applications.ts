@@ -52,7 +52,7 @@ export const community_applications = pgTable(
     ),
     check(
       'chk_community_applications_leader_type',
-      sql`${table.leader_type} IN ('news', 'sports', 'creator', 'group', 'event')`,
+      sql`${table.leader_type} IN ('news', 'sports', 'creator', 'show', 'group', 'event')`,
     ),
   ],
 )
