@@ -36,6 +36,11 @@ describe('polymarket trading access', () => {
     expect(resolvePolymarketTradingAccess(tester, kenya, env).allowed).toBe(true)
   })
 
+  it('flags restricted regions even before trading opens', () => {
+    expect(resolvePolymarketTradingAccess(null, new Headers({ 'cf-ipcountry': 'ET' }), {}).regionRestricted).toBe(true)
+    expect(resolvePolymarketTradingAccess(null, kenya, {}).regionRestricted).toBe(false)
+  })
+
   it('only accepts a bytes32 builder code', () => {
     expect(getPolymarketBuilderCode({ POLYMARKET_BUILDER_CODE: '0x1234' })).toBeNull()
     expect(getPolymarketBuilderCode({ POLYMARKET_BUILDER_CODE: `0x${'a'.repeat(64)}` })).toBe(`0x${'a'.repeat(64)}`)

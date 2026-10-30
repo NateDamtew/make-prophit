@@ -18,6 +18,7 @@ interface PolymarketTradingConfig {
   tradingEnabled: boolean
   reason: 'disabled' | 'not-tester' | 'unauthenticated' | 'region' | null
   country: string | null
+  regionRestricted: boolean
   builderCode: string | null
 }
 
@@ -27,7 +28,7 @@ const ACCOUNT_QUERY_KEY = 'polymarket-account'
 async function fetchTradingConfig(): Promise<PolymarketTradingConfig> {
   const response = await fetch('/api/polymarket/config', { cache: 'no-store' })
   if (!response.ok) {
-    return { tradingEnabled: false, reason: 'disabled', country: null, builderCode: null }
+    return { tradingEnabled: false, reason: 'disabled', country: null, regionRestricted: false, builderCode: null }
   }
   return (await response.json()) as PolymarketTradingConfig
 }
@@ -118,6 +119,8 @@ export function usePolymarketTrading() {
     isConfigLoading: configQuery.isLoading,
     tradingEnabled: Boolean(config?.tradingEnabled),
     blockReason: config?.reason ?? null,
+    country: config?.country ?? null,
+    regionRestricted: Boolean(config?.regionRestricted),
     builderCode: config?.builderCode ?? null,
     isWalletConnected: Boolean(address),
     account: accountQuery.data ?? null,
